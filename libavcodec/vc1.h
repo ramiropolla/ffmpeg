@@ -428,4 +428,6 @@ void ff_vc1_mc_4mv_chroma4(VC1Context *v, int dir, int dir2, int avg);
 
 void ff_vc1_interp_mc(VC1Context *v);
 
+int vc1_coded_block_pred(MpegEncContext * s, int n, uint8_t **coded_block_ptr);
+
 #endif /* AVCODEC_VC1_H */

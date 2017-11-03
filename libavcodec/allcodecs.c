@@ -375,7 +375,7 @@ static void register_all(void)
     REGISTER_ENCDEC (WRAPPED_AVFRAME,   wrapped_avframe);
     REGISTER_ENCDEC (WMV1,              wmv1);
     REGISTER_ENCDEC (WMV2,              wmv2);
-    REGISTER_DECODER(WMV3,              wmv3);
+    REGISTER_ENCDEC (WMV3,              wmv3);
     REGISTER_DECODER(WMV3_CRYSTALHD,    wmv3_crystalhd);
     REGISTER_DECODER(WMV3IMAGE,         wmv3image);
     REGISTER_DECODER(WNV1,              wnv1);

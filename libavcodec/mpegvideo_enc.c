@@ -63,6 +63,7 @@
 #include "internal.h"
 #include "bytestream.h"
 #include "wmv2.h"
+#include "vc1enc.h"
 #include "rv10.h"
 #include "libxvid.h"
 #include <limits.h>
@@ -888,6 +889,15 @@ FF_ENABLE_DEPRECATION_WARNINGS
         s->h263_pred         = 1;
         s->unrestricted_mv   = 1;
         s->msmpeg4_version   = 5;
+        s->flipflop_rounding = 1;
+        avctx->delay         = 0;
+        s->low_delay         = 1;
+        break;
+    case AV_CODEC_ID_WMV3:
+        s->out_format        = FMT_H263;
+        s->h263_pred         = 1;
+        s->unrestricted_mv   = 1;
+        s->msmpeg4_version   = 6;
         s->flipflop_rounding = 1;
         avctx->delay         = 0;
         s->low_delay         = 1;
@@ -2565,6 +2575,10 @@ static av_always_inline void encode_mb_internal(MpegEncContext *s,
         if (CONFIG_WMV2_ENCODER)
             ff_wmv2_encode_mb(s, s->block, motion_x, motion_y);
         break;
+    case AV_CODEC_ID_WMV3:
+        if (CONFIG_WMV3_ENCODER)
+            ff_vc1_encode_mb(s, s->block, motion_x, motion_y);
+        break;
     case AV_CODEC_ID_H261:
         if (CONFIG_H261_ENCODER)
             ff_h261_encode_mb(s, s->block, motion_x, motion_y);
@@ -3906,6 +3920,8 @@ static int encode_picture(MpegEncContext *s, int picture_number)
     case FMT_H263:
         if (CONFIG_WMV2_ENCODER && s->codec_id == AV_CODEC_ID_WMV2)
             ff_wmv2_encode_picture_header(s, picture_number);
+        else if (CONFIG_WMV2_ENCODER && s->codec_id == AV_CODEC_ID_WMV3)
+            ff_vc1_encode_picture_header(s, picture_number);
         else if (CONFIG_MSMPEG4_ENCODER && s->msmpeg4_version)
             ff_msmpeg4_encode_picture_header(s, picture_number);
         else if (CONFIG_MPEG4_ENCODER && s->h263_pred) {

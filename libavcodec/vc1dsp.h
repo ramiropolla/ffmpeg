@@ -53,6 +53,11 @@ typedef struct VC1DSPContext {
     void (*vc1_v_loop_filter16)(uint8_t *src, int stride, int pq);
     void (*vc1_h_loop_filter16)(uint8_t *src, int stride, int pq);
 
+    /* encoder */
+    void (*vc1_fwd_trans_8x8)(int16_t *b);
+    void (*idct_put)(uint8_t *dest, ptrdiff_t line_size, int16_t *block);
+    int idct_perm;
+
     /* put 8x8 block with bicubic interpolation and quarterpel precision
      * last argument is actually round value instead of height
      */

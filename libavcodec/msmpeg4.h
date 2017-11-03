@@ -55,6 +55,7 @@ void ff_msmpeg4_encode_picture_header(MpegEncContext *s, int picture_number);
 void ff_msmpeg4_encode_ext_header(MpegEncContext *s);
 void ff_msmpeg4_encode_mb(MpegEncContext *s, int16_t block[6][64],
                           int motion_x, int motion_y);
+void ff_msmpeg4_find_best_tables(MpegEncContext * s);
 
 int ff_msmpeg4_decode_init(AVCodecContext *avctx);
 int ff_msmpeg4_decode_picture_header(MpegEncContext *s);

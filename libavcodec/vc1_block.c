@@ -453,8 +453,8 @@ static inline int ff_vc1_pred_dc(MpegEncContext *s, int overlap, int pq, int n,
  * @{
  */
 
-static inline int vc1_coded_block_pred(MpegEncContext * s, int n,
-                                       uint8_t **coded_block_ptr)
+int vc1_coded_block_pred(MpegEncContext * s, int n,
+                         uint8_t **coded_block_ptr)
 {
     int xy, wrap, pred, a, b, c;
 

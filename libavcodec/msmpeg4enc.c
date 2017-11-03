@@ -156,7 +156,7 @@ av_cold int ff_msmpeg4_encode_init(MpegEncContext *s)
     return 0;
 }
 
-static void find_best_tables(MpegEncContext * s)
+void ff_msmpeg4_find_best_tables(MpegEncContext * s)
 {
     int i;
     int best        = 0, best_size        = INT_MAX;
@@ -223,7 +223,7 @@ static void find_best_tables(MpegEncContext * s)
 /* write MSMPEG4 compatible frame header */
 void ff_msmpeg4_encode_picture_header(MpegEncContext * s, int picture_number)
 {
-    find_best_tables(s);
+    ff_msmpeg4_find_best_tables(s);
 
     avpriv_align_put_bits(&s->pb);
     put_bits(&s->pb, 2, s->pict_type - 1);
