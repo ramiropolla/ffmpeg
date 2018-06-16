@@ -274,6 +274,7 @@ FATE_MPEG4_AVI = mpeg4-rc                                               \
                  mpeg4-qpel                                             \
                  mpeg4-thread                                           \
                  mpeg4-error                                            \
+                 mpeg4-nopimb                                           \
                  mpeg4-nr                                               \
                  mpeg4-nsse
 
@@ -316,6 +317,9 @@ fate-vsynth%-mpeg4-thread:       ENCOPTS = -b 500k -flags +mv4+aic         \
                                            -data_partitioning 1 -trellis 1 \
                                            -mbd bits -ps 200 -bf 2         \
                                            -threads 2 -slices 2
+
+fate-vsynth%-mpeg4-nopimb:       ENCOPTS = -q 0 -g 600 -flags +mv4 \
+                                           -intra_penalty max
 
 FATE_VCODEC-$(call ENCDEC, MSMPEG4V3, AVI) += msmpeg4
 fate-vsynth%-msmpeg4:            ENCOPTS = -qscale 10

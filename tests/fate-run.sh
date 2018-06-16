@@ -120,6 +120,14 @@ probegaplessinfo(){
     tail -n 9 "$framefile1"
 }
 
+probenopimb(){
+    mb_types_file="${outdir}/${test}.mb_types"
+    run ffprobe${PROGSUF} -bitexact -flags2 +export_mb_types -show_frames -v 0 "$@"        \
+        | awk '/mb_types/ { if (!skip) { skip=1 } else { gsub(".*mb_types",""); print } }' \
+        > "$mb_types_file"
+    grep "[iI]" "$mb_types_file" || echo "No intra macroblocks found in P frames"
+}
+
 ffmpeg(){
     dec_opts="-hwaccel $hwaccel -threads $threads -thread_type $thread_type"
     ffmpeg_args="-nostdin -nostats -cpuflags $cpuflags"

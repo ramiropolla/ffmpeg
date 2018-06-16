@@ -1,0 +1,4 @@
+2808db89fee897cba848e20bf11a1712 *tests/data/fate/vsynth_lena-mpeg4-nopimb.avi
+738170 tests/data/fate/vsynth_lena-mpeg4-nopimb.avi
+c5bf55f93024605d507209ef1c69783d *tests/data/fate/vsynth_lena-mpeg4-nopimb.out.rawvideo
+stddev:    1.91 PSNR: 42.50 MAXDIFF:   19 bytes:  7603200/  7603200

@@ -144,6 +144,7 @@ fate-seek-vsynth_lena-mpeg4-qpel:        SRC = fate/vsynth_lena-mpeg4-qpel.avi
 fate-seek-vsynth_lena-mpeg4-qprd:        SRC = fate/vsynth_lena-mpeg4-qprd.avi
 fate-seek-vsynth_lena-mpeg4-rc:          SRC = fate/vsynth_lena-mpeg4-rc.avi
 fate-seek-vsynth_lena-mpeg4-thread:      SRC = fate/vsynth_lena-mpeg4-thread.avi
+fate-seek-vsynth_lena-mpeg4-nopimb:      SRC = fate/vsynth_lena-mpeg4-nopimb.avi
 fate-seek-vsynth_lena-msmpeg4:           SRC = fate/vsynth_lena-msmpeg4.avi
 fate-seek-vsynth_lena-msmpeg4v2:         SRC = fate/vsynth_lena-msmpeg4v2.avi
 fate-seek-vsynth_lena-rgb:               SRC = fate/vsynth_lena-rgb.avi

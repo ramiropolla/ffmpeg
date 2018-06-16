@@ -15,5 +15,10 @@ FATE_MPEG4-$(call DEMDEC, M4V, MPEG4) += fate-m4v  fate-m4v-cfr
 fate-m4v:     CMD = framecrc -flags +bitexact -idct simple -i $(TARGET_SAMPLES)/mpeg4/demo.m4v
 fate-m4v-cfr: CMD = framecrc -flags +bitexact -idct simple -i $(TARGET_SAMPLES)/mpeg4/demo.m4v -vf fps=5
 
+FATE_MPEG4-$(call ENCDEC, MPEG4, AVI) += fate-mpeg4-nopimb
+fate-mpeg4-nopimb: ffprobe$(PROGSSUF)$(EXESUF)
+fate-mpeg4-nopimb: $(TARGET_PATH)/tests/data/fate/vsynth_lena-mpeg4-nopimb.avi
+fate-mpeg4-nopimb: CMD = probenopimb $(TARGET_PATH)/tests/data/fate/vsynth_lena-mpeg4-nopimb.avi
+
 FATE_SAMPLES_AVCONV += $(FATE_MPEG4-yes)
 fate-mpeg4: $(FATE_MPEG4-yes)

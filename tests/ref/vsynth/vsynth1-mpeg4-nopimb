@@ -1,0 +1,4 @@
+680d1f6781b56b84511f44a2a6cdc8ee *tests/data/fate/vsynth1-mpeg4-nopimb.avi
+2269928 tests/data/fate/vsynth1-mpeg4-nopimb.avi
+edc9040556f8b6dde2d56bda1fce6fbd *tests/data/fate/vsynth1-mpeg4-nopimb.out.rawvideo
+stddev:    2.05 PSNR: 41.88 MAXDIFF:   21 bytes:  7603200/  7603200
