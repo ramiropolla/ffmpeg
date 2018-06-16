@@ -188,6 +188,26 @@ void ff_print_debug_info2(AVCodecContext *avctx, AVFrame *pict, uint8_t *mbskip_
         av_freep(&mvs);
     }
 
+    if ((avctx->flags2 & AV_CODEC_FLAG2_EXPORT_MB_TYPES) && mbtype_table) {
+        int size = (2 + mb_height * mb_width) * sizeof(uint32_t);
+        int mb_x, mb_y;
+
+        AVFrameSideData *sd;
+        uint32_t *out;
+
+        sd = av_frame_new_side_data(pict, AV_FRAME_DATA_MB_TYPES, size);
+        if (!sd)
+            return;
+
+        out = (uint32_t *) sd->data;
+        *out++ = mb_height;
+        *out++ = mb_width;
+
+        for (mb_y = 0; mb_y < mb_height; mb_y++)
+            for (mb_x = 0; mb_x < mb_width; mb_x++)
+                *out++ = mbtype_table[mb_x + mb_y * mb_stride];
+    }
+
     /* TODO: export all the following to make them accessible for users (and filters) */
     if (avctx->hwaccel || !mbtype_table)
         return;

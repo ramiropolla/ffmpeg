@@ -834,6 +834,7 @@ const char *av_frame_side_data_name(enum AVFrameSideDataType type)
     case AV_FRAME_DATA_ICC_PROFILE:                 return "ICC profile";
     case AV_FRAME_DATA_QP_TABLE_PROPERTIES:         return "QP table properties";
     case AV_FRAME_DATA_QP_TABLE_DATA:               return "QP table data";
+    case AV_FRAME_DATA_MB_TYPES:                    return "Macroblock types";
     }
     return NULL;
 }

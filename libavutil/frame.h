@@ -158,6 +158,15 @@ enum AVFrameSideDataType {
      */
     AV_FRAME_DATA_QP_TABLE_DATA,
 #endif
+
+    /**
+     * Macroblock types exported by some codecs (on demand through the
+     * export_mb_types flag set in the libavcodec AVCodecContext flags2 option).
+     * The data is composed by a header consisting of uint32_t mb_height and
+     * uint32_t mb_width, followed by a uint32_t mb_types[mb_height][mb_width]
+     * array.
+     */
+    AV_FRAME_DATA_MB_TYPES,
 };
 
 enum AVActiveFormatDescription {

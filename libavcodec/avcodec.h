@@ -940,6 +940,10 @@ typedef struct RcOverride{
  * Do not reset ASS ReadOrder field on flush (subtitles decoding)
  */
 #define AV_CODEC_FLAG2_RO_FLUSH_NOOP  (1 << 30)
+/**
+ * Export macroblock types through frame side data
+ */
+#define AV_CODEC_FLAG2_EXPORT_MB_TYPES (1U << 31)
 
 /* Unsupported options :
  *              Syntax Arithmetic coding (SAC)
