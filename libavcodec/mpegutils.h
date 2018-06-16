@@ -138,6 +138,13 @@ void ff_draw_horiz_band(AVCodecContext *avctx, AVFrame *cur, AVFrame *last,
                         int low_delay);
 
 /**
+ * Fill buffer with a string representing the macroblock type.
+ *
+ * @return number of characters written to str
+ */
+int ff_mb_type_str(char *str, int size, int mb_type);
+
+/**
  * Print debugging info for the given picture.
  */
 void ff_print_debug_info2(AVCodecContext *avctx, AVFrame *pict, uint8_t *mbskip_table,

@@ -100,6 +100,72 @@ void ff_draw_horiz_band(AVCodecContext *avctx,
     }
 }
 
+int ff_mb_type_str(char *str, int size, int mb_type)
+{
+    char *ptr = str;
+
+    if (size <= 0)
+        return 0;
+
+    if (--size <= 0)
+        goto end;
+
+    // Type & MV direction
+    if (IS_PCM(mb_type))
+        *ptr++ = 'P';
+    else if (IS_INTRA(mb_type) && IS_ACPRED(mb_type))
+        *ptr++ = 'A';
+    else if (IS_INTRA4x4(mb_type))
+        *ptr++ = 'i';
+    else if (IS_INTRA16x16(mb_type))
+        *ptr++ = 'I';
+    else if (IS_DIRECT(mb_type) && IS_SKIP(mb_type))
+        *ptr++ = 'd';
+    else if (IS_DIRECT(mb_type))
+        *ptr++ = 'D';
+    else if (IS_GMC(mb_type) && IS_SKIP(mb_type))
+        *ptr++ = 'g';
+    else if (IS_GMC(mb_type))
+        *ptr++ = 'G';
+    else if (IS_SKIP(mb_type))
+        *ptr++ = 'S';
+    else if (!USES_LIST(mb_type, 1))
+        *ptr++ = '>';
+    else if (!USES_LIST(mb_type, 0))
+        *ptr++ = '<';
+    else {
+        av_assert2(USES_LIST(mb_type, 0) && USES_LIST(mb_type, 1));
+        *ptr++ = 'X';
+    }
+
+    if (--size <= 0)
+        goto end;
+
+    // segmentation
+    if (IS_8X8(mb_type))
+        *ptr++ = '+';
+    else if (IS_16X8(mb_type))
+        *ptr++ = '-';
+    else if (IS_8X16(mb_type))
+        *ptr++ = '|';
+    else if (IS_INTRA(mb_type) || IS_16X16(mb_type))
+        *ptr++ = ' ';
+    else
+        *ptr++ = '?';
+
+    if (--size <= 0)
+        goto end;
+
+    if (IS_INTERLACED(mb_type))
+        *ptr++ = '=';
+    else
+        *ptr++ = ' ';
+
+end:
+    *ptr = '\0';
+    return ptr - str;
+}
+
 void ff_print_debug_info2(AVCodecContext *avctx, AVFrame *pict, uint8_t *mbskip_table,
                          uint32_t *mbtype_table, int8_t *qscale_table, int16_t (*motion_val[2])[2],
                          int *low_delay,
@@ -231,52 +297,9 @@ void ff_print_debug_info2(AVCodecContext *avctx, AVFrame *pict, uint8_t *mbskip_
                            qscale_table[x + y * mb_stride]);
                 }
                 if (avctx->debug & FF_DEBUG_MB_TYPE) {
-                    int mb_type = mbtype_table[x + y * mb_stride];
-                    // Type & MV direction
-                    if (IS_PCM(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "P");
-                    else if (IS_INTRA(mb_type) && IS_ACPRED(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "A");
-                    else if (IS_INTRA4x4(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "i");
-                    else if (IS_INTRA16x16(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "I");
-                    else if (IS_DIRECT(mb_type) && IS_SKIP(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "d");
-                    else if (IS_DIRECT(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "D");
-                    else if (IS_GMC(mb_type) && IS_SKIP(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "g");
-                    else if (IS_GMC(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "G");
-                    else if (IS_SKIP(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "S");
-                    else if (!USES_LIST(mb_type, 1))
-                        av_log(avctx, AV_LOG_DEBUG, ">");
-                    else if (!USES_LIST(mb_type, 0))
-                        av_log(avctx, AV_LOG_DEBUG, "<");
-                    else {
-                        av_assert2(USES_LIST(mb_type, 0) && USES_LIST(mb_type, 1));
-                        av_log(avctx, AV_LOG_DEBUG, "X");
-                    }
-
-                    // segmentation
-                    if (IS_8X8(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "+");
-                    else if (IS_16X8(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "-");
-                    else if (IS_8X16(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "|");
-                    else if (IS_INTRA(mb_type) || IS_16X16(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, " ");
-                    else
-                        av_log(avctx, AV_LOG_DEBUG, "?");
-
-
-                    if (IS_INTERLACED(mb_type))
-                        av_log(avctx, AV_LOG_DEBUG, "=");
-                    else
-                        av_log(avctx, AV_LOG_DEBUG, " ");
+                    char str[4];
+                    ff_mb_type_str(str, sizeof(str), mbtype_table[x + y * mb_stride]);
+                    av_log(avctx, AV_LOG_DEBUG, str);
                 }
             }
             av_log(avctx, AV_LOG_DEBUG, "\n");
