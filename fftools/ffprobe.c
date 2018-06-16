@@ -30,6 +30,7 @@
 
 #include "libavformat/avformat.h"
 #include "libavcodec/avcodec.h"
+#include "libavcodec/mpegutils.h"
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
@@ -2222,6 +2223,24 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
                 AVContentLightMetadata *metadata = (AVContentLightMetadata *)sd->data;
                 print_int("max_content", metadata->MaxCLL);
                 print_int("max_average", metadata->MaxFALL);
+            } else if (sd->type == AV_FRAME_DATA_MB_TYPES) {
+                uint32_t *mb_types = (uint32_t *)sd->data;
+                int mb_height = *mb_types++;
+                int mb_width = *mb_types++;
+                int size = mb_height * mb_width * 3 + 1;
+                char *str = av_malloc(size);
+                int mb_y, mb_x;
+                print_int("mb_height", mb_height);
+                print_int("mb_width", mb_width);
+                if (str) {
+                    char *ptr = str;
+                    const char *end = str + size;
+                    for (mb_y = 0; mb_y < mb_height; mb_y++)
+                        for (mb_x = 0; mb_x < mb_width; mb_x++)
+                            ptr += ff_mb_type_str(ptr, end - str, *mb_types++);
+                    print_str("mb_types", str);
+                    av_free(str);
+                }
             } else if (sd->type == AV_FRAME_DATA_ICC_PROFILE) {
                 AVDictionaryEntry *tag = av_dict_get(sd->metadata, "name", NULL, AV_DICT_MATCH_CASE);
                 if (tag)
