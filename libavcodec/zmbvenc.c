@@ -75,7 +75,7 @@ typedef struct ZmbvEncContext {
     int keyint, curfrm;
     int bypp;
     enum ZmbvFormat fmt;
-    FFZStream zstream;
+    FFZStreamMT zstream;
 
     int score_tab[ZMBV_BLOCK * ZMBV_BLOCK * 4 + 1];
 } ZmbvEncContext;
@@ -95,7 +95,30 @@ static inline int block_cmp(ZmbvEncContext *c, const uint8_t *src, int stride,
 
     /* Build frequency histogram of byte values for src[] ^ src2[] */
     for(j = 0; j < bh; j++){
-        for(i = 0; i < bw_bytes; i++){
+        i = 0;
+        for(; i < bw_bytes-7; i += 8)
+        {
+            uint64_t t = *((uint64_t *) (src + i)) ^ *((uint64_t *) (src2 + i));
+            uint8_t *p = (uint8_t *) &t;
+            histogram[p[0]]++;
+            histogram[p[1]]++;
+            histogram[p[2]]++;
+            histogram[p[3]]++;
+            histogram[p[4]]++;
+            histogram[p[5]]++;
+            histogram[p[6]]++;
+            histogram[p[7]]++;
+        }
+        for(; i < bw_bytes-3; i += 4)
+        {
+            uint32_t t = *((uint32_t *) (src + i)) ^ *((uint32_t *) (src2 + i));
+            uint8_t *p = (uint8_t *) &t;
+            histogram[p[0]]++;
+            histogram[p[1]]++;
+            histogram[p[2]]++;
+            histogram[p[3]]++;
+        }
+        for(; i < bw_bytes; i++){
             int t = src[i] ^ src2[i];
             histogram[t]++;
         }
@@ -165,11 +188,56 @@ static int zmbv_me(ZmbvEncContext *c, const uint8_t *src, int sstride, const uin
     return bv;
 }
 
+typedef struct ZmbvMEContext {
+    int linesize;
+    int slice_count;
+    int nb_jobs;
+    ZmbvEncContext *c;
+    const uint8_t *src;
+    uint8_t *prev;
+    uint8_t *mv;
+} ZmbvMEContext;
+
+static int zmbv_me_slice(AVCodecContext *avctx, void *arg,
+                         int i, int thread_nb)
+{
+    ZmbvMEContext *ctx = (ZmbvMEContext *) arg;
+    const int slice_count = ctx->slice_count;
+    const int nb_jobs = ctx->nb_jobs;
+    const int jobnr = i;
+    const int start_i = (slice_count * jobnr) / nb_jobs;
+    const int start_y = start_i * ZMBV_BLOCK;
+    const int end_y = ((slice_count * (jobnr+1)) / nb_jobs) * ZMBV_BLOCK;
+    int linesize = ctx->linesize;
+    ZmbvEncContext *c = ctx->c;
+    const uint8_t *src = ctx->src + (linesize * start_y);
+    uint8_t *prev = ctx->prev + (c->pstride * start_y);
+    const int bw = (avctx->width + ZMBV_BLOCK - 1) / ZMBV_BLOCK;
+    uint8_t *mv = ctx->mv + (2 * start_i * bw);
+
+    for(int y = start_y; y < end_y; y += ZMBV_BLOCK) {
+        for(int x = 0; x < avctx->width; x += ZMBV_BLOCK, mv += 2) {
+            int xored;
+            int mx = 0, my = 0;
+
+            const uint8_t *tsrc = src + x * c->bypp;
+            uint8_t *tprev = prev + x * c->bypp;
+
+            zmbv_me(c, tsrc, linesize, tprev, c->pstride, x, y, &mx, &my, &xored);
+            mv[0] = (mx << 1) | !!xored;
+            mv[1] = (my << 1);
+        }
+        src += linesize * ZMBV_BLOCK;
+        prev += c->pstride * ZMBV_BLOCK;
+    }
+
+    return 0;
+}
+
 static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                         const AVFrame *pict, int *got_packet)
 {
     ZmbvEncContext * const c = avctx->priv_data;
-    z_stream  *const zstream = &c->zstream.zstream;
     const AVFrame * const p = pict;
     const uint8_t *src;
     uint8_t *prev, *buf;
@@ -218,6 +286,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             work_size += avctx->width * c->bypp;
         }
     }else{
+        ZmbvMEContext me_ctx;
         int x, y, bh2, bw2, xored;
         const uint8_t *tsrc, *tprev;
         uint8_t *mv;
@@ -229,6 +298,14 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         memset(c->work_buf + work_size, 0, (bw * bh * 2 + 3) & ~3);
         work_size += (bw * bh * 2 + 3) & ~3;
         /* for now just XOR'ing */
+        me_ctx.linesize = p->linesize[0];
+        me_ctx.c = c;
+        me_ctx.src = src;
+        me_ctx.prev = prev;
+        me_ctx.mv = mv;
+        me_ctx.slice_count = avctx->height / ZMBV_BLOCK;
+        me_ctx.nb_jobs = av_clip(avctx->thread_count, 1, me_ctx.slice_count);
+        avctx->execute2(avctx, zmbv_me_slice, &me_ctx, NULL, me_ctx.nb_jobs);
         for(y = 0; y < avctx->height; y += ZMBV_BLOCK) {
             bh2 = FFMIN(avctx->height - y, ZMBV_BLOCK);
             for(x = 0; x < avctx->width; x += ZMBV_BLOCK, mv += 2) {
@@ -237,9 +314,9 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                 tsrc = src + x * c->bypp;
                 tprev = prev + x * c->bypp;
 
-                zmbv_me(c, tsrc, p->linesize[0], tprev, c->pstride, x, y, &mx, &my, &xored);
-                mv[0] = (mx * 2) | !!xored;
-                mv[1] = my * 2;
+                xored = (mv[0] & 1);
+                mx = ((int8_t) mv[0]) >> 1;
+                my = ((int8_t) mv[1]) >> 1;
                 tprev += mx * c->bypp + my * c->pstride;
                 if(xored){
                     for(j = 0; j < bh2; j++){
@@ -264,21 +341,15 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     if (keyframe)
-        deflateReset(zstream);
+        ff_deflate_reset_mt(&c->zstream);
 
-    zstream->next_in   = c->work_buf;
-    zstream->avail_in  = work_size;
-    zstream->total_in  = 0;
-
-    zstream->next_out  = c->comp_buf;
-    zstream->avail_out = c->comp_size;
-    zstream->total_out = 0;
-    if (deflate(zstream, Z_SYNC_FLUSH) != Z_OK) {
+    ret = ff_deflate_mt(&c->zstream, c->comp_buf, c->comp_size, c->work_buf, work_size);
+    if (ret != Z_OK) {
         av_log(avctx, AV_LOG_ERROR, "Error compressing data\n");
         return -1;
     }
 
-    pkt_size = zstream->total_out + 1 + 6 * keyframe;
+    pkt_size = c->zstream.total_out + 1 + 6 * keyframe;
     if ((ret = ff_get_encode_buffer(avctx, pkt, pkt_size, 0)) < 0)
         return ret;
     buf = pkt->data;
@@ -294,7 +365,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         *buf++ = ZMBV_BLOCK; // block height
         pkt->flags |= AV_PKT_FLAG_KEY;
     }
-    memcpy(buf, c->comp_buf, zstream->total_out);
+    memcpy(buf, c->comp_buf, c->zstream.total_out);
 
     *got_packet = 1;
 
@@ -309,7 +380,7 @@ static av_cold int encode_end(AVCodecContext *avctx)
     av_freep(&c->work_buf);
 
     av_freep(&c->prev_buf);
-    ff_deflate_end(&c->zstream);
+    ff_deflate_end_mt(&c->zstream);
 
     return 0;
 }
@@ -408,7 +479,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
     }
     c->prev = c->prev_buf + prev_offset;
 
-    return ff_deflate_init(&c->zstream, lvl, avctx);
+    return ff_deflate_init_mt(&c->zstream, lvl, avctx->thread_count, avctx);
 }
 
 const FFCodec ff_zmbv_encoder = {
@@ -416,7 +487,7 @@ const FFCodec ff_zmbv_encoder = {
     CODEC_LONG_NAME("Zip Motion Blocks Video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_ZMBV,
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS,
     .priv_data_size = sizeof(ZmbvEncContext),
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_frame),

@@ -22,12 +22,42 @@
 #ifndef AVCODEC_ZLIB_WRAPPER_H
 #define AVCODEC_ZLIB_WRAPPER_H
 
+#include "libavutil/thread.h"
 #include <zlib.h>
 
 typedef struct FFZStream {
     z_stream zstream;
     int inited;
 } FFZStream;
+
+typedef struct FFZStream2 {
+    z_stream zstream;
+    int inited;
+    uint8_t *buf;
+    size_t buf_len;
+    int chunk_order;
+    pthread_t thread;
+} FFZStream2;
+
+typedef struct FFZStreamMT {
+    FFZStream2 *streams;
+    int state;
+    int level;
+    int thread_count;
+    int total_out;
+    int last;
+    int cur_index;
+    int wake_up;
+    int out_chunk;
+    int chunk_progress;
+    uint8_t *out_buf;
+    size_t out_size;
+    pthread_mutex_t stream_lock;
+    pthread_cond_t stream_cond;
+    pthread_mutex_t chunk_lock;
+    pthread_cond_t chunk_cond_1;
+    pthread_cond_t chunk_cond_2;
+} FFZStreamMT;
 
 /**
  * Wrapper around inflateInit(). It initializes the fields that zlib
@@ -57,5 +87,13 @@ int ff_deflate_init(FFZStream *zstream, int level, void *logctx);
  * Wrapper around deflateEnd(). It works analogously to ff_inflate_end().
  */
 void ff_deflate_end(FFZStream *zstream);
+
+
+
+/* MT */
+int ff_deflate_init_mt(FFZStreamMT *zstream, int level, int thread_count, void *logctx);
+int ff_deflate_mt(FFZStreamMT *zstream, uint8_t *out_buf, size_t out_size, const uint8_t *in_buf, size_t in_size);
+int ff_deflate_reset_mt(FFZStreamMT *zstream);
+void ff_deflate_end_mt(FFZStreamMT *zstream);
 
 #endif /* AVCODEC_ZLIB_WRAPPER_H */
