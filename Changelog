@@ -38,6 +38,7 @@ version <next>:
 - ffprobe XML output schema changed to account for multiple
   variable-fields elements within the same parent element
 - ffprobe -output_format option added as an alias of -of
+- OV518 decoder
 
 
 version 6.0:

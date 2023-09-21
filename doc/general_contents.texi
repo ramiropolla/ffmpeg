@@ -1042,6 +1042,7 @@ following image formats are supported:
     @tab fourcc: VP60,VP61,VP62
 @item On2 VP7                @tab     @tab  X
     @tab fourcc: VP70,VP71
+@item OV518 Video Format     @tab     @tab  X
 @item VP8                    @tab  E  @tab  X
     @tab fourcc: VP80, encoding supported through external library libvpx
 @item VP9                    @tab  E  @tab  X

@@ -66,7 +66,7 @@
    and the butterfly must be multiplied by 0.5 * sqrt(2.0) */
 #define C_SHIFT (4+1+12)
 
-static inline void idct4col_put(uint8_t *dest, ptrdiff_t line_size, const int16_t *col)
+static inline void idct4col_interlaced_put(uint8_t *dest, ptrdiff_t line_size, const int16_t *col)
 {
     int c0, c1, c2, c3, a0, a1, a2, a3;
 
@@ -128,8 +128,8 @@ void ff_simple_idct248_put(uint8_t *dest, ptrdiff_t line_size, int16_t *block)
 
     /* IDCT4 and store */
     for(i=0;i<8;i++) {
-        idct4col_put(dest + i, 2 * line_size, block + i);
-        idct4col_put(dest + line_size + i, 2 * line_size, block + 8 + i);
+        idct4col_interlaced_put(dest + i, 2 * line_size, block + i);
+        idct4col_interlaced_put(dest + line_size + i, 2 * line_size, block + 8 + i);
     }
 }
 
@@ -145,6 +145,27 @@ void ff_simple_idct248_put(uint8_t *dest, ptrdiff_t line_size, int16_t *block)
 #define C2 C_FIX(0.2705980501)
 #define C3 C_FIX(0.5)
 #define C_SHIFT (4+1+12)
+static inline void idct4col_put(uint8_t *dest, ptrdiff_t line_size, const int16_t *col)
+{
+    int c0, c1, c2, c3, a0, a1, a2, a3;
+
+    a0 = col[8*0];
+    a1 = col[8*1];
+    a2 = col[8*2];
+    a3 = col[8*3];
+    c0 = (a0 + a2)*C3 + (1 << (C_SHIFT - 1));
+    c2 = (a0 - a2)*C3 + (1 << (C_SHIFT - 1));
+    c1 = a1 * C1 + a3 * C2;
+    c3 = a1 * C2 - a3 * C1;
+    dest[0] = av_clip_uint8((c0 + c1) >> C_SHIFT);
+    dest += line_size;
+    dest[0] = av_clip_uint8((c2 + c3) >> C_SHIFT);
+    dest += line_size;
+    dest[0] = av_clip_uint8((c2 - c3) >> C_SHIFT);
+    dest += line_size;
+    dest[0] = av_clip_uint8((c0 - c1) >> C_SHIFT);
+}
+
 static inline void idct4col_add(uint8_t *dest, ptrdiff_t line_size, const int16_t *col)
 {
     int c0, c1, c2, c3, a0, a1, a2, a3;
@@ -189,6 +210,21 @@ static inline void idct4row(int16_t *row)
     row[1]= (c2 + c3) >> R_SHIFT;
     row[2]= (c2 - c3) >> R_SHIFT;
     row[3]= (c0 - c1) >> R_SHIFT;
+}
+
+void ff_simple_idct84_put(uint8_t *dest, ptrdiff_t line_size, int16_t *block)
+{
+    int i;
+
+    /* IDCT8 on each line */
+    for(i=0; i<4; i++) {
+        idctRowCondDC_int16_8bit(block + i*8, 0);
+    }
+
+    /* IDCT4 and store */
+    for(i=0;i<8;i++) {
+        idct4col_put(dest + i, line_size, block + i);
+    }
 }
 
 void ff_simple_idct84_add(uint8_t *dest, ptrdiff_t line_size, int16_t *block)

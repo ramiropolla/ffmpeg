@@ -1960,6 +1960,12 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("vMix Video"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
     },
+    {
+        .id        = AV_CODEC_ID_OV518,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "ov518",
+        .long_name = NULL_IF_CONFIG_SMALL("OV518 video format"),
+    },
 
     /* various PCM "codecs" */
     {

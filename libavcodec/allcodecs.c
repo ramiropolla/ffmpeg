@@ -245,6 +245,7 @@ extern const FFCodec ff_mwsc_decoder;
 extern const FFCodec ff_mxpeg_decoder;
 extern const FFCodec ff_notchlc_decoder;
 extern const FFCodec ff_nuv_decoder;
+extern const FFCodec ff_ov518_decoder;
 extern const FFCodec ff_paf_video_decoder;
 extern const FFCodec ff_pam_encoder;
 extern const FFCodec ff_pam_decoder;

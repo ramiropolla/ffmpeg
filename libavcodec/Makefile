@@ -578,6 +578,7 @@ OBJS-$(CONFIG_OPUS_DECODER)            += opusdec.o opusdec_celt.o opus_celt.o \
 OBJS-$(CONFIG_OPUS_ENCODER)            += opusenc.o opusenc_psy.o opus_celt.o \
                                           opus_pvq.o opus_rc.o opustab.o
 OBJS-$(CONFIG_OSQ_DECODER)             += osq.o
+OBJS-$(CONFIG_OV518_DECODER)           += ov518.o
 OBJS-$(CONFIG_PAF_AUDIO_DECODER)       += pafaudio.o
 OBJS-$(CONFIG_PAF_VIDEO_DECODER)       += pafvideo.o
 OBJS-$(CONFIG_PAM_DECODER)             += pnmdec.o pnm.o

@@ -544,9 +544,11 @@ static int mmap_read_frame(AVFormatContext *ctx, AVPacket *pkt)
     } else
 #endif
     {
-        /* CPIA is a compressed format and we don't know the exact number of bytes
-         * used by a frame, so set it here as the driver announces it. */
-        if (ctx->video_codec_id == AV_CODEC_ID_CPIA)
+        /* CPIA and OV518 are compressed formats and we don't know the
+         * exact number of bytes used by a frame, so set it here as the
+         * driver announces it. */
+        if (ctx->video_codec_id == AV_CODEC_ID_CPIA ||
+            ctx->video_codec_id == AV_CODEC_ID_OV518)
             s->frame_size = buf.bytesused;
 
         if (s->frame_size > 0 && buf.bytesused != s->frame_size) {
