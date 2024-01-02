@@ -1477,6 +1477,7 @@ typedef struct AVCodecContext {
 #define FF_DCT_MMX     3
 #define FF_DCT_ALTIVEC 5
 #define FF_DCT_FAAN    6
+#define FF_DCT_NEON    7
 
     /**
      * IDCT algorithm, see FF_IDCT_* below.
