@@ -131,7 +131,7 @@ const int *sws_getCoefficients(int colorspace)
     {                                                                       \
         int y;                                                              \
                                                                             \
-        if (!alpha && c->srcFormat == AV_PIX_FMT_YUV422P) {                    \
+        if (!alpha && c->srcFormat == AV_PIX_FMT_YUV422P) {                 \
             srcStride[1] *= 2;                                              \
             srcStride[2] *= 2;                                              \
         }                                                                   \
@@ -161,20 +161,20 @@ const int *sws_getCoefficients(int colorspace)
             while (h_size--) {                                              \
                 int av_unused U, V, Y;                                      \
 
-#define ENDYUV2RGBLINE(dst_delta, ss)               \
-    pu    += 4 >> ss;                               \
-    pv    += 4 >> ss;                               \
-    py_1  += 8 >> ss;                               \
-    py_2  += 8 >> ss;                               \
-    for (int p = 0; p < FF_ARRAY_ELEMS(dst_x); p++) { \
-        dst_x[p][0] += dst_delta >> ss;             \
-        dst_x[p][1] += dst_delta >> ss;             \
-    }                                               \
-    dst_1 = dst_x[0][0];                            \
-    dst_2 = dst_x[0][1];                            \
-    }                                               \
-    if (c->dstW & (4 >> ss)) {                      \
-        int av_unused Y, U, V;                      \
+#define ENDYUV2RGBLINE(dst_delta, ss)                       \
+        pu    += 4 >> ss;                                   \
+        pv    += 4 >> ss;                                   \
+        py_1  += 8 >> ss;                                   \
+        py_2  += 8 >> ss;                                   \
+        for (int p = 0; p < FF_ARRAY_ELEMS(dst_x); p++) {   \
+            dst_x[p][0] += dst_delta >> ss;                 \
+            dst_x[p][1] += dst_delta >> ss;                 \
+        }                                                   \
+        dst_1 = dst_x[0][0];                                \
+        dst_2 = dst_x[0][1];                                \
+    }                                                       \
+    if (c->dstW & (4 >> ss)) {                              \
+        int av_unused Y, U, V;                              \
 
 #define ENDYUV2RGBFUNC()                            \
             }                                       \
