@@ -413,6 +413,47 @@ ENDYUV2RGBLINE(24, 1)
     PUTBGR24(dst_2, py_2, 0);
 ENDYUV2RGBFUNC()
 
+YUV2RGBFUNC(yuv2gbrp_c, uint8_t, 0, 3)
+
+#define PUTGBRP(dst_g, dst_b, dst_r, src, i)        \
+    Y                = src[2 * i];                  \
+    dst_g[2 * i + 0] = g[Y];                        \
+    dst_b[2 * i + 0] = b[Y];                        \
+    dst_r[2 * i + 0] = r[Y];                        \
+    Y                = src[2 * i + 1];              \
+    dst_g[2 * i + 1] = g[Y];                        \
+    dst_b[2 * i + 1] = b[Y];                        \
+    dst_r[2 * i + 1] = r[Y];
+
+    LOADCHROMA(0);
+    PUTGBRP(dst_x[0][0], dst_x[1][0], dst_x[2][0], py_1, 0);
+    PUTGBRP(dst_x[0][1], dst_x[1][1], dst_x[2][1], py_2, 0);
+
+    LOADCHROMA(1);
+    PUTGBRP(dst_x[0][0], dst_x[1][0], dst_x[2][0], py_1, 1);
+    PUTGBRP(dst_x[0][1], dst_x[1][1], dst_x[2][1], py_2, 1);
+
+    LOADCHROMA(2);
+    PUTGBRP(dst_x[0][0], dst_x[1][0], dst_x[2][0], py_1, 2);
+    PUTGBRP(dst_x[0][1], dst_x[1][1], dst_x[2][1], py_2, 2);
+
+    LOADCHROMA(3);
+    PUTGBRP(dst_x[0][0], dst_x[1][0], dst_x[2][0], py_1, 3);
+    PUTGBRP(dst_x[0][1], dst_x[1][1], dst_x[2][1], py_2, 3);
+ENDYUV2RGBLINE(8, 0)
+    LOADCHROMA(0);
+    PUTGBRP(dst_x[0][0], dst_x[1][0], dst_x[2][0], py_1, 0);
+    PUTGBRP(dst_x[0][1], dst_x[1][1], dst_x[2][1], py_2, 0);
+
+    LOADCHROMA(1);
+    PUTGBRP(dst_x[0][0], dst_x[1][0], dst_x[2][0], py_1, 1);
+    PUTGBRP(dst_x[0][1], dst_x[1][1], dst_x[2][1], py_2, 1);
+ENDYUV2RGBLINE(8, 1)
+    LOADCHROMA(0);
+    PUTGBRP(dst_x[0][0], dst_x[1][0], dst_x[2][0], py_1, 0);
+    PUTGBRP(dst_x[0][1], dst_x[1][1], dst_x[2][1], py_2, 0);
+ENDYUV2RGBFUNC()
+
 YUV2RGBFUNC(yuv2rgb_c_16_ordered_dither, uint16_t, 0, 1)
     const uint8_t *d16 = ff_dither_2x2_8[y & 1];
     const uint8_t *e16 = ff_dither_2x2_4[y & 1];
@@ -721,6 +762,8 @@ SwsFunc ff_yuv2rgb_get_func_ptr(SwsContext *c)
         return yuv2rgb_c_24_rgb;
     case AV_PIX_FMT_BGR24:
         return yuv2rgb_c_24_bgr;
+    case AV_PIX_FMT_GBRP:
+        return yuv2gbrp_c;
     case AV_PIX_FMT_RGB565:
     case AV_PIX_FMT_BGR565:
         return yuv2rgb_c_16_ordered_dither;
