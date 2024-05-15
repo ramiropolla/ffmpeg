@@ -34,7 +34,7 @@
 static int yv12toyuy2_unscaled_altivec(SwsContext *c, const uint8_t *src[],
                                        int srcStride[], int srcSliceY,
                                        int srcSliceH, uint8_t *dstParam[],
-                                       int dstStride_a[])
+                                       const int dstStride_a[])
 {
     uint8_t *dst = dstParam[0] + dstStride_a[0] * srcSliceY;
     // yv12toyuy2(src[0], src[1], src[2], dst, c->srcW, srcSliceH,
@@ -110,7 +110,7 @@ static int yv12toyuy2_unscaled_altivec(SwsContext *c, const uint8_t *src[],
 static int yv12touyvy_unscaled_altivec(SwsContext *c, const uint8_t *src[],
                                        int srcStride[], int srcSliceY,
                                        int srcSliceH, uint8_t *dstParam[],
-                                       int dstStride_a[])
+                                       const int dstStride_a[])
 {
     uint8_t *dst = dstParam[0] + dstStride_a[0] * srcSliceY;
     // yv12toyuy2(src[0], src[1], src[2], dst, c->srcW, srcSliceH,

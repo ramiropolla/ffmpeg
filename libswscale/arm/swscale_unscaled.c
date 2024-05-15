@@ -36,7 +36,7 @@ extern void rgbx_to_nv12_neon_16(const uint8_t *src, uint8_t *y, uint8_t *chroma
 
 static int rgbx_to_nv12_neon_32_wrapper(SwsContext *context, const uint8_t *src[],
                         int srcStride[], int srcSliceY, int srcSliceH,
-                        uint8_t *dst[], int dstStride[]) {
+                        uint8_t *dst[], const int dstStride[]) {
 
     rgbx_to_nv12_neon_32(src[0] + srcSliceY * srcStride[0],
             dst[0] + srcSliceY * dstStride[0],
@@ -50,7 +50,7 @@ static int rgbx_to_nv12_neon_32_wrapper(SwsContext *context, const uint8_t *src[
 
 static int rgbx_to_nv12_neon_16_wrapper(SwsContext *context, const uint8_t *src[],
                         int srcStride[], int srcSliceY, int srcSliceH,
-                        uint8_t *dst[], int dstStride[]) {
+                        uint8_t *dst[], const int dstStride[]) {
 
     rgbx_to_nv12_neon_16(src[0] + srcSliceY * srcStride[0],
             dst[0] + srcSliceY * dstStride[0],
@@ -80,7 +80,7 @@ int ff_##ifmt##_to_##ofmt##_neon(int w, int h,                                  
                                                                                             \
 static int ifmt##_to_##ofmt##_neon_wrapper(SwsContext *c, const uint8_t *src[],             \
                                            int srcStride[], int srcSliceY, int srcSliceH,   \
-                                           uint8_t *dst[], int dstStride[]) {               \
+                                           uint8_t *dst[], const int dstStride[]) {         \
     const int16_t yuv2rgb_table[] = { YUV_TO_RGB_TABLE };                                   \
                                                                                             \
     ff_##ifmt##_to_##ofmt##_neon(c->srcW, srcSliceH,                                        \
@@ -115,7 +115,7 @@ int ff_##ifmt##_to_##ofmt##_neon(int w, int h,                                  
                                                                                             \
 static int ifmt##_to_##ofmt##_neon_wrapper(SwsContext *c, const uint8_t *src[],             \
                                            int srcStride[], int srcSliceY, int srcSliceH,   \
-                                           uint8_t *dst[], int dstStride[]) {               \
+                                           uint8_t *dst[], const int dstStride[]) {         \
     const int16_t yuv2rgb_table[] = { YUV_TO_RGB_TABLE };                                   \
                                                                                             \
     ff_##ifmt##_to_##ofmt##_neon(c->srcW, srcSliceH,                                        \

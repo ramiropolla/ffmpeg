@@ -22,7 +22,7 @@
 
 int ff_sws_alphablendaway(SwsContext *c, const uint8_t *src[],
                           int srcStride[], int srcSliceY, int srcSliceH,
-                          uint8_t *dst[], int dstStride[])
+                          uint8_t *dst[], const int dstStride[])
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(c->srcFormat);
     int nb_components = desc->nb_components;

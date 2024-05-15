@@ -39,7 +39,7 @@ int ff_##ifmt##_to_##ofmt##_neon(int w, int h,                                  
                                                                                             \
 static int ifmt##_to_##ofmt##_neon_wrapper(SwsContext *c, const uint8_t *src[],             \
                                            int srcStride[], int srcSliceY, int srcSliceH,   \
-                                           uint8_t *dst[], int dstStride[]) {               \
+                                           uint8_t *dst[], const int dstStride[]) {         \
     const int16_t yuv2rgb_table[] = { YUV_TO_RGB_TABLE };                                   \
                                                                                             \
     return ff_##ifmt##_to_##ofmt##_neon(c->srcW, srcSliceH,                                 \
@@ -72,7 +72,7 @@ int ff_##ifmt##_to_##ofmt##_neon(int w, int h,                                  
                                                                                             \
 static int ifmt##_to_##ofmt##_neon_wrapper(SwsContext *c, const uint8_t *src[],             \
                                            int srcStride[], int srcSliceY, int srcSliceH,   \
-                                           uint8_t *dst[], int dstStride[]) {               \
+                                           uint8_t *dst[], const int dstStride[]) {         \
     const int16_t yuv2rgb_table[] = { YUV_TO_RGB_TABLE };                                   \
                                                                                             \
     return ff_##ifmt##_to_##ofmt##_neon(c->srcW, srcSliceH,                                 \
