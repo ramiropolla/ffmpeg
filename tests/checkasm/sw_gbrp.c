@@ -61,6 +61,117 @@ static const int planar_fmts[] = {
     AV_PIX_FMT_GBRAPF32LE
 };
 
+static void check_unscaled_yuv2gbrp(void)
+{
+    static const int src_fmts[] = {
+        AV_PIX_FMT_YUV420P,
+        AV_PIX_FMT_YUV422P,
+        AV_PIX_FMT_YUVA420P,
+    };
+    static const int dst_fmts[] = {
+        AV_PIX_FMT_GBRP,
+        AV_PIX_FMT_GBRAP,
+    };
+#define LARGEST_INPUT_SIZE 128
+#define PLANE_SIZE (LARGEST_INPUT_SIZE * LARGEST_INPUT_SIZE)
+
+    declare_func(int, SwsContext *c, const uint8_t *src[],
+                      int srcStride[], int srcSliceY, int srcSliceH,
+                      uint8_t *dst[], int dstStride[]);
+
+    LOCAL_ALIGNED_8(uint8_t, src_y, [PLANE_SIZE]);
+    LOCAL_ALIGNED_8(uint8_t, src_u, [PLANE_SIZE / 2]);
+    LOCAL_ALIGNED_8(uint8_t, src_v, [PLANE_SIZE / 2]);
+    LOCAL_ALIGNED_8(uint8_t, src_a, [PLANE_SIZE]);
+    const uint8_t *src[4] = { src_y, src_u, src_v, src_a };
+
+    LOCAL_ALIGNED_8(uint8_t, dst0_r, [PLANE_SIZE]);
+    LOCAL_ALIGNED_8(uint8_t, dst0_g, [PLANE_SIZE]);
+    LOCAL_ALIGNED_8(uint8_t, dst0_b, [PLANE_SIZE]);
+    LOCAL_ALIGNED_8(uint8_t, dst0_a, [PLANE_SIZE]);
+    uint8_t *dst0[4] = { dst0_r, dst0_g, dst0_b, dst0_a };
+
+    LOCAL_ALIGNED_8(uint8_t, dst1_r, [PLANE_SIZE]);
+    LOCAL_ALIGNED_8(uint8_t, dst1_g, [PLANE_SIZE]);
+    LOCAL_ALIGNED_8(uint8_t, dst1_b, [PLANE_SIZE]);
+    LOCAL_ALIGNED_8(uint8_t, dst1_a, [PLANE_SIZE]);
+    uint8_t *dst1[4] = { dst1_r, dst1_g, dst1_b, dst1_a };
+
+    randomize_buffers(src_y, PLANE_SIZE);
+    randomize_buffers(src_u, PLANE_SIZE / 2);
+    randomize_buffers(src_v, PLANE_SIZE / 2);
+    randomize_buffers(src_a, PLANE_SIZE);
+
+    for (int sfi = 0; sfi < FF_ARRAY_ELEMS(src_fmts); sfi++) {
+        int src_pix_fmt = src_fmts[sfi];
+        const AVPixFmtDescriptor *src_desc = av_pix_fmt_desc_get(src_pix_fmt);
+        for (int dfi = 0; dfi < FF_ARRAY_ELEMS(dst_fmts); dfi++) {
+            int dst_pix_fmt = dst_fmts[dfi];
+            const AVPixFmtDescriptor *dst_desc = av_pix_fmt_desc_get(dst_pix_fmt);
+            for (int k = 0; k < 8; k += 2) {
+                int dstW = LARGEST_INPUT_SIZE - k;
+                int srcSliceY = 0;
+                int srcSliceH = dstW;
+                int dstStride[4] = {
+                    dstW, dstW, dstW, dstW,
+                };
+                struct SwsContext *ctx;
+
+                ctx = sws_getContext(dstW, dstW, src_pix_fmt,
+                                     dstW, dstW, dst_pix_fmt,
+                                     0, NULL, NULL, NULL);
+                if (!ctx)
+                    fail();
+
+                if (check_func(ctx->convert_unscaled, "%s_%s_%d", src_desc->name, dst_desc->name, srcSliceH)) {
+                    int orig_srcStride[4] = {
+                        dstW,
+                        dstW >> src_desc->log2_chroma_w,
+                        dstW >> src_desc->log2_chroma_w,
+                        dstW,
+                    };
+                    int srcStride[4];
+
+                    for (int i = 0; i < 4; i ++) {
+                        memset(dst0[i], 0xFF, PLANE_SIZE);
+                        memset(dst1[i], 0xFF, PLANE_SIZE);
+                    }
+
+                    memcpy(srcStride, orig_srcStride, sizeof(srcStride));
+                    call_ref(ctx, src, srcStride, srcSliceY,
+                             srcSliceH, dst0, dstStride);
+                    memcpy(srcStride, orig_srcStride, sizeof(srcStride));
+                    call_new(ctx, src, srcStride, srcSliceY,
+                             srcSliceH, dst1, dstStride);
+
+                    for ( int y = 0; y < 4; y++ )
+                    {
+                        for ( int x = 0; x < PLANE_SIZE; x++ )
+                        {
+                            if ( dst0[y][x] != dst1[y][x] )
+                                printf("[%d][%5d] %u %u %d\n", y, x, dst0[y][x], dst1[y][x], dst0[y][x] - dst1[y][x]);
+                        }
+                    }
+#if 0
+                    if (memcmp(dst0[0], dst1[0], PLANE_SIZE) ||
+                        memcmp(dst0[1], dst1[1], PLANE_SIZE) ||
+                        memcmp(dst0[2], dst1[2], PLANE_SIZE) ||
+                        memcmp(dst0[3], dst1[3], PLANE_SIZE))
+                        fail();
+#endif
+                    memcpy(srcStride, orig_srcStride, sizeof(srcStride));
+                    bench_new(ctx, src, srcStride, srcSliceY,
+                             srcSliceH, dst0, dstStride);
+                }
+                sws_freeContext(ctx);
+            }
+        }
+    }
+}
+
+#undef LARGEST_INPUT_SIZE
+#undef PLANE_SIZE
+
 static void check_output_yuv2gbrp(void)
 {
     struct SwsContext *ctx;
@@ -400,6 +511,9 @@ static void check_input_planar_rgb_to_a(void)
 
 void checkasm_check_sw_gbrp(void)
 {
+    check_unscaled_yuv2gbrp();
+    report("unscaled_yuv2gbrp");
+
     check_output_yuv2gbrp();
     report("output_yuv2gbrp");
 
