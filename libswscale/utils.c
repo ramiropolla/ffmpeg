@@ -1084,6 +1084,8 @@ int sws_setColorspaceDetails(struct SwsContext *c, const int inv_table[4],
         ff_sws_init_range_convert_loongarch(c);
 #elif ARCH_X86
         ff_sws_init_range_convert_x86(c);
+#elif ARCH_AARCH64
+        ff_sws_init_range_convert_aarch64(c);
 #endif
     }
 
