@@ -467,12 +467,15 @@ void ff_lumRangeToJpeg_ ##opt(int16_t *dst, int width);                     \
 void ff_chrRangeToJpeg_ ##opt(int16_t *dstU, int16_t *dstV, int width);     \
 
 RANGE_CONVERT_FUNCS_DECL(sse4);
+RANGE_CONVERT_FUNCS_DECL(avx2);
 
 av_cold void ff_sws_init_range_convert_x86(SwsContext *c)
 {
     if (c->srcRange != c->dstRange && !isAnyRGB(c->dstFormat)) {
         int cpu_flags = av_get_cpu_flags();
-        if (EXTERNAL_SSE4(cpu_flags)) {
+        if (EXTERNAL_AVX2_FAST(cpu_flags)) {
+            RANGE_CONVERT_FUNCS(avx2);
+        } else if (EXTERNAL_SSE4(cpu_flags)) {
             RANGE_CONVERT_FUNCS(sse4);
         }
     }
