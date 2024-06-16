@@ -126,8 +126,8 @@ const int *sws_getCoefficients(int colorspace)
 
 #define YUV2RGBFUNC(func_name, dst_type, alpha, yuv422)                     \
     static int func_name(SwsContext *c, const uint8_t *src[],               \
-                         int srcStride[], int srcSliceY, int srcSliceH,     \
-                         uint8_t *dst[], int dstStride[])                   \
+                         const int srcStride[], int srcSliceY, int srcSliceH,     \
+                         uint8_t *dst[], const int dstStride[])                   \
     {                                                                       \
         int y;                                                              \
                                                                             \

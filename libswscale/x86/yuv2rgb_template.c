@@ -68,9 +68,9 @@ extern void RENAME(ff_yuva_420_bgr32)(x86_reg index, uint8_t *image, const uint8
                                       const uint8_t *py_2index, const uint8_t *pa_2index);
 
 static inline int RENAME(yuv420_rgb15)(SwsContext *c, const uint8_t *src[],
-                                       int srcStride[],
+                                       const int srcStride[],
                                        int srcSliceY, int srcSliceH,
-                                       uint8_t *dst[], int dstStride[])
+                                       uint8_t *dst[], const int dstStride[])
 {
     int y, h_size, vshift;
 
@@ -88,9 +88,9 @@ static inline int RENAME(yuv420_rgb15)(SwsContext *c, const uint8_t *src[],
 }
 
 static inline int RENAME(yuv420_rgb16)(SwsContext *c, const uint8_t *src[],
-                                       int srcStride[],
+                                       const int srcStride[],
                                        int srcSliceY, int srcSliceH,
-                                       uint8_t *dst[], int dstStride[])
+                                       uint8_t *dst[], const int dstStride[])
 {
     int y, h_size, vshift;
 
@@ -108,9 +108,9 @@ static inline int RENAME(yuv420_rgb16)(SwsContext *c, const uint8_t *src[],
 }
 
 static inline int RENAME(yuv420_rgb32)(SwsContext *c, const uint8_t *src[],
-                                       int srcStride[],
+                                       const int srcStride[],
                                        int srcSliceY, int srcSliceH,
-                                       uint8_t *dst[], int dstStride[])
+                                       uint8_t *dst[], const int dstStride[])
 {
     int y, h_size, vshift;
 
@@ -122,9 +122,9 @@ static inline int RENAME(yuv420_rgb32)(SwsContext *c, const uint8_t *src[],
 }
 
 static inline int RENAME(yuv420_bgr32)(SwsContext *c, const uint8_t *src[],
-                                       int srcStride[],
+                                       const int srcStride[],
                                        int srcSliceY, int srcSliceH,
-                                       uint8_t *dst[], int dstStride[])
+                                       uint8_t *dst[], const int dstStride[])
 {
     int y, h_size, vshift;
 
@@ -136,9 +136,9 @@ static inline int RENAME(yuv420_bgr32)(SwsContext *c, const uint8_t *src[],
 }
 
 static inline int RENAME(yuva420_rgb32)(SwsContext *c, const uint8_t *src[],
-                                       int srcStride[],
+                                       const int srcStride[],
                                        int srcSliceY, int srcSliceH,
-                                       uint8_t *dst[], int dstStride[])
+                                       uint8_t *dst[], const int dstStride[])
 {
     int y, h_size, vshift;
     YUV2RGB_LOOP(4)
@@ -150,9 +150,9 @@ static inline int RENAME(yuva420_rgb32)(SwsContext *c, const uint8_t *src[],
 }
 
 static inline int RENAME(yuva420_bgr32)(SwsContext *c, const uint8_t *src[],
-                                        int srcStride[],
+                                        const int srcStride[],
                                         int srcSliceY, int srcSliceH,
-                                        uint8_t *dst[], int dstStride[])
+                                        uint8_t *dst[], const int dstStride[])
 {
     int y, h_size, vshift;
 
@@ -167,9 +167,9 @@ static inline int RENAME(yuva420_bgr32)(SwsContext *c, const uint8_t *src[],
 
 #if !defined(COMPILE_TEMPLATE_MMX)
 static inline int RENAME(yuv420_rgb24)(SwsContext *c, const uint8_t *src[],
-                                       int srcStride[],
+                                       const int srcStride[],
                                        int srcSliceY, int srcSliceH,
-                                       uint8_t *dst[], int dstStride[])
+                                       uint8_t *dst[], const int dstStride[])
 {
     int y, h_size, vshift;
 
@@ -181,9 +181,9 @@ static inline int RENAME(yuv420_rgb24)(SwsContext *c, const uint8_t *src[],
 }
 
 static inline int RENAME(yuv420_bgr24)(SwsContext *c, const uint8_t *src[],
-                                        int srcStride[],
+                                        const int srcStride[],
                                         int srcSliceY, int srcSliceH,
-                                        uint8_t *dst[], int dstStride[])
+                                        uint8_t *dst[], const int dstStride[])
 {
     int y, h_size, vshift;
 

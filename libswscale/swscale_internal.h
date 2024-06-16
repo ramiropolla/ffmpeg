@@ -99,8 +99,8 @@ typedef struct RangeList {
 int ff_range_add(RangeList *r, unsigned int start, unsigned int len);
 
 typedef int (*SwsFunc)(struct SwsContext *context, const uint8_t *src[],
-                       int srcStride[], int srcSliceY, int srcSliceH,
-                       uint8_t *dst[], int dstStride[]);
+                       const int srcStride[], int srcSliceY, int srcSliceH,
+                       uint8_t *dst[], const int dstStride[]);
 
 /**
  * Write one line of horizontally scaled data to planar output
@@ -1007,8 +1007,8 @@ void ff_hcscale_fast_mmxext(SwsContext *c, int16_t *dst1, int16_t *dst2,
                             const uint8_t *src2, int srcW, int xInc);
 
 int ff_sws_alphablendaway(SwsContext *c, const uint8_t *src[],
-                          int srcStride[], int srcSliceY, int srcSliceH,
-                          uint8_t *dst[], int dstStride[]);
+                          const int srcStride[], int srcSliceY, int srcSliceH,
+                          uint8_t *dst[], const int dstStride[]);
 
 static inline void fillPlane16(uint8_t *plane, int stride, int width, int height, int y,
                                int alpha, int bits, const int big_endian)
