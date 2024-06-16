@@ -210,9 +210,9 @@ cglobal %1_420_%2%3, GPR_num, GPR_num, reg_num, parameters
     MOV_H2L m_red
     punpcklbw m3, m2     ; R0 G0 R2 G2 R4 G4 R6 G6 R8 G8 ...
     punpcklbw m6, m_red  ; B0 R1 B2 R3 B4 R5 B6 R7 B8 R9 ...
-    mova m5, m3
     punpckhbw m2, m_blue ; G1 B1 G3 B3 G5 B5 G7 B7 G9 B9 ...
 %if  mmsize == 8
+    mova m5, m3
     punpcklwd m3 ,m6     ; R0 G0 B0 R1 R2 G2 B2 R3
     punpckhwd m5, m6     ; R4 G4 B4 R5 R6 G6 B6 R7
 %if cpuflag(mmxext)
