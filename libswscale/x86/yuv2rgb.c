@@ -205,6 +205,7 @@ static inline int yuv420_bgr24_ssse3(SwsContext *c, const uint8_t *src[],
     return srcSliceH;
 }
 
+#if ARCH_X86_64
 static inline int yuv420_gbrp_ssse3(SwsContext *c, const uint8_t *src[],
                                     int srcStride[],
                                     int srcSliceY, int srcSliceH,
@@ -231,6 +232,7 @@ static inline int yuv420_gbrp_ssse3(SwsContext *c, const uint8_t *src[],
     }
     return srcSliceH;
 }
+#endif
 
 #endif /* HAVE_X86ASM */
 
@@ -265,8 +267,10 @@ av_cold SwsFunc ff_yuv2rgb_init_x86(SwsContext *c)
             return yuv420_rgb16_ssse3;
         case AV_PIX_FMT_RGB555:
             return yuv420_rgb15_ssse3;
+#if ARCH_X86_64
         case AV_PIX_FMT_GBRP:
             return yuv420_gbrp_ssse3;
+#endif
         }
     }
 

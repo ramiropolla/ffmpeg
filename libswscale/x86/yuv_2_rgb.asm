@@ -311,4 +311,6 @@ yuv2rgb_fn yuva, rgb, 32
 yuv2rgb_fn yuva, bgr, 32
 yuv2rgb_fn yuv,  rgb, 15
 yuv2rgb_fn yuv,  rgb, 16
+%if ARCH_X86_64
 yuv2rgb_fn yuv,  gbrp, 24
+%endif
