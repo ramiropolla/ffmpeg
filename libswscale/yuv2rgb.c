@@ -72,59 +72,59 @@ const int *sws_getCoefficients(int colorspace)
     g = (void *)(c->table_gU[U+YUVRGB_TABLE_HEADROOM] + c->table_gV[V+YUVRGB_TABLE_HEADROOM]);  \
     b = (void *)c->table_bU[U+YUVRGB_TABLE_HEADROOM];
 
-#define PUTRGB(dst, src, asrc, i, abase)            \
+#define PUTRGB(l, src, asrc, i, abase)              \
     Y              = src[2 * i];                    \
-    dst[2 * i]     = r[Y] + g[Y] + b[Y];            \
+    dst_p[0][l][2 * i]     = r[Y] + g[Y] + b[Y];    \
     Y              = src[2 * i + 1];                \
-    dst[2 * i + 1] = r[Y] + g[Y] + b[Y];
+    dst_p[0][l][2 * i + 1] = r[Y] + g[Y] + b[Y];
 
-#define PUTRGB24(dst, src, asrc, i, abase)          \
+#define PUTRGB24(l, src, asrc, i, abase)            \
     Y              = src[2 * i];                    \
-    dst[6 * i + 0] = r[Y];                          \
-    dst[6 * i + 1] = g[Y];                          \
-    dst[6 * i + 2] = b[Y];                          \
+    dst_p[0][l][6 * i + 0] = r[Y];                  \
+    dst_p[0][l][6 * i + 1] = g[Y];                  \
+    dst_p[0][l][6 * i + 2] = b[Y];                  \
     Y              = src[2 * i + 1];                \
-    dst[6 * i + 3] = r[Y];                          \
-    dst[6 * i + 4] = g[Y];                          \
-    dst[6 * i + 5] = b[Y];
+    dst_p[0][l][6 * i + 3] = r[Y];                  \
+    dst_p[0][l][6 * i + 4] = g[Y];                  \
+    dst_p[0][l][6 * i + 5] = b[Y];
 
-#define PUTBGR24(dst, src, asrc, i, abase)          \
+#define PUTBGR24(l, src, asrc, i, abase)            \
     Y              = src[2 * i];                    \
-    dst[6 * i + 0] = b[Y];                          \
-    dst[6 * i + 1] = g[Y];                          \
-    dst[6 * i + 2] = r[Y];                          \
+    dst_p[0][l][6 * i + 0] = b[Y];                  \
+    dst_p[0][l][6 * i + 1] = g[Y];                  \
+    dst_p[0][l][6 * i + 2] = r[Y];                  \
     Y              = src[2 * i + 1];                \
-    dst[6 * i + 3] = b[Y];                          \
-    dst[6 * i + 4] = g[Y];                          \
-    dst[6 * i + 5] = r[Y];
+    dst_p[0][l][6 * i + 3] = b[Y];                  \
+    dst_p[0][l][6 * i + 4] = g[Y];                  \
+    dst_p[0][l][6 * i + 5] = r[Y];
 
-#define PUTRGBA(dst, ysrc, asrc, i, abase)                              \
+#define PUTRGBA(l, ysrc, asrc, i, abase)                                \
     Y              = ysrc[2 * i];                                       \
-    dst[2 * i]     = r[Y] + g[Y] + b[Y] + ((uint32_t)(asrc[2 * i])     << abase);   \
+    dst_p[0][l][2 * i]     = r[Y] + g[Y] + b[Y] + ((uint32_t)(asrc[2 * i])     << abase);   \
     Y              = ysrc[2 * i + 1];                                   \
-    dst[2 * i + 1] = r[Y] + g[Y] + b[Y] + ((uint32_t)(asrc[2 * i + 1]) << abase);
+    dst_p[0][l][2 * i + 1] = r[Y] + g[Y] + b[Y] + ((uint32_t)(asrc[2 * i + 1]) << abase);
 
-#define PUTRGB48(dst, src, asrc, i, abase)          \
+#define PUTRGB48(l, src, asrc, i, abase)            \
     Y                = src[ 2 * i];                 \
-    dst[12 * i +  0] = dst[12 * i +  1] = r[Y];     \
-    dst[12 * i +  2] = dst[12 * i +  3] = g[Y];     \
-    dst[12 * i +  4] = dst[12 * i +  5] = b[Y];     \
+    dst_p[0][l][12 * i +  0] = dst_p[0][l][12 * i +  1] = r[Y]; \
+    dst_p[0][l][12 * i +  2] = dst_p[0][l][12 * i +  3] = g[Y]; \
+    dst_p[0][l][12 * i +  4] = dst_p[0][l][12 * i +  5] = b[Y]; \
     Y                = src[ 2 * i + 1];             \
-    dst[12 * i +  6] = dst[12 * i +  7] = r[Y];     \
-    dst[12 * i +  8] = dst[12 * i +  9] = g[Y];     \
-    dst[12 * i + 10] = dst[12 * i + 11] = b[Y];
+    dst_p[0][l][12 * i +  6] = dst_p[0][l][12 * i +  7] = r[Y]; \
+    dst_p[0][l][12 * i +  8] = dst_p[0][l][12 * i +  9] = g[Y]; \
+    dst_p[0][l][12 * i + 10] = dst_p[0][l][12 * i + 11] = b[Y];
 
-#define PUTBGR48(dst, src, asrc, i, abase)          \
+#define PUTBGR48(l, src, asrc, i, abase)            \
     Y                = src[2 * i];                  \
-    dst[12 * i +  0] = dst[12 * i +  1] = b[Y];     \
-    dst[12 * i +  2] = dst[12 * i +  3] = g[Y];     \
-    dst[12 * i +  4] = dst[12 * i +  5] = r[Y];     \
+    dst_p[0][l][12 * i +  0] = dst_p[0][l][12 * i +  1] = b[Y]; \
+    dst_p[0][l][12 * i +  2] = dst_p[0][l][12 * i +  3] = g[Y]; \
+    dst_p[0][l][12 * i +  4] = dst_p[0][l][12 * i +  5] = r[Y]; \
     Y                = src[2  * i +  1];            \
-    dst[12 * i +  6] = dst[12 * i +  7] = b[Y];     \
-    dst[12 * i +  8] = dst[12 * i +  9] = g[Y];     \
-    dst[12 * i + 10] = dst[12 * i + 11] = r[Y];
+    dst_p[0][l][12 * i +  6] = dst_p[0][l][12 * i +  7] = b[Y]; \
+    dst_p[0][l][12 * i +  8] = dst_p[0][l][12 * i +  9] = g[Y]; \
+    dst_p[0][l][12 * i + 10] = dst_p[0][l][12 * i + 11] = r[Y];
 
-#define YUV2RGBFUNC(func_name, dst_type, alpha, yuv422)                     \
+#define YUV2RGBFUNC(func_name, dst_type, alpha, yuv422, nb_dst_planes)      \
     static int func_name(SwsContext *c, const uint8_t *src[],               \
                          int srcStride[], int srcSliceY, int srcSliceH,     \
                          uint8_t *dst[], int dstStride[])                   \
@@ -133,10 +133,7 @@ const int *sws_getCoefficients(int colorspace)
                                                                             \
         for (y = 0; y < srcSliceH; y += 2) {                                \
             int yd = y + srcSliceY;                                         \
-            dst_type *dst_1 =                                               \
-                (dst_type *)(dst[0] + (yd)     * dstStride[0]);             \
-            dst_type *dst_2 =                                               \
-                (dst_type *)(dst[0] + (yd + 1) * dstStride[0]);             \
+            dst_type *dst_p[nb_dst_planes][2];                              \
             dst_type av_unused *r, *g, *b;                                  \
             const uint8_t *py_1 = src[0] +  y       * srcStride[0];         \
             const uint8_t *py_2 = py_1   +            srcStride[0];         \
@@ -145,6 +142,12 @@ const int *sws_getCoefficients(int colorspace)
             const uint8_t av_unused *pu_2, *pv_2;                           \
             const uint8_t av_unused *pa_1, *pa_2;                           \
             unsigned int h_size = c->dstW >> 3;                             \
+            for (int p = 0; p < nb_dst_planes; p++) {                       \
+                dst_p[p][0] =                                               \
+                    (dst_type *)(dst[p] + (yd)     * dstStride[p]);         \
+                dst_p[p][1] =                                               \
+                    (dst_type *)(dst[p] + (yd + 1) * dstStride[p]);         \
+            }                                                               \
             if (yuv422) {                                                   \
                 pu_2 = pu_1 + srcStride[1];                                 \
                 pv_2 = pv_1 + srcStride[2];                                 \
@@ -156,7 +159,7 @@ const int *sws_getCoefficients(int colorspace)
             while (h_size--) {                                              \
                 int av_unused U, V, Y;                                      \
 
-#define ENDYUV2RGBLINE(dst_delta, ss, alpha, yuv422) \
+#define ENDYUV2RGBLINE(dst_delta, ss, alpha, yuv422, nb_dst_planes) \
     pu_1  += 4 >> ss;                               \
     pv_1  += 4 >> ss;                               \
     if (yuv422) {                                   \
@@ -169,8 +172,10 @@ const int *sws_getCoefficients(int colorspace)
         pa_1 += 8 >> ss;                            \
         pa_2 += 8 >> ss;                            \
     }                                               \
-    dst_1 += dst_delta >> ss;                       \
-    dst_2 += dst_delta >> ss;                       \
+    for (int p = 0; p < nb_dst_planes; p++) {       \
+        dst_p[p][0] += dst_delta >> ss;             \
+        dst_p[p][1] += dst_delta >> ss;             \
+    }                                               \
     }                                               \
     if (c->dstW & (4 >> ss)) {                      \
         int av_unused Y, U, V;                      \
@@ -181,168 +186,168 @@ const int *sws_getCoefficients(int colorspace)
         return srcSliceH;                           \
     }
 
-#define YUV420FUNC(func_name, dst_type, alpha, abase, PUTFUNC, dst_delta) \
-    YUV2RGBFUNC(func_name, dst_type, alpha, 0)                          \
+#define YUV420FUNC(func_name, dst_type, alpha, abase, PUTFUNC, dst_delta, nb_dst_planes) \
+    YUV2RGBFUNC(func_name, dst_type, alpha, 0, nb_dst_planes)           \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 0, abase);                           \
-        PUTFUNC(dst_2, py_2, pa_2, 0, abase);                           \
+        PUTFUNC(0, py_1, pa_1, 0, abase);                               \
+        PUTFUNC(1, py_2, pa_2, 0, abase);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 1);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 1, abase);                           \
-        PUTFUNC(dst_1, py_1, pa_1, 1, abase);                           \
+        PUTFUNC(1, py_2, pa_2, 1, abase);                               \
+        PUTFUNC(0, py_1, pa_1, 1, abase);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 2);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 2, abase);                           \
-        PUTFUNC(dst_2, py_2, pa_2, 2, abase);                           \
+        PUTFUNC(0, py_1, pa_1, 2, abase);                               \
+        PUTFUNC(1, py_2, pa_2, 2, abase);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 3);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 3, abase);                           \
-        PUTFUNC(dst_1, py_1, pa_1, 3, abase);                           \
-    ENDYUV2RGBLINE(dst_delta, 0, alpha, 0)                              \
+        PUTFUNC(1, py_2, pa_2, 3, abase);                               \
+        PUTFUNC(0, py_1, pa_1, 3, abase);                               \
+    ENDYUV2RGBLINE(dst_delta, 0, alpha, 0, nb_dst_planes)               \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 0, abase);                           \
-        PUTFUNC(dst_2, py_2, pa_2, 0, abase);                           \
+        PUTFUNC(0, py_1, pa_1, 0, abase);                               \
+        PUTFUNC(1, py_2, pa_2, 0, abase);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 1);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 1, abase);                           \
-        PUTFUNC(dst_1, py_1, pa_1, 1, abase);                           \
-    ENDYUV2RGBLINE(dst_delta, 1, alpha, 0)                              \
+        PUTFUNC(1, py_2, pa_2, 1, abase);                               \
+        PUTFUNC(0, py_1, pa_1, 1, abase);                               \
+    ENDYUV2RGBLINE(dst_delta, 1, alpha, 0, nb_dst_planes)               \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 0, abase);                           \
-        PUTFUNC(dst_2, py_2, pa_2, 0, abase);                           \
+        PUTFUNC(0, py_1, pa_1, 0, abase);                               \
+        PUTFUNC(1, py_2, pa_2, 0, abase);                               \
     ENDYUV2RGBFUNC()
 
-#define YUV422FUNC(func_name, dst_type, alpha, abase, PUTFUNC, dst_delta) \
-    YUV2RGBFUNC(func_name, dst_type, alpha, 1)                          \
+#define YUV422FUNC(func_name, dst_type, alpha, abase, PUTFUNC, dst_delta, nb_dst_planes) \
+    YUV2RGBFUNC(func_name, dst_type, alpha, 1, nb_dst_planes)           \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 0, abase);                           \
+        PUTFUNC(0, py_1, pa_1, 0, abase);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 0);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 0, abase);                           \
+        PUTFUNC(1, py_2, pa_2, 0, abase);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 1);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 1, abase);                           \
+        PUTFUNC(1, py_2, pa_2, 1, abase);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 1);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 1, abase);                           \
+        PUTFUNC(0, py_1, pa_1, 1, abase);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 2);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 2, abase);                           \
+        PUTFUNC(0, py_1, pa_1, 2, abase);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 2);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 2, abase);                           \
+        PUTFUNC(1, py_2, pa_2, 2, abase);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 3);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 3, abase);                           \
+        PUTFUNC(1, py_2, pa_2, 3, abase);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 3);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 3, abase);                           \
-    ENDYUV2RGBLINE(dst_delta, 0, alpha, 1)                              \
+        PUTFUNC(0, py_1, pa_1, 3, abase);                               \
+    ENDYUV2RGBLINE(dst_delta, 0, alpha, 1, nb_dst_planes)               \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 0, abase);                           \
+        PUTFUNC(0, py_1, pa_1, 0, abase);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 0);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 0, abase);                           \
+        PUTFUNC(1, py_2, pa_2, 0, abase);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 1);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 1, abase);                           \
+        PUTFUNC(1, py_2, pa_2, 1, abase);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 1);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 1, abase);                           \
-    ENDYUV2RGBLINE(dst_delta, 1, alpha, 1)                              \
+        PUTFUNC(0, py_1, pa_1, 1, abase);                               \
+    ENDYUV2RGBLINE(dst_delta, 1, alpha, 1, nb_dst_planes)               \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, pa_1, 0, abase);                           \
+        PUTFUNC(0, py_1, pa_1, 0, abase);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 0);                                      \
-        PUTFUNC(dst_2, py_2, pa_2, 0, abase);                           \
+        PUTFUNC(1, py_2, pa_2, 0, abase);                               \
     ENDYUV2RGBFUNC()
 
 #define YUV420FUNC_DITHER(func_name, dst_type, LOADDITHER, PUTFUNC, dst_delta) \
-    YUV2RGBFUNC(func_name, dst_type, 0, 0)                              \
+    YUV2RGBFUNC(func_name, dst_type, 0, 0, 1)                           \
         LOADDITHER                                                      \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, 0, 0);                                     \
-        PUTFUNC(dst_2, py_2, 0, 0 + 8);                                 \
+        PUTFUNC(dst_p[0][0], py_1, 0, 0);                               \
+        PUTFUNC(dst_p[0][1], py_2, 0, 0 + 8);                           \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 1);                                      \
-        PUTFUNC(dst_2, py_2, 1, 2 + 8);                                 \
-        PUTFUNC(dst_1, py_1, 1, 2);                                     \
+        PUTFUNC(dst_p[0][1], py_2, 1, 2 + 8);                           \
+        PUTFUNC(dst_p[0][0], py_1, 1, 2);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 2);                                      \
-        PUTFUNC(dst_1, py_1, 2, 4);                                     \
-        PUTFUNC(dst_2, py_2, 2, 4 + 8);                                 \
+        PUTFUNC(dst_p[0][0], py_1, 2, 4);                               \
+        PUTFUNC(dst_p[0][1], py_2, 2, 4 + 8);                           \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 3);                                      \
-        PUTFUNC(dst_2, py_2, 3, 6 + 8);                                 \
-        PUTFUNC(dst_1, py_1, 3, 6);                                     \
-    ENDYUV2RGBLINE(dst_delta, 0, 0, 0)                                  \
+        PUTFUNC(dst_p[0][1], py_2, 3, 6 + 8);                           \
+        PUTFUNC(dst_p[0][0], py_1, 3, 6);                               \
+    ENDYUV2RGBLINE(dst_delta, 0, 0, 0, 1)                               \
         LOADDITHER                                                      \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, 0, 0);                                     \
-        PUTFUNC(dst_2, py_2, 0, 0 + 8);                                 \
+        PUTFUNC(dst_p[0][0], py_1, 0, 0);                               \
+        PUTFUNC(dst_p[0][1], py_2, 0, 0 + 8);                           \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 1);                                      \
-        PUTFUNC(dst_2, py_2, 1, 2 + 8);                                 \
-        PUTFUNC(dst_1, py_1, 1, 2);                                     \
-    ENDYUV2RGBLINE(dst_delta, 1, 0, 0)                                  \
+        PUTFUNC(dst_p[0][1], py_2, 1, 2 + 8);                           \
+        PUTFUNC(dst_p[0][0], py_1, 1, 2);                               \
+    ENDYUV2RGBLINE(dst_delta, 1, 0, 0, 1)                               \
         LOADDITHER                                                      \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, 0, 0);                                     \
-        PUTFUNC(dst_2, py_2, 0, 0 + 8);                                 \
+        PUTFUNC(dst_p[0][0], py_1, 0, 0);                                     \
+        PUTFUNC(dst_p[0][1], py_2, 0, 0 + 8);                                 \
     ENDYUV2RGBFUNC()
 
 #define YUV422FUNC_DITHER(func_name, dst_type, LOADDITHER, PUTFUNC, dst_delta) \
-    YUV2RGBFUNC(func_name, dst_type, 0, 1)                              \
+    YUV2RGBFUNC(func_name, dst_type, 0, 1, 1)                           \
         LOADDITHER                                                      \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, 0, 0);                                     \
+        PUTFUNC(dst_p[0][0], py_1, 0, 0);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 0);                                      \
-        PUTFUNC(dst_2, py_2, 0, 0 + 8);                                 \
+        PUTFUNC(dst_p[0][1], py_2, 0, 0 + 8);                           \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 1);                                      \
-        PUTFUNC(dst_2, py_2, 1, 2 + 8);                                 \
+        PUTFUNC(dst_p[0][1], py_2, 1, 2 + 8);                           \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 1);                                      \
-        PUTFUNC(dst_1, py_1, 1, 2);                                     \
+        PUTFUNC(dst_p[0][0], py_1, 1, 2);                               \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 2);                                      \
-        PUTFUNC(dst_1, py_1, 2, 4);                                     \
+        PUTFUNC(dst_p[0][0], py_1, 2, 4);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 2);                                      \
-        PUTFUNC(dst_2, py_2, 2, 4 + 8);                                 \
+        PUTFUNC(dst_p[0][1], py_2, 2, 4 + 8);                           \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 3);                                      \
-        PUTFUNC(dst_2, py_2, 3, 6 + 8);                                 \
+        PUTFUNC(dst_p[0][1], py_2, 3, 6 + 8);                           \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 3);                                      \
-        PUTFUNC(dst_1, py_1, 3, 6);                                     \
-    ENDYUV2RGBLINE(dst_delta, 0, 0, 1)                                  \
+        PUTFUNC(dst_p[0][0], py_1, 3, 6);                               \
+    ENDYUV2RGBLINE(dst_delta, 0, 0, 1, 1)                               \
         LOADDITHER                                                      \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, 0, 0);                                     \
+        PUTFUNC(dst_p[0][0], py_1, 0, 0);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 0);                                      \
-        PUTFUNC(dst_2, py_2, 0, 0 + 8);                                 \
+        PUTFUNC(dst_p[0][1], py_2, 0, 0 + 8);                           \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 1);                                      \
-        PUTFUNC(dst_2, py_2, 1, 2 + 8);                                 \
+        PUTFUNC(dst_p[0][1], py_2, 1, 2 + 8);                           \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 1);                                      \
-        PUTFUNC(dst_1, py_1, 1, 2);                                     \
-    ENDYUV2RGBLINE(dst_delta, 1, 0, 1)                                  \
+        PUTFUNC(dst_p[0][0], py_1, 1, 2);                               \
+    ENDYUV2RGBLINE(dst_delta, 1, 0, 1, 1)                               \
         LOADDITHER                                                      \
                                                                         \
         LOADCHROMA(pu_1, pv_1, 0);                                      \
-        PUTFUNC(dst_1, py_1, 0, 0);                                     \
+        PUTFUNC(dst_p[0][0], py_1, 0, 0);                               \
                                                                         \
         LOADCHROMA(pu_2, pv_2, 0);                                      \
-        PUTFUNC(dst_2, py_2, 0, 0 + 8);                                 \
+        PUTFUNC(dst_p[0][1], py_2, 0, 0 + 8);                           \
     ENDYUV2RGBFUNC()
 
 #define LOADDITHER16                                    \
@@ -431,7 +436,7 @@ const int *sws_getCoefficients(int colorspace)
                      g[Y +  d64[1 + o]] +           \
                      b[Y + d128[1 + o]];
 
-YUV2RGBFUNC(yuv2rgb_c_1_ordered_dither, uint8_t, 0, 0)
+YUV2RGBFUNC(yuv2rgb_c_1_ordered_dither, uint8_t, 0, 0, 1)
     const uint8_t *d128 = ff_dither_8x8_220[yd & 7];
     char out_1 = 0, out_2 = 0;
     g = c->table_gU[128 + YUVRGB_TABLE_HEADROOM] + c->table_gV[128 + YUVRGB_TABLE_HEADROOM];
@@ -454,13 +459,13 @@ YUV2RGBFUNC(yuv2rgb_c_1_ordered_dither, uint8_t, 0, 0)
     PUTRGB1(out_2, py_2, 3, 6 + 8);
     PUTRGB1(out_1, py_1, 3, 6);
 
-    dst_1[0] = out_1;
-    dst_2[0] = out_2;
+    dst_p[0][0][0] = out_1;
+    dst_p[0][1][0] = out_2;
 
     py_1  += 8;
     py_2  += 8;
-    dst_1 += 1;
-    dst_2 += 1;
+    dst_p[0][0] += 1;
+    dst_p[0][1] += 1;
     }
     if (c->dstW & 7) {
         int av_unused Y, U, V;
@@ -489,23 +494,23 @@ YUV2RGBFUNC(yuv2rgb_c_1_ordered_dither, uint8_t, 0, 0)
     PUTRGB1_OR00(out_2, py_2, 3, 6 + 8);
     PUTRGB1_OR00(out_1, py_1, 3, 6);
 
-    dst_1[0] = out_1;
-    dst_2[0] = out_2;
+    dst_p[0][0][0] = out_1;
+    dst_p[0][1][0] = out_2;
 ENDYUV2RGBFUNC()
 
 // YUV420
-YUV420FUNC(yuv2rgb_c_48,     uint8_t,  0,  0, PUTRGB48, 48)
-YUV420FUNC(yuv2rgb_c_bgr48,  uint8_t,  0,  0, PUTBGR48, 48)
-YUV420FUNC(yuv2rgb_c_32,     uint32_t, 0,  0, PUTRGB,    8)
+YUV420FUNC(yuv2rgb_c_48,     uint8_t,  0,  0, PUTRGB48, 48, 1)
+YUV420FUNC(yuv2rgb_c_bgr48,  uint8_t,  0,  0, PUTBGR48, 48, 1)
+YUV420FUNC(yuv2rgb_c_32,     uint32_t, 0,  0, PUTRGB,    8, 1)
 #if HAVE_BIGENDIAN
-YUV420FUNC(yuva2argb_c,      uint32_t, 1, 24, PUTRGBA,   8)
-YUV420FUNC(yuva2rgba_c,      uint32_t, 1,  0, PUTRGBA,   8)
+YUV420FUNC(yuva2argb_c,      uint32_t, 1, 24, PUTRGBA,   8, 1)
+YUV420FUNC(yuva2rgba_c,      uint32_t, 1,  0, PUTRGBA,   8, 1)
 #else
-YUV420FUNC(yuva2rgba_c,      uint32_t, 1, 24, PUTRGBA,   8)
-YUV420FUNC(yuva2argb_c,      uint32_t, 1,  0, PUTRGBA,   8)
+YUV420FUNC(yuva2rgba_c,      uint32_t, 1, 24, PUTRGBA,   8, 1)
+YUV420FUNC(yuva2argb_c,      uint32_t, 1,  0, PUTRGBA,   8, 1)
 #endif
-YUV420FUNC(yuv2rgb_c_24_rgb, uint8_t,  0,  0, PUTRGB24, 24)
-YUV420FUNC(yuv2rgb_c_24_bgr, uint8_t,  0,  0, PUTBGR24, 24)
+YUV420FUNC(yuv2rgb_c_24_rgb, uint8_t,  0,  0, PUTRGB24, 24, 1)
+YUV420FUNC(yuv2rgb_c_24_bgr, uint8_t,  0,  0, PUTBGR24, 24, 1)
 YUV420FUNC_DITHER(yuv2rgb_c_16_ordered_dither, uint16_t, LOADDITHER16,  PUTRGB16,  8)
 YUV420FUNC_DITHER(yuv2rgb_c_15_ordered_dither, uint16_t, LOADDITHER15,  PUTRGB15,  8)
 YUV420FUNC_DITHER(yuv2rgb_c_12_ordered_dither, uint16_t, LOADDITHER12,  PUTRGB12,  8)
@@ -514,18 +519,18 @@ YUV420FUNC_DITHER(yuv2rgb_c_4_ordered_dither,  uint8_t,  LOADDITHER4D,  PUTRGB4D
 YUV420FUNC_DITHER(yuv2rgb_c_4b_ordered_dither, uint8_t,  LOADDITHER4DB, PUTRGB4DB, 8)
 
 // YUV422
-YUV422FUNC(yuv422p_rgb48_c,  uint8_t,  0,  0, PUTRGB48, 48)
-YUV422FUNC(yuv422p_bgr48_c,  uint8_t,  0,  0, PUTBGR48, 48)
-YUV422FUNC(yuv422p_rgb32_c,  uint32_t, 0,  0, PUTRGB,    8)
+YUV422FUNC(yuv422p_rgb48_c,  uint8_t,  0,  0, PUTRGB48, 48, 1)
+YUV422FUNC(yuv422p_bgr48_c,  uint8_t,  0,  0, PUTBGR48, 48, 1)
+YUV422FUNC(yuv422p_rgb32_c,  uint32_t, 0,  0, PUTRGB,    8, 1)
 #if HAVE_BIGENDIAN
-YUV422FUNC(yuva422p_argb_c,  uint32_t, 1, 24, PUTRGBA,   8)
-YUV422FUNC(yuva422p_rgba_c,  uint32_t, 1,  0, PUTRGBA,   8)
+YUV422FUNC(yuva422p_argb_c,  uint32_t, 1, 24, PUTRGBA,   8, 1)
+YUV422FUNC(yuva422p_rgba_c,  uint32_t, 1,  0, PUTRGBA,   8, 1)
 #else
-YUV422FUNC(yuva422p_rgba_c,  uint32_t, 1, 24, PUTRGBA,   8)
-YUV422FUNC(yuva422p_argb_c,  uint32_t, 1,  0, PUTRGBA,   8)
+YUV422FUNC(yuva422p_rgba_c,  uint32_t, 1, 24, PUTRGBA,   8, 1)
+YUV422FUNC(yuva422p_argb_c,  uint32_t, 1,  0, PUTRGBA,   8, 1)
 #endif
-YUV422FUNC(yuv422p_rgb24_c,  uint8_t,  0,  0, PUTRGB24, 24)
-YUV422FUNC(yuv422p_bgr24_c,  uint8_t,  0,  0, PUTBGR24, 24)
+YUV422FUNC(yuv422p_rgb24_c,  uint8_t,  0,  0, PUTRGB24, 24, 1)
+YUV422FUNC(yuv422p_bgr24_c,  uint8_t,  0,  0, PUTBGR24, 24, 1)
 YUV422FUNC_DITHER(yuv422p_bgr16,     uint16_t, LOADDITHER16,  PUTRGB16,  8)
 YUV422FUNC_DITHER(yuv422p_bgr15,     uint16_t, LOADDITHER15,  PUTRGB15,  8)
 YUV422FUNC_DITHER(yuv422p_bgr12,     uint16_t, LOADDITHER12,  PUTRGB12,  8)
