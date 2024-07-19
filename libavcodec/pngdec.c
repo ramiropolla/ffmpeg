@@ -1073,6 +1073,7 @@ static int decode_sbit_chunk(AVCodecContext *avctx, PNGDecContext *s,
 {
     int bits = 0;
     int channels;
+    int bit_depth;
 
     if (!(s->hdr_state & PNG_IHDR)) {
         av_log(avctx, AV_LOG_ERROR, "sBIT before IHDR\n");
@@ -1097,7 +1098,8 @@ static int decode_sbit_chunk(AVCodecContext *avctx, PNGDecContext *s,
         bits = FFMAX(b, bits);
     }
 
-    if (bits < 0 || bits > s->bit_depth) {
+    bit_depth = s->color_type & PNG_COLOR_MASK_PALETTE ? 8 : s->bit_depth;
+    if (bits < 0 || bits > bit_depth) {
         av_log(avctx, AV_LOG_ERROR, "Invalid significant bits: %d\n", bits);
         return AVERROR_INVALIDDATA;
     }
