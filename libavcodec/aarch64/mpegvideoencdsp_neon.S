@@ -161,3 +161,57 @@ function ff_pix_norm1_neon, export=1
 
         ret
 endfunc
+
+#if HAVE_DOTPROD
+ENABLE_DOTPROD
+
+function ff_pix_norm1_dotprod, export=1
+// x0  const uint8_t *pix
+// x1  int line_size
+
+        add             x2, x0, w1, sxtw
+        lsl             w1, w1, #1
+
+        movi            v0.16b, #0
+
+        ld1             { v1.16b }, [x0], x1
+        ld1             { v2.16b }, [x2], x1
+        ld1             { v3.16b }, [x0], x1
+        udot            v0.4s, v1.16b, v1.16b
+        ld1             { v1.16b }, [x2], x1
+        udot            v0.4s, v2.16b, v2.16b
+        ld1             { v2.16b }, [x0], x1
+        udot            v0.4s, v3.16b, v3.16b
+        ld1             { v3.16b }, [x2], x1
+        udot            v0.4s, v1.16b, v1.16b
+        ld1             { v1.16b }, [x0], x1
+        udot            v0.4s, v2.16b, v2.16b
+        ld1             { v2.16b }, [x2], x1
+        udot            v0.4s, v3.16b, v3.16b
+        ld1             { v3.16b }, [x0], x1
+        udot            v0.4s, v1.16b, v1.16b
+        ld1             { v1.16b }, [x2], x1
+        udot            v0.4s, v2.16b, v2.16b
+        ld1             { v2.16b }, [x0], x1
+        udot            v0.4s, v3.16b, v3.16b
+        ld1             { v3.16b }, [x2], x1
+        udot            v0.4s, v1.16b, v1.16b
+        ld1             { v1.16b }, [x0], x1
+        udot            v0.4s, v2.16b, v2.16b
+        ld1             { v2.16b }, [x2], x1
+        udot            v0.4s, v3.16b, v3.16b
+        ld1             { v3.16b }, [x0], x1
+        udot            v0.4s, v1.16b, v1.16b
+        ld1             { v1.16b }, [x2]
+        udot            v0.4s, v2.16b, v2.16b
+        udot            v0.4s, v3.16b, v3.16b
+        udot            v0.4s, v1.16b, v1.16b
+
+        uaddlv          d0, v0.4s
+        fmov            w0, s0
+
+        ret
+endfunc
+
+DISABLE_DOTPROD
+#endif
