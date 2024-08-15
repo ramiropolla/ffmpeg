@@ -23,6 +23,12 @@
 
 #include "checkasm.h"
 
+#define randomize_buffers(buf, size)      \
+    do {                                  \
+        for (int j = 0; j < size; j += 4) \
+            AV_WN32(buf + j, rnd());      \
+    } while (0)
+
 static void check_pix_sum(MpegvideoEncDSPContext *c)
 {
     LOCAL_ALIGNED_16(uint8_t, src, [16 * 16]);
@@ -61,6 +67,50 @@ static void check_pix_norm1(MpegvideoEncDSPContext *c)
     }
 }
 
+#define NUM_LINES 4
+#define MAX_LINE_SIZE 1920
+#define EDGE_WIDTH 16
+#define LINESIZE (EDGE_WIDTH + MAX_LINE_SIZE + EDGE_WIDTH)
+#define BUFSIZE ((EDGE_WIDTH + NUM_LINES + EDGE_WIDTH) * LINESIZE)
+
+static void check_draw_edges(MpegvideoEncDSPContext *c)
+{
+    static const int input_sizes[] = {8, 128, 1080, MAX_LINE_SIZE};
+    LOCAL_ALIGNED_16(uint8_t, buf0, [BUFSIZE]);
+    LOCAL_ALIGNED_16(uint8_t, buf1, [BUFSIZE]);
+
+    declare_func_emms(AV_CPU_FLAG_MMX, void, uint8_t *buf, int wrap, int width, int height,
+                                             int w, int h, int sides);
+
+    for (int isi = 0; isi < FF_ARRAY_ELEMS(input_sizes); isi++) {
+        int width = input_sizes[isi];
+        int linesize = EDGE_WIDTH + width + EDGE_WIDTH;
+        int height = (BUFSIZE / linesize) - (2 * EDGE_WIDTH);
+        uint8_t *dst0 = buf0 + EDGE_WIDTH * linesize + EDGE_WIDTH;
+        uint8_t *dst1 = buf1 + EDGE_WIDTH * linesize + EDGE_WIDTH;
+
+        for (int shift = 0; shift < 3; shift++) {
+            int edge = EDGE_WIDTH >> shift;
+            if (check_func(c->draw_edges, "draw_edges_%d_%d", width, shift)) {
+                for (int i = 0; i < BUFSIZE; i++) {
+                    uint8_t r = rnd();
+                    buf0[i] = r;
+                    buf1[i] = r;
+                }
+                call_ref(dst0, linesize, width, height, edge, edge, EDGE_BOTTOM | EDGE_TOP);
+                call_new(dst1, linesize, width, height, edge, edge, EDGE_BOTTOM | EDGE_TOP);
+                if (memcmp(buf0, buf1, BUFSIZE))
+                    fail();
+                bench_new(dst1, linesize, width, height, edge, edge, EDGE_BOTTOM | EDGE_TOP);
+            }
+        }
+    }
+}
+
+#undef NUM_LINES
+#undef MAX_LINE_SIZE
+#undef EDGE_WIDTH
+
 void checkasm_check_mpegvideoencdsp(void)
 {
     AVCodecContext avctx = {
@@ -74,4 +124,6 @@ void checkasm_check_mpegvideoencdsp(void)
     report("pix_sum");
     check_pix_norm1(&c);
     report("pix_norm1");
+    check_draw_edges(&c);
+    report("draw_edges");
 }
