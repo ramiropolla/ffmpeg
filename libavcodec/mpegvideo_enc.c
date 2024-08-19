@@ -193,6 +193,47 @@ void ff_convert_matrix(MpegEncContext *s, int (*qmat)[64],
     }
 }
 
+static av_cold void ff_mpv_init_qmat(MpegEncContext *s)
+{
+    int i;
+
+    /* init q matrix */
+    for (i = 0; i < 64; i++) {
+        int j = s->idsp.idct_permutation[i];
+        if (CONFIG_MPEG4_ENCODER && s->codec_id == AV_CODEC_ID_MPEG4 &&
+            s->mpeg_quant) {
+            s->intra_matrix[j] = ff_mpeg4_default_intra_matrix[i];
+            s->inter_matrix[j] = ff_mpeg4_default_non_intra_matrix[i];
+        } else if (s->out_format == FMT_H263 || s->out_format == FMT_H261) {
+            s->intra_matrix[j] =
+            s->inter_matrix[j] = ff_mpeg1_default_non_intra_matrix[i];
+        } else if (CONFIG_SPEEDHQ_ENCODER && s->codec_id == AV_CODEC_ID_SPEEDHQ) {
+            s->intra_matrix[j] =
+            s->inter_matrix[j] = ff_mpeg1_default_intra_matrix[i];
+        } else {
+            /* MPEG-1/2 */
+            s->chroma_intra_matrix[j] =
+            s->intra_matrix[j] = ff_mpeg1_default_intra_matrix[i];
+            s->inter_matrix[j] = ff_mpeg1_default_non_intra_matrix[i];
+        }
+        if (s->avctx->intra_matrix)
+            s->intra_matrix[j] = s->avctx->intra_matrix[i];
+        if (s->avctx->inter_matrix)
+            s->inter_matrix[j] = s->avctx->inter_matrix[i];
+    }
+
+    /* precompute matrix */
+    /* for mjpeg, we do include qscale in the matrix */
+    if (s->out_format != FMT_MJPEG) {
+        ff_convert_matrix(s, s->q_intra_matrix, s->q_intra_matrix16,
+                          s->intra_matrix, s->intra_quant_bias, s->avctx->qmin,
+                          31, 1);
+        ff_convert_matrix(s, s->q_inter_matrix, s->q_inter_matrix16,
+                          s->inter_matrix, s->inter_quant_bias, s->avctx->qmin,
+                          31, 0);
+    }
+}
+
 static inline void update_qscale(MpegEncContext *s)
 {
     if (s->q_scale_type == 1 && 0) {
@@ -959,41 +1000,7 @@ av_cold int ff_mpv_encode_init(AVCodecContext *avctx)
 #endif
     }
 
-    /* init q matrix */
-    for (i = 0; i < 64; i++) {
-        int j = s->idsp.idct_permutation[i];
-        if (CONFIG_MPEG4_ENCODER && s->codec_id == AV_CODEC_ID_MPEG4 &&
-            s->mpeg_quant) {
-            s->intra_matrix[j] = ff_mpeg4_default_intra_matrix[i];
-            s->inter_matrix[j] = ff_mpeg4_default_non_intra_matrix[i];
-        } else if (s->out_format == FMT_H263 || s->out_format == FMT_H261) {
-            s->intra_matrix[j] =
-            s->inter_matrix[j] = ff_mpeg1_default_non_intra_matrix[i];
-        } else if (CONFIG_SPEEDHQ_ENCODER && s->codec_id == AV_CODEC_ID_SPEEDHQ) {
-            s->intra_matrix[j] =
-            s->inter_matrix[j] = ff_mpeg1_default_intra_matrix[i];
-        } else {
-            /* MPEG-1/2 */
-            s->chroma_intra_matrix[j] =
-            s->intra_matrix[j] = ff_mpeg1_default_intra_matrix[i];
-            s->inter_matrix[j] = ff_mpeg1_default_non_intra_matrix[i];
-        }
-        if (avctx->intra_matrix)
-            s->intra_matrix[j] = avctx->intra_matrix[i];
-        if (avctx->inter_matrix)
-            s->inter_matrix[j] = avctx->inter_matrix[i];
-    }
-
-    /* precompute matrix */
-    /* for mjpeg, we do include qscale in the matrix */
-    if (s->out_format != FMT_MJPEG) {
-        ff_convert_matrix(s, s->q_intra_matrix, s->q_intra_matrix16,
-                          s->intra_matrix, s->intra_quant_bias, avctx->qmin,
-                          31, 1);
-        ff_convert_matrix(s, s->q_inter_matrix, s->q_inter_matrix16,
-                          s->inter_matrix, s->inter_quant_bias, avctx->qmin,
-                          31, 0);
-    }
+    ff_mpv_init_qmat(s);
 
     if ((ret = ff_rate_control_init(s)) < 0)
         return ret;
