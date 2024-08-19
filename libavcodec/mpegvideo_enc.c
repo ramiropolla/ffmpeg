@@ -193,7 +193,7 @@ void ff_convert_matrix(MpegEncContext *s, int (*qmat)[64],
     }
 }
 
-static av_cold void ff_mpv_init_qmat(MpegEncContext *s)
+static av_cold int ff_mpv_init_qmat(MpegEncContext *s)
 {
     int i;
 
@@ -231,7 +231,15 @@ static av_cold void ff_mpv_init_qmat(MpegEncContext *s)
         ff_convert_matrix(s, s->q_inter_matrix, s->q_inter_matrix16,
                           s->inter_matrix, s->inter_quant_bias, s->avctx->qmin,
                           31, 0);
+        s->q_chroma_intra_matrix   = s->q_intra_matrix;
+        s->q_chroma_intra_matrix16 = s->q_intra_matrix16;
+    } else {
+        if (!FF_ALLOCZ_TYPED_ARRAY(s->q_chroma_intra_matrix,   32) ||
+            !FF_ALLOCZ_TYPED_ARRAY(s->q_chroma_intra_matrix16, 32))
+            return AVERROR(ENOMEM);
     }
+
+    return 0;
 }
 
 static inline void update_qscale(MpegEncContext *s)
@@ -900,10 +908,8 @@ av_cold int ff_mpv_encode_init(AVCodecContext *avctx)
 
     if (!(avctx->stats_out = av_mallocz(256))               ||
         !FF_ALLOCZ_TYPED_ARRAY(s->q_intra_matrix,          32) ||
-        !FF_ALLOCZ_TYPED_ARRAY(s->q_chroma_intra_matrix,   32) ||
         !FF_ALLOCZ_TYPED_ARRAY(s->q_inter_matrix,          32) ||
         !FF_ALLOCZ_TYPED_ARRAY(s->q_intra_matrix16,        32) ||
-        !FF_ALLOCZ_TYPED_ARRAY(s->q_chroma_intra_matrix16, 32) ||
         !FF_ALLOCZ_TYPED_ARRAY(s->q_inter_matrix16,        32) ||
         !FF_ALLOCZ_TYPED_ARRAY(s->input_picture,           MAX_B_FRAMES + 1) ||
         !FF_ALLOCZ_TYPED_ARRAY(s->reordered_input_picture, MAX_B_FRAMES + 1) ||
@@ -1000,7 +1006,9 @@ av_cold int ff_mpv_encode_init(AVCodecContext *avctx)
 #endif
     }
 
-    ff_mpv_init_qmat(s);
+    ret = ff_mpv_init_qmat(s);
+    if (ret < 0)
+        return ret;
 
     if ((ret = ff_rate_control_init(s)) < 0)
         return ret;
@@ -3626,13 +3634,6 @@ static int encode_picture(MpegEncContext *s, const AVPacket *pkt)
         else
             s->lambda= s->last_lambda_for[s->last_non_b_pict_type];
         update_qscale(s);
-    }
-
-    if (s->out_format != FMT_MJPEG) {
-        if(s->q_chroma_intra_matrix   != s->q_intra_matrix  ) av_freep(&s->q_chroma_intra_matrix);
-        if(s->q_chroma_intra_matrix16 != s->q_intra_matrix16) av_freep(&s->q_chroma_intra_matrix16);
-        s->q_chroma_intra_matrix   = s->q_intra_matrix;
-        s->q_chroma_intra_matrix16 = s->q_intra_matrix16;
     }
 
     ff_me_init_pic(s);
