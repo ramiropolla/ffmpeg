@@ -120,6 +120,8 @@ void dnxhd_10bit_get_pixels_8x4_sym(int16_t *restrict block,
 static int dnxhd_10bit_dct_quantize_444(MpegEncContext *ctx, int16_t *block,
                                         int n, int qscale, int *overflow)
 {
+    LOCAL_ALIGNED_16(int16_t, temp_block, [64]);
+    int16_t *temp;
     int i, j, level, last_non_zero, start_i;
     const int *qmat;
     const uint8_t *scantable= ctx->intra_scantable.scantable;
@@ -127,9 +129,11 @@ static int dnxhd_10bit_dct_quantize_444(MpegEncContext *ctx, int16_t *block,
     int max = 0;
     unsigned int threshold1, threshold2;
 
+    temp = ctx->idsp.perm_type == FF_IDCT_PERM_NONE ? block : temp_block;
+
     ctx->fdsp.fdct(block);
 
-    block[0] = (block[0] + 2) >> 2;
+    temp[0] = (block[0] + 2) >> 2;
     start_i = 1;
     last_non_zero = 0;
     qmat = n < 4 ? ctx->q_intra_matrix[qscale] : ctx->q_chroma_intra_matrix[qscale];
@@ -145,7 +149,7 @@ static int dnxhd_10bit_dct_quantize_444(MpegEncContext *ctx, int16_t *block,
             last_non_zero = i;
             break;
         } else{
-            block[j]=0;
+            temp[j]=0;
         }
     }
 
@@ -156,22 +160,24 @@ static int dnxhd_10bit_dct_quantize_444(MpegEncContext *ctx, int16_t *block,
         if (((unsigned)(level + threshold1)) > threshold2) {
             if (level > 0) {
                 level = (bias + level) >> 16;
-                block[j] = level;
+                temp[j] = level;
             } else{
                 level = (bias - level) >> 16;
-                block[j] = -level;
+                temp[j] = -level;
             }
             max |= level;
         } else {
-            block[j] = 0;
+            temp[j] = 0;
         }
     }
     *overflow = ctx->max_qcoeff < max; //overflow might have happened
 
     /* we need this permutation so that we correct the IDCT, we only permute the !=0 elements */
-    if (ctx->idsp.perm_type != FF_IDCT_PERM_NONE)
-        ff_block_permute(block, ctx->idsp.idct_permutation,
+    if (ctx->idsp.perm_type != FF_IDCT_PERM_NONE) {
+        ctx->bdsp.clear_block(block);
+        ff_block_permute(block, temp_block, ctx->idsp.idct_permutation,
                          scantable, last_non_zero);
+    }
 
     return last_non_zero;
 }
@@ -179,30 +185,36 @@ static int dnxhd_10bit_dct_quantize_444(MpegEncContext *ctx, int16_t *block,
 static int dnxhd_10bit_dct_quantize(MpegEncContext *ctx, int16_t *block,
                                     int n, int qscale, int *overflow)
 {
+    LOCAL_ALIGNED_16(int16_t, temp_block, [64]);
+    int16_t *temp;
     const uint8_t *scantable= ctx->intra_scantable.scantable;
     const int *qmat = n<4 ? ctx->q_intra_matrix[qscale] : ctx->q_chroma_intra_matrix[qscale];
     int last_non_zero = 0;
     int i;
 
+    temp = ctx->idsp.perm_type == FF_IDCT_PERM_NONE ? block : temp_block;
+
     ctx->fdsp.fdct(block);
 
     // Divide by 4 with rounding, to compensate scaling of DCT coefficients
-    block[0] = (block[0] + 2) >> 2;
+    temp[0] = (block[0] + 2) >> 2;
 
     for (i = 1; i < 64; ++i) {
         int j = scantable[i];
         int sign = FF_SIGNBIT(block[j]);
         int level = (block[j] ^ sign) - sign;
         level = level * qmat[j] >> DNX10BIT_QMAT_SHIFT;
-        block[j] = (level ^ sign) - sign;
+        temp[j] = (level ^ sign) - sign;
         if (level)
             last_non_zero = i;
     }
 
     /* we need this permutation so that we correct the IDCT, we only permute the !=0 elements */
-    if (ctx->idsp.perm_type != FF_IDCT_PERM_NONE)
-        ff_block_permute(block, ctx->idsp.idct_permutation,
+    if (ctx->idsp.perm_type != FF_IDCT_PERM_NONE) {
+        ctx->bdsp.clear_block(block);
+        ff_block_permute(block, temp_block, ctx->idsp.idct_permutation,
                          scantable, last_non_zero);
+    }
 
     return last_non_zero;
 }
@@ -821,7 +833,7 @@ static int dnxhd_calc_bits_thread(AVCodecContext *avctx, void *arg,
     DNXHDEncContext *ctx = avctx->priv_data;
     int mb_y = jobnr, mb_x;
     int qscale = ctx->qscale;
-    LOCAL_ALIGNED_16(int16_t, block, [64]);
+    LOCAL_ALIGNED_32(int16_t, block, [64]);
     ctx = ctx->thread[threadnr];
 
     ctx->m.last_dc[0] =
