@@ -28,6 +28,8 @@
 #ifndef AVCODEC_MPEGVIDEO_H
 #define AVCODEC_MPEGVIDEO_H
 
+#include "libavutil/mem_internal.h"
+
 #include "blockdsp.h"
 #include "error_resilience.h"
 #include "fdctdsp.h"
@@ -57,6 +59,7 @@ typedef struct ScanTable {
     const uint8_t *scantable;
     uint8_t permutated[64];
     uint8_t raster_end[64];
+    DECLARE_ALIGNED(16, uint16_t, inv_scantable_p1)[64];
 } ScanTable;
 
 enum OutputFormat {

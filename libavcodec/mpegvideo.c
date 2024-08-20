@@ -301,6 +301,7 @@ av_cold void ff_init_scantable(const uint8_t *permutation, ScanTable *st,
         if (permutation[j] > end)
             end = permutation[j];
         st->raster_end[i] = end;
+        st->inv_scantable_p1[j] = i + 1;
     }
 }
 
