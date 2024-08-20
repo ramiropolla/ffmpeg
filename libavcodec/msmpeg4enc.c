@@ -583,14 +583,7 @@ void ff_msmpeg4_encode_block(MpegEncContext * s, int16_t * block, int n)
         scantable= s->inter_scantable.permutated;
     }
 
-    /* recalculate block_last_index for M$ wmv1 */
-    if (s->msmpeg4_version >= MSMP4_WMV1 && s->block_last_index[n] > 0) {
-        for(last_index=63; last_index>=0; last_index--){
-            if(block[scantable[last_index]]) break;
-        }
-        s->block_last_index[n]= last_index;
-    }else
-        last_index = s->block_last_index[n];
+    last_index = s->block_last_index[n];
     /* AC coefs */
     last_non_zero = i - 1;
     for (; i <= last_index; i++) {
