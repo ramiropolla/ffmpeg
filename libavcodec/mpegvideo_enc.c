@@ -2530,20 +2530,6 @@ static av_always_inline void encode_mb_internal(MpegEncContext *s,
         }
     }
 
-    // non c quantize code returns incorrect block_last_index FIXME
-    if (s->alternate_scan && s->dct_quantize != dct_quantize_c) {
-        for (i = 0; i < mb_block_count; i++) {
-            int j;
-            if (s->block_last_index[i] > 0) {
-                for (j = 63; j > 0; j--) {
-                    if (s->block[i][s->intra_scantable.permutated[j]])
-                        break;
-                }
-                s->block_last_index[i] = j;
-            }
-        }
-    }
-
     /* huffman encode */
     switch(s->codec_id){ //FIXME funct ptr could be slightly faster
     case AV_CODEC_ID_MPEG1VIDEO:

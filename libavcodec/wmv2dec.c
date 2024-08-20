@@ -431,8 +431,6 @@ static inline int wmv2_decode_inter_block(WMV2DecContext *w, int16_t *block,
             if ((ret = ff_msmpeg4_decode_block(s, w->abt_block2[n], n, 1, scantable)) < 0)
                 return ret;
 
-        s->block_last_index[n] = 63;
-
         return 0;
     } else {
         return ff_msmpeg4_decode_block(s, block, n, 1,
