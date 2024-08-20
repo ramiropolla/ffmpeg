@@ -132,21 +132,21 @@ $(FATE_VCODEC_DNXHD_MOV:%=fate-vsynth\%-%): DECOPTS += $(DEFAULT_SIZE)
 
 FATE_VCODEC_DV := dv dv-411 dv-50 dv-hd dv-fhd
 FATE_VCODEC_SCALE-$(call ENCDEC, DVVIDEO, DV) += $(FATE_VCODEC_DV)
-fate-vsynth%-dv:                 ENCOPTS = -dct int -s pal
+fate-vsynth%-dv:                 ENCOPTS = -s pal
 
-fate-vsynth%-dv-411:             ENCOPTS = -dct int -s pal -pix_fmt yuv411p \
+fate-vsynth%-dv-411:             ENCOPTS = -s pal -pix_fmt yuv411p \
                                            -sws_flags area
 fate-vsynth%-dv-411:             DECOPTS = -sws_flags area
 
-fate-vsynth%-dv-50:              ENCOPTS = -dct int -s pal -pix_fmt yuv422p \
+fate-vsynth%-dv-50:              ENCOPTS = -s pal -pix_fmt yuv422p \
                                            -sws_flags neighbor
 fate-vsynth%-dv-50:              DECOPTS = -sws_flags neighbor
 
-fate-vsynth%-dv-fhd:             ENCOPTS = -dct int -s 1440x1080 -pix_fmt yuv422p \
+fate-vsynth%-dv-fhd:             ENCOPTS = -s 1440x1080 -pix_fmt yuv422p \
                                            -sws_flags neighbor
 fate-vsynth%-dv-fhd:             DECOPTS = -sws_flags neighbor
 
-fate-vsynth%-dv-hd:              ENCOPTS = -dct int -s 960x720 -pix_fmt yuv422p \
+fate-vsynth%-dv-hd:              ENCOPTS = -s 960x720 -pix_fmt yuv422p \
                                            -sws_flags neighbor
 fate-vsynth%-dv-hd:              DECOPTS = -sws_flags neighbor
 
@@ -268,7 +268,7 @@ fate-vsynth%-mpeg2-422:          ENCOPTS = -b:v 1000k                   \
                                            -intra_vlc 1                 \
                                            -mbd rd                      \
                                            -pix_fmt yuv422p
-fate-vsynth%-mpeg2-idct-int:     ENCOPTS = -qscale 10 -idct int -dct int
+fate-vsynth%-mpeg2-idct-int:     ENCOPTS = -qscale 10 -idct int
 fate-vsynth%-mpeg2-ilace:        ENCOPTS = -qscale 10 -flags +ildct+ilme
 fate-vsynth%-mpeg2-ivlc-qprd:    ENCOPTS = -b:v 500k                    \
                                            -bf 2                        \

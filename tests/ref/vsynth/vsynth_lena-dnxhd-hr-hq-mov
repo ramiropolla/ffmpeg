@@ -1,4 +1,4 @@
-f19dfcd4d9d7a0da1131c0dd909ad0ae *tests/data/fate/vsynth_lena-dnxhd-hr-hq-mov.mov
+2dca0b3444b0678527731c22c58d037d *tests/data/fate/vsynth_lena-dnxhd-hr-hq-mov.mov
 4772599 tests/data/fate/vsynth_lena-dnxhd-hr-hq-mov.mov
-e6c3531cb32eb3d0c465c44098746fea *tests/data/fate/vsynth_lena-dnxhd-hr-hq-mov.out.rawvideo
-stddev:    1.34 PSNR: 45.54 MAXDIFF:   23 bytes:  7603200/   760320
+ab7161b1494d7237e279e32bcba2910b *tests/data/fate/vsynth_lena-dnxhd-hr-hq-mov.out.rawvideo
+stddev:    1.34 PSNR: 45.57 MAXDIFF:   22 bytes:  7603200/   760320

@@ -1,4 +1,4 @@
-4d23a72fe7e29f98f38888804eacd111 *tests/data/fate/vsynth_lena-rv20.rm
-153304 tests/data/fate/vsynth_lena-rv20.rm
-6fa5dc1c2f00f858fc4895ad640891a2 *tests/data/fate/vsynth_lena-rv20.out.rawvideo
-stddev:    5.48 PSNR: 33.35 MAXDIFF:   81 bytes:  7603200/  7603200
+15947f3c1a29254455476a92a123ad3d *tests/data/fate/vsynth_lena-rv20.rm
+153379 tests/data/fate/vsynth_lena-rv20.rm
+b1b4af5ea93a119b11274d18dd10bba6 *tests/data/fate/vsynth_lena-rv20.out.rawvideo
+stddev:    5.48 PSNR: 33.34 MAXDIFF:   81 bytes:  7603200/  7603200

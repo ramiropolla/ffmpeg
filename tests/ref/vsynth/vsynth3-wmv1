@@ -1,4 +1,4 @@
-de255d5f4838784e18af6ff86cf97e0b *tests/data/fate/vsynth3-wmv1.avi
-32658 tests/data/fate/vsynth3-wmv1.avi
-4dafe3c433c7f48c6c9e56d59ca0f7c3 *tests/data/fate/vsynth3-wmv1.out.rawvideo
-stddev:    9.65 PSNR: 28.44 MAXDIFF:   91 bytes:    86700/    86700
+901c71e299753ef27bff89d9ca9af0f8 *tests/data/fate/vsynth3-wmv1.avi
+32598 tests/data/fate/vsynth3-wmv1.avi
+8f19e54ed28f6ad30e085886dd87bfa5 *tests/data/fate/vsynth3-wmv1.out.rawvideo
+stddev:    9.61 PSNR: 28.48 MAXDIFF:   88 bytes:    86700/    86700

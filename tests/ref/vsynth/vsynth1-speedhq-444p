@@ -1,4 +1,4 @@
-5008149f0dd3d05d05f8f0f9100d39ec *tests/data/fate/vsynth1-speedhq-444p.avi
-1347864 tests/data/fate/vsynth1-speedhq-444p.avi
-23c5db6ca2bdbc52e402cd72ad2fff27 *tests/data/fate/vsynth1-speedhq-444p.out.rawvideo
-stddev:   12.84 PSNR: 25.95 MAXDIFF:  145 bytes:  7603200/  7603200
+2f5355c2c80856b89539b45ae34a1a71 *tests/data/fate/vsynth1-speedhq-444p.avi
+1344336 tests/data/fate/vsynth1-speedhq-444p.avi
+44081e61280d8a5b6e7b2409ae51cd06 *tests/data/fate/vsynth1-speedhq-444p.out.rawvideo
+stddev:   12.87 PSNR: 25.94 MAXDIFF:  145 bytes:  7603200/  7603200

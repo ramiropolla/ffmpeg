@@ -1,4 +1,4 @@
-36bfdfdaecbf2938358137a598841377 *tests/data/fate/vsynth2-speedhq-422p.avi
-622790 tests/data/fate/vsynth2-speedhq-422p.avi
-3858c3c1524385150b2cff31cdb72e09 *tests/data/fate/vsynth2-speedhq-422p.out.rawvideo
-stddev:    8.62 PSNR: 29.42 MAXDIFF:  142 bytes:  7603200/  7603200
+a608bba2e7bf7ee10c42d2ccd32d4ebb *tests/data/fate/vsynth2-speedhq-422p.avi
+617876 tests/data/fate/vsynth2-speedhq-422p.avi
+6b160983ba172c59dc1e1b6f4c0f2996 *tests/data/fate/vsynth2-speedhq-422p.out.rawvideo
+stddev:    8.66 PSNR: 29.37 MAXDIFF:  142 bytes:  7603200/  7603200

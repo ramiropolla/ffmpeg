@@ -1,4 +1,4 @@
-3ebeb52ae53a5b2ae4a0d90fa728c4fa *tests/data/fate/vsynth1-dnxhd-edge2-hr.dnxhd
+0b0b9ad753f4857ee6d16bab35d6dc9a *tests/data/fate/vsynth1-dnxhd-edge2-hr.dnxhd
 81920 tests/data/fate/vsynth1-dnxhd-edge2-hr.dnxhd
-1763637504f89c4e1a50a4de25c5e58a *tests/data/fate/vsynth1-dnxhd-edge2-hr.out.rawvideo
-stddev:   15.86 PSNR: 24.12 MAXDIFF:  157 bytes:  7603200/   760320
+411008552ef51b793cbc8d412f11b3f6 *tests/data/fate/vsynth1-dnxhd-edge2-hr.out.rawvideo
+stddev:   15.88 PSNR: 24.11 MAXDIFF:  157 bytes:  7603200/   760320

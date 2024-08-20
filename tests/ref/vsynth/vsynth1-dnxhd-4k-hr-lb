@@ -1,4 +1,4 @@
-c6b6b35ffd147297983da4ad94887ac6 *tests/data/fate/vsynth1-dnxhd-4k-hr-lb.dnxhd
+5df8ded6395d946e1bda32d515f66059 *tests/data/fate/vsynth1-dnxhd-4k-hr-lb.dnxhd
 3993600 tests/data/fate/vsynth1-dnxhd-4k-hr-lb.dnxhd
-1dc1984e4a315a35e97ed9e99940d124 *tests/data/fate/vsynth1-dnxhd-4k-hr-lb.out.rawvideo
+9d0af3b4d82d4bf4827839545318bdf9 *tests/data/fate/vsynth1-dnxhd-4k-hr-lb.out.rawvideo
 stddev:    5.58 PSNR: 33.19 MAXDIFF:   55 bytes:  7603200/   760320

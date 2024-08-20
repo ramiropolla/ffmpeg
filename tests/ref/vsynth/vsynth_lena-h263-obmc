@@ -1,4 +1,4 @@
-3c6946f808412ac320be9e0c36051ea2 *tests/data/fate/vsynth_lena-h263-obmc.avi
-154730 tests/data/fate/vsynth_lena-h263-obmc.avi
-737af7fb166e2260ba049ae6bc30673d *tests/data/fate/vsynth_lena-h263-obmc.out.rawvideo
-stddev:    5.42 PSNR: 33.44 MAXDIFF:   77 bytes:  7603200/  7603200
+015c19192a54bd1b45993af386ed3738 *tests/data/fate/vsynth_lena-h263-obmc.avi
+154480 tests/data/fate/vsynth_lena-h263-obmc.avi
+7dd6f402e4074560d9dd9527e4a2cd4a *tests/data/fate/vsynth_lena-h263-obmc.out.rawvideo
+stddev:    5.43 PSNR: 33.43 MAXDIFF:   80 bytes:  7603200/  7603200

@@ -1,4 +1,4 @@
-36729f1faaa24daa9c643428bc87f090 *tests/data/fate/vsynth1-dnxhd-hr-hq-mov.mov
+dbf32d80667b0810c09a633c5d3f8b64 *tests/data/fate/vsynth1-dnxhd-hr-hq-mov.mov
 4772599 tests/data/fate/vsynth1-dnxhd-hr-hq-mov.mov
-388c7c84573abe28cc963e3ad5e15a31 *tests/data/fate/vsynth1-dnxhd-hr-hq-mov.out.rawvideo
-stddev:    5.73 PSNR: 32.96 MAXDIFF:   56 bytes:  7603200/   760320
+78bfde832b5263d155678d8d1fbb222c *tests/data/fate/vsynth1-dnxhd-hr-hq-mov.out.rawvideo
+stddev:    5.72 PSNR: 32.97 MAXDIFF:   56 bytes:  7603200/   760320

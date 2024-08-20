@@ -1,4 +1,4 @@
-af5ea0bab124371051eb104552344b2e *tests/data/fate/vsynth_lena-mpeg4-thread.avi
-250096 tests/data/fate/vsynth_lena-mpeg4-thread.avi
-045fe9f226bbcc3d41644bffaed03b31 *tests/data/fate/vsynth_lena-mpeg4-thread.out.rawvideo
-stddev:    3.69 PSNR: 36.78 MAXDIFF:   65 bytes:  7603200/  7603200
+563c2d2bdde583309d6c3caa304a0d90 *tests/data/fate/vsynth_lena-mpeg4-thread.avi
+250278 tests/data/fate/vsynth_lena-mpeg4-thread.avi
+915681959f5f31fb78d0029acb74b620 *tests/data/fate/vsynth_lena-mpeg4-thread.out.rawvideo
+stddev:    3.68 PSNR: 36.81 MAXDIFF:   67 bytes:  7603200/  7603200

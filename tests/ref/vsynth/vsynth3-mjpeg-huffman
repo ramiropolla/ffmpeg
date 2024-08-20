@@ -1,4 +1,4 @@
-eec435352485fec167179a63405505be *tests/data/fate/vsynth3-mjpeg-huffman.avi
-48156 tests/data/fate/vsynth3-mjpeg-huffman.avi
-c4fe7a2669afbd96c640748693fc4e30 *tests/data/fate/vsynth3-mjpeg-huffman.out.rawvideo
-stddev:    8.60 PSNR: 29.43 MAXDIFF:   58 bytes:    86700/    86700
+d0c581931b3a322fc529048fada32ba3 *tests/data/fate/vsynth3-mjpeg-huffman.avi
+48144 tests/data/fate/vsynth3-mjpeg-huffman.avi
+63329c7f407bea74189eda3e48e32591 *tests/data/fate/vsynth3-mjpeg-huffman.out.rawvideo
+stddev:    8.62 PSNR: 29.42 MAXDIFF:   58 bytes:    86700/    86700

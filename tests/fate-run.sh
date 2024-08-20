@@ -205,7 +205,7 @@ enc_dec_pcm(){
 
 FLAGS="-flags +bitexact -sws_flags +accurate_rnd+bitexact -fflags +bitexact"
 DEC_OPTS="-threads $threads -thread_type $thread_type -idct simple $FLAGS"
-ENC_OPTS="-threads 1        -idct simple -dct fastint"
+ENC_OPTS="-threads 1        -idct simple"
 
 enc_dec(){
     enc_fmt_in=$1
@@ -337,7 +337,7 @@ echov(){
 AVCONV_OPTS="-nostdin -nostats -noauto_conversion_filters -y -cpuflags $cpuflags -filter_threads $threads"
 COMMON_OPTS="-flags +bitexact -idct simple -sws_flags +accurate_rnd+bitexact -fflags +bitexact"
 DEC_OPTS="$COMMON_OPTS -threads $threads"
-ENC_OPTS="$COMMON_OPTS -threads 1 -dct fastint"
+ENC_OPTS="$COMMON_OPTS -threads 1"
 
 run_avconv(){
     $echov $ffmpeg2 $AVCONV_OPTS $*

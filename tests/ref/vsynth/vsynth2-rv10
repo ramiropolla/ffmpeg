@@ -1,4 +1,4 @@
-45a1e6800af36b7e2d42cadd2b6d1447 *tests/data/fate/vsynth2-rv10.rm
-210679 tests/data/fate/vsynth2-rv10.rm
-d77291a0611eeec0667bbc3aba7190b8 *tests/data/fate/vsynth2-rv10.out.rawvideo
-stddev:    6.12 PSNR: 32.39 MAXDIFF:   83 bytes:  7603200/  7603200
+b1b9be20e18e29d7e80eb9e728c4ad13 *tests/data/fate/vsynth2-rv10.rm
+210348 tests/data/fate/vsynth2-rv10.rm
+c3bdc3f7fb34ed520f255f725eabe21b *tests/data/fate/vsynth2-rv10.out.rawvideo
+stddev:    6.12 PSNR: 32.38 MAXDIFF:   82 bytes:  7603200/  7603200

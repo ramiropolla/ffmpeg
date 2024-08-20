@@ -1,4 +1,4 @@
-954162c34c24abe7a8fa6bfadcbb7dee *tests/data/fate/vsynth_lena-mpeg4.mp4
-119742 tests/data/fate/vsynth_lena-mpeg4.mp4
-9a1e085d9e488c5ead0c940c9612a37a *tests/data/fate/vsynth_lena-mpeg4.out.rawvideo
-stddev:    5.34 PSNR: 33.57 MAXDIFF:   83 bytes:  7603200/  7603200
+ec04afa7a64ae8ae704b958884a89f04 *tests/data/fate/vsynth_lena-mpeg4.mp4
+119704 tests/data/fate/vsynth_lena-mpeg4.mp4
+35e2b1d1f2de9239bcdd3e8c699f6587 *tests/data/fate/vsynth_lena-mpeg4.out.rawvideo
+stddev:    5.35 PSNR: 33.56 MAXDIFF:   77 bytes:  7603200/  7603200

@@ -1,4 +1,4 @@
-83bb3f4618f8d6259d48a51bc65b3cbc *tests/data/fate/vsynth2-mpeg4-nr.avi
-206038 tests/data/fate/vsynth2-mpeg4-nr.avi
-b1b0edaec04620b5f9149dce5171939c *tests/data/fate/vsynth2-mpeg4-nr.out.rawvideo
-stddev:    5.32 PSNR: 33.61 MAXDIFF:   78 bytes:  7603200/  7603200
+24545d3e2c496f594bece428adbc85c6 *tests/data/fate/vsynth2-mpeg4-nr.avi
+211178 tests/data/fate/vsynth2-mpeg4-nr.avi
+9a2f90f73c27bbe89128156346ac586e *tests/data/fate/vsynth2-mpeg4-nr.out.rawvideo
+stddev:    5.26 PSNR: 33.71 MAXDIFF:   73 bytes:  7603200/  7603200

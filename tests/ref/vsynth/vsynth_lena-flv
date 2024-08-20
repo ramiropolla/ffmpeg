@@ -1,4 +1,4 @@
-dee04bdab18c2eed81373faec89fd5a7 *tests/data/fate/vsynth_lena-flv.flv
-131380 tests/data/fate/vsynth_lena-flv.flv
-184034553ceb801bb1d1521d2d998a67 *tests/data/fate/vsynth_lena-flv.out.rawvideo
-stddev:    5.33 PSNR: 33.59 MAXDIFF:   79 bytes:  7603200/  7603200
+3f426459d7a596d7efa1341cf3c3f8d7 *tests/data/fate/vsynth_lena-flv.flv
+131107 tests/data/fate/vsynth_lena-flv.flv
+6ae9e9ef98f1797b2e4cb09c4966084b *tests/data/fate/vsynth_lena-flv.out.rawvideo
+stddev:    5.34 PSNR: 33.57 MAXDIFF:   77 bytes:  7603200/  7603200
