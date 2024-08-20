@@ -4560,8 +4560,9 @@ static int dct_quantize_refine(MpegEncContext *s, //FIXME breaks denoise?
 
 /**
  * Permute an 8x8 block according to permutation.
- * @param block the block which will be permuted according to
- *              the given permutation vector
+ * @param block the destination where the source block will be permutated
+ *              according to the given permutation vector
+ * @param src the source block which will be permutated into the destination
  * @param permutation the permutation vector
  * @param last the last non zero coefficient in scantable order, used to
  *             speed the permutation up
@@ -4569,28 +4570,14 @@ static int dct_quantize_refine(MpegEncContext *s, //FIXME breaks denoise?
  *                  permutation up, the block is not (inverse) permutated
  *                  to scantable order!
  */
-void ff_block_permute(int16_t *block, const uint8_t *permutation,
-                      const uint8_t *scantable, int last)
+void ff_block_permute(int16_t *restrict block, const int16_t *restrict src,
+                      const uint8_t *permutation,
+                      const uint8_t *scantable, unsigned int last)
 {
-    int i;
-    int16_t temp[64];
-
-    if (last <= 0)
-        return;
-    //FIXME it is ok but not clean and might fail for some permutations
-    // if (permutation[1] == 1)
-    // return;
-
-    for (i = 0; i <= last; i++) {
-        const int j = scantable[i];
-        temp[j] = block[j];
-        block[j] = 0;
-    }
-
-    for (i = 0; i <= last; i++) {
+    for (unsigned int i = 0; i <= last; i++) {
         const int j = scantable[i];
         const int perm_j = permutation[j];
-        block[perm_j] = temp[j];
+        block[perm_j] = src[j];
     }
 }
 
@@ -4598,12 +4585,16 @@ static int dct_quantize_c(MpegEncContext *s,
                           int16_t *block, int n,
                           int qscale, int *overflow)
 {
+    LOCAL_ALIGNED_16(int16_t, temp_block, [64]);
+    int16_t *temp;
     int i, j, level, last_non_zero, q, start_i;
     const int *qmat;
     const uint8_t *scantable;
     int bias;
     int max=0;
     unsigned int threshold1, threshold2;
+
+    temp = s->idsp.perm_type == FF_IDCT_PERM_NONE ? block : temp_block;
 
     s->fdsp.fdct(block);
 
@@ -4623,7 +4614,7 @@ static int dct_quantize_c(MpegEncContext *s,
             q = 1 << 3;
 
         /* note: block[0] is assumed to be positive */
-        block[0] = (block[0] + (q >> 1)) / q;
+        temp[0] = (block[0] + (q >> 1)) / q;
         start_i = 1;
         last_non_zero = 0;
         qmat = n < 4 ? s->q_intra_matrix[qscale] : s->q_chroma_intra_matrix[qscale];
@@ -4645,7 +4636,7 @@ static int dct_quantize_c(MpegEncContext *s,
             last_non_zero = i;
             break;
         }else{
-            block[j]=0;
+            temp[j]=0;
         }
     }
     for(i=start_i; i<=last_non_zero; i++) {
@@ -4657,22 +4648,25 @@ static int dct_quantize_c(MpegEncContext *s,
         if(((unsigned)(level+threshold1))>threshold2){
             if(level>0){
                 level= (bias + level)>>QMAT_SHIFT;
-                block[j]= level;
+                temp[j]= level;
             }else{
                 level= (bias - level)>>QMAT_SHIFT;
-                block[j]= -level;
+                temp[j]= -level;
             }
             max |=level;
         }else{
-            block[j]=0;
+            temp[j]=0;
         }
     }
     *overflow= s->max_qcoeff < max; //overflow might have happened
 
     /* we need this permutation so that we correct the IDCT, we only permute the !=0 elements */
-    if (s->idsp.perm_type != FF_IDCT_PERM_NONE)
-        ff_block_permute(block, s->idsp.idct_permutation,
-                      scantable, last_non_zero);
+    if (s->idsp.perm_type != FF_IDCT_PERM_NONE) {
+        s->bdsp.clear_block(block);
+        if (last_non_zero >= 0)
+            ff_block_permute(block, temp_block, s->idsp.idct_permutation,
+                             scantable, last_non_zero);
+    }
 
     return last_non_zero;
 }
