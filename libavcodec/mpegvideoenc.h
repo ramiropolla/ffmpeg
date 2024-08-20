@@ -152,8 +152,9 @@ void ff_dct_encode_init_x86(MpegEncContext *s);
 void ff_convert_matrix(MpegEncContext *s, int (*qmat)[64], uint16_t (*qmat16)[2][64],
                        const uint16_t *quant_matrix, int bias, int qmin, int qmax, int intra);
 
-void ff_block_permute(int16_t *block, const uint8_t *permutation,
-                      const uint8_t *scantable, int last);
+void ff_block_permute(int16_t *block, const int16_t *src,
+                      const uint8_t *permutation,
+                      const uint8_t *scantable, unsigned int last);
 
 static inline int get_bits_diff(MpegEncContext *s)
 {
