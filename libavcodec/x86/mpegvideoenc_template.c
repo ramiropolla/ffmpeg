@@ -101,8 +101,6 @@ static int RENAME(dct_quantize)(MpegEncContext *s,
     const uint8_t *scantable;
     const uint16_t *inv_scantable_p1;
 
-    av_assert2((7&(uintptr_t)(&temp_block[0])) == 0); //did gcc align it correctly?
-
     //s->fdct (block);
     RENAME_FDCT(ff_fdct)(block); // cannot be anything else ...
 
