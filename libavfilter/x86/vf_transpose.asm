@@ -85,3 +85,29 @@ cglobal transpose_8x8_16, 4,5,9, ARCH_X86_32 * 32, src, src_linesize, dst, dst_l
     movu [dstq + dst_linesizeq * 2], m6
     movu [dstq + linesize3q], m7
     RET
+
+cglobal transpose_8x8_16_16, 2,2,9, ARCH_X86_32 * 32, src, dst
+    movu    m0, [srcq + 16 * 0]
+    movu    m1, [srcq + 16 * 1]
+    movu    m2, [srcq + 16 * 2]
+    movu    m3, [srcq + 16 * 3]
+    movu    m4, [srcq + 16 * 4]
+    movu    m5, [srcq + 16 * 5]
+    movu    m6, [srcq + 16 * 6]
+    movu    m7, [srcq + 16 * 7]
+
+%if ARCH_X86_64
+    TRANSPOSE8x8W 0, 1, 2, 3, 4, 5, 6, 7, 8
+%else
+    TRANSPOSE8x8W 0, 1, 2, 3, 4, 5, 6, 7, [rsp], [rsp + 16]
+%endif
+
+    movu [dstq + 16 * 0], m0
+    movu [dstq + 16 * 1], m1
+    movu [dstq + 16 * 2], m2
+    movu [dstq + 16 * 3], m3
+    movu [dstq + 16 * 4], m4
+    movu [dstq + 16 * 5], m5
+    movu [dstq + 16 * 6], m6
+    movu [dstq + 16 * 7], m7
+    RET
