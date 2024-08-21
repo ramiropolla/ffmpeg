@@ -293,10 +293,10 @@ static void mpv_encode_defaults(MpegEncContext *s)
 
 void ff_transpose_8x8_16_16_sse2(uint8_t *src, uint8_t *dst);
 
-static void block_permute_transpose(int16_t *dst, const int16_t *src, const uint8_t *, const uint8_t *, unsigned int last)
+static void block_permute_transpose(int16_t *restrict dst, const int16_t *restrict src, const uint8_t *, const uint8_t *, unsigned int last)
 {
-    int last_non_zero_p1 = last + 1;
 #if 0
+    // SLOWEST
     switch (last) {
     case 63: dst[0x3F] = src[0x3F];
     case 62: dst[0x37] = src[0x3E];
@@ -398,9 +398,10 @@ static void block_permute_transpose(int16_t *dst, const int16_t *src, const uint
     dst[0x2F] = src[0x3D]; dst[0x36] = src[0x36];
     dst[0x3D] = src[0x2F]; dst[0x3E] = src[0x37];
     dst[0x37] = src[0x3E]; dst[0x3F] = src[0x3F];
-#elif 1
+#elif 0
     ff_transpose_8x8_16_16_sse2(src, dst);
 #else
+    int last_non_zero_p1 = last + 1;
     dst[0x00] = src[0x00];
     if(last_non_zero_p1 <= 1) goto end;
     dst[0x08] = src[0x01];
