@@ -503,6 +503,9 @@ typedef struct MpegEncContext {
                            int16_t *block/*align 16*/, int n, int qscale);
     int (*dct_quantize)(struct MpegEncContext *s, int16_t *block/*align 16*/, int n, int qscale, int *overflow);
     void (*denoise_dct)(struct MpegEncContext *s, int16_t *block);
+    void (*block_permute)(int16_t *block, const int16_t *src,
+                          const uint8_t *permutation,
+                          const uint8_t *scantable, unsigned int last);
 
     int mpv_flags;      ///< flags set by private options
     int quantizer_noise_shaping;
