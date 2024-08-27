@@ -58,10 +58,10 @@
         smlal           v2.4s, \g\().4h, \gc
         smlal2          v3.4s, \g\().8h, \gc
         smlal           v2.4s, \r\().4h, \rc
-        smlal2          v3.4s, \r\().8h, \rc        // v2:v3 = r * rc + g * gc + b * bc (32-bit)
+        smlal2          v3.4s, \r\().8h, \rc        // v2:v3 = b * bc + g * gc + r * rc (32-bit)
         shrn            v4.4h, v2.4s, #7
-        shrn2           v4.8h, v3.4s, #7            // v4 = r * rc + g * gc + b * bc (16-bit)
-        addhn           \dst\().8b, v4.8h, \offset\().8h // v5 = (r * rc + g * gc + b * bc) + offset (8-bit)
+        shrn2           v4.8h, v3.4s, #7            // v4 = b * bc + g * gc + r * rc (16-bit)
+        addhn           \dst\().8b, v4.8h, \offset\().8h // v5 = (b * bc + g * gc + r * rc) + offset (8-bit)
 .endm
 
 // void ff_rgb24toyv12_neon(const uint8_t *src, uint8_t *ydst, uint8_t *udst,
