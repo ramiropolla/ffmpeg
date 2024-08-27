@@ -20,8 +20,6 @@
 
 #include "libavutil/aarch64/asm.S"
 
-#define QMAT_SHIFT 21
-
 function ff_quantize_neon, export=1
 // x0  int16_t *temp_block
 // x1  int16_t *block
