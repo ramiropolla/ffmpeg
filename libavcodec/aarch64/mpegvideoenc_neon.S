@@ -44,41 +44,54 @@ function ff_quantize_neon, export=1
         movrel          x6, inv_zigzag_direct
         // w7 = i
         mov             w7, #64
-        // v6 = max
-        movi            v6.16b, #0
-        // v7 = last_non_zero_p1
-        dup             v7.8h, w5
+        // v16 = max
+        movi            v16.16b, #0
+        // v17 = last_non_zero_p1
+        dup             v17.8h, w5
 
 1:
-        ld1             {v0.8h}, [x1], #16          // v0 = block[i]
-        ld1             {v1.8h}, [x3], #16          // v1 = bias[i]
-        ld1             {v2.8h}, [x2], #16          // v2 = qmat[i]
-        ld1             {v3.8b}, [x6], #8           // v3 = inv_zigzag_direct[i]
-        uxtl            v3.8h, v3.8b                // v3 = inv_zigzag_direct[i] (16-bit)
+        ld1             {v0.8h, v1.8h}, [x1], #32   // v0:v1 = block[i]
+        ld1             {v2.8h, v3.8h}, [x3], #32   // v2:v3 = bias[i]
+        ld1             {v4.8h, v5.8h}, [x2], #32   // v4:v5 = qmat[i]
+        ld1             {v7.16b}, [x6], #16         // v7 = inv_zigzag_direct[i]
+        uxtl            v6.8h, v7.8b
+        uxtl2           v7.8h, v7.16b               // v6:v7 = inv_zigzag_direct[i] (16-bit)
+        stp             xzr, xzr, [x1, #-32]
         stp             xzr, xzr, [x1, #-16]        // block[i] = 0
-        sshr            v2.8h, v2.8h, #1            // v2 >>= 1; (since we use sqdmulh, which doubles the result)
-        cmgt            v4.8h, v0.8h, #0            // v4 = block[i] > 0
-        abs             v0.8h, v0.8h                // v0 = abs(block[i])
-        usqadd          v0.8h, v1.8h                // v0 = abs(block[i]) + bias[i]
-        sqdmulh         v0.8h, v0.8h, v2.8h         // v0 = ((abs(block[i]) + bias[i]) * qmat[i]) >> 16
-        orr             v6.16b, v6.16b, v0.16b      // v6 |= v0
-        eor             v0.16b, v0.16b, v4.16b      // v0 = v0 ^ v4
-        sub             v0.8h, v4.8h, v0.8h         // v0 = v4 - v0 (merges positive and negative values)
-        st1             {v0.8h}, [x0], #16          // temp_block[i] = v0
-        cmeq            v4.8h, v0.8h, #0            // v4 = level != 0
-        bic             v5.16b, v3.16b, v4.16b      // v5 = v4 ? v3 : 0
-        umax            v7.8h, v7.8h, v5.8h         // v7 = max(v7, v5)
+        sshr            v4.8h, v4.8h, #1
+        sshr            v5.8h, v5.8h, #1            // v4:v5 >>= 1; (since we use sqdmulh, which doubles the result)
+        cmgt            v20.8h, v0.8h, #0
+        cmgt            v21.8h, v1.8h, #0           // v20:v21 = block[i] > 0
+        abs             v0.8h, v0.8h
+        abs             v1.8h, v1.8h                // v0:v1 = abs(block[i])
+        usqadd          v0.8h, v2.8h
+        usqadd          v1.8h, v3.8h                // v0:v1 = abs(block[i]) + bias[i]
+        sqdmulh         v0.8h, v0.8h, v4.8h
+        sqdmulh         v1.8h, v1.8h, v5.8h         // v0:v1 = ((abs(block[i]) + bias[i]) * qmat[i]) >> 16
+        orr             v16.16b, v16.16b, v0.16b
+        orr             v16.16b, v16.16b, v1.16b    // v16 |= v0:v1
+        eor             v0.16b, v0.16b, v20.16b
+        eor             v1.16b, v1.16b, v21.16b     // v0:v1 ^= v20:v21
+        sub             v0.8h, v20.8h, v0.8h
+        sub             v1.8h, v21.8h, v1.8h        // v0:v1 = v20:v21 - v0:v1 (merges positive and negative values)
+        st1             {v0.8h, v1.8h}, [x0], #32   // temp_block[i] = v0:v1
+        cmeq            v4.8h, v0.8h, #0
+        cmeq            v5.8h, v1.8h, #0            // v4:v5 = level != 0
+        bic             v4.16b, v6.16b, v4.16b
+        bic             v5.16b, v7.16b, v5.16b      // v4:v5 = v4:v5 ? v6:v7 : 0
+        umax            v17.8h, v17.8h, v4.8h
+        umax            v17.8h, v17.8h, v5.8h       // v17 = max(v7, v4:v5)
 
-        subs            w7, w7, #8
+        subs            w7, w7, #16
         b.gt            1b
 
         // *max_qcoeff = max
-        umaxv           h0, v6.8h
+        umaxv           h0, v16.8h
         fmov            w0, s0
         str             w0, [x4]
 
         // return last_non_zero_p1
-        umaxv           h0, v7.8h
+        umaxv           h0, v17.8h
         fmov            w0, s0
 
         ret
