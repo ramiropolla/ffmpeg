@@ -47,17 +47,20 @@ static int dct_quantize_neon(MpegEncContext *s,
                              int qscale, int *overflow)
 {
     LOCAL_ALIGNED_16(int16_t, temp_block, [64]);
-    int level, last_non_zero_p1, q;
+    const uint16_t *bias;
+    const uint16_t *qmat;
+    int last_non_zero_p1;
     int max_qcoeff;
-    const uint16_t *qmat, *bias;
+    int level;
 
-//    s->fdsp.fdct(block);
-    ff_fdct_neon(block);
+    s->fdsp.fdct(block);
 
     if (s->dct_error_sum)
         s->denoise_dct(s, block);
 
     if (s->mb_intra) {
+        int q;
+
         if (n < 4) {
             q = s->y_dc_scale;
             bias = s->q_intra_matrix16[qscale][1];
@@ -84,9 +87,7 @@ static int dct_quantize_neon(MpegEncContext *s,
     }
 
     last_non_zero_p1 = ff_quantize_neon(temp_block, block, qmat, bias, &max_qcoeff, last_non_zero_p1);
-    // TODO restore overflow, it's not needed for now.
-    // *overflow = s->max_qcoeff < max_qcoeff; // overflow might have happened
-    *overflow = 0;
+    *overflow = s->max_qcoeff < max_qcoeff;
 
     if (s->mb_intra)
         block[0] = level;

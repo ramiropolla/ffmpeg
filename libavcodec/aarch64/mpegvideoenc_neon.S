@@ -35,14 +35,11 @@ function ff_quantize_neon, export=1
         dup             v19.8h, w5
         movi            v6.16b, #0
 
-        mov             w4, #64
+        mov             w7, #64
 
         // v6 = max
         // v19 = last_non_zero_p1
-        // v20 = bias
-        // v21 = threshold1
-        // v22 = threshold2
-        // w4 = counter
+        // w7 = counter
         // x6 = ff_inv_zigzag_direct16
 1:
         ld1             {v0.8h}, [x1], #16        // v0 = block[i]
@@ -63,8 +60,12 @@ function ff_quantize_neon, export=1
         bic             v5.16b, v3.16b, v4.16b    // v5 = last_non_zero
         umax            v19.8h, v19.8h, v5.8h     // v19 = ffmax(v19, v5)
 
-        subs            w4, w4, #8
+        subs            w7, w7, #8
         b.gt            1b
+
+        umaxv           h0, v6.8h
+        fmov            w0, s0
+        str             w0, [x4]
 
         umaxv           h0, v19.8h
         fmov            w0, s0
