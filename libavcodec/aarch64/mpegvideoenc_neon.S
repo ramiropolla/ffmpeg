@@ -21,15 +21,15 @@
 #include "libavutil/aarch64/asm.S"
 
 /* not permutated inverse zigzag_direct + 1 for NEON quantizer */
-const inv_zigzag_direct16, align=4
-        .hword          1,  2,  6,  7,  15, 16, 28, 29
-        .hword          3,  5,  8,  14, 17, 27, 30, 43
-        .hword          4,  9,  13, 18, 26, 31, 42, 44
-        .hword          10, 12, 19, 25, 32, 41, 45, 54
-        .hword          11, 20, 24, 33, 40, 46, 53, 55
-        .hword          21, 23, 34, 39, 47, 52, 56, 61
-        .hword          22, 35, 38, 48, 51, 57, 60, 62
-        .hword          36, 37, 49, 50, 58, 59, 63, 64
+const inv_zigzag_direct, align=4
+        .byte           1,  2,  6,  7,  15, 16, 28, 29
+        .byte           3,  5,  8,  14, 17, 27, 30, 43
+        .byte           4,  9,  13, 18, 26, 31, 42, 44
+        .byte           10, 12, 19, 25, 32, 41, 45, 54
+        .byte           11, 20, 24, 33, 40, 46, 53, 55
+        .byte           21, 23, 34, 39, 47, 52, 56, 61
+        .byte           22, 35, 38, 48, 51, 57, 60, 62
+        .byte           36, 37, 49, 50, 58, 59, 63, 64
 endconst
 
 function ff_quantize_neon, export=1
@@ -40,8 +40,8 @@ function ff_quantize_neon, export=1
 // x4  int *max_qcoeff
 // w5  int last_non_zero_p1
 
-        // x6 = inv_zigzag_direct16
-        movrel          x6, inv_zigzag_direct16
+        // x6 = inv_zigzag_direct
+        movrel          x6, inv_zigzag_direct
         // w7 = i
         mov             w7, #64
         // v6 = max
@@ -53,7 +53,8 @@ function ff_quantize_neon, export=1
         ld1             {v0.8h}, [x1], #16          // v0 = block[i]
         ld1             {v1.8h}, [x3], #16          // v1 = bias[i]
         ld1             {v2.8h}, [x2], #16          // v2 = qmat[i]
-        ld1             {v3.8h}, [x6], #16          // v3 = inv_zigzag_direct16[i]
+        ld1             {v3.8b}, [x6], #8           // v3 = inv_zigzag_direct[i]
+        uxtl            v3.8h, v3.8b                // v3 = inv_zigzag_direct[i] (16-bit)
         stp             xzr, xzr, [x1, #-16]        // block[i] = 0
         sshr            v2.8h, v2.8h, #1            // v2 >>= 1; (since we use sqdmulh, which doubles the result)
         cmgt            v4.8h, v0.8h, #0            // v4 = block[i] > 0
