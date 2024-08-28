@@ -43,14 +43,14 @@
 .endm
 
 // subsamples a line horizontally
-.macro subsample src1, src2, dst
+.macro subsample dst, src1, src2
         xtn             \dst\().4h, \src1\().4s
         xtn2            \dst\().8h, \src2\().4s
 .endm
 
 // convert rgb to y, u, or v
 // uses v3, v4, and v5
-.macro rgbconv b, g, r, bc, gc, rc, offset, dst
+.macro rgbconv dst, b, g, r, bc, gc, rc, offset
         smull           v3.4s, \b\().4h, \bc
         smlal           v3.4s, \g\().4h, \gc
         smlal           v3.4s, \r\().4h, \rc
@@ -109,21 +109,21 @@ function ff_rgb24toyv12_neon, export=1
         // first line
 
         rgbload         v16, v17, v18, x0           // v16 = B00, v17 = G00, v18 = R00
-        rgbconv         v16, v17, v18, BY, GY, RY, Y_OFFSET, v6
+        rgbconv         v6, v16, v17, v18, BY, GY, RY, Y_OFFSET
 
         rgbload         v19, v20, v21, x0           // v19 = B01, v20 = G01, v21 = R01
-        rgbconv         v19, v20, v21, BY, GY, RY, Y_OFFSET, v7
+        rgbconv         v7, v19, v20, v21, BY, GY, RY, Y_OFFSET
 
         // merge v7 into v6 and store in x1
         ins             v6.d[1], v7.d[0]
         st1             {v6.16b}, [x1], #16
 
-        subsample       v16, v19, v24
-        subsample       v17, v20, v25
-        subsample       v18, v21, v26
+        subsample       v24, v16, v19
+        subsample       v25, v17, v20
+        subsample       v26, v18, v21
 
-        rgbconv         v24, v25, v26, BU, GU, RU, UV_OFFSET, v6
-        rgbconv         v24, v25, v26, BV, GV, RV, UV_OFFSET, v7
+        rgbconv         v6, v24, v25, v26, BU, GU, RU, UV_OFFSET
+        rgbconv         v7, v24, v25, v26, BV, GV, RV, UV_OFFSET
 
         st1             {v6.8b}, [x2], #8           // store udst[i]
         st1             {v7.8b}, [x3], #8           // store vdst[i]
@@ -131,10 +131,10 @@ function ff_rgb24toyv12_neon, export=1
         // second line
 
         rgbload         v16, v17, v18, x10          // v16 = B10, v17 = G10, v18 = R10
-        rgbconv         v16, v17, v18, BY, GY, RY, Y_OFFSET, v6
+        rgbconv         v6, v16, v17, v18, BY, GY, RY, Y_OFFSET
 
         rgbload         v19, v20, v21, x10          // v19 = B11, v20 = G11, v21 = R11
-        rgbconv         v19, v20, v21, BY, GY, RY, Y_OFFSET, v7
+        rgbconv         v7, v19, v20, v21, BY, GY, RY, Y_OFFSET
 
         // merge v7 into v6 and store in x11
         ins             v6.d[1], v7.d[0]
