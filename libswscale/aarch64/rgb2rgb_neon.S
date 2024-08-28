@@ -52,10 +52,10 @@
 // uses v2, v3, and v4
 .macro rgbconv b, g, r, bc, gc, rc, offset, dst
         smull           v2.4s, \b\().4h, \bc
-        smull2          v3.4s, \b\().8h, \bc
         smlal           v2.4s, \g\().4h, \gc
-        smlal2          v3.4s, \g\().8h, \gc
         smlal           v2.4s, \r\().4h, \rc
+        smull2          v3.4s, \b\().8h, \bc
+        smlal2          v3.4s, \g\().8h, \gc
         smlal2          v3.4s, \r\().8h, \rc        // v2:v3 = b * bc + g * gc + r * rc (32-bit)
         shrn            v4.4h, v2.4s, #7
         shrn2           v4.8h, v3.4s, #7            // v4 = b * bc + g * gc + r * rc (16-bit)
