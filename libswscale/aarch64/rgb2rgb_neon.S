@@ -44,7 +44,7 @@
         smlal2          v4.4s, \g\().8h, \gc
         smlal2          v4.4s, \r\().8h, \rc        // v3:v4 = b * bc + g * gc + r * rc (32-bit)
         shrn            \dst\().4h, v3.4s, #7
-        shrn2           \dst\().8h, v4.4s, #7       // v5 = b * bc + g * gc + r * rc (16-bit)
+        shrn2           \dst\().8h, v4.4s, #7       // dst = b * bc + g * gc + r * rc (16-bit)
 .endm
 
 // void ff_rgb24toyv12_neon(const uint8_t *src, uint8_t *ydst, uint8_t *udst,
