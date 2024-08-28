@@ -442,15 +442,15 @@ function ff_hscale8to19_4_neon, export=1
 
         uxtl            v0.8h, v0.8b
         uxtl            v1.8h, v1.8b
-        smull           v5.4s, v0.4h, v28.4h
-        smull2          v6.4s, v0.8h, v28.8h
         uxtl            v2.8h, v2.8b
-        smlal           v5.4s, v1.4h, v29.4h
-        smlal2          v6.4s, v1.8h, v29.8h
         uxtl            v3.8h, v3.8b
+        smull           v5.4s, v0.4h, v28.4h
+        smlal           v5.4s, v1.4h, v29.4h
         smlal           v5.4s, v2.4h, v30.4h
-        smlal2          v6.4s, v2.8h, v30.8h
         smlal           v5.4s, v3.4h, v31.4h
+        smull2          v6.4s, v0.8h, v28.8h
+        smlal2          v6.4s, v1.8h, v29.8h
+        smlal2          v6.4s, v2.8h, v30.8h
         smlal2          v6.4s, v3.8h, v31.8h
 
         sshr            v5.4s, v5.4s, #3
@@ -511,8 +511,8 @@ function ff_hscale8to19_X8_neon, export=1
 2:      ld1             {v4.8b}, [x17], #8          // srcp[filterPos[0] + {0..7}]
         ld1             {v5.8h}, [x16], #16         // load 8x16-bit filter values, part 1
         uxtl            v4.8h, v4.8b                // unpack part 1 to 16-bit
-        smlal           v0.4s, v4.4h, v5.4h         // v0 accumulates srcp[filterPos[0] + {0..3}] * filter[{0..3}]
         ld1             {v6.8b}, [x8], #8           // srcp[filterPos[1] + {0..7}]
+        smlal           v0.4s, v4.4h, v5.4h         // v0 accumulates srcp[filterPos[0] + {0..3}] * filter[{0..3}]
         smlal2          v0.4s, v4.8h, v5.8h         // v0 accumulates srcp[filterPos[0] + {4..7}] * filter[{4..7}]
         ld1             {v7.8h}, [x12], #16         // load 8x16-bit at filter+filterSize
         ld1             {v16.8b}, [x0], #8          // srcp[filterPos[2] + {0..7}]
@@ -521,13 +521,13 @@ function ff_hscale8to19_X8_neon, export=1
         uxtl            v16.8h, v16.8b              // unpack part 3 to 16-bit
         smlal           v1.4s, v6.4h, v7.4h         // v1 accumulates srcp[filterPos[1] + {0..3}] * filter[{0..3}]
         ld1             {v18.8b}, [x11], #8         // srcp[filterPos[3] + {0..7}]
-        smlal           v2.4s, v16.4h, v17.4h       // v2 accumulates srcp[filterPos[2] + {0..3}] * filter[{0..3}]
         ld1             {v19.8h}, [x4], #16         // load 8x16-bit at filter+3*filterSize
+        smlal           v2.4s, v16.4h, v17.4h       // v2 accumulates srcp[filterPos[2] + {0..3}] * filter[{0..3}]
         smlal2          v2.4s, v16.8h, v17.8h       // v2 accumulates srcp[filterPos[2] + {4..7}] * filter[{4..7}]
         uxtl            v18.8h, v18.8b              // unpack part 4 to 16-bit
         smlal2          v1.4s, v6.8h, v7.8h         // v1 accumulates srcp[filterPos[1] + {4..7}] * filter[{4..7}]
-        smlal           v3.4s, v18.4h, v19.4h       // v3 accumulates srcp[filterPos[3] + {0..3}] * filter[{0..3}]
         subs            w15, w15, #8                // j -= 8: processed 8/filterSize
+        smlal           v3.4s, v18.4h, v19.4h       // v3 accumulates srcp[filterPos[3] + {0..3}] * filter[{0..3}]
         smlal2          v3.4s, v18.8h, v19.8h       // v3 accumulates srcp[filterPos[3] + {4..7}] * filter[{4..7}]
         b.gt            2b                          // inner loop if filterSize not consumed completely
         addp            v0.4s, v0.4s, v1.4s         // part01 horizontal pair adding
@@ -582,23 +582,23 @@ function ff_hscale8to19_X4_neon, export=1
         ldr             q31, [x12, x16]             // load filter values for idx 0
         uxtl            v4.8h, v4.8b                // extend type to match the filter' size
         ldr             d5, [x9], #8                // load src values for idx 1
-        smlal           v16.4s, v4.4h, v31.4h       // multiplication of lower half for idx 0
         uxtl            v5.8h, v5.8b                // extend type to match the filter' size
         ldr             q30, [x13, x16]             // load filter values for idx 1
+        smlal           v16.4s, v4.4h, v31.4h       // multiplication of lower half for idx 0
         smlal2          v16.4s, v4.8h, v31.8h       // multiplication of upper half for idx 0
         ldr             d6, [x10], #8               // load src values for idx 2
         ldr             q29, [x14, x16]             // load filter values for idx 2
-        smlal           v17.4s, v5.4h, v30.4h       // multiplication of lower half for idx 1
         ldr             d7, [x11], #8               // load src values for idx 3
+        smlal           v17.4s, v5.4h, v30.4h       // multiplication of lower half for idx 1
         smlal2          v17.4s, v5.8h, v30.8h       // multiplication of upper half for idx 1
         uxtl            v6.8h, v6.8b                // extend tpye to matchi the filter's size
         ldr             q28, [x15, x16]             // load filter values for idx 3
-        smlal           v18.4s, v6.4h, v29.4h       // multiplication of lower half for idx 2
         uxtl            v7.8h, v7.8b
+        smlal           v18.4s, v6.4h, v29.4h       // multiplication of lower half for idx 2
         smlal2          v18.4s, v6.8h, v29.8h       // multiplication of upper half for idx 2
         sub             w0, w0, #8
-        smlal           v19.4s, v7.4h, v28.4h       // multiplication of lower half for idx 3
         cmp             w0, #8
+        smlal           v19.4s, v7.4h, v28.4h       // multiplication of lower half for idx 3
         smlal2          v19.4s, v7.8h, v28.8h       // multiplication of upper half for idx 3
         add             x16, x16, #16                // advance filter values indexing
 

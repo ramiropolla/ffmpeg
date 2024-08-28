@@ -315,18 +315,18 @@ endconst
 
 .macro iadst4_12 c0, c1, c2, c3
         smull           v16.2d,    \c0\().2s, v1.s[0]
-        smull2          v17.2d,    \c0\().4s, v1.s[0]
         smlal           v16.2d,    \c2\().2s, v1.s[1]
-        smlal2          v17.2d,    \c2\().4s, v1.s[1]
         smlal           v16.2d,    \c3\().2s, v1.s[2]
+        smull2          v17.2d,    \c0\().4s, v1.s[0]
+        smlal2          v17.2d,    \c2\().4s, v1.s[1]
         smlal2          v17.2d,    \c3\().4s, v1.s[2]
         smull           v18.2d,    \c0\().2s, v1.s[2]
-        smull2          v19.2d,    \c0\().4s, v1.s[2]
         smlsl           v18.2d,    \c2\().2s, v1.s[0]
-        smlsl2          v19.2d,    \c2\().4s, v1.s[0]
-        sub             \c0\().4s, \c0\().4s, \c2\().4s
         smlsl           v18.2d,    \c3\().2s, v1.s[1]
+        smull2          v19.2d,    \c0\().4s, v1.s[2]
+        smlsl2          v19.2d,    \c2\().4s, v1.s[0]
         smlsl2          v19.2d,    \c3\().4s, v1.s[1]
+        sub             \c0\().4s, \c0\().4s, \c2\().4s
         add             \c0\().4s, \c0\().4s, \c3\().4s
         smull           v22.2d,    \c1\().2s, v1.s[3]
         smull2          v23.2d,    \c1\().4s, v1.s[3]

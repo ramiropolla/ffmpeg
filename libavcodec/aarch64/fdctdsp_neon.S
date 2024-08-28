@@ -187,8 +187,8 @@ function ff_fdct_neon, export=1
         add             v6.8h, v28.8h, v30.8h        /* z3 = tmp4 + tmp6; */
         add             v7.8h, v29.8h, v31.8h        /* z4 = tmp5 + tmp7; */
         smull           v4.4s, v6.4h, XFIX_P_1_175   /* z5 lo = z3 lo * XFIX_P_1_175 */
-        smull2          v5.4s, v6.8h, XFIX_P_1_175
         smlal           v4.4s, v7.4h, XFIX_P_1_175   /* z5 = MULTIPLY(z3 + z4, FIX_1_175875602); */
+        smull2          v5.4s, v6.8h, XFIX_P_1_175
         smlal2          v5.4s, v7.8h, XFIX_P_1_175
 
         smull2          v24.4s, v28.8h, XFIX_P_0_298
@@ -290,8 +290,8 @@ function ff_fdct_neon, export=1
         add             v7.8h, v29.8h, v31.8h   /* z4 = tmp5 + tmp7; */
 
         smull           v4.4s, v6.4h, XFIX_P_1_175   /* z5 lo = z3 lo * XFIX_P_1_175 */
-        smull2          v5.4s, v6.8h, XFIX_P_1_175
         smlal           v4.4s, v7.4h, XFIX_P_1_175   /* z5 = MULTIPLY(z3 + z4, FIX_1_175875602); */
+        smull2          v5.4s, v6.8h, XFIX_P_1_175
         smlal2          v5.4s, v7.8h, XFIX_P_1_175
 
         smull2          v24.4s, v28.8h, XFIX_P_0_298

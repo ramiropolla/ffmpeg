@@ -60,8 +60,8 @@ function ff_yuv2planeX_8_neon, export=1
         ld1             {v5.8h}, [x11]                  // read 8x16-bit @ src[j  ][i + {0..7}]: A,B,C,D,E,F,G,H
         ld1             {v6.8h}, [x12]                  // read 8x16-bit @ src[j+1][i + {0..7}]: I,J,K,L,M,N,O,P
         smlal           v3.4s, v5.4h, v7.h[0]           // val0 += {A,B,C,D} * X
-        smlal2          v4.4s, v5.8h, v7.h[0]           // val1 += {E,F,G,H} * X
         smlal           v3.4s, v6.4h, v7.h[1]           // val0 += {I,J,K,L} * Y
+        smlal2          v4.4s, v5.8h, v7.h[0]           // val1 += {E,F,G,H} * X
         smlal2          v4.4s, v6.8h, v7.h[1]           // val1 += {M,N,O,P} * Y
         subs            w8, w8, #2                      // tmpfilterSize -= 2
         b.gt            3b                              // loop until filterSize consumed
@@ -122,20 +122,20 @@ function ff_yuv2planeX_8_neon, export=1
         ld1             {v31.8h}, [x13], #16            // load 8x16-bit values for src[j + 7][i + {0..7}]
 
         smlal           v3.4s, v24.4h, v6.h[0]          // val0 += src[0][i + {0..3}] * filter[0]
-        smlal2          v4.4s, v24.8h, v6.h[0]          // val1 += src[0][i + {4..7}] * filter[0]
         smlal           v3.4s, v25.4h, v6.h[1]          // val0 += src[1][i + {0..3}] * filter[1]
-        smlal2          v4.4s, v25.8h, v6.h[1]          // val1 += src[1][i + {4..7}] * filter[1]
         smlal           v3.4s, v26.4h, v6.h[2]          // val0 += src[2][i + {0..3}] * filter[2]
-        smlal2          v4.4s, v26.8h, v6.h[2]          // val1 += src[2][i + {4..7}] * filter[2]
         smlal           v3.4s, v27.4h, v6.h[3]          // val0 += src[3][i + {0..3}] * filter[3]
-        smlal2          v4.4s, v27.8h, v6.h[3]          // val1 += src[3][i + {4..7}] * filter[3]
         smlal           v3.4s, v28.4h, v6.h[4]          // val0 += src[4][i + {0..3}] * filter[4]
-        smlal2          v4.4s, v28.8h, v6.h[4]          // val1 += src[4][i + {4..7}] * filter[4]
         smlal           v3.4s, v29.4h, v6.h[5]          // val0 += src[5][i + {0..3}] * filter[5]
-        smlal2          v4.4s, v29.8h, v6.h[5]          // val1 += src[5][i + {4..7}] * filter[5]
         smlal           v3.4s, v30.4h, v6.h[6]          // val0 += src[6][i + {0..3}] * filter[6]
-        smlal2          v4.4s, v30.8h, v6.h[6]          // val1 += src[6][i + {4..7}] * filter[6]
         smlal           v3.4s, v31.4h, v6.h[7]          // val0 += src[7][i + {0..3}] * filter[7]
+        smlal2          v4.4s, v24.8h, v6.h[0]          // val1 += src[0][i + {4..7}] * filter[0]
+        smlal2          v4.4s, v25.8h, v6.h[1]          // val1 += src[1][i + {4..7}] * filter[1]
+        smlal2          v4.4s, v26.8h, v6.h[2]          // val1 += src[2][i + {4..7}] * filter[2]
+        smlal2          v4.4s, v27.8h, v6.h[3]          // val1 += src[3][i + {4..7}] * filter[3]
+        smlal2          v4.4s, v28.8h, v6.h[4]          // val1 += src[4][i + {4..7}] * filter[4]
+        smlal2          v4.4s, v29.8h, v6.h[5]          // val1 += src[5][i + {4..7}] * filter[5]
+        smlal2          v4.4s, v30.8h, v6.h[6]          // val1 += src[6][i + {4..7}] * filter[6]
         smlal2          v4.4s, v31.8h, v6.h[7]          // val1 += src[7][i + {4..7}] * filter[7]
 
         sqshrun         v3.4h, v3.4s, #16               // clip16(val0>>16)
@@ -162,12 +162,12 @@ function ff_yuv2planeX_8_neon, export=1
         ld1             {v27.8h}, [x9], #16             // load 8x16-bit values for src[j + 3][i + {0..7}]
 
         smlal           v3.4s, v24.4h, v6.h[0]          // val0 += src[0][i + {0..3}] * filter[0]
-        smlal2          v4.4s, v24.8h, v6.h[0]          // val1 += src[0][i + {4..7}] * filter[0]
         smlal           v3.4s, v25.4h, v6.h[1]          // val0 += src[1][i + {0..3}] * filter[1]
-        smlal2          v4.4s, v25.8h, v6.h[1]          // val1 += src[1][i + {4..7}] * filter[1]
         smlal           v3.4s, v26.4h, v6.h[2]          // val0 += src[2][i + {0..3}] * filter[2]
-        smlal2          v4.4s, v26.8h, v6.h[2]          // val1 += src[2][i + {4..7}] * filter[2]
         smlal           v3.4s, v27.4h, v6.h[3]          // val0 += src[3][i + {0..3}] * filter[3]
+        smlal2          v4.4s, v24.8h, v6.h[0]          // val1 += src[0][i + {4..7}] * filter[0]
+        smlal2          v4.4s, v25.8h, v6.h[1]          // val1 += src[1][i + {4..7}] * filter[1]
+        smlal2          v4.4s, v26.8h, v6.h[2]          // val1 += src[2][i + {4..7}] * filter[2]
         smlal2          v4.4s, v27.8h, v6.h[3]          // val1 += src[3][i + {4..7}] * filter[3]
 
         sqshrun         v3.4h, v3.4s, #16               // clip16(val0>>16)
@@ -191,8 +191,8 @@ function ff_yuv2planeX_8_neon, export=1
         ld1             {v25.8h}, [x6], #16             // load 8x16-bit values for src[j + 1][i + {0..7}]
 
         smlal           v3.4s, v24.4h, v6.h[0]          // val0 += src[0][i + {0..3}] * filter[0]
-        smlal2          v4.4s, v24.8h, v6.h[0]          // val1 += src[0][i + {4..7}] * filter[0]
         smlal           v3.4s, v25.4h, v6.h[1]          // val0 += src[1][i + {0..3}] * filter[1]
+        smlal2          v4.4s, v24.8h, v6.h[0]          // val1 += src[0][i + {4..7}] * filter[0]
         smlal2          v4.4s, v25.8h, v6.h[1]          // val1 += src[1][i + {4..7}] * filter[1]
 
         sqshrun         v3.4h, v3.4s, #16               // clip16(val0>>16)
