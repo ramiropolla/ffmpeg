@@ -34,18 +34,17 @@
 #define Y_OFFSET  v22
 #define UV_OFFSET v23
 
-// convert rgb to y, u, or v
-// uses v3, v4, and v5
-.macro rgbconv dst, b, g, r, bc, gc, rc, offset
+// convert rgb to 16-bit y, u, or v
+// uses v3 and v4
+.macro rgbconv16 dst, b, g, r, bc, gc, rc
         smull           v3.4s, \b\().4h, \bc
         smlal           v3.4s, \g\().4h, \gc
         smlal           v3.4s, \r\().4h, \rc
         smull2          v4.4s, \b\().8h, \bc
         smlal2          v4.4s, \g\().8h, \gc
         smlal2          v4.4s, \r\().8h, \rc        // v3:v4 = b * bc + g * gc + r * rc (32-bit)
-        shrn            v5.4h, v3.4s, #7
-        shrn2           v5.8h, v4.4s, #7            // v5 = b * bc + g * gc + r * rc (16-bit)
-        addhn           \dst\().8b, v5.8h, \offset\().8h // dst = (b * bc + g * gc + r * rc) + offset (8-bit)
+        shrn            \dst\().4h, v3.4s, #7
+        shrn2           \dst\().8h, v4.4s, #7       // v5 = b * bc + g * gc + r * rc (16-bit)
 .endm
 
 // void ff_rgb24toyv12_neon(const uint8_t *src, uint8_t *ydst, uint8_t *udst,
@@ -107,10 +106,10 @@ function ff_rgb24toyv12_neon, export=1
         uxtl            v20.8h, v20.8b              // v20 = G01
         uxtl            v21.8h, v21.8b              // v21 = R01
 
-        rgbconv         v6, v16, v17, v18, BY, GY, RY, Y_OFFSET
-        rgbconv         v7, v19, v20, v21, BY, GY, RY, Y_OFFSET
-
-        st1             {v6.8b, v7.8b}, [x1], #16   // store ydst1[i]
+        rgbconv16       v6, v16, v17, v18, BY, GY, RY
+        rgbconv16       v7, v19, v20, v21, BY, GY, RY
+        addhn           v27.8b, v6.8h, Y_OFFSET.8h
+        addhn           v28.8b, v7.8h, Y_OFFSET.8h
 
         // subsample chroma lines
         xtn             v24.4h, v16.4s
@@ -120,11 +119,10 @@ function ff_rgb24toyv12_neon, export=1
         xtn             v26.4h, v18.4s
         xtn2            v26.8h, v21.4s
 
-        rgbconv         v6, v24, v25, v26, BU, GU, RU, UV_OFFSET
-        rgbconv         v7, v24, v25, v26, BV, GV, RV, UV_OFFSET
-
-        st1             {v6.8b}, [x2], #8           // store udst[i]
-        st1             {v7.8b}, [x3], #8           // store vdst[i]
+        rgbconv16       v6, v24, v25, v26, BU, GU, RU
+        rgbconv16       v7, v24, v25, v26, BV, GV, RV
+        addhn           v29.8b, v6.8h, UV_OFFSET.8h
+        addhn           v30.8b, v7.8h, UV_OFFSET.8h
 
         // second line
         ld3             {v16.8b, v17.8b, v18.8b}, [x10], #24
@@ -136,11 +134,17 @@ function ff_rgb24toyv12_neon, export=1
         uxtl            v20.8h, v20.8b              // v20 = G11
         uxtl            v21.8h, v21.8b              // v21 = R11
 
-        rgbconv         v6, v16, v17, v18, BY, GY, RY, Y_OFFSET
-        rgbconv         v7, v19, v20, v21, BY, GY, RY, Y_OFFSET
+        rgbconv16       v6, v16, v17, v18, BY, GY, RY
+        rgbconv16       v7, v19, v20, v21, BY, GY, RY
+        addhn           v5.8b, v6.8h, Y_OFFSET.8h
+        addhn           v6.8b, v7.8h, Y_OFFSET.8h
 
         subs            w15, w15, #16
-        st1             {v6.8b, v7.8b}, [x11], #16  // store ydst2
+
+        st1             {v27.8b, v28.8b}, [x1], #16 // store ydst1[i]
+        st1             {v29.8b}, [x2], #8          // store udst[i]
+        st1             {v30.8b}, [x3], #8          // store vdst[i]
+        st1             {v5.8b, v6.8b}, [x11], #16  // store ydst2[i]
 
         b.gt            2b
 
