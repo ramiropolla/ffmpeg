@@ -43,11 +43,9 @@
 .endm
 
 // subsamples a line horizontally
-// uses v2
 .macro subsample src1, src2, dst
         xtn             \dst\().4h, \src1\().4s
-        xtn             v2.4h, \src2\().4s
-        ins             \dst\().d[1], v2.d[0]
+        xtn2            \dst\().8h, \src2\().4s
 .endm
 
 // convert rgb to y, u, or v
