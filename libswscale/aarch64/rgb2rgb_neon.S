@@ -79,21 +79,25 @@ function ff_rgb24toyv12_neon, export=1
 // x9  int srcStride
 // x15 int32_t *rgb2yuv
 
+        // extend width and stride parameters
+        uxtw            x4, w4
+        sxtw            x6, w6
+        sxtw            x7, w7
+
         // src1 = x0
         // src2 = x10
         add             x10, x0,  x9                // x10 = src + srcStride
         lsl             x9,  x9,  #1                // srcStride *= 2
-        add             w11, w4,  w4, lsl #1        // w11 = 3 * width
-        sub             x9,  x9,  w11, sxtw         // srcPadding = (2 * srcStride) - (3 * width)
+        add             x11, x4,  x4, lsl #1        // w11 = 3 * width
+        sub             x9,  x9,  x11               // srcPadding = (2 * srcStride) - (3 * width)
 
         // ydst1 = x1
         // ydst2 = x11
-        sxtw            x6, w6
         add             x11, x1,  x6                // x11 = ydst + lumStride
         lsl             x6,  x6,  #1                // lumStride *= 2
-        sub             x6,  x6,  w4, sxtw          // lumPadding = (2 * lumStride) - width
+        sub             x6,  x6,  x4                // lumPadding = (2 * lumStride) - width
 
-        sub             w7,  w7,  w4, lsr #1        // chromPadding = chromStride - (width / 2)
+        sub             x7,  x7,  x4, lsr #1        // chromPadding = chromStride - (width / 2)
 
         // load rgb2yuv coefficients into v0, v1, and v2
         add             x15, x15, #RGB2YUV_COEFFS
@@ -145,9 +149,9 @@ function ff_rgb24toyv12_neon, export=1
         add             x10, x10, x9                // src2  += srcPadding
         add             x1,  x1,  x6                // ydst1 += lumPadding
         add             x11, x11, x6                // ydst2 += lumPadding
-        add             x2,  x2,  w7, sxtw          // udst  += chromPadding
-        add             x3,  x3,  w7, sxtw          // vdst  += chromPadding
-        subs            w5, w5, #2
+        add             x2,  x2,  x7                // udst  += chromPadding
+        add             x3,  x3,  x7                // vdst  += chromPadding
+        subs            w5,  w5, #2
         b.gt            1b
 
         ret
