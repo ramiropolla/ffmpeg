@@ -74,17 +74,17 @@ function ff_rgb24toyv12_neon, export=1
 // w5  int height
 // w6  int lumStride
 // w7  int chromStride
-        ldr             w9,  [sp]
+        ldrsw           x9,  [sp]
         ldr             x15, [sp, #8]
-// w9  int srcStride
+// x9  int srcStride
 // x15 int32_t *rgb2yuv
 
         // src1 = x0
         // src2 = x10
-        add             x10, x0,  w9, sxtw          // x10 = src + srcStride
-        lsl             w9,  w9,  #1                // srcStride *= 2
+        add             x10, x0,  x9                // x10 = src + srcStride
+        lsl             x9,  x9,  #1                // srcStride *= 2
         add             w11, w4,  w4, lsl #1        // w11 = 3 * width
-        sub             w9,  w9,  w11               // srcPadding = (2 * srcStride) - (3 * width)
+        sub             x9,  x9,  w11, sxtw         // srcPadding = (2 * srcStride) - (3 * width)
 
         // ydst1 = x1
         // ydst2 = x11
@@ -140,8 +140,8 @@ function ff_rgb24toyv12_neon, export=1
         b.gt            2b
 
         // row += 2
-        add             x0,  x0,  w9, sxtw          // src1  += srcPadding
-        add             x10, x10, w9, sxtw          // src2  += srcPadding
+        add             x0,  x0,  x9                // src1  += srcPadding
+        add             x10, x10, x9                // src2  += srcPadding
         add             x1,  x1,  w6, sxtw          // ydst1 += lumPadding
         add             x11, x11, w6, sxtw          // ydst2 += lumPadding
         add             x2,  x2,  w7, sxtw          // udst  += chromPadding
