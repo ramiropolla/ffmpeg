@@ -44,8 +44,8 @@ function ff_nv24_to_yuv420p_chroma_neon, export=1
         ld2             {v2.16b, v3.16b}, [x9], #32 // v2 = U2, v3 = V2
 
         uaddlp          v0.8h, v0.16b               // pairwise add U1 into v0
-        uaddlp          v1.8h, v1.16b               // pairwise add V1 into v1
         uadalp          v0.8h, v2.16b               // pairwise add U2, accumulate into v0
+        uaddlp          v1.8h, v1.16b               // pairwise add V1 into v1
         uadalp          v1.8h, v3.16b               // pairwise add V2, accumulate into v1
 
         shrn            v0.8b, v0.8h, #2            // divide by 4
