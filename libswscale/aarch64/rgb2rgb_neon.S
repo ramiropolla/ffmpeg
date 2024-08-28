@@ -25,12 +25,12 @@
 #define BY v0.h[0]
 #define GY v0.h[1]
 #define RY v0.h[2]
-#define BU v0.h[4]
-#define GU v0.h[5]
-#define RU v0.h[6]
-#define BV v1.h[0]
-#define GV v1.h[1]
-#define RV v1.h[2]
+#define BU v1.h[0]
+#define GU v1.h[1]
+#define RU v1.h[2]
+#define BV v2.h[0]
+#define GV v2.h[1]
+#define RV v2.h[2]
 #define YOFF  v22
 #define UVOFF v23
 
@@ -49,17 +49,17 @@
 .endm
 
 // convert rgb to y, u, or v
-// uses v2, v3, and v4
+// uses v3, v4, and v5
 .macro rgbconv b, g, r, bc, gc, rc, offset, dst
-        smull           v2.4s, \b\().4h, \bc
-        smlal           v2.4s, \g\().4h, \gc
-        smlal           v2.4s, \r\().4h, \rc
-        smull2          v3.4s, \b\().8h, \bc
-        smlal2          v3.4s, \g\().8h, \gc
-        smlal2          v3.4s, \r\().8h, \rc        // v2:v3 = b * bc + g * gc + r * rc (32-bit)
-        shrn            v4.4h, v2.4s, #7
-        shrn2           v4.8h, v3.4s, #7            // v4 = b * bc + g * gc + r * rc (16-bit)
-        addhn           \dst\().8b, v4.8h, \offset\().8h // v5 = (b * bc + g * gc + r * rc) + offset (8-bit)
+        smull           v3.4s, \b\().4h, \bc
+        smlal           v3.4s, \g\().4h, \gc
+        smlal           v3.4s, \r\().4h, \rc
+        smull2          v4.4s, \b\().8h, \bc
+        smlal2          v4.4s, \g\().8h, \gc
+        smlal2          v4.4s, \r\().8h, \rc        // v3:v4 = b * bc + g * gc + r * rc (32-bit)
+        shrn            v5.4h, v3.4s, #7
+        shrn2           v5.8h, v4.4s, #7            // v5 = b * bc + g * gc + r * rc (16-bit)
+        addhn           \dst\().8b, v5.8h, \offset\().8h // dst = (b * bc + g * gc + r * rc) + offset (8-bit)
 .endm
 
 // void ff_rgb24toyv12_neon(const uint8_t *src, uint8_t *ydst, uint8_t *udst,
@@ -94,11 +94,9 @@ function ff_rgb24toyv12_neon, export=1
 
         sub             w7,  w7,  w4, lsr #1        // chromPadding = chromStride - (width / 2)
 
-        // load rgb2yuv coefficients into v0 and v1
+        // load rgb2yuv coefficients into v0, v1, and v2
         add             x15, x15, #RGB2YUV_COEFFS
         ld1             {v0.8h-v2.8h}, [x15]        // load 24 values
-        ins             v0.d[1], v1.d[0]            // merge v0 and v1 coefficients into v0
-        mov             v1.16b, v2.16b              // move v2 coefficients down to v1
 
         movi            v22.8h, #0x10
         movi            v23.8h, #0x80
@@ -112,36 +110,36 @@ function ff_rgb24toyv12_neon, export=1
         // first line
 
         rgbload         v16, v17, v18, x0           // v16 = B00, v17 = G00, v18 = R00
-        rgbconv         v16, v17, v18, BY, GY, RY, YOFF, v5
+        rgbconv         v16, v17, v18, BY, GY, RY, YOFF, v6
 
         rgbload         v19, v20, v21, x0           // v19 = B01, v20 = G01, v21 = R01
-        rgbconv         v19, v20, v21, BY, GY, RY, YOFF, v6
+        rgbconv         v19, v20, v21, BY, GY, RY, YOFF, v7
 
-        // merge v6 into v5 and store in x1
-        ins             v5.d[1], v6.d[0]
-        st1             {v5.16b}, [x1], #16
+        // merge v7 into v6 and store in x1
+        ins             v6.d[1], v7.d[0]
+        st1             {v6.16b}, [x1], #16
 
         subsample       v16, v19, v24
         subsample       v17, v20, v25
         subsample       v18, v21, v26
 
-        rgbconv         v24, v25, v26, BU, GU, RU, UVOFF, v5
-        rgbconv         v24, v25, v26, BV, GV, RV, UVOFF, v6
+        rgbconv         v24, v25, v26, BU, GU, RU, UVOFF, v6
+        rgbconv         v24, v25, v26, BV, GV, RV, UVOFF, v7
 
-        st1             {v5.8b}, [x2], #8           // store udst[i]
-        st1             {v6.8b}, [x3], #8           // store vdst[i]
+        st1             {v6.8b}, [x2], #8           // store udst[i]
+        st1             {v7.8b}, [x3], #8           // store vdst[i]
 
         // second line
 
         rgbload         v16, v17, v18, x10          // v16 = B10, v17 = G10, v18 = R10
-        rgbconv         v16, v17, v18, BY, GY, RY, YOFF, v5
+        rgbconv         v16, v17, v18, BY, GY, RY, YOFF, v6
 
         rgbload         v19, v20, v21, x10          // v19 = B11, v20 = G11, v21 = R11
-        rgbconv         v19, v20, v21, BY, GY, RY, YOFF, v6
+        rgbconv         v19, v20, v21, BY, GY, RY, YOFF, v7
 
-        // merge v6 into v5 and store in x11
-        ins             v5.d[1], v6.d[0]
-        st1             {v5.16b}, [x11], #16
+        // merge v7 into v6 and store in x11
+        ins             v6.d[1], v7.d[0]
+        st1             {v6.16b}, [x11], #16
 
         subs            w15, w15, #16
         b.gt            2b
