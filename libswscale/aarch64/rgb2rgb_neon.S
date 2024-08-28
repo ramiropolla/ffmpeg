@@ -88,9 +88,10 @@ function ff_rgb24toyv12_neon, export=1
 
         // ydst1 = x1
         // ydst2 = x11
-        add             x11, x1,  w6, sxtw          // x11 = ydst + lumStride
-        lsl             w6,  w6,  #1                // lumStride *= 2
-        sub             w6,  w6,  w4                // lumPadding = (2 * lumStride) - width
+        sxtw            x6, w6
+        add             x11, x1,  x6                // x11 = ydst + lumStride
+        lsl             x6,  x6,  #1                // lumStride *= 2
+        sub             x6,  x6,  w4, sxtw          // lumPadding = (2 * lumStride) - width
 
         sub             w7,  w7,  w4, lsr #1        // chromPadding = chromStride - (width / 2)
 
@@ -142,8 +143,8 @@ function ff_rgb24toyv12_neon, export=1
         // row += 2
         add             x0,  x0,  x9                // src1  += srcPadding
         add             x10, x10, x9                // src2  += srcPadding
-        add             x1,  x1,  w6, sxtw          // ydst1 += lumPadding
-        add             x11, x11, w6, sxtw          // ydst2 += lumPadding
+        add             x1,  x1,  x6                // ydst1 += lumPadding
+        add             x11, x11, x6                // ydst2 += lumPadding
         add             x2,  x2,  w7, sxtw          // udst  += chromPadding
         add             x3,  x3,  w7, sxtw          // vdst  += chromPadding
         subs            w5, w5, #2
