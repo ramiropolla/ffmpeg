@@ -114,9 +114,7 @@ function ff_rgb24toyv12_neon, export=1
         rgbload         v19, v20, v21, x0           // v19 = B01, v20 = G01, v21 = R01
         rgbconv         v7, v19, v20, v21, BY, GY, RY, Y_OFFSET
 
-        // merge v7 into v6 and store in x1
-        ins             v6.d[1], v7.d[0]
-        st1             {v6.16b}, [x1], #16
+        st1             {v6.8b, v7.8b}, [x1], #16
 
         subsample       v24, v16, v19
         subsample       v25, v17, v20
@@ -136,9 +134,7 @@ function ff_rgb24toyv12_neon, export=1
         rgbload         v19, v20, v21, x10          // v19 = B11, v20 = G11, v21 = R11
         rgbconv         v7, v19, v20, v21, BY, GY, RY, Y_OFFSET
 
-        // merge v7 into v6 and store in x11
-        ins             v6.d[1], v7.d[0]
-        st1             {v6.16b}, [x11], #16
+        st1             {v6.8b, v7.8b}, [x11], #16
 
         subs            w15, w15, #16
         b.gt            2b
