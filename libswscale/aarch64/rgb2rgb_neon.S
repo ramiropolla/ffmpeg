@@ -34,20 +34,6 @@
 #define Y_OFFSET  v22
 #define UV_OFFSET v23
 
-// loads 8 pixels, split into separate vectors, and widen to 16-bit
-.macro rgbload b, g, r, src
-        ld3             {\b\().8b, \g\().8b, \r\().8b}, [\src], #24
-        uxtl            \b\().8h, \b\().8b
-        uxtl            \g\().8h, \g\().8b
-        uxtl            \r\().8h, \r\().8b
-.endm
-
-// subsamples a line horizontally
-.macro subsample dst, src1, src2
-        xtn             \dst\().4h, \src1\().4s
-        xtn2            \dst\().8h, \src2\().4s
-.endm
-
 // convert rgb to y, u, or v
 // uses v3, v4, and v5
 .macro rgbconv dst, b, g, r, bc, gc, rc, offset
@@ -112,18 +98,27 @@ function ff_rgb24toyv12_neon, export=1
 
 2:
         // first line
+        ld3             {v16.8b, v17.8b, v18.8b}, [x0], #24
+        ld3             {v19.8b, v20.8b, v21.8b}, [x0], #24
+        uxtl            v16.8h, v16.8b              // v16 = B00
+        uxtl            v17.8h, v17.8b              // v17 = G00
+        uxtl            v18.8h, v18.8b              // v18 = R00
+        uxtl            v19.8h, v19.8b              // v19 = B01
+        uxtl            v20.8h, v20.8b              // v20 = G01
+        uxtl            v21.8h, v21.8b              // v21 = R01
 
-        rgbload         v16, v17, v18, x0           // v16 = B00, v17 = G00, v18 = R00
         rgbconv         v6, v16, v17, v18, BY, GY, RY, Y_OFFSET
-
-        rgbload         v19, v20, v21, x0           // v19 = B01, v20 = G01, v21 = R01
         rgbconv         v7, v19, v20, v21, BY, GY, RY, Y_OFFSET
 
-        st1             {v6.8b, v7.8b}, [x1], #16
+        st1             {v6.8b, v7.8b}, [x1], #16   // store ydst1[i]
 
-        subsample       v24, v16, v19
-        subsample       v25, v17, v20
-        subsample       v26, v18, v21
+        // subsample chroma lines
+        xtn             v24.4h, v16.4s
+        xtn2            v24.8h, v19.4s
+        xtn             v25.4h, v17.4s
+        xtn2            v25.8h, v20.4s
+        xtn             v26.4h, v18.4s
+        xtn2            v26.8h, v21.4s
 
         rgbconv         v6, v24, v25, v26, BU, GU, RU, UV_OFFSET
         rgbconv         v7, v24, v25, v26, BV, GV, RV, UV_OFFSET
@@ -132,16 +127,21 @@ function ff_rgb24toyv12_neon, export=1
         st1             {v7.8b}, [x3], #8           // store vdst[i]
 
         // second line
+        ld3             {v16.8b, v17.8b, v18.8b}, [x10], #24
+        ld3             {v19.8b, v20.8b, v21.8b}, [x10], #24
+        uxtl            v16.8h, v16.8b              // v16 = B10
+        uxtl            v17.8h, v17.8b              // v17 = G10
+        uxtl            v18.8h, v18.8b              // v18 = R10
+        uxtl            v19.8h, v19.8b              // v19 = B11
+        uxtl            v20.8h, v20.8b              // v20 = G11
+        uxtl            v21.8h, v21.8b              // v21 = R11
 
-        rgbload         v16, v17, v18, x10          // v16 = B10, v17 = G10, v18 = R10
         rgbconv         v6, v16, v17, v18, BY, GY, RY, Y_OFFSET
-
-        rgbload         v19, v20, v21, x10          // v19 = B11, v20 = G11, v21 = R11
         rgbconv         v7, v19, v20, v21, BY, GY, RY, Y_OFFSET
 
-        st1             {v6.8b, v7.8b}, [x11], #16
-
         subs            w15, w15, #16
+        st1             {v6.8b, v7.8b}, [x11], #16  // store ydst2
+
         b.gt            2b
 
         // row += 2
@@ -149,9 +149,9 @@ function ff_rgb24toyv12_neon, export=1
         add             x10, x10, x9                // src2  += srcPadding
         add             x1,  x1,  x6                // ydst1 += lumPadding
         add             x11, x11, x6                // ydst2 += lumPadding
+        subs            w5,  w5,  #2
         add             x2,  x2,  x7                // udst  += chromPadding
         add             x3,  x3,  x7                // vdst  += chromPadding
-        subs            w5,  w5, #2
         b.gt            1b
 
         ret
