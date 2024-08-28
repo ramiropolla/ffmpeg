@@ -31,8 +31,8 @@
 #define BV v2.h[0]
 #define GV v2.h[1]
 #define RV v2.h[2]
-#define YOFF  v22
-#define UVOFF v23
+#define Y_OFFSET  v22
+#define UV_OFFSET v23
 
 // loads 8 pixels, split into separate vectors, and widen to 16-bit
 .macro rgbload b, g, r, src
@@ -98,10 +98,9 @@ function ff_rgb24toyv12_neon, export=1
         add             x15, x15, #RGB2YUV_COEFFS
         ld1             {v0.8h-v2.8h}, [x15]        // load 24 values
 
-        movi            v22.8h, #0x10
-        movi            v23.8h, #0x80
-        shl             v22.8h, v22.8h, #8
-        shl             v23.8h, v23.8h, #8
+        // load offset constants
+        movi            Y_OFFSET.8h,  #0x10, lsl #8
+        movi            UV_OFFSET.8h, #0x80, lsl #8
 
 1:
         mov             w15, w4                     // w15 = width
@@ -110,10 +109,10 @@ function ff_rgb24toyv12_neon, export=1
         // first line
 
         rgbload         v16, v17, v18, x0           // v16 = B00, v17 = G00, v18 = R00
-        rgbconv         v16, v17, v18, BY, GY, RY, YOFF, v6
+        rgbconv         v16, v17, v18, BY, GY, RY, Y_OFFSET, v6
 
         rgbload         v19, v20, v21, x0           // v19 = B01, v20 = G01, v21 = R01
-        rgbconv         v19, v20, v21, BY, GY, RY, YOFF, v7
+        rgbconv         v19, v20, v21, BY, GY, RY, Y_OFFSET, v7
 
         // merge v7 into v6 and store in x1
         ins             v6.d[1], v7.d[0]
@@ -123,8 +122,8 @@ function ff_rgb24toyv12_neon, export=1
         subsample       v17, v20, v25
         subsample       v18, v21, v26
 
-        rgbconv         v24, v25, v26, BU, GU, RU, UVOFF, v6
-        rgbconv         v24, v25, v26, BV, GV, RV, UVOFF, v7
+        rgbconv         v24, v25, v26, BU, GU, RU, UV_OFFSET, v6
+        rgbconv         v24, v25, v26, BV, GV, RV, UV_OFFSET, v7
 
         st1             {v6.8b}, [x2], #8           // store udst[i]
         st1             {v7.8b}, [x3], #8           // store vdst[i]
@@ -132,10 +131,10 @@ function ff_rgb24toyv12_neon, export=1
         // second line
 
         rgbload         v16, v17, v18, x10          // v16 = B10, v17 = G10, v18 = R10
-        rgbconv         v16, v17, v18, BY, GY, RY, YOFF, v6
+        rgbconv         v16, v17, v18, BY, GY, RY, Y_OFFSET, v6
 
         rgbload         v19, v20, v21, x10          // v19 = B11, v20 = G11, v21 = R11
-        rgbconv         v19, v20, v21, BY, GY, RY, YOFF, v7
+        rgbconv         v19, v20, v21, BY, GY, RY, Y_OFFSET, v7
 
         // merge v7 into v6 and store in x11
         ins             v6.d[1], v7.d[0]
