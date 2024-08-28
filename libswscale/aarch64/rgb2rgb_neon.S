@@ -73,7 +73,7 @@ function ff_rgb24toyv12_neon, export=1
         // src2 = x10
         add             x10, x0,  x9                // x10 = src + srcStride
         lsl             x9,  x9,  #1                // srcStride *= 2
-        add             x11, x4,  x4, lsl #1        // w11 = 3 * width
+        add             x11, x4,  x4, lsl #1        // x11 = 3 * width
         sub             x9,  x9,  x11               // srcPadding = (2 * srcStride) - (3 * width)
 
         // ydst1 = x1
@@ -97,8 +97,10 @@ function ff_rgb24toyv12_neon, export=1
 
 2:
         // first line
-        ld3             {v16.8b, v17.8b, v18.8b}, [x0], #24
-        ld3             {v19.8b, v20.8b, v21.8b}, [x0], #24
+        add             x13, x0, #24
+        ld3             {v16.8b, v17.8b, v18.8b}, [x0]
+        ld3             {v19.8b, v20.8b, v21.8b}, [x13]
+        add             x0, x0, #48
         uxtl            v16.8h, v16.8b              // v16 = B00
         uxtl            v17.8h, v17.8b              // v17 = G00
         uxtl            v18.8h, v18.8b              // v18 = R00
@@ -121,8 +123,10 @@ function ff_rgb24toyv12_neon, export=1
         rgbconv16       v27, v28, v29, v30, BV, GV, RV
 
         // second line
-        ld3             {v16.8b, v17.8b, v18.8b}, [x10], #24
-        ld3             {v19.8b, v20.8b, v21.8b}, [x10], #24
+        add             x13, x10, #24
+        ld3             {v16.8b, v17.8b, v18.8b}, [x10]
+        ld3             {v19.8b, v20.8b, v21.8b}, [x13]
+        add             x10, x10, #48
         uxtl            v16.8h, v16.8b              // v16 = B10
         uxtl            v17.8h, v17.8b              // v17 = G10
         uxtl            v18.8h, v18.8b              // v18 = R10
