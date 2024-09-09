@@ -53,12 +53,22 @@
         calculate_padding_argb
 .endm
 
+.macro calculate_padding_rgb24
+        // w3 = linesize - width * 3 (padding)
+        sub             w3, w3, w0, lsl #1
+        sub             w3, w3, w0
+.endm
+
 .macro calculate_padding_abgr
         calculate_padding_argb
 .endm
 
 .macro calculate_padding_bgra
         calculate_padding_argb
+.endm
+
+.macro calculate_padding_bgr24
+        calculate_padding_rgb24
 .endm
 
 .macro calculate_padding_gbrp
@@ -195,12 +205,20 @@
         compute_rgba    v4.8b,v5.8b,v6.8b,v7.8b, v16.8b,v17.8b,v18.8b,v19.8b
 .endm
 
+.macro convert_rgb24 // 0 1 2
+        compute_rgb     v4.8b,v5.8b,v6.8b, v16.8b,v17.8b,v18.8b
+.endm
+
 .macro convert_abgr // 3 2 1 0
         compute_rgba    v7.8b,v6.8b,v5.8b,v4.8b, v19.8b,v18.8b,v17.8b,v16.8b
 .endm
 
 .macro convert_bgra // 2 1 0 3
         compute_rgba    v6.8b,v5.8b,v4.8b,v7.8b, v18.8b,v17.8b,v16.8b,v19.8b
+.endm
+
+.macro convert_bgr24 // 2 1 0
+        compute_rgb     v6.8b,v5.8b,v4.8b, v18.8b,v17.8b,v16.8b
 .endm
 
 .macro convert_gbrp
@@ -216,12 +234,21 @@
         store_argb
 .endm
 
+.macro store_rgb24
+        st3             { v4.8b, v5.8b, v6.8b}, [x2], #24
+        st3             {v16.8b,v17.8b,v18.8b}, [x2], #24
+.endm
+
 .macro store_abgr
         store_argb
 .endm
 
 .macro store_bgra
         store_argb
+.endm
+
+.macro store_bgr24
+        store_rgb24
 .endm
 
 .macro store_gbrp
@@ -283,8 +310,10 @@ endfunc
 .macro declare_rgb_funcs ifmt
         declare_func    \ifmt, argb
         declare_func    \ifmt, rgba
+        declare_func    \ifmt, rgb24
         declare_func    \ifmt, abgr
         declare_func    \ifmt, bgra
+        declare_func    \ifmt, bgr24
         declare_func    \ifmt, gbrp
 .endm
 

@@ -84,8 +84,10 @@ static int ifmt##_to_##ofmt##_neon_wrapper(SwsContext *c, const uint8_t *src[], 
 #define DECLARE_FF_YUVX_TO_ALL_RGBX_FUNCS(yuvx)                                             \
 DECLARE_FF_YUVX_TO_RGBX_FUNCS(yuvx, argb)                                                   \
 DECLARE_FF_YUVX_TO_RGBX_FUNCS(yuvx, rgba)                                                   \
+DECLARE_FF_YUVX_TO_RGBX_FUNCS(yuvx, rgb24)                                                  \
 DECLARE_FF_YUVX_TO_RGBX_FUNCS(yuvx, abgr)                                                   \
 DECLARE_FF_YUVX_TO_RGBX_FUNCS(yuvx, bgra)                                                   \
+DECLARE_FF_YUVX_TO_RGBX_FUNCS(yuvx, bgr24)                                                  \
 DECLARE_FF_YUVX_TO_GBRP_FUNCS(yuvx, gbrp)                                                   \
 
 DECLARE_FF_YUVX_TO_ALL_RGBX_FUNCS(yuv420p)
@@ -167,8 +169,10 @@ static int nv24_to_yuv420p_neon_wrapper(SwsContext *c, const uint8_t *src[],
 #define DECLARE_FF_NVX_TO_ALL_RGBX_FUNCS(nvx)                                               \
 DECLARE_FF_NVX_TO_RGBX_FUNCS(nvx, argb)                                                     \
 DECLARE_FF_NVX_TO_RGBX_FUNCS(nvx, rgba)                                                     \
+DECLARE_FF_NVX_TO_RGBX_FUNCS(nvx, rgb24)                                                    \
 DECLARE_FF_NVX_TO_RGBX_FUNCS(nvx, abgr)                                                     \
 DECLARE_FF_NVX_TO_RGBX_FUNCS(nvx, bgra)                                                     \
+DECLARE_FF_NVX_TO_RGBX_FUNCS(nvx, bgr24)                                                    \
 DECLARE_FF_NVX_TO_GBRP_FUNCS(nvx, gbrp)                                                     \
 
 DECLARE_FF_NVX_TO_ALL_RGBX_FUNCS(nv12)
@@ -190,8 +194,10 @@ DECLARE_FF_NVX_TO_ALL_RGBX_FUNCS(nv21)
 #define SET_FF_NVX_TO_ALL_RGBX_FUNC(nvx, NVX, accurate_rnd) do {                            \
     SET_FF_NVX_TO_RGBX_FUNC(nvx, NVX, argb, ARGB, accurate_rnd);                            \
     SET_FF_NVX_TO_RGBX_FUNC(nvx, NVX, rgba, RGBA, accurate_rnd);                            \
+    SET_FF_NVX_TO_RGBX_FUNC(nvx, NVX, rgb24, RGB24, accurate_rnd);                          \
     SET_FF_NVX_TO_RGBX_FUNC(nvx, NVX, abgr, ABGR, accurate_rnd);                            \
     SET_FF_NVX_TO_RGBX_FUNC(nvx, NVX, bgra, BGRA, accurate_rnd);                            \
+    SET_FF_NVX_TO_RGBX_FUNC(nvx, NVX, bgr24, BGR24, accurate_rnd);                          \
     SET_FF_NVX_TO_RGBX_FUNC(nvx, NVX, gbrp, GBRP, accurate_rnd);                            \
 } while (0)
 
