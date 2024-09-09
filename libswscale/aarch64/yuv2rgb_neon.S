@@ -45,6 +45,26 @@
         sub             w16, w16, w0                                    // w16 = linesize2 - width     (padding2)
 .endm
 
+.macro calculate_padding_argb
+        sub             w3, w3, w0, lsl #2                              // w3 = linesize  - width * 4 (padding)
+.endm
+
+.macro calculate_padding_rgba
+        calculate_padding_argb
+.endm
+
+.macro calculate_padding_abgr
+        calculate_padding_argb
+.endm
+
+.macro calculate_padding_bgra
+        calculate_padding_argb
+.endm
+
+.macro calculate_padding_gbrp
+        sub             w3, w3, w0                                      // w3 = linesize  - width     (padding)
+.endm
+
 .macro load_args_nv12 ofmt
         ldr             x8,  [sp]                                       // table
         load_yoff_ycoeff 8, 16                                           // y_offset, y_coeff
@@ -53,10 +73,8 @@
         dup             v3.8h, w9
 .ifc \ofmt,gbrp
         load_dst1_dst2  24, 32, 40, 48
-        sub             w3, w3, w0                                      // w3 = linesize  - width     (padding)
-.else
-        sub             w3, w3, w0, lsl #2                              // w3 = linesize  - width * 4 (padding)
 .endif
+        calculate_padding_\ofmt
         sub             w5, w5, w0                                      // w5 = linesizeY - width     (paddingY)
         sub             w7, w7, w0                                      // w7 = linesizeC - width     (paddingC)
         neg             w11, w0
@@ -76,10 +94,8 @@
         dup             v3.8h, w9
 .ifc \ofmt,gbrp
         load_dst1_dst2  40, 48, 56, 64
-        sub             w3, w3, w0                                      // w3 = linesize  - width     (padding)
-.else
-        sub             w3, w3, w0, lsl #2                              // w3 = linesize  - width * 4 (padding)
 .endif
+        calculate_padding_\ofmt
         sub             w5, w5, w0                                      // w5 = linesizeY - width     (paddingY)
         sub             w7,  w7,  w0, lsr #1                            // w7  = linesizeU - width / 2 (paddingU)
         sub             w14, w14, w0, lsr #1                            // w14 = linesizeV - width / 2 (paddingV)
@@ -97,10 +113,8 @@
         dup             v3.8h, w9
 .ifc \ofmt,gbrp
         load_dst1_dst2  40, 48, 56, 64
-        sub             w3, w3, w0                                      // w3 = linesize  - width     (padding)
-.else
-        sub             w3, w3, w0, lsl #2                              // w3 = linesize  - width * 4 (padding)
 .endif
+        calculate_padding_\ofmt
         sub             w5, w5, w0                                      // w5 = linesizeY - width     (paddingY)
         sub             w7,  w7,  w0, lsr #1                            // w7  = linesizeU - width / 2 (paddingU)
         sub             w14, w14, w0, lsr #1                            // w14 = linesizeV - width / 2 (paddingV)
@@ -173,6 +187,49 @@
         movi            \a2, #255
 .endm
 
+.macro convert_argb // 1 2 3 0
+        compute_rgba    v5.8b,v6.8b,v7.8b,v4.8b, v17.8b,v18.8b,v19.8b,v16.8b
+.endm
+
+.macro convert_rgba // 0 1 2 3
+        compute_rgba    v4.8b,v5.8b,v6.8b,v7.8b, v16.8b,v17.8b,v18.8b,v19.8b
+.endm
+
+.macro convert_abgr // 3 2 1 0
+        compute_rgba    v7.8b,v6.8b,v5.8b,v4.8b, v19.8b,v18.8b,v17.8b,v16.8b
+.endm
+
+.macro convert_bgra // 2 1 0 3
+        compute_rgba    v6.8b,v5.8b,v4.8b,v7.8b, v18.8b,v17.8b,v16.8b,v19.8b
+.endm
+
+.macro convert_gbrp
+        compute_rgb     v18.8b,v4.8b,v6.8b, v19.8b,v5.8b,v7.8b
+.endm
+
+.macro store_argb
+        st4             { v4.8b, v5.8b, v6.8b, v7.8b}, [x2], #32
+        st4             {v16.8b,v17.8b,v18.8b,v19.8b}, [x2], #32
+.endm
+
+.macro store_rgba
+        store_argb
+.endm
+
+.macro store_abgr
+        store_argb
+.endm
+
+.macro store_bgra
+        store_argb
+.endm
+
+.macro store_gbrp
+        st1             { v4.8b,  v5.8b}, [x2],  #16
+        st1             { v6.8b,  v7.8b}, [x10], #16
+        st1             {v18.8b, v19.8b}, [x15], #16
+.endm
+
 .macro declare_func ifmt ofmt
 function ff_\ifmt\()_to_\ofmt\()_neon, export=1
         load_args_\ifmt \ofmt
@@ -204,31 +261,9 @@ function ff_\ifmt\()_to_\ofmt\()_neon, export=1
         sqdmulh         v26.8h, v26.8h, v0.8h                           // ((Y1*(1<<3) - y_offset) * y_coeff) >> 15
         sqdmulh         v27.8h, v27.8h, v0.8h                           // ((Y2*(1<<3) - y_offset) * y_coeff) >> 15
 
-.ifc \ofmt,argb // 1 2 3 0
-        compute_rgba    v5.8b,v6.8b,v7.8b,v4.8b, v17.8b,v18.8b,v19.8b,v16.8b
-.endif
+    convert_\ofmt
+    store_\ofmt
 
-.ifc \ofmt,rgba // 0 1 2 3
-        compute_rgba    v4.8b,v5.8b,v6.8b,v7.8b, v16.8b,v17.8b,v18.8b,v19.8b
-.endif
-
-.ifc \ofmt,abgr // 3 2 1 0
-        compute_rgba    v7.8b,v6.8b,v5.8b,v4.8b, v19.8b,v18.8b,v17.8b,v16.8b
-.endif
-
-.ifc \ofmt,bgra // 2 1 0 3
-        compute_rgba    v6.8b,v5.8b,v4.8b,v7.8b, v18.8b,v17.8b,v16.8b,v19.8b
-.endif
-
-.ifc \ofmt,gbrp
-        compute_rgb     v18.8b,v4.8b,v6.8b, v19.8b,v5.8b,v7.8b
-        st1             {  v4.8b,  v5.8b }, [x2],  #16
-        st1             {  v6.8b,  v7.8b }, [x10], #16
-        st1             { v18.8b, v19.8b }, [x15], #16
-.else
-        st4             { v4.8b, v5.8b, v6.8b, v7.8b}, [x2], #32
-        st4             {v16.8b,v17.8b,v18.8b,v19.8b}, [x2], #32
-.endif
         subs            w8, w8, #16                                     // width -= 16
         b.gt            2b
         add             x2, x2, w3, sxtw                                // dst  += padding
