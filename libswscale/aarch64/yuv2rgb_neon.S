@@ -155,7 +155,7 @@
 /*********************************************************************/
 /* dst packed */
 
-.macro dst_load_args_packed nb_lines, bps
+.macro dst_load_args_packed nb_lines, bpp
 // x7  uint8_t *dst
 // sp1 int dstStride
         ldr             dstPadding, [sp]
@@ -163,7 +163,7 @@
         add             l2_dst, dst, dstPadding, sxtw                   // l2_dst = dst + dstStride[0]
         lsl             dstPadding, dstPadding, #1                      // dstPadding *= 2
 .endif
-.ifc \bps,3
+.ifc \bpp,3
         sub             dstPadding, dstPadding, width, lsl #1
         sub             dstPadding, dstPadding, width                   // dstPadding = dstStride - width * 3
 .else
