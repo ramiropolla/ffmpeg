@@ -155,7 +155,7 @@
 /*********************************************************************/
 /* dst packed */
 
-.macro dst_load_args_packed nb_lines
+.macro dst_load_args_packed nb_lines, bps
 // x7  uint8_t *dst
 // sp1 int dstStride
         ldr             dstPadding, [sp]
@@ -163,33 +163,16 @@
         add             l2_dst, dst, dstPadding, sxtw                   // l2_dst = dst + dstStride[0]
         lsl             dstPadding, dstPadding, #1                      // dstPadding *= 2
 .endif
+.ifc \bps,3
+        sub             dstPadding, dstPadding, width, lsl #1
+        sub             dstPadding, dstPadding, width                   // dstPadding = dstStride - width * 3
+.else
         sub             dstPadding, dstPadding, width, lsl #2           // dstPadding = dstStride - width * 4
+.endif
 .endm
 
 .macro dst_increment_packed
         add             dst, dst, dstPadding, sxtw                      // dst += dstPadding
-.endm
-
-/*********************************************************************/
-.macro dst_init_alpha_argb
-        movi            v4.8b, #255
-        movi            v16.8b, #255
-.endm
-
-.macro dst_init_alpha_rgba
-        movi            v7.8b, #255
-        movi            v19.8b, #255
-.endm
-
-.macro dst_init_alpha_abgr
-        dst_init_alpha_argb
-.endm
-
-.macro dst_init_alpha_bgra
-        dst_init_alpha_rgba
-.endm
-
-.macro dst_init_alpha_gbrp
 .endm
 
 /*********************************************************************/
@@ -227,6 +210,63 @@
 .endm
 
 /*********************************************************************/
+.macro dst_load_args_argb nb_lines
+    dst_load_args_packed \nb_lines, 4
+.endm
+
+.macro dst_load_args_rgba nb_lines
+    dst_load_args_packed \nb_lines, 4
+.endm
+
+.macro dst_load_args_rgb24 nb_lines
+    dst_load_args_packed \nb_lines, 3
+.endm
+
+.macro dst_load_args_abgr nb_lines
+    dst_load_args_packed \nb_lines, 4
+.endm
+
+.macro dst_load_args_bgra nb_lines
+    dst_load_args_packed \nb_lines, 4
+.endm
+
+.macro dst_load_args_bgr24 nb_lines
+    dst_load_args_packed \nb_lines, 3
+.endm
+
+.macro dst_load_args_gbrp nb_lines
+    dst_load_args_planar \nb_lines
+.endm
+
+/*********************************************************************/
+.macro dst_init_alpha_argb
+        movi            v4.8b, #255
+        movi            v16.8b, #255
+.endm
+
+.macro dst_init_alpha_rgba
+        movi            v7.8b, #255
+        movi            v19.8b, #255
+.endm
+
+.macro dst_init_alpha_rgb24
+.endm
+
+.macro dst_init_alpha_abgr
+        dst_init_alpha_argb
+.endm
+
+.macro dst_init_alpha_bgra
+        dst_init_alpha_rgba
+.endm
+
+.macro dst_init_alpha_bgr24
+.endm
+
+.macro dst_init_alpha_gbrp
+.endm
+
+/*********************************************************************/
 .macro compute_rgb r1, g1, b1, r2, g2, b2
         add             \r1\().8h, v26.8h, v20.8h                       // Y1 + R1
         add             \r2\().8h, v27.8h, v21.8h                       // Y2 + R2
@@ -252,6 +292,11 @@
         st4             {v16.8b,v17.8b,v18.8b,v19.8b}, [\ldst], #32
 .endm
 
+.macro store_rgb24 ldst
+        st3             { v4.8b, v5.8b, v6.8b}, [\ldst], #24
+        st3             {v16.8b,v17.8b,v18.8b}, [\ldst], #24
+.endm
+
 .macro store_gbrp ldst0, ldst1, ldst2
         st1             { v4.8b,  v5.8b}, [\ldst0], #16
         st1             { v6.8b,  v7.8b}, [\ldst1], #16
@@ -269,6 +314,11 @@
         store_rgba \ldst0
 .endm
 
+.macro convert_rgb24 ldst0, ldst1, ldst2 // 0 1 2
+        compute_rgb     v4,v5,v6, v16,v17,v18
+        store_rgb24 \ldst0
+.endm
+
 .macro convert_abgr ldst0, ldst1, ldst2 // 3 2 1 0
         compute_rgba    v7,v6,v5,v4, v19,v18,v17,v16
         store_rgba \ldst0
@@ -277,6 +327,11 @@
 .macro convert_bgra ldst0, ldst1, ldst2 // 2 1 0 3
         compute_rgba    v6,v5,v4,v7, v18,v17,v16,v19
         store_rgba \ldst0
+.endm
+
+.macro convert_bgr24 ldst0, ldst1, ldst2 // 2 1 0
+        compute_rgb     v6,v5,v4, v18,v17,v16
+        store_rgb24 \ldst0
 .endm
 
 .macro convert_gbrp ldst0, ldst1, ldst2
@@ -302,7 +357,7 @@ function ff_\ifmt\()_to_\ofmt\()_neon, export=1
 .endif
 
     src_load_args_\ifmt
-    dst_load_args_\dsttype \nb_lines
+    dst_load_args_\ofmt \nb_lines
     dst_init_alpha_\ofmt
 
         mov             orig_height, height
@@ -357,11 +412,13 @@ endfunc
 .endm
 
 .macro declare_rgb_funcs ifmt, nb_lines
-        declare_func    \ifmt, argb, packed, \nb_lines
-        declare_func    \ifmt, rgba, packed, \nb_lines
-        declare_func    \ifmt, abgr, packed, \nb_lines
-        declare_func    \ifmt, bgra, packed, \nb_lines
-        declare_func    \ifmt, gbrp, planar, \nb_lines
+        declare_func    \ifmt, argb,  packed, \nb_lines
+        declare_func    \ifmt, rgba,  packed, \nb_lines
+        declare_func    \ifmt, rgb24, packed, \nb_lines
+        declare_func    \ifmt, abgr,  packed, \nb_lines
+        declare_func    \ifmt, bgra,  packed, \nb_lines
+        declare_func    \ifmt, bgr24, packed, \nb_lines
+        declare_func    \ifmt, gbrp,  planar, \nb_lines
 .endm
 
 declare_rgb_funcs nv12,    2

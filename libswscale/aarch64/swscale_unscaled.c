@@ -76,8 +76,10 @@ static int ifmt##_to_##ofmt##_neon_wrapper(SwsContext *c, const uint8_t *src[], 
 #define DECLARE_FF_YUVX_TO_ALL_RGBX_FUNCS(yuvx)                                             \
 DECLARE_FF_YUVX_TO_PACKED_RGB_FUNCS(yuvx, argb)                                             \
 DECLARE_FF_YUVX_TO_PACKED_RGB_FUNCS(yuvx, rgba)                                             \
+DECLARE_FF_YUVX_TO_PACKED_RGB_FUNCS(yuvx, rgb24)                                            \
 DECLARE_FF_YUVX_TO_PACKED_RGB_FUNCS(yuvx, abgr)                                             \
 DECLARE_FF_YUVX_TO_PACKED_RGB_FUNCS(yuvx, bgra)                                             \
+DECLARE_FF_YUVX_TO_PACKED_RGB_FUNCS(yuvx, bgr24)                                            \
 DECLARE_FF_YUVX_TO_PLANAR_RGB_FUNCS(yuvx, gbrp)                                             \
 
 DECLARE_FF_YUVX_TO_ALL_RGBX_FUNCS(nv12)
@@ -126,8 +128,10 @@ static int nv24_to_yuv420p_neon_wrapper(SwsContext *c, const uint8_t *src[],
 #define SET_FF_YUVX_TO_ALL_RGBX_FUNC(yuvx, YUVX, accurate_rnd) do {                         \
     SET_FF_YUVX_TO_RGBX_FUNC(yuvx, YUVX, argb, ARGB, accurate_rnd);                         \
     SET_FF_YUVX_TO_RGBX_FUNC(yuvx, YUVX, rgba, RGBA, accurate_rnd);                         \
+    SET_FF_YUVX_TO_RGBX_FUNC(yuvx, YUVX, rgb24, RGB24, accurate_rnd);                       \
     SET_FF_YUVX_TO_RGBX_FUNC(yuvx, YUVX, abgr, ABGR, accurate_rnd);                         \
     SET_FF_YUVX_TO_RGBX_FUNC(yuvx, YUVX, bgra, BGRA, accurate_rnd);                         \
+    SET_FF_YUVX_TO_RGBX_FUNC(yuvx, YUVX, bgr24, BGR24, accurate_rnd);                       \
     SET_FF_YUVX_TO_RGBX_FUNC(yuvx, YUVX, gbrp, GBRP, accurate_rnd);                         \
 } while (0)
 
