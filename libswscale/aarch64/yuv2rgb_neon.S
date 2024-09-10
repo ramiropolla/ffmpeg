@@ -268,6 +268,12 @@
 
 /*********************************************************************/
 .macro compute_rgb r1, g1, b1, r2, g2, b2
+        ushll           v26.8h, v2.8b,  #3                              // Y1*(1<<3)
+        ushll2          v27.8h, v2.16b, #3                              // Y2*(1<<3)
+        sub             v26.8h, v26.8h, v3.8h                           // Y1*(1<<3) - y_offset
+        sub             v27.8h, v27.8h, v3.8h                           // Y2*(1<<3) - y_offset
+        sqdmulh         v26.8h, v26.8h, v0.8h                           // ((Y1*(1<<3) - y_offset) * y_coeff) >> 15
+        sqdmulh         v27.8h, v27.8h, v0.8h                           // ((Y2*(1<<3) - y_offset) * y_coeff) >> 15
         add             \r1\().8h, v26.8h, v20.8h                       // Y1 + R1
         add             \r2\().8h, v27.8h, v21.8h                       // Y2 + R2
         add             \g1\().8h, v26.8h, v22.8h                       // Y1 + G1
@@ -280,10 +286,6 @@
         sqrshrun        \g2\().8b, \g2\().8h, #1                        // clip_u8((Y2 + G1) >> 1)
         sqrshrun        \b1\().8b, \b1\().8h, #1                        // clip_u8((Y1 + B1) >> 1)
         sqrshrun        \b2\().8b, \b2\().8h, #1                        // clip_u8((Y2 + B1) >> 1)
-.endm
-
-.macro compute_rgba r1, g1, b1, a1, r2, g2, b2, a2
-        compute_rgb     \r1, \g1, \b1, \r2, \g2, \b2
 .endm
 
 /*********************************************************************/
@@ -304,13 +306,13 @@
 .endm
 
 /*********************************************************************/
-.macro convert_argb ldst0, ldst1, ldst2 // 1 2 3 0
-        compute_rgba    v5,v6,v7,v4, v17,v18,v19,v16
+.macro convert_argb ldst0, ldst1, ldst2 // 1 2 3
+        compute_rgb     v5,v6,v7, v17,v18,v19
         store_rgba \ldst0
 .endm
 
-.macro convert_rgba ldst0, ldst1, ldst2 // 0 1 2 3
-        compute_rgba    v4,v5,v6,v7, v16,v17,v18,v19
+.macro convert_rgba ldst0, ldst1, ldst2 // 0 1 2
+        compute_rgb     v4,v5,v6, v16,v17,v18
         store_rgba \ldst0
 .endm
 
@@ -319,13 +321,13 @@
         store_rgb24 \ldst0
 .endm
 
-.macro convert_abgr ldst0, ldst1, ldst2 // 3 2 1 0
-        compute_rgba    v7,v6,v5,v4, v19,v18,v17,v16
+.macro convert_abgr ldst0, ldst1, ldst2 // 3 2 1
+        compute_rgb     v7,v6,v5, v19,v18,v17
         store_rgba \ldst0
 .endm
 
-.macro convert_bgra ldst0, ldst1, ldst2 // 2 1 0 3
-        compute_rgba    v6,v5,v4,v7, v18,v17,v16,v19
+.macro convert_bgra ldst0, ldst1, ldst2 // 2 1 0
+        compute_rgb     v6,v5,v4, v18,v17,v16
         store_rgba \ldst0
 .endm
 
@@ -380,21 +382,9 @@ function ff_\ifmt\()_to_\ofmt\()_neon, export=1
         zip2            v25.8h, v24.8h, v24.8h                          // B2
         zip1            v24.8h, v24.8h, v24.8h                          // B1
         ld1             {v2.16b}, [srcY], #16                           // load luma
-        ushll           v26.8h, v2.8b,  #3                              // Y1*(1<<3)
-        ushll2          v27.8h, v2.16b, #3                              // Y2*(1<<3)
-        sub             v26.8h, v26.8h, v3.8h                           // Y1*(1<<3) - y_offset
-        sub             v27.8h, v27.8h, v3.8h                           // Y2*(1<<3) - y_offset
-        sqdmulh         v26.8h, v26.8h, v0.8h                           // ((Y1*(1<<3) - y_offset) * y_coeff) >> 15
-        sqdmulh         v27.8h, v27.8h, v0.8h                           // ((Y2*(1<<3) - y_offset) * y_coeff) >> 15
     convert_\ofmt dst0, dst1, dst2
 .ifc \nb_lines,2
-        ld1             {v2.16b}, [l2_srcY], #16                        // load luma (line 2)
-        ushll           v26.8h, v2.8b,  #3                              // Y1*(1<<3)
-        ushll2          v27.8h, v2.16b, #3                              // Y2*(1<<3)
-        sub             v26.8h, v26.8h, v3.8h                           // Y1*(1<<3) - y_offset
-        sub             v27.8h, v27.8h, v3.8h                           // Y2*(1<<3) - y_offset
-        sqdmulh         v26.8h, v26.8h, v0.8h                           // ((Y1*(1<<3) - y_offset) * y_coeff) >> 15
-        sqdmulh         v27.8h, v27.8h, v0.8h                           // ((Y2*(1<<3) - y_offset) * y_coeff) >> 15
+        ld1             {v2.16b}, [l2_srcY], #16                        // load luma (second line)
     convert_\ofmt l2_dst0, l2_dst1, l2_dst2
 .endif
         subs            cur_width, cur_width, #16                       // cur_width -= 16
