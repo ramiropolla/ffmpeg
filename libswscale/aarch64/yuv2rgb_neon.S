@@ -53,10 +53,8 @@
 .macro src_load_args_nv12
 // x5  const uint8_t *src[]
 // x6  int *srcStride[]
-        ldr             srcY,        [x5]                               // src[0]
-        ldr             srcC,        [x5, #8]                           // src[1]
-        ldr             srcPaddingY, [x6]                               // srcStride[0]
-        ldr             srcPaddingC, [x6, #4]                           // srcStride[1]
+        ldp             srcY,        srcC,        [x5]                  // src[0], src[1]
+        ldp             srcPaddingY, srcPaddingC, [x6]                  // srcStride[0], srcStride[1]
         sub             srcPaddingY, srcPaddingY, width                 // srcPaddingY = srcStride[0] - width
         sub             srcPaddingC, srcPaddingC, width                 // srcPaddingC = srcStride[1] - width
         neg             srcDecC,                  width                 // srcDecC = -width
@@ -98,12 +96,10 @@
 .macro src_load_args_yuv422p
 // x5  const uint8_t *src[]
 // x6  int *srcStride[]
-        ldr             srcY,        [x5]                               // src[0]
-        ldr             srcU,        [x5, #8]                           // src[1]
-        ldr             srcV,        [x5, #16]                          // src[2]
-        ldr             srcPaddingY, [x6]                               // srcStride[0]
-        ldr             srcPaddingU, [x6, #4]                           // srcStride[1]
-        ldr             srcPaddingV, [x6, #8]                           // srcStride[2]
+        ldp             srcY,        srcU,        [x5]                  // src[0], src[1]
+        ldr             srcV,                     [x5, #16]             // src[2]
+        ldp             srcPaddingY, srcPaddingU, [x6]                  // srcStride[0], srcStride[1]
+        ldr             srcPaddingV,              [x6, #8]              // srcStride[2]
         sub             srcPaddingY, srcPaddingY, width                 // srcPaddingY = srcStride[0] - width
         sub             srcPaddingU, srcPaddingU, width, lsr #1         // srcPaddingU = srcStride[1] - width / 2
         sub             srcPaddingV, srcPaddingV, width, lsr #1         // srcPaddingV = srcStride[2] - width / 2
