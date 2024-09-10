@@ -61,9 +61,9 @@
 .endm
 
 .macro src_load_chroma_nv12
-        ld2             {v16.8b, v17.8b}, [srcC], #16
-        ushll           v18.8h, v16.8b, #3
-        ushll           v19.8h, v17.8b, #3
+        ld2             {v28.8b, v29.8b}, [srcC], #16
+        ushll           v30.8h, v28.8b, #3
+        ushll           v31.8h, v29.8b, #3
 .endm
 
 .macro src_increment_nv12
@@ -81,9 +81,9 @@
 .endm
 
 .macro src_load_chroma_nv21
-        ld2             {v16.8b, v17.8b}, [srcC], #16
-        ushll           v19.8h, v16.8b, #3
-        ushll           v18.8h, v17.8b, #3
+        ld2             {v28.8b, v29.8b}, [srcC], #16
+        ushll           v31.8h, v28.8b, #3
+        ushll           v30.8h, v29.8b, #3
 .endm
 
 .macro src_increment_nv21
@@ -106,10 +106,10 @@
 .endm
 
 .macro src_load_chroma_yuv422p
-        ld1             {v16.8b}, [srcU], #8
-        ld1             {v17.8b}, [srcV], #8
-        ushll           v18.8h, v16.8b, #3
-        ushll           v19.8h, v17.8b, #3
+        ld1             {v28.8b}, [srcU], #8
+        ld1             {v29.8b}, [srcV], #8
+        ushll           v30.8h, v28.8b, #3
+        ushll           v31.8h, v29.8b, #3
 .endm
 
 .macro src_increment_yuv422p
@@ -152,6 +152,28 @@
 
 .macro dst_increment_packed
         add             dst, dst, dstPadding, sxtw                      // dst += dstPadding
+.endm
+
+/*********************************************************************/
+.macro dst_init_alpha_argb
+        movi            v4.8b, #255
+        movi            v16.8b, #255
+.endm
+
+.macro dst_init_alpha_rgba
+        movi            v7.8b, #255
+        movi            v19.8b, #255
+.endm
+
+.macro dst_init_alpha_abgr
+        dst_init_alpha_argb
+.endm
+
+.macro dst_init_alpha_bgra
+        dst_init_alpha_rgba
+.endm
+
+.macro dst_init_alpha_gbrp
 .endm
 
 /*********************************************************************/
@@ -198,8 +220,6 @@
 
 .macro compute_rgba r1, g1, b1, a1, r2, g2, b2, a2
         compute_rgb     \r1, \g1, \b1, \r2, \g2, \b2
-        movi            \a1, #255
-        movi            \a2, #255
 .endm
 
 /*********************************************************************/
@@ -255,6 +275,7 @@ function ff_\ifmt\()_to_\ofmt\()_neon, export=1
 
     src_load_args_\ifmt
     dst_load_args_\dsttype
+    dst_init_alpha_\ofmt
 
         mov             orig_height, height
 1:
@@ -262,13 +283,13 @@ function ff_\ifmt\()_to_\ofmt\()_neon, export=1
 2:
         movi            v5.8h, #4, lsl #8                               // 128 * (1<<3)
     src_load_chroma_\ifmt
-        sub             v18.8h, v18.8h, v5.8h                           // U*(1<<3) - 128*(1<<3)
-        sub             v19.8h, v19.8h, v5.8h                           // V*(1<<3) - 128*(1<<3)
-        sqdmulh         v20.8h, v19.8h, v1.h[0]                         // V * v2r            (R)
-        sqdmulh         v22.8h, v18.8h, v1.h[1]                         // U * u2g
-        sqdmulh         v19.8h, v19.8h, v1.h[2]                         //           V * v2g
-        add             v22.8h, v22.8h, v19.8h                          // U * u2g + V * v2g  (G)
-        sqdmulh         v24.8h, v18.8h, v1.h[3]                         // U * u2b            (B)
+        sub             v30.8h, v30.8h, v5.8h                           // U*(1<<3) - 128*(1<<3)
+        sub             v31.8h, v31.8h, v5.8h                           // V*(1<<3) - 128*(1<<3)
+        sqdmulh         v20.8h, v31.8h, v1.h[0]                         // V * v2r            (R)
+        sqdmulh         v22.8h, v30.8h, v1.h[1]                         // U * u2g
+        sqdmulh         v31.8h, v31.8h, v1.h[2]                         //           V * v2g
+        add             v22.8h, v22.8h, v31.8h                          // U * u2g + V * v2g  (G)
+        sqdmulh         v24.8h, v30.8h, v1.h[3]                         // U * u2b            (B)
         zip2            v21.8h, v20.8h, v20.8h                          // R2
         zip1            v20.8h, v20.8h, v20.8h                          // R1
         zip2            v23.8h, v22.8h, v22.8h                          // G2
