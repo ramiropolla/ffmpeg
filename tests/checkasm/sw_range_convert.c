@@ -39,7 +39,9 @@ static void check_lumConvertRange(int from)
     LOCAL_ALIGNED_32(int16_t, dst0, [LARGEST_INPUT_SIZE]);
     LOCAL_ALIGNED_32(int16_t, dst1, [LARGEST_INPUT_SIZE]);
 
-    declare_func(void, int16_t *dst, int width);
+    declare_func(void, int16_t *dst, int width,
+                       int coeff, int offset,
+                       int amin, int amax);
 
     ctx = sws_alloc_context();
     if (sws_init_context(ctx, NULL, NULL) < 0)
@@ -59,11 +61,17 @@ static void check_lumConvertRange(int from)
         }
         ff_sws_init_scale(ctx);
         if (check_func(ctx->lumConvertRange, "%s_%d", func_str, width)) {
-            call_ref(dst0, width);
-            call_new(dst1, width);
+            call_ref(dst0, width,
+                     ctx->lumConvertRange_coeff, ctx->lumConvertRange_offset,
+                     ctx->lumConvertRange_amin, ctx->lumConvertRange_amax);
+            call_new(dst1, width,
+                     ctx->lumConvertRange_coeff, ctx->lumConvertRange_offset,
+                     ctx->lumConvertRange_amin, ctx->lumConvertRange_amax);
             if (memcmp(dst0, dst1, width * sizeof(int16_t)))
                 fail();
-            bench_new(dst1, width);
+            bench_new(dst1, width,
+                     ctx->lumConvertRange_coeff, ctx->lumConvertRange_offset,
+                     ctx->lumConvertRange_amin, ctx->lumConvertRange_amax);
         }
     }
 
@@ -85,7 +93,9 @@ static void check_chrConvertRange(int from)
     LOCAL_ALIGNED_32(int16_t, dstU1, [LARGEST_INPUT_SIZE]);
     LOCAL_ALIGNED_32(int16_t, dstV1, [LARGEST_INPUT_SIZE]);
 
-    declare_func(void, int16_t *dstU, int16_t *dstV, int width);
+    declare_func(void, int16_t *dstU, int16_t *dstV, int width,
+                       int coeff, int offset,
+                       int amin, int amax);
 
     ctx = sws_alloc_context();
     if (sws_init_context(ctx, NULL, NULL) < 0)
@@ -107,12 +117,18 @@ static void check_chrConvertRange(int from)
         }
         ff_sws_init_scale(ctx);
         if (check_func(ctx->chrConvertRange, "%s_%d", func_str, width)) {
-            call_ref(dstU0, dstV0, width);
-            call_new(dstU1, dstV1, width);
+            call_ref(dstU0, dstV0, width,
+                     ctx->chrConvertRange_coeff, ctx->chrConvertRange_offset,
+                     ctx->chrConvertRange_amin, ctx->chrConvertRange_amax);
+            call_new(dstU1, dstV1, width,
+                     ctx->chrConvertRange_coeff, ctx->chrConvertRange_offset,
+                     ctx->chrConvertRange_amin, ctx->chrConvertRange_amax);
             if (memcmp(dstU0, dstU1, width * sizeof(int16_t)) ||
                 memcmp(dstV0, dstV1, width * sizeof(int16_t)))
                 fail();
-            bench_new(dstU1, dstV1, width);
+            bench_new(dstU1, dstV1, width,
+                      ctx->chrConvertRange_coeff, ctx->chrConvertRange_offset,
+                      ctx->chrConvertRange_amin, ctx->chrConvertRange_amax);
         }
     }
 
