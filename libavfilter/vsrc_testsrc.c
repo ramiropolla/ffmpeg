@@ -78,6 +78,8 @@ typedef struct TestSourceContext {
     FFDrawContext draw;
     FFDrawColor color;
     uint8_t color_rgba[4];
+    enum AVColorRange color_range;
+    enum AVPixelFormat pix_fmt;
 
     /* only used by rgbtest */
     uint8_t rgba_map[4];
@@ -224,6 +226,16 @@ FF_ENABLE_DEPRECATION_WARNINGS
 static const AVOption color_options[] = {
     { "color", "set color", OFFSET(color_rgba), AV_OPT_TYPE_COLOR, {.str = "black"}, 0, 0, FLAGSR },
     { "c",     "set color", OFFSET(color_rgba), AV_OPT_TYPE_COLOR, {.str = "black"}, 0, 0, FLAGSR },
+    { "pixel_format", "set pixel format", OFFSET(pix_fmt), AV_OPT_TYPE_PIXEL_FMT, {.i64=AV_PIX_FMT_NONE}, -1, INT_MAX, 0 },
+    { "color_range", "color range", OFFSET(color_range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_UNSPECIFIED }, 0, INT_MAX, FLAGSR, .unit = "color_range_type"},
+    { "unknown", "Unspecified",     0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_UNSPECIFIED }, INT_MIN, INT_MAX, FLAGSR, .unit = "color_range_type"},
+    { "tv", "MPEG (219*2^(n-8))",   0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG },        INT_MIN, INT_MAX, FLAGSR, .unit = "color_range_type"},
+    { "pc", "JPEG (2^n-1)",         0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG },        INT_MIN, INT_MAX, FLAGSR, .unit = "color_range_type"},
+    { "unspecified", "Unspecified", 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_UNSPECIFIED }, INT_MIN, INT_MAX, FLAGSR, .unit = "color_range_type"},
+    { "mpeg", "MPEG (219*2^(n-8))", 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG },        INT_MIN, INT_MAX, FLAGSR, .unit = "color_range_type"},
+    { "jpeg", "JPEG (2^n-1)",       0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG },        INT_MIN, INT_MAX, FLAGSR, .unit = "color_range_type"},
+    { "limited", "MPEG (219*2^(n-8))", 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_MPEG },     INT_MIN, INT_MAX, FLAGSR, .unit = "color_range_type"},
+    { "full", "JPEG (2^n-1)",       0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_RANGE_JPEG },        INT_MIN, INT_MAX, FLAGSR, .unit = "color_range_type"},
     COMMON_OPTIONS
     { NULL }
 };
@@ -248,7 +260,34 @@ static av_cold int color_init(AVFilterContext *ctx)
 
 static int color_query_formats(AVFilterContext *ctx)
 {
-    return ff_set_common_formats(ctx, ff_draw_supported_pixel_formats(0));
+    TestSourceContext *test = ctx->priv;
+    unsigned flags = 0;
+    FFDrawContext draw;
+    AVFilterFormats *fmts = NULL;
+
+    if (test->pix_fmt == AV_PIX_FMT_NONE) {
+        enum AVPixelFormat i;
+        for (i = 0; av_pix_fmt_desc_get(i); i++) {
+            const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(i);
+            if (ff_draw_init2(&draw, i, AVCOL_SPC_UNSPECIFIED, test->color_range, flags) >= 0) {
+                int ret = ff_add_format(&fmts, i);
+                if (ret < 0)
+                    break; // leak?
+                printf("added [%s]\n", desc->name);
+            }
+        }
+    } else {
+        enum AVPixelFormat i = test->pix_fmt;
+        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(i);
+        if (ff_draw_init2(&draw, i, AVCOL_SPC_UNSPECIFIED, test->color_range, flags) >= 0) {
+            int ret = ff_add_format(&fmts, i);
+            if (ret >= 0) {
+                printf("added [%s]\n", desc->name);
+            }
+        }
+    }
+
+    return ff_set_common_formats(ctx, fmts);
 }
 
 static int color_config_props(AVFilterLink *inlink)
@@ -257,6 +296,7 @@ static int color_config_props(AVFilterLink *inlink)
     TestSourceContext *test = ctx->priv;
     int ret;
 
+    inlink->color_range = test->color_range;
     ff_draw_init2(&test->draw, inlink->format, inlink->colorspace,
                   inlink->color_range, 0);
     ff_draw_color(&test->draw, &test->color, test->color_rgba);
