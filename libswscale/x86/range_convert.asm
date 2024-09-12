@@ -20,42 +20,28 @@
 
 %include "libavutil/x86/x86util.asm"
 
-SECTION_RODATA
-
-chr_to_mult:        times 4 dw 4663, 0
-chr_to_offset:      times 4 dd -9289992
-%define chr_to_shift 12
-
-chr_from_mult:      times 4 dw 1799, 0
-chr_from_offset:    times 4 dd 4081085
-%define chr_from_shift 11
-
-lum_to_mult:        times 4 dw 19077, 0
-lum_to_offset:      times 4 dd -39057361
-%define lum_to_shift 14
-
-lum_from_mult:      times 4 dw 14071, 0
-lum_from_offset:    times 4 dd 33561947
-%define lum_from_shift 14
-
 SECTION .text
 
 ; NOTE: there is no need to clamp the input when converting to jpeg range
 ;       (like we do in the C code) because packssdw will saturate the output.
+;       therefore the same function can be used to and from jpeg range.
 
 ;-----------------------------------------------------------------------------
 ; lumConvertRange
 ;
-; void ff_lumRangeToJpeg_<opt>(int16_t *dst, int width);
-; void ff_lumRangeFromJpeg_<opt>(int16_t *dst, int width);
+; void ff_lumRangeConvert_<opt>(int16_t *dst, int width,
+;                               int64_t coeff, int offset, int amax);
 ;
 ;-----------------------------------------------------------------------------
 
-%macro LUMCONVERTRANGE 4
-cglobal %1, 2, 2, 5, dst, width
+%macro LUMCONVERTRANGE 2
+cglobal %1, 4, 4, 5, dst, width, coeff, offset
     shl          widthd, 1
-    VBROADCASTI128   m2, [%2]
-    VBROADCASTI128   m3, [%3]
+    movsxdifnidn coeffq, coeffd
+    movq            xm2, coeffq
+    VBROADCASTSS     m2, xm2
+    movq            xm3, offsetq
+    VBROADCASTSS     m3, xm3
     pxor             m4, m4
     add            dstq, widthq
     neg          widthq
@@ -67,8 +53,8 @@ cglobal %1, 2, 2, 5, dst, width
     pmaddwd          m1, m2
     paddd            m0, m3
     paddd            m1, m3
-    psrad            m0, %4
-    psrad            m1, %4
+    psrad            m0, %2
+    psrad            m1, %2
     packssdw         m0, m1
     movu  [dstq+widthq], m0
     add          widthq, mmsize
@@ -79,16 +65,19 @@ cglobal %1, 2, 2, 5, dst, width
 ;-----------------------------------------------------------------------------
 ; chrConvertRange
 ;
-; void ff_chrRangeToJpeg_<opt>(int16_t *dstU, int16_t *dstV, int width);
-; void ff_chrRangeFromJpeg_<opt>(int16_t *dstU, int16_t *dstV, int width);
+; void ff_chrRangeConvert_<opt>(int16_t *dstU, int16_t *dstV, int width
+;                               int64_t coeff, int offset, int amax);
 ;
 ;-----------------------------------------------------------------------------
 
-%macro CHRCONVERTRANGE 4
-cglobal %1, 3, 3, 7, dstU, dstV, width
+%macro CHRCONVERTRANGE 2
+cglobal %1, 5, 5, 7, dstU, dstV, width, coeff, offset
     shl          widthd, 1
-    VBROADCASTI128   m4, [%2]
-    VBROADCASTI128   m5, [%3]
+    movsxdifnidn coeffq, coeffd
+    movq            xm4, coeffq
+    VBROADCASTSS     m4, xm4
+    movq            xm5, offsetq
+    VBROADCASTSS     m5, xm5
     pxor             m6, m6
     add           dstUq, widthq
     add           dstVq, widthq
@@ -108,10 +97,10 @@ cglobal %1, 3, 3, 7, dstU, dstV, width
     paddd            m1, m5
     paddd            m2, m5
     paddd            m3, m5
-    psrad            m0, %4
-    psrad            m1, %4
-    psrad            m2, %4
-    psrad            m3, %4
+    psrad            m0, %2
+    psrad            m1, %2
+    psrad            m2, %2
+    psrad            m3, %2
     packssdw         m0, m1
     packssdw         m2, m3
     movu [dstUq+widthq], m0
@@ -122,15 +111,15 @@ cglobal %1, 3, 3, 7, dstU, dstV, width
 %endmacro
 
 INIT_XMM sse2
-LUMCONVERTRANGE lumRangeToJpeg,   lum_to_mult,   lum_to_offset,   lum_to_shift
-CHRCONVERTRANGE chrRangeToJpeg,   chr_to_mult,   chr_to_offset,   chr_to_shift
-LUMCONVERTRANGE lumRangeFromJpeg, lum_from_mult, lum_from_offset, lum_from_shift
-CHRCONVERTRANGE chrRangeFromJpeg, chr_from_mult, chr_from_offset, chr_from_shift
+LUMCONVERTRANGE lumRangeConvert,   14
+CHRCONVERTRANGE chrRangeConvert,   14
+LUMCONVERTRANGE lumRangeConvert16, 16
+CHRCONVERTRANGE chrRangeConvert16, 16
 
 %if HAVE_AVX2_EXTERNAL
 INIT_YMM avx2
-LUMCONVERTRANGE lumRangeToJpeg,   lum_to_mult,   lum_to_offset,   lum_to_shift
-CHRCONVERTRANGE chrRangeToJpeg,   chr_to_mult,   chr_to_offset,   chr_to_shift
-LUMCONVERTRANGE lumRangeFromJpeg, lum_from_mult, lum_from_offset, lum_from_shift
-CHRCONVERTRANGE chrRangeFromJpeg, chr_from_mult, chr_from_offset, chr_from_shift
+LUMCONVERTRANGE lumRangeConvert,   14
+CHRCONVERTRANGE chrRangeConvert,   14
+LUMCONVERTRANGE lumRangeConvert16, 16
+CHRCONVERTRANGE chrRangeConvert16, 16
 %endif

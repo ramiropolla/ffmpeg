@@ -454,20 +454,20 @@ INPUT_PLANAR_RGB_A_ALL_DECL(avx2);
 #define RANGE_CONVERT_FUNCS(opt) do {                                       \
     if (c->dstBpc <= 14) {                                                  \
         if (c->srcRange) {                                                  \
-            c->lumConvertRange = ff_lumRangeFromJpeg_ ##opt;                \
-            c->chrConvertRange = ff_chrRangeFromJpeg_ ##opt;                \
+            c->lumConvertRange = ff_lumRangeConvert_ ##opt;                 \
+            c->chrConvertRange = ff_chrRangeConvert_ ##opt;                 \
         } else {                                                            \
-            c->lumConvertRange = ff_lumRangeToJpeg_ ##opt;                  \
-            c->chrConvertRange = ff_chrRangeToJpeg_ ##opt;                  \
+            c->lumConvertRange = ff_lumRangeConvert_ ##opt;                 \
+            c->chrConvertRange = ff_chrRangeConvert_ ##opt;                 \
         }                                                                   \
     }                                                                       \
 } while (0)
 
 #define RANGE_CONVERT_FUNCS_DECL(opt)                                       \
-void ff_lumRangeFromJpeg_ ##opt(int16_t *dst, int width);                   \
-void ff_chrRangeFromJpeg_ ##opt(int16_t *dstU, int16_t *dstV, int width);   \
-void ff_lumRangeToJpeg_ ##opt(int16_t *dst, int width);                     \
-void ff_chrRangeToJpeg_ ##opt(int16_t *dstU, int16_t *dstV, int width);     \
+void ff_lumRangeConvert_ ##opt(int16_t *dst, int width,                     \
+                               int64_t coeff, int offset, int amax);        \
+void ff_chrRangeConvert_ ##opt(int16_t *dstU, int16_t *dstV, int width,     \
+                               int64_t coeff, int offset, int amax);        \
 
 RANGE_CONVERT_FUNCS_DECL(sse2);
 RANGE_CONVERT_FUNCS_DECL(avx2);
