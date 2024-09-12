@@ -547,22 +547,6 @@ static void solve_range_convert(int src_min, int src_max,
     // solve for coeff and offset:
     // (out << val_shift) = ((in << val_shift) * coeff + offset) >> mult_shift
 
-    // isolate offset:
-    // (out << (val_shift + mult_shift)) = (in << val_shift) * coeff + offset
-    // (out << (val_shift + mult_shift)) - (in << val_shift) * coeff = offset
-    // offset = (out << (val_shift + mult_shift)) - (in << val_shift) * coeff
-
-    // min/max equations (to obtain coeff)
-    // offset = (dst_min << (val_shift + mult_shift)) - (src_min << val_shift) * coeff
-    // offset = (dst_max << (val_shift + mult_shift)) - (src_max << val_shift) * coeff
-    // isolate coeff
-    // (dst_min << (val_shift + mult_shift)) - (src_min << val_shift) * coeff = (dst_max << (val_shift + mult_shift)) - (src_max << val_shift) * coeff
-    // (src_min << val_shift) * coeff - (src_max << val_shift) * coeff = (dst_min << (val_shift + mult_shift)) - (dst_max << (val_shift + mult_shift))
-    // coeff * ((src_min - src_max) << val_shift) = (dst_min - dst_max) << (val_shift + mult_shift)
-    // coeff = ((dst_min - dst_max) << (val_shift + mult_shift)) / ((src_min - src_max) << val_shift)
-    // coeff = ((dst_max - dst_min) << (val_shift + mult_shift)) / ((src_max - src_min) << val_shift)
-    // coeff = (((dst_max - dst_min) << (val_shift + mult_shift)) / (src_max - src_min)) >> val_shift
-
     int src_range = src_max - src_min;
     int dst_range = dst_max - dst_min;
     int total_shift = val_shift + mult_shift;
