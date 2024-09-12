@@ -474,6 +474,7 @@ RANGE_CONVERT_FUNCS_DECL(avx2);
 
 av_cold void ff_sws_init_range_convert_x86(SwsContext *c)
 {
+    return;
     if (c->srcRange != c->dstRange && !isAnyRGB(c->dstFormat)) {
         int cpu_flags = av_get_cpu_flags();
         if (EXTERNAL_AVX2_FAST(cpu_flags)) {
