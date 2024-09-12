@@ -59,7 +59,9 @@ static int lum_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
         }
 
         if (c->lumConvertRange)
-            c->lumConvertRange((int16_t*)dst[dst_pos], dstW);
+            c->lumConvertRange((int16_t*)dst[dst_pos], dstW,
+                               c->lumConvertRange_coeff, c->lumConvertRange_offset,
+                               c->lumConvertRange_amin, c->lumConvertRange_amax);
 
         desc->dst->plane[0].sliceH += 1;
 
@@ -192,7 +194,9 @@ static int chr_h_scale(SwsContext *c, SwsFilterDescriptor *desc, int sliceY, int
         }
 
         if (c->chrConvertRange)
-            c->chrConvertRange((uint16_t*)dst1[dst_pos1+i], (uint16_t*)dst2[dst_pos2+i], dstW);
+            c->chrConvertRange((uint16_t*)dst1[dst_pos1+i], (uint16_t*)dst2[dst_pos2+i], dstW,
+                               c->chrConvertRange_coeff, c->chrConvertRange_offset,
+                               c->chrConvertRange_amin, c->chrConvertRange_amax);
 
         desc->dst->plane[1].sliceH += 1;
         desc->dst->plane[2].sliceH += 1;
