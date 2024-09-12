@@ -465,12 +465,13 @@ INPUT_PLANAR_RGB_A_ALL_DECL(avx2);
 
 #define RANGE_CONVERT_FUNCS_DECL(opt)                                       \
 void ff_lumRangeFromJpeg_ ##opt(int16_t *dst, int width,                    \
-                                int coeff, int offset, int amin, int amax); \
-void ff_chrRangeFromJpeg_ ##opt(int16_t *dstU, int16_t *dstV, int width);   \
+                                int coeff, int offset, int amax);           \
+void ff_chrRangeFromJpeg_ ##opt(int16_t *dstU, int16_t *dstV, int width,    \
+                                int coeff, int offset, int amax);           \
 void ff_lumRangeToJpeg_ ##opt(int16_t *dst, int width,                      \
-                              int coeff, int offset, int amin, int amax);   \
+                              int coeff, int offset, int amax);             \
 void ff_chrRangeToJpeg_ ##opt(int16_t *dstU, int16_t *dstV, int width,      \
-                              int coeff, int offset, int amin, int amax);   \
+                              int coeff, int offset, int amax);             \
 
 RANGE_CONVERT_FUNCS_DECL(sse2);
 RANGE_CONVERT_FUNCS_DECL(avx2);
