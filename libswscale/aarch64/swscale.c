@@ -296,6 +296,5 @@ av_cold void ff_sws_init_swscale_aarch64(SwsContext *c)
         default:
             break;
         }
-        ff_sws_init_range_convert_aarch64(c);
     }
 }
