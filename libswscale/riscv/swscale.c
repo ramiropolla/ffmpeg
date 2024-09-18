@@ -28,6 +28,7 @@ void ff_range_chr_from_jpeg_16_rvv(int16_t *, int16_t *, int);
 
 av_cold void ff_sws_init_range_convert_riscv(SwsContext *c)
 {
+#if 0
 #if HAVE_RVV
     int flags = av_get_cpu_flags();
 
@@ -46,6 +47,7 @@ av_cold void ff_sws_init_range_convert_riscv(SwsContext *c)
         c->lumConvertRange = convs[from].lum;
         c->chrConvertRange = convs[from].chr;
     }
+#endif
 #endif
 }
 
