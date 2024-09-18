@@ -104,7 +104,6 @@ static void check_yuv2yuv1(int accurate)
     int dstW, offset;
     size_t fail_offset;
     const int input_sizes[] = {8, 24, 128, 144, 256, 512};
-    const int INPUT_SIZES = sizeof(input_sizes)/sizeof(input_sizes[0]);
     #define LARGEST_INPUT_SIZE 512
 
     const int offsets[] = {0, 3, 8, 11, 16, 19};
@@ -129,7 +128,7 @@ static void check_yuv2yuv1(int accurate)
         fail();
 
     ff_sws_init_scale(ctx);
-    for (isi = 0; isi < INPUT_SIZES; ++isi) {
+    for (isi = 0; isi < FF_ARRAY_ELEMS(input_sizes); ++isi) {
         dstW = input_sizes[isi];
         for (osi = 0; osi < OFFSET_SIZES; osi++) {
             offset = offsets[osi];
@@ -168,7 +167,6 @@ static void check_yuv2yuvX(int accurate)
     const int FILTER_SIZES = sizeof(filter_sizes)/sizeof(filter_sizes[0]);
 #define LARGEST_INPUT_SIZE 512
     static const int input_sizes[] = {8, 24, 128, 144, 256, 512};
-    const int INPUT_SIZES = sizeof(input_sizes)/sizeof(input_sizes[0]);
     const char *accurate_str = (accurate) ? "accurate" : "approximate";
 
     declare_func_emms(AV_CPU_FLAG_MMX, void, const int16_t *filter,
@@ -195,7 +193,7 @@ static void check_yuv2yuvX(int accurate)
         fail();
 
     ff_sws_init_scale(ctx);
-    for(isi = 0; isi < INPUT_SIZES; ++isi){
+    for(isi = 0; isi < FF_ARRAY_ELEMS(input_sizes); ++isi){
         dstW = input_sizes[isi];
         for(osi = 0; osi < 64; osi += 16){
             if (dstW <= osi)
@@ -270,8 +268,7 @@ static void check_hscale(void)
     };
 
 #define LARGEST_INPUT_SIZE 512
-#define INPUT_SIZES 6
-    static const int input_sizes[INPUT_SIZES] = {8, 24, 128, 144, 256, 512};
+    static const int input_sizes[] = {8, 24, 128, 144, 256, 512};
 
     int i, j, fsi, hpi, width, dstWi;
     struct SwsContext *ctx;
@@ -301,7 +298,7 @@ static void check_hscale(void)
 
     for (hpi = 0; hpi < HSCALE_PAIRS; hpi++) {
         for (fsi = 0; fsi < FILTER_SIZES; fsi++) {
-            for (dstWi = 0; dstWi < INPUT_SIZES; dstWi++) {
+            for (dstWi = 0; dstWi < FF_ARRAY_ELEMS(input_sizes); dstWi++) {
                 width = filter_sizes[fsi];
 
                 ctx->srcBpc = hscale_pairs[hpi][0];
