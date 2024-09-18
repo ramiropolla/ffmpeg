@@ -64,8 +64,11 @@ static void check_lumConvertRange(int from)
 
     LOCAL_ALIGNED_32(int16_t, dst0, [LARGEST_INPUT_SIZE * 2]);
     LOCAL_ALIGNED_32(int16_t, dst1, [LARGEST_INPUT_SIZE * 2]);
+    int32_t *dst0_32 = (int32_t *) dst0;
+    int32_t *dst1_32 = (int32_t *) dst1;
 
-    declare_func(void, int16_t *dst, int width);
+    declare_func(void, int16_t *dst, int width,
+                       int coeff, int64_t offset);
 
     ctx = sws_alloc_context();
     if (sws_init_context(ctx, NULL, NULL) < 0)
@@ -79,6 +82,10 @@ static void check_lumConvertRange(int from)
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pix_fmt);
         int bit_depth = desc->comp[0].depth;
         int sample_size = bit_depth == 16 ? sizeof(int32_t) : sizeof(int16_t);
+        int src_shift = bit_depth <= 14 ? 15 - bit_depth : 19 - bit_depth;
+        int mpeg_min = 16 << (bit_depth - 8);
+        int mpeg_max = 235 << (bit_depth - 8);
+        int jpeg_max = (1 << bit_depth) - 1;
         ctx->srcFormat = pix_fmt;
         ctx->dstFormat = pix_fmt;
         ctx->dstBpc = bit_depth;
@@ -87,12 +94,34 @@ static void check_lumConvertRange(int from)
             int width = input_sizes[dstWi];
             if (check_func(ctx->lumConvertRange, "%s%d_%d", func_str, bit_depth, width)) {
                 randomize_buffers(dst0, dst1, bit_depth, width);
-                call_ref(dst0, width);
-                call_new(dst1, width);
+                if (!from) {
+                    if (bit_depth == 16) {
+                        dst1_32[0] = dst0_32[0] = mpeg_min << src_shift;
+                        dst1_32[1] = dst0_32[1] = mpeg_max << src_shift;
+                    } else {
+                        dst1[0] = dst0[0] = mpeg_min << src_shift;
+                        dst1[1] = dst0[1] = mpeg_max << src_shift;
+                    }
+                }
+                call_ref(dst0, width,
+                         ctx->lumConvertRange_coeff, ctx->lumConvertRange_offset);
+                call_new(dst1, width,
+                         ctx->lumConvertRange_coeff, ctx->lumConvertRange_offset);
                 if (memcmp(dst0, dst1, width * sample_size))
                     fail();
+                if (!from) {
+                    /* check that the mpeg range is respected */
+                    if (bit_depth == 16) {
+                        if ((dst1_32[0] >> src_shift) > 0 || (dst1_32[1] >> src_shift) != jpeg_max)
+                            fail();
+                    } else {
+                        if ((dst1[0] >> src_shift) > 0 || (dst1[1] >> src_shift) != jpeg_max)
+                            fail();
+                    }
+                }
                 if (width == LARGEST_INPUT_SIZE && (bit_depth == 8 || bit_depth == 16))
-                    bench_new(dst1, width);
+                    bench_new(dst1, width,
+                              ctx->lumConvertRange_coeff, ctx->lumConvertRange_offset);
             }
         }
     }
@@ -112,8 +141,11 @@ static void check_chrConvertRange(int from)
     LOCAL_ALIGNED_32(int16_t, dstV0, [LARGEST_INPUT_SIZE * 2]);
     LOCAL_ALIGNED_32(int16_t, dstU1, [LARGEST_INPUT_SIZE * 2]);
     LOCAL_ALIGNED_32(int16_t, dstV1, [LARGEST_INPUT_SIZE * 2]);
+    int32_t *dstU0_32 = (int32_t *) dstU0;
+    int32_t *dstU1_32 = (int32_t *) dstU1;
 
-    declare_func(void, int16_t *dstU, int16_t *dstV, int width);
+    declare_func(void, int16_t *dstU, int16_t *dstV, int width,
+                       int coeff, int64_t offset);
 
     ctx = sws_alloc_context();
     if (sws_init_context(ctx, NULL, NULL) < 0)
@@ -127,6 +159,10 @@ static void check_chrConvertRange(int from)
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pix_fmt);
         int bit_depth = desc->comp[0].depth;
         int sample_size = bit_depth == 16 ? sizeof(int32_t) : sizeof(int16_t);
+        int src_shift = bit_depth <= 14 ? 15 - bit_depth : 19 - bit_depth;
+        int mpeg_min = 16 << (bit_depth - 8);
+        int mpeg_max = 240 << (bit_depth - 8);
+        int jpeg_max = (1 << bit_depth) - 1;
         ctx->srcFormat = pix_fmt;
         ctx->dstFormat = pix_fmt;
         ctx->dstBpc = bit_depth;
@@ -136,13 +172,35 @@ static void check_chrConvertRange(int from)
             if (check_func(ctx->chrConvertRange, "%s%d_%d", func_str, bit_depth, width)) {
                 randomize_buffers(dstU0, dstU1, bit_depth, width);
                 randomize_buffers(dstV0, dstV1, bit_depth, width);
-                call_ref(dstU0, dstV0, width);
-                call_new(dstU1, dstV1, width);
+                if (!from) {
+                    if (bit_depth == 16) {
+                        dstU1_32[0] = dstU0_32[0] = mpeg_min << src_shift;
+                        dstU1_32[1] = dstU0_32[1] = mpeg_max << src_shift;
+                    } else {
+                        dstU1[0] = dstU0[0] = mpeg_min << src_shift;
+                        dstU1[1] = dstU0[1] = mpeg_max << src_shift;
+                    }
+                }
+                call_ref(dstU0, dstV0, width,
+                         ctx->chrConvertRange_coeff, ctx->chrConvertRange_offset);
+                call_new(dstU1, dstV1, width,
+                         ctx->chrConvertRange_coeff, ctx->chrConvertRange_offset);
                 if (memcmp(dstU0, dstU1, width * sample_size) ||
                     memcmp(dstV0, dstV1, width * sample_size))
                     fail();
+                if (!from) {
+                    /* check that the mpeg range is respected */
+                    if (bit_depth == 16) {
+                        if ((dstU1_32[0] >> src_shift) > 0 || (dstU1_32[1] >> src_shift) != jpeg_max)
+                            fail();
+                    } else {
+                        if ((dstU1[0] >> src_shift) > 0 || (dstU1[1] >> src_shift) != jpeg_max)
+                            fail();
+                    }
+                }
                 if (width == LARGEST_INPUT_SIZE && (bit_depth == 8 || bit_depth == 16))
-                    bench_new(dstU1, dstV1, width);
+                    bench_new(dstU1, dstV1, width,
+                              ctx->chrConvertRange_coeff, ctx->chrConvertRange_offset);
             }
         }
     }
