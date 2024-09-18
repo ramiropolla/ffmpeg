@@ -554,6 +554,13 @@ av_cold void ff_sws_init_range_convert(SwsContext *c)
             }
         }
     }
+#if ARCH_AARCH64
+    ff_sws_init_range_convert_aarch64(c);
+#elif ARCH_LOONGARCH64
+    ff_sws_init_range_convert_loongarch(c);
+#elif ARCH_X86
+    ff_sws_init_range_convert_x86(c);
+#endif
 }
 
 static av_cold void sws_init_swscale(SwsContext *c)
@@ -582,6 +589,7 @@ static av_cold void sws_init_swscale(SwsContext *c)
     }
 
     ff_sws_init_range_convert(c);
+printf("%d %d %p %p\n", c->srcRange, c->dstRange, c->lumConvertRange, c->chrConvertRange);
 
     if (!(isGray(srcFormat) || isGray(c->dstFormat) ||
           srcFormat == AV_PIX_FMT_MONOBLACK || srcFormat == AV_PIX_FMT_MONOWHITE))
