@@ -156,75 +156,87 @@ static void hScale8To19_c(SwsContext *c, int16_t *_dst, int dstW,
 
 // FIXME all pal and rgb srcFormats could do this conversion as well
 // FIXME all scalers more complex than bilinear could do half of this transform
-static void chrRangeToJpeg_c(int16_t *dstU, int16_t *dstV, int width)
+static void chrRangeToJpeg_c(int16_t *dstU, int16_t *dstV, int width,
+                             int amax, int coeff, int64_t _offset)
 {
+    int offset = _offset;
     int i;
     for (i = 0; i < width; i++) {
-        dstU[i] = (FFMIN(dstU[i], 30775) * 4663 - 9289992) >> 12; // -264
-        dstV[i] = (FFMIN(dstV[i], 30775) * 4663 - 9289992) >> 12; // -264
+        dstU[i] = (FFMIN(dstU[i], amax) * coeff + offset) >> 14;
+        dstV[i] = (FFMIN(dstV[i], amax) * coeff + offset) >> 14;
     }
 }
 
-static void chrRangeFromJpeg_c(int16_t *dstU, int16_t *dstV, int width)
+static void chrRangeFromJpeg_c(int16_t *dstU, int16_t *dstV, int width,
+                               int amax, int coeff, int64_t _offset)
 {
+    int offset = _offset;
     int i;
     for (i = 0; i < width; i++) {
-        dstU[i] = (dstU[i] * 1799 + 4081085) >> 11; // 1469
-        dstV[i] = (dstV[i] * 1799 + 4081085) >> 11; // 1469
+        dstU[i] = (dstU[i] * coeff + offset) >> 14;
+        dstV[i] = (dstV[i] * coeff + offset) >> 14;
     }
 }
 
-static void lumRangeToJpeg_c(int16_t *dst, int width)
+static void lumRangeToJpeg_c(int16_t *dst, int width,
+                             int amax, int coeff, int64_t _offset)
 {
+    int offset = _offset;
     int i;
     for (i = 0; i < width; i++)
-        dst[i] = (FFMIN(dst[i], 30189) * 19077 - 39057361) >> 14;
+        dst[i] = (FFMIN(dst[i], amax) * coeff + offset) >> 14;
 }
 
-static void lumRangeFromJpeg_c(int16_t *dst, int width)
+static void lumRangeFromJpeg_c(int16_t *dst, int width,
+                               int amax, int coeff, int64_t _offset)
 {
+    int offset = _offset;
     int i;
     for (i = 0; i < width; i++)
-        dst[i] = (dst[i] * 14071 + 33561947) >> 14;
+        dst[i] = (dst[i] * coeff + offset) >> 14;
 }
 
-static void chrRangeToJpeg16_c(int16_t *_dstU, int16_t *_dstV, int width)
+static void chrRangeToJpeg16_c(int16_t *_dstU, int16_t *_dstV, int width,
+                               int amax, int coeff, int64_t offset)
 {
     int i;
     int32_t *dstU = (int32_t *) _dstU;
     int32_t *dstV = (int32_t *) _dstV;
     for (i = 0; i < width; i++) {
-        dstU[i] = (FFMIN(dstU[i], 30775 << 4) * 4663 - (9289992 << 4)) >> 12; // -264
-        dstV[i] = (FFMIN(dstV[i], 30775 << 4) * 4663 - (9289992 << 4)) >> 12; // -264
+        dstU[i] = ((int64_t) FFMIN(dstU[i], amax) * coeff + offset) >> 18;
+        dstV[i] = ((int64_t) FFMIN(dstV[i], amax) * coeff + offset) >> 18;
     }
 }
 
-static void chrRangeFromJpeg16_c(int16_t *_dstU, int16_t *_dstV, int width)
+static void chrRangeFromJpeg16_c(int16_t *_dstU, int16_t *_dstV, int width,
+                                 int amax, int coeff, int64_t offset)
 {
     int i;
     int32_t *dstU = (int32_t *) _dstU;
     int32_t *dstV = (int32_t *) _dstV;
     for (i = 0; i < width; i++) {
-        dstU[i] = (dstU[i] * 1799 + (4081085 << 4)) >> 11; // 1469
-        dstV[i] = (dstV[i] * 1799 + (4081085 << 4)) >> 11; // 1469
+        dstU[i] = ((int64_t) dstU[i] * coeff + offset) >> 18;
+        dstV[i] = ((int64_t) dstV[i] * coeff + offset) >> 18;
     }
 }
 
-static void lumRangeToJpeg16_c(int16_t *_dst, int width)
+static void lumRangeToJpeg16_c(int16_t *_dst, int width,
+                               int amax, int coeff, int64_t offset)
 {
     int i;
     int32_t *dst = (int32_t *) _dst;
     for (i = 0; i < width; i++) {
-        dst[i] = ((int)(FFMIN(dst[i], 30189 << 4) * 4769U - (39057361 << 2))) >> 12;
+        dst[i] = ((int64_t) FFMIN(dst[i], amax) * coeff + offset) >> 18;
     }
 }
 
-static void lumRangeFromJpeg16_c(int16_t *_dst, int width)
+static void lumRangeFromJpeg16_c(int16_t *_dst, int width,
+                                 int amax, int coeff, int64_t offset)
 {
     int i;
     int32_t *dst = (int32_t *) _dst;
     for (i = 0; i < width; i++)
-        dst[i] = (dst[i]*(14071/4) + (33561947<<4)/4)>>12;
+        dst[i] = ((int64_t) dst[i] * coeff + offset) >> 18;
 }
 
 
@@ -531,11 +543,69 @@ static int swscale(SwsContext *c, const uint8_t *src[],
     return dstY - lastDstY;
 }
 
+static void solve_range_convert(int src_min, int src_max,
+                                int dst_min, int dst_max,
+                                int src_bits, int src_shift, int mult_shift,
+                                int *amax, int *coeff, int64_t *offset)
+{
+    const int64_t mult_max = ((1ULL << src_bits) - 1) << mult_shift;
+
+    // solve for coeff and offset:
+    // dst = ((src << src_shift) * coeff + offset) >> (mult_shift + src_shift)
+
+    int src_range = src_max - src_min;
+    int dst_range = dst_max - dst_min;
+    int total_shift = mult_shift + src_shift;
+    *coeff = AV_CEIL_RSHIFT(((int64_t) dst_range << total_shift) / src_range, src_shift);
+    *offset = ((int64_t) dst_max << total_shift) -
+              ((int64_t) src_max << src_shift) * *coeff;
+
+    // prevent overflows when converting to jpeg
+    *amax = ROUNDED_DIV(mult_max - *offset, *coeff);
+}
+
+static void init_range_convert_constants(SwsContext *c)
+{
+    const int bit_depth = c->dstBpc ? c->dstBpc : 8;
+    const int src_bits = bit_depth <= 14 ? 15 : 19;
+    const int src_shift = src_bits - bit_depth;
+    const int mult_shift = bit_depth <= 14 ? 14 : 18;
+    const int mpeg_min = 16 << (bit_depth - 8);
+    const int mpeg_max_lum = 235 << (bit_depth - 8);
+    const int mpeg_max_chr = 240 << (bit_depth - 8);
+    const int jpeg_max = (1 << bit_depth) - 1;
+    int src_min, src_max_lum, src_max_chr, dst_min, dst_max_lum, dst_max_chr;
+    if (c->srcRange) {
+        src_min     = 0;
+        src_max_lum = jpeg_max;
+        src_max_chr = jpeg_max;
+        dst_min     = mpeg_min;
+        dst_max_lum = mpeg_max_lum;
+        dst_max_chr = mpeg_max_chr;
+    } else {
+        src_min     = mpeg_min;
+        src_max_lum = mpeg_max_lum;
+        src_max_chr = mpeg_max_chr;
+        dst_min     = 0;
+        dst_max_lum = jpeg_max;
+        dst_max_chr = jpeg_max;
+    }
+    solve_range_convert(src_min, src_max_lum, dst_min, dst_max_lum,
+                        src_bits, src_shift, mult_shift,
+                        &c->lumConvertRange_max,
+                        &c->lumConvertRange_coeff, &c->lumConvertRange_offset);
+    solve_range_convert(src_min, src_max_chr, dst_min, dst_max_chr,
+                        src_bits, src_shift, mult_shift,
+                        &c->chrConvertRange_max,
+                        &c->chrConvertRange_coeff, &c->chrConvertRange_offset);
+}
+
 av_cold void ff_sws_init_range_convert(SwsContext *c)
 {
     c->lumConvertRange = NULL;
     c->chrConvertRange = NULL;
     if (c->srcRange != c->dstRange && !isAnyRGB(c->dstFormat)) {
+        init_range_convert_constants(c);
         if (c->dstBpc <= 14) {
             if (c->srcRange) {
                 c->lumConvertRange = lumRangeFromJpeg_c;
