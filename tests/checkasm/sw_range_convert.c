@@ -45,7 +45,7 @@ static void randomize_buffers(int16_t *buf0, int16_t *buf1, int bit_depth, int w
     int32_t *buf0_32 = (int32_t *) buf0;
     int32_t *buf1_32 = (int32_t *) buf1;
     int mask = (1 << bit_depth) - 1;
-    int src_shift = bit_depth <= 14 ? 15 - bit_depth : 19 - bit_depth;
+    int src_shift = bit_depth == 16 ? 19 - bit_depth : 15 - bit_depth;
     for (int i = 0; i < width; i++) {
         int32_t r = rnd() & mask;
         if (bit_depth == 16) {
@@ -84,7 +84,7 @@ static void check_lumConvertRange(int from)
         enum AVPixelFormat pix_fmt = pixel_formats[pfi].pix_fmt;
         int bit_depth = pixel_formats[pfi].bit_depth;
         int sample_size = bit_depth == 16 ? sizeof(int32_t) : sizeof(int16_t);
-        int src_shift = bit_depth <= 14 ? 15 - bit_depth : 19 - bit_depth;
+        int src_shift = bit_depth == 16 ? 19 - bit_depth : 15 - bit_depth;
         int mpeg_min = 16 << (bit_depth - 8);
         int mpeg_max = 235 << (bit_depth - 8);
         int jpeg_max = (1 << bit_depth) - 1;
@@ -164,7 +164,7 @@ static void check_chrConvertRange(int from)
         enum AVPixelFormat pix_fmt = pixel_formats[pfi].pix_fmt;
         int bit_depth = pixel_formats[pfi].bit_depth;
         int sample_size = bit_depth == 16 ? sizeof(int32_t) : sizeof(int16_t);
-        int src_shift = bit_depth <= 14 ? 15 - bit_depth : 19 - bit_depth;
+        int src_shift = bit_depth == 16 ? 19 - bit_depth : 15 - bit_depth;
         int mpeg_min = 16 << (bit_depth - 8);
         int mpeg_max = 240 << (bit_depth - 8);
         int jpeg_max = (1 << bit_depth) - 1;

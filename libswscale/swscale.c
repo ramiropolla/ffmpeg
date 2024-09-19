@@ -543,16 +543,14 @@ static int swscale(SwsContext *c, const uint8_t *src[],
     return dstY - lastDstY;
 }
 
+// solve for coeff and offset:
+// dst = ((src << src_shift) * coeff + offset) >> (mult_shift + src_shift)
 static void solve_range_convert(int src_min, int src_max,
                                 int dst_min, int dst_max,
                                 int src_bits, int src_shift, int mult_shift,
                                 int *amax, int *coeff, int64_t *offset)
 {
     const int64_t mult_max = ((1ULL << src_bits) - 1) << mult_shift;
-
-    // solve for coeff and offset:
-    // dst = ((src << src_shift) * coeff + offset) >> (mult_shift + src_shift)
-
     int src_range = src_max - src_min;
     int dst_range = dst_max - dst_min;
     int total_shift = mult_shift + src_shift;
