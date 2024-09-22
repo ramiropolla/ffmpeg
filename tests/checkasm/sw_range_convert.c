@@ -62,6 +62,7 @@ static void check_lumConvertRange(int from)
             call_new(dst1, width);
             if (memcmp(dst0, dst1, width * sizeof(int16_t)))
                 fail();
+            if (width == LARGEST_INPUT_SIZE)
             bench_new(dst1, width);
         }
     }
@@ -109,6 +110,7 @@ static void check_chrConvertRange(int from)
             if (memcmp(dstU0, dstU1, width * sizeof(int16_t)) ||
                 memcmp(dstV0, dstV1, width * sizeof(int16_t)))
                 fail();
+            if (width == LARGEST_INPUT_SIZE)
             bench_new(dstU1, dstV1, width);
         }
     }
