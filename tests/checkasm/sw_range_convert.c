@@ -88,8 +88,8 @@ static void check_lumConvertRange(int from)
         ff_sws_init_scale(ctx);
         for (int dstWi = 0; dstWi < FF_ARRAY_ELEMS(input_sizes); dstWi++) {
             int width = input_sizes[dstWi];
-            randomize_buffers(dst0, dst1, bit_depth, width);
             if (check_func(ctx->lumConvertRange, "%s%d_%d", func_str, bit_depth, width)) {
+                randomize_buffers(dst0, dst1, bit_depth, width);
                 call_ref(dst0, width);
                 call_new(dst1, width);
                 if (memcmp(dst0, dst1, width * sample_size))
@@ -136,9 +136,9 @@ static void check_chrConvertRange(int from)
         ff_sws_init_scale(ctx);
         for (int dstWi = 0; dstWi < FF_ARRAY_ELEMS(input_sizes); dstWi++) {
             int width = input_sizes[dstWi];
-            randomize_buffers(dstU0, dstU1, bit_depth, width);
-            randomize_buffers(dstV0, dstV1, bit_depth, width);
             if (check_func(ctx->chrConvertRange, "%s%d_%d", func_str, bit_depth, width)) {
+                randomize_buffers(dstU0, dstU1, bit_depth, width);
+                randomize_buffers(dstV0, dstV1, bit_depth, width);
                 call_ref(dstU0, dstV0, width);
                 call_new(dstU1, dstV1, width);
                 if (memcmp(dstU0, dstU1, width * sample_size) ||
