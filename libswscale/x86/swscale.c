@@ -454,26 +454,46 @@ INPUT_PLANAR_RGB_A_ALL_DECL(avx2);
 #define RANGE_CONVERT_FUNCS(opt) do {                                       \
     if (c->dstBpc <= 14) {                                                  \
         if (c->srcRange) {                                                  \
-            c->lumConvertRange = ff_lumRangeFromJpeg_ ##opt;                \
-            c->chrConvertRange = ff_chrRangeFromJpeg_ ##opt;                \
+            c->lumConvertRange = ff_lumRangeFromJpeg8_ ##opt;               \
+            c->chrConvertRange = ff_chrRangeFromJpeg8_ ##opt;               \
         } else {                                                            \
-            c->lumConvertRange = ff_lumRangeToJpeg_ ##opt;                  \
-            c->chrConvertRange = ff_chrRangeToJpeg_ ##opt;                  \
+            c->lumConvertRange = ff_lumRangeToJpeg8_ ##opt;                 \
+            c->chrConvertRange = ff_chrRangeToJpeg8_ ##opt;                 \
+        }                                                                   \
+    } else {                                                                \
+        if (c->srcRange) {                                                  \
+            c->lumConvertRange = ff_lumRangeFromJpeg16_ ##opt;              \
+            c->chrConvertRange = ff_chrRangeFromJpeg16_ ##opt;              \
+        } else {                                                            \
+            c->lumConvertRange = ff_lumRangeToJpeg16_ ##opt;                \
+            c->chrConvertRange = ff_chrRangeToJpeg16_ ##opt;                \
         }                                                                   \
     }                                                                       \
 } while (0)
 
 #define RANGE_CONVERT_FUNCS_DECL(opt)                                       \
-void ff_lumRangeFromJpeg_ ##opt(int16_t *dst, int width,                    \
+void ff_lumRangeFromJpeg8_ ##opt(int16_t *dst, int width,                   \
+                                 int amax, int coeff, int64_t offset);      \
+void ff_chrRangeFromJpeg8_ ##opt(int16_t *dstU, int16_t *dstV, int width,   \
+                                 int amax, int coeff, int64_t offset);      \
+void ff_lumRangeToJpeg8_ ##opt(int16_t *dst, int width,                     \
+                               int amax, int coeff, int64_t offset);        \
+void ff_chrRangeToJpeg8_ ##opt(int16_t *dstU, int16_t *dstV, int width,     \
+                               int amax, int coeff, int64_t offset);        \
+void ff_lumRangeFromJpeg16_ ##opt(int16_t *dst, int width,                  \
+                                  int amax, int coeff, int64_t offset);     \
+void ff_chrRangeFromJpeg16_ ##opt(int16_t *dstU, int16_t *dstV, int width,  \
+                                  int amax, int coeff, int64_t offset);     \
+void ff_lumRangeToJpeg16_ ##opt(int16_t *dst, int width,                    \
                                 int amax, int coeff, int64_t offset);       \
-void ff_chrRangeFromJpeg_ ##opt(int16_t *dstU, int16_t *dstV, int width,    \
+void ff_chrRangeToJpeg16_ ##opt(int16_t *dstU, int16_t *dstV, int width,    \
                                 int amax, int coeff, int64_t offset);       \
-void ff_lumRangeToJpeg_ ##opt(int16_t *dst, int width,                      \
-                              int amax, int coeff, int64_t offset);         \
-void ff_chrRangeToJpeg_ ##opt(int16_t *dstU, int16_t *dstV, int width,      \
-                              int amax, int coeff, int64_t offset);         \
 
 RANGE_CONVERT_FUNCS_DECL(sse2);
+void ff_lumRangeToJpeg16_sse4(int16_t *dst, int width,
+                              int amax, int coeff, int64_t offset);
+void ff_chrRangeToJpeg16_sse4(int16_t *dstU, int16_t *dstV, int width,
+                              int amax, int coeff, int64_t offset);
 RANGE_CONVERT_FUNCS_DECL(avx2);
 
 av_cold void ff_sws_init_range_convert_x86(SwsContext *c)
@@ -481,8 +501,14 @@ av_cold void ff_sws_init_range_convert_x86(SwsContext *c)
     int cpu_flags = av_get_cpu_flags();
     if (EXTERNAL_AVX2_FAST(cpu_flags)) {
         RANGE_CONVERT_FUNCS(avx2);
-    } else if (EXTERNAL_SSE2(cpu_flags)) {
-        RANGE_CONVERT_FUNCS(sse2);
+    } else {
+        if (EXTERNAL_SSE2(cpu_flags)) {
+            RANGE_CONVERT_FUNCS(sse2);
+        }
+        if (EXTERNAL_SSE4(cpu_flags) && c->dstBpc > 14 && !c->srcRange) {
+            c->lumConvertRange = ff_lumRangeToJpeg16_sse4;
+            c->chrConvertRange = ff_chrRangeToJpeg16_sse4;
+        }
     }
 }
 
