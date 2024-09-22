@@ -20,13 +20,41 @@
 
 #include "libavutil/aarch64/asm.S"
 
-.macro lumConvertRange fromto
-function ff_lumRange\fromto\()Jpeg_neon, export=1
+.macro lumConvertRange fromto, bit_depth
+function ff_lumRange\fromto\()Jpeg\bit_depth\()_neon, export=1
 // x0  int16_t *dst
 // w1  int width
 // w2  int amax
 // w3  int coeff
 // x4  int64_t offset
+.if \bit_depth == 16
+.ifc \fromto, To
+        dup             v24.4s, w2
+.endif
+        dup             v25.4s, w3
+        dup             v26.2d, x4
+1:
+        ld1             {v0.4s, v1.4s}, [x0]
+.ifc \fromto, To
+        smin            v0.4s, v0.4s, v24.4s
+        smin            v1.4s, v1.4s, v24.4s
+.endif
+        mov             v16.16b, v26.16b
+        mov             v17.16b, v26.16b
+        mov             v18.16b, v26.16b
+        mov             v19.16b, v26.16b
+        smlal           v16.2d, v0.2s, v25.2s
+        smlal2          v17.2d, v0.4s, v25.4s
+        smlal           v18.2d, v1.2s, v25.2s
+        smlal2          v19.2d, v1.4s, v25.4s
+        shrn            v0.2s, v16.2d, 18
+        shrn2           v0.4s, v17.2d, 18
+        shrn            v1.2s, v18.2d, 18
+        shrn2           v1.4s, v19.2d, 18
+        subs            w1, w1, #8
+        st1             {v0.4s, v1.4s}, [x0], #32
+        b.gt            1b
+.else
 .ifc \fromto, To
         dup             v24.8h, w2
 .endif
@@ -48,18 +76,63 @@ function ff_lumRange\fromto\()Jpeg_neon, export=1
         subs            w1, w1, #8
         st1             {v0.8h}, [x0], #16
         b.gt            1b
+.endif
         ret
 endfunc
 .endm
 
-.macro chrConvertRange fromto
-function ff_chrRange\fromto\()Jpeg_neon, export=1
+.macro chrConvertRange fromto, bit_depth
+function ff_chrRange\fromto\()Jpeg\bit_depth\()_neon, export=1
 // x0  int16_t *dstU
 // x1  int16_t *dstV
 // w2  int width
 // w3  int amax
 // w4  int coeff
 // x5  int64_t offset
+.if \bit_depth == 16
+.ifc \fromto, To
+        dup             v24.4s, w3
+.endif
+        dup             v25.4s, w4
+        dup             v26.2d, x5
+1:
+        ld1             {v0.4s, v1.4s}, [x0]
+        ld1             {v2.4s, v3.4s}, [x1]
+.ifc \fromto, To
+        smin            v0.4s, v0.4s, v24.4s
+        smin            v1.4s, v1.4s, v24.4s
+        smin            v2.4s, v2.4s, v24.4s
+        smin            v3.4s, v3.4s, v24.4s
+.endif
+        mov             v16.16b, v26.16b
+        mov             v17.16b, v26.16b
+        mov             v18.16b, v26.16b
+        mov             v19.16b, v26.16b
+        mov             v20.16b, v26.16b
+        mov             v21.16b, v26.16b
+        mov             v22.16b, v26.16b
+        mov             v23.16b, v26.16b
+        smlal           v16.2d, v0.2s, v25.2s
+        smlal2          v17.2d, v0.4s, v25.4s
+        smlal           v18.2d, v1.2s, v25.2s
+        smlal2          v19.2d, v1.4s, v25.4s
+        smlal           v20.2d, v2.2s, v25.2s
+        smlal2          v21.2d, v2.4s, v25.4s
+        smlal           v22.2d, v3.2s, v25.2s
+        smlal2          v23.2d, v3.4s, v25.4s
+        shrn            v0.2s, v16.2d, 18
+        shrn2           v0.4s, v17.2d, 18
+        shrn            v1.2s, v18.2d, 18
+        shrn2           v1.4s, v19.2d, 18
+        shrn            v2.2s, v20.2d, 18
+        shrn2           v2.4s, v21.2d, 18
+        shrn            v3.2s, v22.2d, 18
+        shrn2           v3.4s, v23.2d, 18
+        subs            w2, w2, #8
+        st1             {v0.4s, v1.4s}, [x0], #32
+        st1             {v2.4s, v3.4s}, [x1], #32
+        b.gt            1b
+.else
 .ifc \fromto, To
         dup             v24.8h, w3
 .endif
@@ -92,11 +165,16 @@ function ff_chrRange\fromto\()Jpeg_neon, export=1
         st1             {v0.8h}, [x0], #16
         st1             {v1.8h}, [x1], #16
         b.gt            1b
+.endif
         ret
 endfunc
 .endm
 
-lumConvertRange To
-chrConvertRange To
-lumConvertRange From
-chrConvertRange From
+lumConvertRange To,    8
+lumConvertRange To,   16
+chrConvertRange To,    8
+chrConvertRange To,   16
+lumConvertRange From,  8
+lumConvertRange From, 16
+chrConvertRange From,  8
+chrConvertRange From, 16
