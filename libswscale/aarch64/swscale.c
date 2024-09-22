@@ -218,10 +218,14 @@ NEON_INPUT(bgra32);
 NEON_INPUT(rgb24);
 NEON_INPUT(rgba32);
 
-void ff_lumRangeFromJpeg_neon(int16_t *dst, int width);
-void ff_chrRangeFromJpeg_neon(int16_t *dstU, int16_t *dstV, int width);
-void ff_lumRangeToJpeg_neon(int16_t *dst, int width);
-void ff_chrRangeToJpeg_neon(int16_t *dstU, int16_t *dstV, int width);
+void ff_lumRangeFromJpeg_neon(int16_t *dst, int width,
+                              uint32_t coeff, int64_t offset);
+void ff_chrRangeFromJpeg_neon(int16_t *dstU, int16_t *dstV, int width,
+                              uint32_t coeff, int64_t offset);
+void ff_lumRangeToJpeg_neon(int16_t *dst, int width,
+                            uint32_t coeff, int64_t offset);
+void ff_chrRangeToJpeg_neon(int16_t *dstU, int16_t *dstV, int width,
+                            uint32_t coeff, int64_t offset);
 
 av_cold void ff_sws_init_range_convert_aarch64(SwsInternal *c)
 {
