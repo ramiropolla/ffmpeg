@@ -218,14 +218,17 @@ NEON_INPUT(bgra32);
 NEON_INPUT(rgb24);
 NEON_INPUT(rgba32);
 
-void ff_lumRangeFromJpeg_neon(int16_t *dst, int width);
-void ff_chrRangeFromJpeg_neon(int16_t *dstU, int16_t *dstV, int width);
-void ff_lumRangeToJpeg_neon(int16_t *dst, int width);
-void ff_chrRangeToJpeg_neon(int16_t *dstU, int16_t *dstV, int width);
+void ff_lumRangeFromJpeg_neon(int16_t *dst, int width,
+                              int amax, int coeff, int64_t offset);
+void ff_chrRangeFromJpeg_neon(int16_t *dstU, int16_t *dstV, int width,
+                              int amax, int coeff, int64_t offset);
+void ff_lumRangeToJpeg_neon(int16_t *dst, int width,
+                            int amax, int coeff, int64_t offset);
+void ff_chrRangeToJpeg_neon(int16_t *dstU, int16_t *dstV, int width,
+                            int amax, int coeff, int64_t offset);
 
 av_cold void ff_sws_init_range_convert_aarch64(SwsContext *c)
 {
-#if 0
     int cpu_flags = av_get_cpu_flags();
 
     if (have_neon(cpu_flags)) {
@@ -239,7 +242,6 @@ av_cold void ff_sws_init_range_convert_aarch64(SwsContext *c)
             }
         }
     }
-#endif
 }
 
 av_cold void ff_sws_init_swscale_aarch64(SwsContext *c)
