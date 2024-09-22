@@ -20,55 +20,52 @@
 
 #include "libavutil/aarch64/asm.S"
 
-.macro lumConvertRange name, max, mult, offset, shift
-function ff_\name, export=1
-.if \max != 0
-        mov             w3, #\max
-        dup             v24.8h, w3
+.macro lumConvertRange fromto
+function ff_lumRange\fromto\()Jpeg_neon, export=1
+// x0  int16_t *dst
+// w1  int width
+// w2  int coeff
+// x3  int64_t offset
+.ifc \fromto, To
+        dup             v24.8h, w2 ; TODO load (1 << 15) - 1
 .endif
-        mov             w3, #\mult
-        dup             v25.4s, w3
-        movz            w3, #(\offset & 0xffff)
-        movk            w3, #((\offset >> 16) & 0xffff), lsl #16
+        dup             v25.4s, w2
         dup             v26.4s, w3
 1:
         ld1             {v0.8h}, [x0]
-.if \max != 0
-        smin            v0.8h, v0.8h, v24.8h
-.endif
         mov             v16.16b, v26.16b
         mov             v18.16b, v26.16b
         sxtl            v20.4s, v0.4h
         sxtl2           v22.4s, v0.8h
         mla             v16.4s, v20.4s, v25.4s
         mla             v18.4s, v22.4s, v25.4s
-        shrn            v0.4h, v16.4s, #\shift
-        shrn2           v0.8h, v18.4s, #\shift
+        shrn            v0.4h, v16.4s, 14
+        shrn2           v0.8h, v18.4s, 14
         subs            w1, w1, #8
+.ifc \fromto, To
+        smin            v0.8h, v0.8h, v24.8h
+.endif
         st1             {v0.8h}, [x0], #16
         b.gt            1b
         ret
 endfunc
 .endm
 
-.macro chrConvertRange name, max, mult, offset, shift
-function ff_\name, export=1
-.if \max != 0
-        mov             w3, #\max
-        dup             v24.8h, w3
+.macro chrConvertRange fromto
+function ff_chrRange\fromto\()Jpeg_neon, export=1
+// x0  int16_t *dstU
+// x1  int16_t *dstV
+// w2  int width
+// w3  int coeff
+// x4  int64_t offset
+.ifc \fromto, To
+        dup             v24.8h, w3 ; TODO load (1 << 15) - 1
 .endif
-        mov             w3, #\mult
         dup             v25.4s, w3
-        movz            w3, #(\offset & 0xffff)
-        movk            w3, #((\offset >> 16) & 0xffff), lsl #16
-        dup             v26.4s, w3
+        dup             v26.4s, w4
 1:
         ld1             {v0.8h}, [x0]
         ld1             {v1.8h}, [x1]
-.if \max != 0
-        smin            v0.8h, v0.8h, v24.8h
-        smin            v1.8h, v1.8h, v24.8h
-.endif
         mov             v16.16b, v26.16b
         mov             v17.16b, v26.16b
         mov             v18.16b, v26.16b
@@ -81,11 +78,15 @@ function ff_\name, export=1
         mla             v17.4s, v21.4s, v25.4s
         mla             v18.4s, v22.4s, v25.4s
         mla             v19.4s, v23.4s, v25.4s
-        shrn            v0.4h, v16.4s, #\shift
-        shrn            v1.4h, v17.4s, #\shift
-        shrn2           v0.8h, v18.4s, #\shift
-        shrn2           v1.8h, v19.4s, #\shift
+        shrn            v0.4h, v16.4s, 14
+        shrn            v1.4h, v17.4s, 14
+        shrn2           v0.8h, v18.4s, 14
+        shrn2           v1.8h, v19.4s, 14
         subs            w2, w2, #8
+.ifc \fromto, To
+        smin            v0.8h, v0.8h, v24.8h
+        smin            v1.8h, v1.8h, v24.8h
+.endif
         st1             {v0.8h}, [x0], #16
         st1             {v1.8h}, [x1], #16
         b.gt            1b
@@ -93,7 +94,7 @@ function ff_\name, export=1
 endfunc
 .endm
 
-lumConvertRange lumRangeToJpeg_neon,   30189, 19077, -39057361, 14
-chrConvertRange chrRangeToJpeg_neon,   30775,  4663,  -9289992, 12
-lumConvertRange lumRangeFromJpeg_neon,     0, 14071,  33561947, 14
-chrConvertRange chrRangeFromJpeg_neon,     0,  1799,   4081085, 11
+lumConvertRange To
+chrConvertRange To
+lumConvertRange From
+chrConvertRange From
