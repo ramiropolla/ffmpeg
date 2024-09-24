@@ -1,3 +1,5 @@
+TODO sqshrn only for To, shrn for From
+TODO look for something similar for x86 (instead of packssdw)
 /*
  * Copyright (c) 2024 Ramiro Polla
  *
