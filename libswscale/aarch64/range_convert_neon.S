@@ -24,19 +24,15 @@
 function ff_lumRange\fromto\()Jpeg_neon, export=1
 // x0  int16_t *dst
 // w1  int width
-// w2  int amax
-// w3  int coeff
-// x4  int64_t offset
+// w2  int coeff
+// x3  int64_t offset
 .ifc \fromto, To
-        dup             v24.8h, w2
+        dup             v24.8h, w2 ; TODO load (1 << 15) - 1
 .endif
-        dup             v25.4s, w3
-        dup             v26.4s, w4
+        dup             v25.4s, w2
+        dup             v26.4s, w3
 1:
         ld1             {v0.8h}, [x0]
-.ifc \fromto, To
-        smin            v0.8h, v0.8h, v24.8h
-.endif
         mov             v16.16b, v26.16b
         mov             v18.16b, v26.16b
         sxtl            v20.4s, v0.4h
@@ -46,6 +42,9 @@ function ff_lumRange\fromto\()Jpeg_neon, export=1
         shrn            v0.4h, v16.4s, 14
         shrn2           v0.8h, v18.4s, 14
         subs            w1, w1, #8
+.ifc \fromto, To
+        smin            v0.8h, v0.8h, v24.8h
+.endif
         st1             {v0.8h}, [x0], #16
         b.gt            1b
         ret
@@ -57,21 +56,16 @@ function ff_chrRange\fromto\()Jpeg_neon, export=1
 // x0  int16_t *dstU
 // x1  int16_t *dstV
 // w2  int width
-// w3  int amax
-// w4  int coeff
-// x5  int64_t offset
+// w3  int coeff
+// x4  int64_t offset
 .ifc \fromto, To
-        dup             v24.8h, w3
+        dup             v24.8h, w3 ; TODO load (1 << 15) - 1
 .endif
-        dup             v25.4s, w4
-        dup             v26.4s, w5
+        dup             v25.4s, w3
+        dup             v26.4s, w4
 1:
         ld1             {v0.8h}, [x0]
         ld1             {v1.8h}, [x1]
-.ifc \fromto, To
-        smin            v0.8h, v0.8h, v24.8h
-        smin            v1.8h, v1.8h, v24.8h
-.endif
         mov             v16.16b, v26.16b
         mov             v17.16b, v26.16b
         mov             v18.16b, v26.16b
@@ -89,6 +83,10 @@ function ff_chrRange\fromto\()Jpeg_neon, export=1
         shrn2           v0.8h, v18.4s, 14
         shrn2           v1.8h, v19.4s, 14
         subs            w2, w2, #8
+.ifc \fromto, To
+        smin            v0.8h, v0.8h, v24.8h
+        smin            v1.8h, v1.8h, v24.8h
+.endif
         st1             {v0.8h}, [x0], #16
         st1             {v1.8h}, [x1], #16
         b.gt            1b
