@@ -25,6 +25,7 @@ pack19:             times 4 dd (1 << 19) - 1
 
 SECTION .text
 
+; TODO deduplicate 8-bit functions. they don't perform FFMIN, so they are the same.
 ; NOTE: there is no need to clamp the input when converting to jpeg range
 ;       (like we do in the C code) because packssdw will saturate the output.
 
