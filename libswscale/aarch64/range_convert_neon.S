@@ -1,5 +1,3 @@
-TODO sqshrn only for To, shrn for From
-TODO look for something similar for x86 (instead of packssdw)
 /*
  * Copyright (c) 2024 Ramiro Polla
  *
@@ -46,10 +44,10 @@ function ff_lumRange\fromto\()Jpeg\bit_depth\()_neon, export=1
         smlal2          v17.2d, v0.4s, v25.4s
         smlal           v18.2d, v1.2s, v25.2s
         smlal2          v19.2d, v1.4s, v25.4s
-        sqshrn          v0.2s, v16.2d, 18
-        sqshrn2         v0.4s, v17.2d, 18
-        sqshrn          v1.2s, v18.2d, 18
-        sqshrn2         v1.4s, v19.2d, 18
+        shrn            v0.2s, v16.2d, 18
+        shrn2           v0.4s, v17.2d, 18
+        shrn            v1.2s, v18.2d, 18
+        shrn2           v1.4s, v19.2d, 18
         subs            w1, w1, #8
 .ifc \fromto, To
         smin            v0.4s, v0.4s, v24.4s
@@ -117,14 +115,14 @@ function ff_chrRange\fromto\()Jpeg\bit_depth\()_neon, export=1
         smlal2          v21.2d, v2.4s, v25.4s
         smlal           v22.2d, v3.2s, v25.2s
         smlal2          v23.2d, v3.4s, v25.4s
-        sqshrn          v0.2s, v16.2d, 18
-        sqshrn2         v0.4s, v17.2d, 18
-        sqshrn          v1.2s, v18.2d, 18
-        sqshrn2         v1.4s, v19.2d, 18
-        sqshrn          v2.2s, v20.2d, 18
-        sqshrn2         v2.4s, v21.2d, 18
-        sqshrn          v3.2s, v22.2d, 18
-        sqshrn2         v3.4s, v23.2d, 18
+        shrn            v0.2s, v16.2d, 18
+        shrn2           v0.4s, v17.2d, 18
+        shrn            v1.2s, v18.2d, 18
+        shrn2           v1.4s, v19.2d, 18
+        shrn            v2.2s, v20.2d, 18
+        shrn2           v2.4s, v21.2d, 18
+        shrn            v3.2s, v22.2d, 18
+        shrn2           v3.4s, v23.2d, 18
         subs            w2, w2, #8
 .ifc \fromto, To
         smin            v0.4s, v0.4s, v24.4s
