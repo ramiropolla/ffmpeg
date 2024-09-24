@@ -26,6 +26,7 @@
 
 av_cold void ff_sws_init_range_convert_loongarch(SwsContext *c)
 {
+#if 0
     int cpu_flags = av_get_cpu_flags();
 
     if (have_lsx(cpu_flags)) {
@@ -52,6 +53,7 @@ av_cold void ff_sws_init_range_convert_loongarch(SwsContext *c)
         }
     }
 #endif // #if HAVE_LASX
+#endif
 }
 
 av_cold void ff_sws_init_swscale_loongarch(SwsContext *c)
