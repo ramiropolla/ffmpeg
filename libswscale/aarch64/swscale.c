@@ -219,7 +219,7 @@ NEON_INPUT(rgb24);
 NEON_INPUT(rgba32);
 
 void ff_lumRangeFromJpeg8_neon(int16_t *dst, int width,
-                              int coeff, int64_t offset);
+                               int coeff, int64_t offset);
 void ff_chrRangeFromJpeg8_neon(int16_t *dstU, int16_t *dstV, int width,
                                int coeff, int64_t offset);
 void ff_lumRangeToJpeg8_neon(int16_t *dst, int width,
@@ -227,7 +227,7 @@ void ff_lumRangeToJpeg8_neon(int16_t *dst, int width,
 void ff_chrRangeToJpeg8_neon(int16_t *dstU, int16_t *dstV, int width,
                              int coeff, int64_t offset);
 void ff_lumRangeFromJpeg16_neon(int16_t *dst, int width,
-                               int coeff, int64_t offset);
+                                int coeff, int64_t offset);
 void ff_chrRangeFromJpeg16_neon(int16_t *dstU, int16_t *dstV, int width,
                                 int coeff, int64_t offset);
 void ff_lumRangeToJpeg16_neon(int16_t *dst, int width,
