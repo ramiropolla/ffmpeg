@@ -28,7 +28,9 @@ function ff_lumRange\fromto\()Jpeg\bit_depth\()_neon, export=1
 // x3  int64_t offset
 .if \bit_depth == 16
 .ifc \fromto, To
-        dup             v24.4s, w2 ; TODO load (1 << 19) - 1
+        movi            v25.4s, #1
+        movi            v24.4s, #1<<3, lsl #16
+        sub             v24.4s, v24.4s, v25.4s
 .endif
         dup             v25.4s, w2
         dup             v26.2d, x3
@@ -42,10 +44,10 @@ function ff_lumRange\fromto\()Jpeg\bit_depth\()_neon, export=1
         smlal2          v17.2d, v0.4s, v25.4s
         smlal           v18.2d, v1.2s, v25.2s
         smlal2          v19.2d, v1.4s, v25.4s
-        shrn            v0.2s, v16.2d, 18
-        shrn2           v0.4s, v17.2d, 18
-        shrn            v1.2s, v18.2d, 18
-        shrn2           v1.4s, v19.2d, 18
+        sqshrn          v0.2s, v16.2d, 18
+        sqshrn2         v0.4s, v17.2d, 18
+        sqshrn          v1.2s, v18.2d, 18
+        sqshrn2         v1.4s, v19.2d, 18
         subs            w1, w1, #8
 .ifc \fromto, To
         smin            v0.4s, v0.4s, v24.4s
@@ -54,9 +56,6 @@ function ff_lumRange\fromto\()Jpeg\bit_depth\()_neon, export=1
         st1             {v0.4s, v1.4s}, [x0], #32
         b.gt            1b
 .else
-.ifc \fromto, To
-        dup             v24.8h, w2 ; TODO load (1 << 15) - 1
-.endif
         dup             v25.4s, w2
         dup             v26.4s, w3
 1:
@@ -67,12 +66,9 @@ function ff_lumRange\fromto\()Jpeg\bit_depth\()_neon, export=1
         sxtl2           v22.4s, v0.8h
         mla             v16.4s, v20.4s, v25.4s
         mla             v18.4s, v22.4s, v25.4s
-        shrn            v0.4h, v16.4s, 14
-        shrn2           v0.8h, v18.4s, 14
+        sqshrn          v0.4h, v16.4s, 14
+        sqshrn2         v0.8h, v18.4s, 14
         subs            w1, w1, #8
-.ifc \fromto, To
-        smin            v0.8h, v0.8h, v24.8h
-.endif
         st1             {v0.8h}, [x0], #16
         b.gt            1b
 .endif
@@ -89,7 +85,9 @@ function ff_chrRange\fromto\()Jpeg\bit_depth\()_neon, export=1
 // x4  int64_t offset
 .if \bit_depth == 16
 .ifc \fromto, To
-        dup             v24.4s, w3 ; TODO load (1 << 19) - 1
+        movi            v25.4s, #1
+        movi            v24.4s, #1<<3, lsl #16
+        sub             v24.4s, v24.4s, v25.4s
 .endif
         dup             v25.4s, w3
         dup             v26.2d, x4
@@ -112,14 +110,14 @@ function ff_chrRange\fromto\()Jpeg\bit_depth\()_neon, export=1
         smlal2          v21.2d, v2.4s, v25.4s
         smlal           v22.2d, v3.2s, v25.2s
         smlal2          v23.2d, v3.4s, v25.4s
-        shrn            v0.2s, v16.2d, 18
-        shrn2           v0.4s, v17.2d, 18
-        shrn            v1.2s, v18.2d, 18
-        shrn2           v1.4s, v19.2d, 18
-        shrn            v2.2s, v20.2d, 18
-        shrn2           v2.4s, v21.2d, 18
-        shrn            v3.2s, v22.2d, 18
-        shrn2           v3.4s, v23.2d, 18
+        sqshrn          v0.2s, v16.2d, 18
+        sqshrn2         v0.4s, v17.2d, 18
+        sqshrn          v1.2s, v18.2d, 18
+        sqshrn2         v1.4s, v19.2d, 18
+        sqshrn          v2.2s, v20.2d, 18
+        sqshrn2         v2.4s, v21.2d, 18
+        sqshrn          v3.2s, v22.2d, 18
+        sqshrn2         v3.4s, v23.2d, 18
         subs            w2, w2, #8
 .ifc \fromto, To
         smin            v0.4s, v0.4s, v24.4s
@@ -131,9 +129,6 @@ function ff_chrRange\fromto\()Jpeg\bit_depth\()_neon, export=1
         st1             {v2.4s, v3.4s}, [x1], #32
         b.gt            1b
 .else
-.ifc \fromto, To
-        dup             v24.8h, w3 ; TODO load (1 << 15) - 1
-.endif
         dup             v25.4s, w3
         dup             v26.4s, w4
 1:
@@ -151,15 +146,11 @@ function ff_chrRange\fromto\()Jpeg\bit_depth\()_neon, export=1
         mla             v17.4s, v21.4s, v25.4s
         mla             v18.4s, v22.4s, v25.4s
         mla             v19.4s, v23.4s, v25.4s
-        shrn            v0.4h, v16.4s, 14
-        shrn            v1.4h, v17.4s, 14
-        shrn2           v0.8h, v18.4s, 14
-        shrn2           v1.8h, v19.4s, 14
+        sqshrn          v0.4h, v16.4s, 14
+        sqshrn          v1.4h, v17.4s, 14
+        sqshrn2         v0.8h, v18.4s, 14
+        sqshrn2         v1.8h, v19.4s, 14
         subs            w2, w2, #8
-.ifc \fromto, To
-        smin            v0.8h, v0.8h, v24.8h
-        smin            v1.8h, v1.8h, v24.8h
-.endif
         st1             {v0.8h}, [x0], #16
         st1             {v1.8h}, [x1], #16
         b.gt            1b
