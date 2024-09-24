@@ -621,7 +621,8 @@ static void print_benchs(CheckasmFunc *f)
         print_benchs(f->child[0]);
 
         /* Only print functions with at least one assembly version */
-        if (f->versions.cpu || f->versions.next) {
+        // if (f->versions.cpu || f->versions.next)
+        {
             CheckasmFuncVersion *v = &f->versions;
             const CheckasmPerf *p = &v->perf;
             const double baseline = avg_cycles_per_call(p);
