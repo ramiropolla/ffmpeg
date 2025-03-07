@@ -1751,6 +1751,11 @@ av_cold int ff_sws_init_single_context(SwsContext *sws, SwsFilter *srcFilter,
         dstFormat != AV_PIX_FMT_GRAY8))){
         c->srcBpc = 16;
     }
+    if ((dstFormat == AV_PIX_FMT_GRAYF32BE || dstFormat == AV_PIX_FMT_GRAYF32LE) &&
+        (!unscaled || unscaled && srcFormat != dstFormat && (dstFormat != AV_PIX_FMT_GRAYF32 ||
+        srcFormat != AV_PIX_FMT_GRAY8))){
+        c->dstBpc = 16;
+    }
 
     if (CONFIG_SWSCALE_ALPHA && isALPHA(srcFormat) && !isALPHA(dstFormat)) {
         enum AVPixelFormat tmpFormat = alphaless_fmt(srcFormat);
