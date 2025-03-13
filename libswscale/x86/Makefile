@@ -10,9 +10,12 @@ OBJS-$(CONFIG_XMM_CLOBBER_TEST) += x86/w64xmmtest.o
 
 X86ASM-OBJS                     += x86/input.o                          \
                                    x86/output.o                         \
+                                   x86/ops_backend.o                    \
                                    x86/scale.o                          \
                                    x86/scale_avx2.o                          \
                                    x86/range_convert.o                  \
                                    x86/rgb_2_rgb.o                      \
                                    x86/yuv_2_rgb.o                      \
                                    x86/yuv2yuvX.o                       \
+
+$(SUBDIR)x86/ops_backend.o: CFLAGS += $(OPS-CFLAGS) -mavx2 -mfma

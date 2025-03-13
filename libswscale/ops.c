@@ -27,8 +27,12 @@
 #include "ops_internal.h"
 
 extern SwsOpBackend backend_c;
+extern SwsOpBackend backend_avx2;
 
 static const SwsOpBackend * const sws_op_backends[] = {
+#if ARCH_X86
+    &backend_avx2,
+#endif
     &backend_c,
 };
 
