@@ -113,13 +113,17 @@ typedef struct SwsCompiledOp {
 typedef struct SwsOpBackend {
     const char *name; /* Descriptive name for this backend */
 
+    void *(*alloc_context)(void);
+    void *(*compile_end)(void *ctx);
+    void (*free_context)(void *ctx);
+
     /**
      * Compile (one or more) operations. On success, `ops` is updated to point
      * to the remainder.
      *
      * Returns 0 or a negative error code.
      */
-    int (*compile)(SwsOpList *ops, SwsCompiledOp *out_compiled);
+    int (*compile)(void *ctx, SwsOpList *ops, SwsCompiledOp *out_compiled);
 } SwsOpBackend;
 
 #endif

@@ -28,8 +28,12 @@
 
 extern SwsOpBackend backend_c;
 extern SwsOpBackend backend_avx2;
+extern SwsOpBackend backend_asmjit;
 
 static const SwsOpBackend * const sws_op_backends[] = {
+#if CONFIG_ASMJIT
+    &backend_asmjit,
+#endif
 #if ARCH_X86
     &backend_avx2,
 #endif
@@ -1424,14 +1428,18 @@ int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat ds
 
     for (int n = 0; n < FF_ARRAY_ELEMS(sws_op_backends); n++) {
         const SwsOpBackend *backend = sws_op_backends[n];
+        void *bctx = NULL;
         SwsOpList rest = *ops;
+
+        if (backend->alloc_context)
+            bctx = backend->alloc_context();
 
         p->pixel_bits_in  = rw_pixel_bits(input_op);
         p->pixel_bits_out = rw_pixel_bits(output_op);
 
         for (int idx_ops = 0; rest.num_ops; idx_ops++) {
             SwsCompiledOp comp;
-            ret = backend->compile(&rest, &comp);
+            ret = backend->compile(bctx, &rest, &comp);
             if (ret == AVERROR(ENOTSUP)) {
                 av_log(ctx, AV_LOG_DEBUG, "Backend '%s' does not support operations:\n", backend->name);
                 ff_sws_op_list_print(ctx, AV_LOG_DEBUG, &rest);
@@ -1465,6 +1473,23 @@ int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat ds
                 av_assert1(!comp.func_n);
             }
         }
+
+        if (backend->compile_end) {
+            p->read = backend->compile_end(bctx);
+            p->read_n = p->read;
+            av_log(ctx, AV_LOG_ERROR, "Using AsmJit!\n");
+        }
+
+#if 0
+        if (backend->free_context)
+            backend->free_context(bctx);
+#endif
+
+#if 0
+        /* HACK */
+        if (backend->compile_end)
+            goto next_backend;
+#endif
 
         pass = ff_sws_graph_add_pass(graph, dst.format, dst.width, dst.height, input,
                                      1, p, run_op_pass);

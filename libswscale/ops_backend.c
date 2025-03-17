@@ -49,7 +49,7 @@ static const OpImpl bitfn(op_table_float, f32)[];
 # include "ops_tmpl_float.c"
 #undef BIT_DEPTH
 
-static int compile(SwsOpList *ops, SwsCompiledOp *out_compiled)
+static int compile(void *ctx, SwsOpList *ops, SwsCompiledOp *out_compiled)
 {
     static const SwsOp dummy = { .comps.unused = { true, true, true, true }};
     const SwsOp *next = ops->num_ops > 1 ? &ops->ops[1] : &dummy;
