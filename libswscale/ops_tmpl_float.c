@@ -43,11 +43,11 @@
 
 typedef struct {
     pixel_t max[4];
-} fn(ClampCoeffs);
+} bfn(ClampCoeffs);
 
 DECL_SETUP(clamp)
 {
-    fn(ClampCoeffs) c;
+    bfn(ClampCoeffs) c;
 
     for (int i = 0; i < 4; i++) {
         if (op->clamp.max[i].den)
@@ -61,7 +61,7 @@ DECL_SETUP(clamp)
 
 DECL_FUNC_PATTERN(clamp)
 {
-    const fn(ClampCoeffs) c = *(const fn(ClampCoeffs) *) impl->priv;
+    const bfn(ClampCoeffs) c = *(const bfn(ClampCoeffs) *) impl->priv;
 
     SWS_LOOP
     for (int i = 0; i < SWS_CHUNK_SIZE; i++) {
@@ -80,7 +80,7 @@ DECL_FUNC_PATTERN(clamp)
 
 WRAP_COMMON_PATTERNS(clamp,
     .op.op = SWS_OP_CLAMP,
-    .setup = fn(setup_clamp),
+    .setup = bfn(setup_clamp),
     .free  = av_free,
 );
 
@@ -93,11 +93,11 @@ WRAP_COMMON_PATTERNS(clamp,
 
 typedef struct {
     pixel_t matrix[MAX_DITHER_SIZE][DITHER_ROW_SIZE];
-} fn(DitherCoeffs);
+} bfn(DitherCoeffs);
 
 DECL_SETUP(dither)
 {
-    fn(DitherCoeffs) c = {0};
+    bfn(DitherCoeffs) c = {0};
     const int size = 1 << op->dither.size_log2;
 
     if (!size) {
@@ -120,7 +120,7 @@ DECL_SETUP(dither)
 DECL_FUNC(dither, const bool X, const bool Y, const bool Z, const bool W,
           const int size_log2)
 {
-    const fn(DitherCoeffs) *restrict c = impl->priv;
+    const bfn(DitherCoeffs) *restrict c = impl->priv;
     const int mask = (1 << size_log2) - 1;
     const int y_line = exec->y;
     const int row0 = (y_line + 0) & mask;
@@ -152,7 +152,7 @@ DECL_IMPL(dither_##N##_##X##Y##Z##W)                                            
                                                                                 \
 DECL_ENTRY(dither_##N##_##X##Y##Z##W,                                           \
     .op.op = SWS_OP_DITHER,                                                     \
-    .setup = fn(setup_dither),                                                  \
+    .setup = bfn(setup_dither),                                                  \
     .free  = av_free,                                                           \
     .op.dither.size_log2 = N,                                                   \
     .op.comps.unused = { !X, !Y, !Z, !W },                                      \
@@ -172,11 +172,11 @@ typedef struct {
     /* Stored in split form for convenience */
     pixel_t m[4][4];
     pixel_t k[4];
-} fn(LinCoeffs);
+} bfn(LinCoeffs);
 
 DECL_SETUP(linear)
 {
-    fn(LinCoeffs) c;
+    bfn(LinCoeffs) c;
 
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++)
@@ -195,7 +195,7 @@ DECL_SETUP(linear)
  */
 DECL_FUNC(linear_mask, const uint32_t mask)
 {
-    const fn(LinCoeffs) c = *(const fn(LinCoeffs) *) impl->priv;
+    const bfn(LinCoeffs) c = *(const bfn(LinCoeffs) *) impl->priv;
 
     SWS_LOOP
     for (int i = 0; i < SWS_CHUNK_SIZE; i++) {
@@ -240,7 +240,7 @@ DECL_IMPL(linear_##NAME)                                                        
                                                                                 \
 DECL_ENTRY(linear_##NAME,                                                       \
     .op.op = SWS_OP_LINEAR,                                                     \
-    .setup = fn(setup_linear),                                                  \
+    .setup = bfn(setup_linear),                                                  \
     .free  = av_free,                                                           \
     .op.lin.mask = (MASK),                                                      \
     .op.comps.unused = {                                                        \
@@ -264,56 +264,56 @@ WRAP_LINEAR(matrix3,   SWS_MASK_MAT3)
 WRAP_LINEAR(affine3,   SWS_MASK_MAT3 | SWS_MASK_OFF3)
 WRAP_LINEAR(affine3a,  SWS_MASK_MAT3 | SWS_MASK_OFF3 | SWS_MASK_ALPHA)
 
-static const OpImpl fn(op_table_float)[] = {
-    fn(op_convert_uint8_1000),
-    fn(op_convert_uint8_1001),
-    fn(op_convert_uint8_1110),
-    fn(op_convert_uint8_1111),
+static const OpImpl bfn(op_table_float)[] = {
+    bfn(op_convert_uint8_1000),
+    bfn(op_convert_uint8_1001),
+    bfn(op_convert_uint8_1110),
+    bfn(op_convert_uint8_1111),
 
-    fn(op_convert_uint16_1000),
-    fn(op_convert_uint16_1001),
-    fn(op_convert_uint16_1110),
-    fn(op_convert_uint16_1111),
+    bfn(op_convert_uint16_1000),
+    bfn(op_convert_uint16_1001),
+    bfn(op_convert_uint16_1110),
+    bfn(op_convert_uint16_1111),
 
-    fn(op_convert_uint32_1000),
-    fn(op_convert_uint32_1001),
-    fn(op_convert_uint32_1110),
-    fn(op_convert_uint32_1111),
+    bfn(op_convert_uint32_1000),
+    bfn(op_convert_uint32_1001),
+    bfn(op_convert_uint32_1110),
+    bfn(op_convert_uint32_1111),
 
-    fn(op_clear_1110),
+    bfn(op_clear_1110),
 
-    fn(op_scale_1000),
-    fn(op_scale_1001),
-    fn(op_scale_1110),
-    fn(op_scale_1111),
+    bfn(op_scale_1000),
+    bfn(op_scale_1001),
+    bfn(op_scale_1110),
+    bfn(op_scale_1111),
 
-    fn(op_clamp_1000),
-    fn(op_clamp_1001),
-    fn(op_clamp_1110),
-    fn(op_clamp_1111),
+    bfn(op_clamp_1000),
+    bfn(op_clamp_1001),
+    bfn(op_clamp_1110),
+    bfn(op_clamp_1111),
 
-    fn(op_dither_0_1000),
-    fn(op_dither_0_1001),
-    fn(op_dither_0_1110),
-    fn(op_dither_0_1111),
+    bfn(op_dither_0_1000),
+    bfn(op_dither_0_1001),
+    bfn(op_dither_0_1110),
+    bfn(op_dither_0_1111),
 
-    fn(op_dither_4_1000),
-    fn(op_dither_4_1001),
-    fn(op_dither_4_1110),
-    fn(op_dither_4_1111),
+    bfn(op_dither_4_1000),
+    bfn(op_dither_4_1001),
+    bfn(op_dither_4_1110),
+    bfn(op_dither_4_1111),
 
-    fn(op_linear_luma),
-    fn(op_linear_alpha),
-    fn(op_linear_lumalpha),
-    fn(op_linear_dot3),
-    fn(op_linear_row0),
-    fn(op_linear_row0a),
-    fn(op_linear_diag3),
-    fn(op_linear_diag4),
-    fn(op_linear_diagoff3),
-    fn(op_linear_matrix3),
-    fn(op_linear_affine3),
-    fn(op_linear_affine3a),
+    bfn(op_linear_luma),
+    bfn(op_linear_alpha),
+    bfn(op_linear_lumalpha),
+    bfn(op_linear_dot3),
+    bfn(op_linear_row0),
+    bfn(op_linear_row0a),
+    bfn(op_linear_diag3),
+    bfn(op_linear_diag4),
+    bfn(op_linear_diagoff3),
+    bfn(op_linear_matrix3),
+    bfn(op_linear_affine3),
+    bfn(op_linear_affine3a),
 
     {{0}}
 };

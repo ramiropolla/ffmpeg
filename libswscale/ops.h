@@ -28,15 +28,6 @@
 #include "graph.h"
 #include "format.h"
 
-typedef enum SwsPixelType {
-    SWS_PIXEL_INVALID = 0,
-    SWS_PIXEL_U8,
-    SWS_PIXEL_U16,
-    SWS_PIXEL_U32,
-    SWS_PIXEL_F32,
-    SWS_PIXEL_TYPE_NB
-} SwsPixelType;
-
 typedef enum SwsOpType {
     SWS_OP_INVALID = 0,
 

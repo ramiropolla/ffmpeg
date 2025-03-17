@@ -63,11 +63,11 @@ WRAP_CONVERT_UINT(32)
 
 typedef struct {
     pixel_t x, y, z, w;
-} fn(ClearCoefs);
+} bfn(ClearCoefs);
 
 DECL_SETUP(clear)
 {
-    fn(ClearCoefs) c = {
+    bfn(ClearCoefs) c = {
         .x = av_q2pixel(op->clear.value[0]),
         .y = av_q2pixel(op->clear.value[1]),
         .z = av_q2pixel(op->clear.value[2]),
@@ -79,7 +79,7 @@ DECL_SETUP(clear)
 
 DECL_FUNC_PATTERN(clear)
 {
-    const fn(ClearCoefs) *restrict c = impl->priv;
+    const bfn(ClearCoefs) *restrict c = impl->priv;
     const pixel_t xval = c->x, yval = c->y, zval = c->z, wval = c->w;
 
     SWS_LOOP
@@ -100,7 +100,7 @@ DECL_FUNC_PATTERN(clear)
 #define WRAP_CLEAR_PATTERN(X, Y, Z, W)                                          \
 WRAP_PATTERN(clear, X, Y, Z, W,                                                 \
     .op.op = SWS_OP_CLEAR,                                                      \
-    .setup = fn(setup_clear),                                                   \
+    .setup = bfn(setup_clear),                                                   \
     .free  = av_free,                                                           \
 );
 
@@ -153,5 +153,5 @@ DECL_FUNC_PATTERN(scale)
 
 WRAP_COMMON_PATTERNS(scale,
     .op.op = SWS_OP_SCALE,
-    .setup = fn(setup_scale),
+    .setup = bfn(setup_scale),
 );

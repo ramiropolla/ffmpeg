@@ -67,7 +67,7 @@
 #define bitfn(name, ext)  bitfn2(name, ext)
 
 #define SUFFIX   AV_JOIN(FMT_CHAR, BIT_DEPTH)
-#define fn(name) bitfn(name, SUFFIX)
+#define bfn(name) bitfn(name, SUFFIX)
 
 typedef struct OpImpl {
     SwsOp op;
@@ -119,13 +119,13 @@ typedef void (*func_f32vec_t)(const SwsOpExec *exec, const SwsOpImpl *impl,
 
 /* Helper macros to make writing common function signatures less painful */
 #define DECL_FUNC(NAME, ...) \
-    static av_always_inline void fn(NAME)(const SwsOpExec *restrict exec,       \
+    static av_always_inline void bfn(NAME)(const SwsOpExec *restrict exec,       \
                                           const SwsOpImpl *restrict impl,       \
                                           vec_t x, vec_t y, vec_t z, vec_t w,   \
                                           __VA_ARGS__)
 
 #define DECL_READ(NAME, ...)                                                    \
-    static av_always_inline void fn(NAME)(const SwsOpExec *restrict exec,       \
+    static av_always_inline void bfn(NAME)(const SwsOpExec *restrict exec,       \
                                           const SwsOpImpl *restrict impl,       \
                                           const pixel_t *restrict in0,          \
                                           const pixel_t *restrict in1,          \
@@ -143,18 +143,18 @@ typedef void (*func_f32vec_t)(const SwsOpExec *exec, const SwsOpImpl *impl,
 
 /* Helper macros to call into functions declared with DECL_FUNC_* */
 #define CALL_READONLY(FUNC, ...) \
-    fn(FUNC)(exec, impl, __VA_ARGS__)
+    bfn(FUNC)(exec, impl, __VA_ARGS__)
 
 #define CALL(FUNC, ...)                                                         \
     CALL_READONLY(FUNC, x, y, z, w, __VA_ARGS__)
 
 /* Helper macros to declare continuation functions */
 #define DECL_IMPL_READONLY(NAME)                                                \
-    static SWS_FUNC void fn(NAME)(const SwsOpExec *restrict exec,               \
+    static SWS_FUNC void bfn(NAME)(const SwsOpExec *restrict exec,               \
                                   const SwsOpImpl *restrict impl)               \
 
 #define DECL_IMPL(NAME)                                                         \
-    static SWS_FUNC void fn(NAME)(const SwsOpExec *restrict exec,               \
+    static SWS_FUNC void bfn(NAME)(const SwsOpExec *restrict exec,               \
                                   const SwsOpImpl *restrict impl,               \
                                   vec_t x, vec_t y, vec_t z, vec_t w)
 
@@ -164,7 +164,7 @@ typedef void (*func_f32vec_t)(const SwsOpExec *exec, const SwsOpImpl *impl,
 
 /* Helper macros for common op setup code */
 #define DECL_SETUP(NAME)                                                        \
-    static int fn(setup_##NAME)(const SwsOp *op, const void **out_priv)
+    static int bfn(setup_##NAME)(const SwsOp *op, const void **out_priv)
 
 #define SETUP_MEMDUP(c) ff_setup_memdup(&c, sizeof(c), out_priv)
 static inline int ff_setup_memdup(const void *c, size_t size, const void **out)
@@ -175,19 +175,19 @@ static inline int ff_setup_memdup(const void *c, size_t size, const void **out)
 
 /* Helper macros for declaring op table entries */
 #define DECL_ENTRY(NAME, ...)                                                   \
-    static const OpImpl fn(op_##NAME) = {                                       \
+    static const OpImpl bfn(op_##NAME) = {                                       \
         .op.type = PIXEL_TYPE,                                                  \
-        .func    = (SwsOpFunc) fn(NAME),                                        \
+        .func    = (SwsOpFunc) bfn(NAME),                                        \
         __VA_ARGS__                                                             \
     }
 
 #define DECL_ENTRY_SIMPLE(NAME, ...)                                            \
-    static const OpImpl fn(op_##NAME) = {                                       \
+    static const OpImpl bfn(op_##NAME) = {                                       \
         .op = {                                                                 \
             .type = PIXEL_TYPE,                                                 \
             __VA_ARGS__                                                         \
         },                                                                      \
-        .func    = (SwsOpFunc) fn(NAME),                                        \
+        .func    = (SwsOpFunc) bfn(NAME),                                        \
     }
 
 /* Helpers for dealing with (common) subsets of operations (Y, YA, YUV, YUVA) */

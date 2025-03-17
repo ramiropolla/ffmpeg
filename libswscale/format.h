@@ -135,7 +135,14 @@ int ff_test_fmt(const SwsFormat *fmt, int output);
 bool ff_infer_colors(SwsColor *src, SwsColor *dst);
 
 typedef struct SwsOpList SwsOpList;
-typedef enum SwsPixelType SwsPixelType;
+typedef enum SwsPixelType {
+    SWS_PIXEL_INVALID = 0,
+    SWS_PIXEL_U8,
+    SWS_PIXEL_U16,
+    SWS_PIXEL_U32,
+    SWS_PIXEL_F32,
+    SWS_PIXEL_TYPE_NB
+} SwsPixelType;
 
 /**
  * Append a set of operations for decoding/encoding raw pixels. This will
