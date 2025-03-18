@@ -29,6 +29,7 @@ extern "C" {
 #include <asmjit/a64.h>
 
 #include <iostream>
+#include <vector>
 
 using namespace asmjit;
 
@@ -39,6 +40,7 @@ struct AsmJitContext {
     a64::Compiler *m_cc;
 
     FuncNode *m_func;
+    std::vector<BaseNode *> m_prologue;
     a64::Gp m_exec;
     a64::Vec m_vec[4];
 
@@ -47,11 +49,12 @@ struct AsmJitContext {
         m_code.init(m_rt.environment(), m_rt.cpuFeatures());
         m_code.setLogger(&m_logger);
         m_cc = new a64::Compiler(&m_code);
-        m_func = m_cc->addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, uint8_t *, uint8_t *>());
-        m_exec = m_cc->newGpz();
+        a64::Compiler &cc = *m_cc;
+        m_func = cc.addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, uint8_t *, uint8_t *>());
+        m_exec = cc.newGpz();
         m_func->setArg(0, m_exec);
         for (int i = 0; i < 4; i++)
-            m_vec[i] = m_cc->newVecQ();
+            m_vec[i] = cc.newVecQ();
     }
 };
 
@@ -67,6 +70,14 @@ static void *compile_end(void *_ctx)
     a64::Compiler &cc = *ctx->m_cc;
 
     cc.ret();
+
+    // move prologue instructions
+    cc.setCursor(cc.firstNode()->next());
+    for (BaseNode *node: ctx->m_prologue) {
+        cc.removeNode(node);
+        cc.addNode(node);
+    }
+
     cc.endFunc();
     cc.finalize();
 
@@ -112,12 +123,14 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             for (int i = 0; i < op.rw.elems; i++) {
                 in[i] = cc.newGpz();
                 cc.ldr(in[i], a64::ptr(exec, offsetof(SwsOpExec, in) + offsetof(SwsImg, data) + sizeof(uint8_t *) * i));
+                ctx->m_prologue.push_back(cc.cursor());
             }
             for (int i = 0; i < op.rw.elems; i++)
                 cc.ld1(vop(op, v[i]), a64::ptr(in[i]));
         } else {
             a64::Gp in = cc.newGpz();
             cc.ldr(in, a64::ptr(exec, offsetof(SwsOpExec, in) + offsetof(SwsImg, data)));
+            ctx->m_prologue.push_back(cc.cursor());
             switch (op.rw.elems) {
             case 1: cc.ld1(vop(op, v[0]), a64::ptr(in)); break;
             case 2: cc.ld2(vop(op, v[0]), vop(op, v[1]), a64::ptr(in)); break;
@@ -132,12 +145,14 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             for (int i = 0; i < op.rw.elems; i++) {
                 out[i] = cc.newGpz();
                 cc.ldr(out[i], a64::ptr(exec, offsetof(SwsOpExec, out) + offsetof(SwsImg, data) + sizeof(uint8_t *) * i));
+                ctx->m_prologue.push_back(cc.cursor());
             }
             for (int i = 0; i < op.rw.elems; i++)
                 cc.st1(vop(op, v[i]), a64::ptr(out[i]));
         } else {
             a64::Gp out = cc.newGpz();
             cc.ldr(out, a64::ptr(exec, offsetof(SwsOpExec, out) + offsetof(SwsImg, data)));
+            ctx->m_prologue.push_back(cc.cursor());
             switch (op.rw.elems) {
             case 1: cc.st1(vop(op, v[0]), a64::ptr(out)); break;
             case 2: cc.st2(vop(op, v[0]), vop(op, v[1]), a64::ptr(out)); break;
