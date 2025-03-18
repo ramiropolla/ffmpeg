@@ -126,16 +126,16 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 ctx->m_prologue.push_back(cc.cursor());
             }
             for (int i = 0; i < op.rw.elems; i++)
-                cc.ld1(vop(op, v[i]), a64::ptr(in[i]));
+                cc.ld1(vop(op, v[i]), a64::ptr(in[i]).post(16));
         } else {
             a64::Gp in = cc.newGpz();
             cc.ldr(in, a64::ptr(exec, offsetof(SwsOpExec, in) + offsetof(SwsImg, data)));
             ctx->m_prologue.push_back(cc.cursor());
             switch (op.rw.elems) {
-            case 1: cc.ld1(vop(op, v[0]), a64::ptr(in)); break;
-            case 2: cc.ld2(vop(op, v[0]), vop(op, v[1]), a64::ptr(in)); break;
-            case 3: cc.ld3(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), a64::ptr(in)); break;
-            case 4: cc.ld4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(in)); break;
+            case 1: cc.ld1(vop(op, v[0]),                                              a64::ptr(in).post(16 * 1)); break;
+            case 2: cc.ld2(vop(op, v[0]), vop(op, v[1]),                               a64::ptr(in).post(16 * 2)); break;
+            case 3: cc.ld3(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]),                a64::ptr(in).post(16 * 3)); break;
+            case 4: cc.ld4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(in).post(16 * 4)); break;
             }
         }
         break;
@@ -148,16 +148,16 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 ctx->m_prologue.push_back(cc.cursor());
             }
             for (int i = 0; i < op.rw.elems; i++)
-                cc.st1(vop(op, v[i]), a64::ptr(out[i]));
+                cc.st1(vop(op, v[i]), a64::ptr(out[i]).post(16));
         } else {
             a64::Gp out = cc.newGpz();
             cc.ldr(out, a64::ptr(exec, offsetof(SwsOpExec, out) + offsetof(SwsImg, data)));
             ctx->m_prologue.push_back(cc.cursor());
             switch (op.rw.elems) {
-            case 1: cc.st1(vop(op, v[0]), a64::ptr(out)); break;
-            case 2: cc.st2(vop(op, v[0]), vop(op, v[1]), a64::ptr(out)); break;
-            case 3: cc.st3(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), a64::ptr(out)); break;
-            case 4: cc.st4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(out)); break;
+            case 1: cc.st1(vop(op, v[0]),                                              a64::ptr(out).post(16 * 1)); break;
+            case 2: cc.st2(vop(op, v[0]), vop(op, v[1]),                               a64::ptr(out).post(16 * 2)); break;
+            case 3: cc.st3(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]),                a64::ptr(out).post(16 * 3)); break;
+            case 4: cc.st4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(out).post(16 * 4)); break;
             }
         }
         break;
