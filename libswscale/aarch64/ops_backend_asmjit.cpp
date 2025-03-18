@@ -87,6 +87,15 @@ static void free_context(void *_ctx)
     delete ctx;
 }
 
+static a64::Vec vop(const SwsOp &op, const a64::Vec &src)
+{
+    if (op.type == SWS_PIXEL_U8)
+        return src.b16();
+    if (op.type == SWS_PIXEL_U16)
+        return src.h8();
+    return src.s4();
+}
+
 static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compiled)
 {
     AsmJitContext *ctx = static_cast<AsmJitContext *>(_ctx);
@@ -104,45 +113,16 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 in[i] = cc.newGpz();
                 cc.ldr(in[i], a64::ptr(exec, offsetof(SwsOpExec, in) + offsetof(SwsImg, data) + sizeof(uint8_t *) * i));
             }
-            for (int i = 0; i < op.rw.elems; i++) {
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.ld1(v[i].b16(), a64::ptr(in[i])); break;
-                case SWS_PIXEL_U16: cc.ld1(v[i].h8(),  a64::ptr(in[i])); break;
-                case SWS_PIXEL_U32: cc.ld1(v[i].s4(),  a64::ptr(in[i])); break;
-                }
-            }
+            for (int i = 0; i < op.rw.elems; i++)
+                cc.ld1(vop(op, v[i]), a64::ptr(in[i]));
         } else {
             a64::Gp in = cc.newGpz();
             cc.ldr(in, a64::ptr(exec, offsetof(SwsOpExec, in) + offsetof(SwsImg, data)));
             switch (op.rw.elems) {
-            case 1:
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.ld1(v[0].b16(), a64::ptr(in)); break;
-                case SWS_PIXEL_U16: cc.ld1(v[0].h8(),  a64::ptr(in)); break;
-                case SWS_PIXEL_U32: cc.ld1(v[0].s4(),  a64::ptr(in)); break;
-                }
-            break;
-            case 2:
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.ld2(v[0].b16(), v[1].b16(), a64::ptr(in)); break;
-                case SWS_PIXEL_U16: cc.ld2(v[0].h8(),  v[1].h8(),  a64::ptr(in)); break;
-                case SWS_PIXEL_U32: cc.ld2(v[0].s4(),  v[1].s4(),  a64::ptr(in)); break;
-                }
-            break;
-            case 3:
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.ld3(v[0].b16(), v[1].b16(), v[2].b16(), a64::ptr(in)); break;
-                case SWS_PIXEL_U16: cc.ld3(v[0].h8(),  v[1].h8(),  v[2].h8(),  a64::ptr(in)); break;
-                case SWS_PIXEL_U32: cc.ld3(v[0].s4(),  v[1].s4(),  v[2].s4(),  a64::ptr(in)); break;
-                }
-            break;
-            case 4:
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.ld4(v[0].b16(), v[1].b16(), v[2].b16(), v[3].b16(), a64::ptr(in)); break;
-                case SWS_PIXEL_U16: cc.ld4(v[0].h8(),  v[1].h8(),  v[2].h8(),  v[3].h8(),  a64::ptr(in)); break;
-                case SWS_PIXEL_U32: cc.ld4(v[0].s4(),  v[1].s4(),  v[2].s4(),  v[3].s4(),  a64::ptr(in)); break;
-                }
-            break;
+            case 1: cc.ld1(vop(op, v[0]), a64::ptr(in)); break;
+            case 2: cc.ld2(vop(op, v[0]), vop(op, v[1]), a64::ptr(in)); break;
+            case 3: cc.ld3(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), a64::ptr(in)); break;
+            case 4: cc.ld4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(in)); break;
             }
         }
         break;
@@ -153,45 +133,16 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 out[i] = cc.newGpz();
                 cc.ldr(out[i], a64::ptr(exec, offsetof(SwsOpExec, out) + offsetof(SwsImg, data) + sizeof(uint8_t *) * i));
             }
-            for (int i = 0; i < op.rw.elems; i++) {
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.st1(v[i].b16(), a64::ptr(out[i])); break;
-                case SWS_PIXEL_U16: cc.st1(v[i].h8(),  a64::ptr(out[i])); break;
-                case SWS_PIXEL_U32: cc.st1(v[i].s4(),  a64::ptr(out[i])); break;
-                }
-            }
+            for (int i = 0; i < op.rw.elems; i++)
+                cc.st1(vop(op, v[i]), a64::ptr(out[i]));
         } else {
             a64::Gp out = cc.newGpz();
             cc.ldr(out, a64::ptr(exec, offsetof(SwsOpExec, out) + offsetof(SwsImg, data)));
             switch (op.rw.elems) {
-            case 1:
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.st1(v[0].b16(), a64::ptr(out)); break;
-                case SWS_PIXEL_U16: cc.st1(v[0].h8(),  a64::ptr(out)); break;
-                case SWS_PIXEL_U32: cc.st1(v[0].s4(),  a64::ptr(out)); break;
-                }
-            break;
-            case 2:
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.st2(v[0].b16(), v[1].b16(), a64::ptr(out)); break;
-                case SWS_PIXEL_U16: cc.st2(v[0].h8(),  v[1].h8(),  a64::ptr(out)); break;
-                case SWS_PIXEL_U32: cc.st2(v[0].s4(),  v[1].s4(),  a64::ptr(out)); break;
-                }
-            break;
-            case 3:
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.st3(v[0].b16(), v[1].b16(), v[2].b16(), a64::ptr(out)); break;
-                case SWS_PIXEL_U16: cc.st3(v[0].h8(),  v[1].h8(),  v[2].h8(),  a64::ptr(out)); break;
-                case SWS_PIXEL_U32: cc.st3(v[0].s4(),  v[1].s4(),  v[2].s4(),  a64::ptr(out)); break;
-                }
-            break;
-            case 4:
-                switch (op.type) {
-                case SWS_PIXEL_U8:  cc.st4(v[0].b16(), v[1].b16(), v[2].b16(), v[3].b16(), a64::ptr(out)); break;
-                case SWS_PIXEL_U16: cc.st4(v[0].h8(),  v[1].h8(),  v[2].h8(),  v[3].h8(),  a64::ptr(out)); break;
-                case SWS_PIXEL_U32: cc.st4(v[0].s4(),  v[1].s4(),  v[2].s4(),  v[3].s4(),  a64::ptr(out)); break;
-                }
-            break;
+            case 1: cc.st1(vop(op, v[0]), a64::ptr(out)); break;
+            case 2: cc.st2(vop(op, v[0]), vop(op, v[1]), a64::ptr(out)); break;
+            case 3: cc.st3(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), a64::ptr(out)); break;
+            case 4: cc.st4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(out)); break;
             }
         }
         break;
