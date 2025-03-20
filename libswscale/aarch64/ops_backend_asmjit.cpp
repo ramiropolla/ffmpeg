@@ -178,9 +178,17 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         break;
     case SWS_OP_PACK:            /* compress components into tightly packed data */
         break;
+#endif
     /* Pixel manipulation */
     case SWS_OP_CLEAR:           /* clear pixel values */
+        for (int i = 0; i < 4; i++) {
+            if (op.clear.value[i].den) {
+                int val = op.clear.value[i].num / op.clear.value[i].den;
+                cc.movi(vop(op, v[i]), val);
+            }
+        }
         break;
+#if 0
     case SWS_OP_LSHIFT:          /* logical left shift of raw pixel values */
         break;
     case SWS_OP_RSHIFT:          /* right shift of raw pixel values */
