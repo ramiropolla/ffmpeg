@@ -1283,6 +1283,20 @@ int ff_sws_op_list_optimize(SwsOpList *ops)
         }
     } while (prev_num_ops != ops->num_ops || progress);
 
+    {
+        int vcount = 16;
+        for (int n = 0; n < ops->num_ops; n++) {
+            const SwsOp *op = &ops->ops[n];
+            if (op->type != SWS_PIXEL_U8)
+                vcount = 8;
+        }
+        // printf("vcount %d\n", vcount);
+        for (int n = 0; n < ops->num_ops; n++) {
+            SwsOp *op = &ops->ops[n];
+            op->vcount = vcount;
+        }
+    }
+
     return 0;
 }
 
