@@ -628,7 +628,7 @@ static int op_list_update_comps(SwsOpList *ops)
                     op->comps.flags[i] |= SWS_COMP_EXACT;
             }
             for (int i = op->rw.elems; i < 4; i++)
-                op->comps.flags[i] |= SWS_COMP_ZERO | SWS_COMP_EXACT;
+                op->comps.flags[i] |= SWS_COMP_GARBAGE;
             break;
         case SWS_OP_WRITE:
             for (int i = 0; i < op->rw.elems; i++)
