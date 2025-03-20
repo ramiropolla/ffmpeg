@@ -50,6 +50,7 @@ struct AsmJitContext {
         m_code.setLogger(&m_logger);
         m_cc = new a64::Compiler(&m_code);
         a64::Compiler &cc = *m_cc;
+        cc.addDiagnosticOptions(DiagnosticOptions::kRAAnnotate);
         m_func = cc.addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, uint8_t *, uint8_t *>());
         m_exec = cc.newGpz();
         m_func->setArg(0, m_exec);
