@@ -110,6 +110,13 @@ static int vpost(const SwsOp &op)
 
 static a64::Vec vop(const SwsOp &op, const a64::Vec &src)
 {
+    if (op.vcount == 8) {
+        if (op.type == SWS_PIXEL_U8)
+            return src.b8();
+        if (op.type == SWS_PIXEL_U16)
+            return src.h4();
+        return src.s2();
+    }
     if (op.type == SWS_PIXEL_U8)
         return src.b16();
     if (op.type == SWS_PIXEL_U16)
