@@ -42,9 +42,8 @@ struct AsmJitContext {
     FuncNode *m_func;
     std::vector<BaseNode *> m_prologue;
     a64::Gp m_exec;
-    a64::Vec m_vec[4];
-    a64::Vec m_vec2[4];
-    bool m_vec2_init;
+    a64::Vec m_vecl[4];
+    a64::Vec m_vech[4];
 
     AsmJitContext()
     {
@@ -56,8 +55,10 @@ struct AsmJitContext {
         m_func = cc.addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, uint8_t *, uint8_t *>());
         m_exec = cc.newGpz();
         m_func->setArg(0, m_exec);
-        for (int i = 0; i < 4; i++)
-            m_vec[i] = cc.newVecQ();
+        for (int i = 0; i < 4; i++) {
+            m_vecl[i] = cc.newVecQ();
+            m_vech[i] = cc.newVecQ();
+        }
     }
 };
 
@@ -123,7 +124,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
     AsmJitContext *ctx = static_cast<AsmJitContext *>(_ctx);
     a64::Compiler &cc = *ctx->m_cc;
     a64::Gp &exec = ctx->m_exec;
-    a64::Vec *v = ctx->m_vec;
+    a64::Vec *vl = ctx->m_vecl;
+    a64::Vec *vh = ctx->m_vech;
 
     const SwsOp &op = ops->ops[0];
     switch (op.op) {
@@ -137,16 +139,16 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 ctx->m_prologue.push_back(cc.cursor());
             }
             for (int i = 0; i < op.rw.elems; i++)
-                cc.ld1(vop(op, v[i]), a64::ptr(in[i]).post(vpost(op)));
+                cc.ld1(vop(op, vl[i]), a64::ptr(in[i]).post(vpost(op)));
         } else {
             a64::Gp in = cc.newGpz();
             cc.ldr(in, a64::ptr(exec, offsetof(SwsOpExec, in) + offsetof(SwsImg, data)));
             ctx->m_prologue.push_back(cc.cursor());
             switch (op.rw.elems) {
-            case 1: cc.ld1(vop(op, v[0]),                                              a64::ptr(in).post(vpost(op) * 1)); break;
-            case 2: cc.ld2(vop(op, v[0]), vop(op, v[1]),                               a64::ptr(in).post(vpost(op) * 2)); break;
-            case 3: cc.ld3(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]),                a64::ptr(in).post(vpost(op) * 3)); break;
-            case 4: cc.ld4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(in).post(vpost(op) * 4)); break;
+            case 1: cc.ld1(vop(op, vl[0]),                                                 a64::ptr(in).post(vpost(op) * 1)); break;
+            case 2: cc.ld2(vop(op, vl[0]), vop(op, vl[1]),                                 a64::ptr(in).post(vpost(op) * 2)); break;
+            case 3: cc.ld3(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]),                 a64::ptr(in).post(vpost(op) * 3)); break;
+            case 4: cc.ld4(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(in).post(vpost(op) * 4)); break;
             }
         }
         break;
@@ -159,16 +161,16 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 ctx->m_prologue.push_back(cc.cursor());
             }
             for (int i = 0; i < op.rw.elems; i++)
-                cc.st1(vop(op, v[i]), a64::ptr(out[i]) /* .post(vpost(op)) */);
+                cc.st1(vop(op, vl[i]), a64::ptr(out[i]) /* .post(vpost(op)) */);
         } else {
             a64::Gp out = cc.newGpz();
             cc.ldr(out, a64::ptr(exec, offsetof(SwsOpExec, out) + offsetof(SwsImg, data)));
             ctx->m_prologue.push_back(cc.cursor());
             switch (op.rw.elems) {
-            case 1: cc.st1(vop(op, v[0]),                                              a64::ptr(out)/* .post(vpost(op) * 1) */); break;
-            case 2: cc.st2(vop(op, v[0]), vop(op, v[1]),                               a64::ptr(out)/* .post(vpost(op) * 2) */); break;
-            case 3: cc.st3(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]),                a64::ptr(out).post(vpost(op) * 3)); break;
-            case 4: cc.st4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(out)/* .post(vpost(op) * 4) */); break;
+            case 1: cc.st1(vop(op, vl[0]),                                                 a64::ptr(out)/* .post(vpost(op) * 1) */); break;
+            case 2: cc.st2(vop(op, vl[0]), vop(op, vl[1]),                                 a64::ptr(out)/* .post(vpost(op) * 2) */); break;
+            case 3: cc.st3(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]),                 a64::ptr(out).post(vpost(op) * 3)); break;
+            case 4: cc.st4(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(out)/* .post(vpost(op) * 4) */); break;
             }
         }
         break;
@@ -185,7 +187,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         for (int i = 0; i < 4; i++) {
             if (/* !op.comps.unused[i] && */ op.clear.value[i].den) {
                 int val = op.clear.value[i].num / op.clear.value[i].den;
-                cc.movi(vop(op, v[i]), val);
+                cc.movi(vop(op, vl[i]), val);
             }
         }
         break;
@@ -197,9 +199,11 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
 #endif
     case SWS_OP_SWIZZLE:         /* rearrange channel order, or duplicate channels */
         {
-            a64::Vec orig[4] = { v[0], v[1], v[2], v[3] };
+            a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+            a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
             for (int i = 0; i < 4; i++) {
-                v[i] = orig[op.swizzle.in[i]];
+                vl[i] = orig_vl[op.swizzle.in[i]];
+                vh[i] = orig_vh[op.swizzle.in[i]];
             }
         }
         break;
@@ -211,32 +215,27 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 ctx->m_prologue.push_back(cc.cursor());
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i])
-                        cc.uxtl(v[i].h8(), v[i].b8());
+                        cc.uxtl(vl[i].h8(), vl[i].b8());
                 }
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i])
-                        cc.mul(v[i].h8(), v[i].h8(), mulvec.h8());
+                        cc.mul(vl[i].h8(), vl[i].h8(), mulvec.h8());
                 }
             } else if (op.convert.to == SWS_PIXEL_F32 && !op.convert.expand) {
-                if (!ctx->m_vec2_init) {
-                    for (int i = 0; i < 4; i++)
-                        ctx->m_vec2[i] = cc.newVecQ();
-                    ctx->m_vec2_init = true;
-                }
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i])
-                        cc.uxtl(ctx->m_vec2[i].h8(), v[i].b8());
+                        cc.uxtl(vh[i].h8(), vl[i].b8());
                 }
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        cc.uxtl(v[i].s4(), ctx->m_vec2[i].h4());
-                        cc.uxtl2(ctx->m_vec2[i].s4(), ctx->m_vec2[i].h8());
+                        cc.uxtl (vl[i].s4(), vh[i].h4());
+                        cc.uxtl2(vh[i].s4(), vh[i].h8());
                     }
                 }
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        cc.ucvtf(v[i].s4(), v[i].s4());
-                        cc.ucvtf(ctx->m_vec2[i].s4(), ctx->m_vec2[i].s4());
+                        cc.ucvtf(vl[i].s4(), vl[i].s4());
+                        cc.ucvtf(vh[i].s4(), vh[i].s4());
                     }
                 }
             } else {
@@ -244,21 +243,16 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             }
         } else if (op.type == SWS_PIXEL_U16) {
             if (op.convert.to == SWS_PIXEL_F32 && !op.convert.expand) {
-                if (!ctx->m_vec2_init) {
-                    for (int i = 0; i < 4; i++)
-                        ctx->m_vec2[i] = cc.newVecQ();
-                    ctx->m_vec2_init = true;
-                }
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        cc.uxtl2(ctx->m_vec2[i].s4(), v[i].h8());
-                        cc.uxtl(v[i].s4(), v[i].h4());
+                        cc.uxtl2(vh[i].s4(), vl[i].h8());
+                        cc.uxtl (vl[i].s4(), vl[i].h4());
                     }
                 }
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        cc.ucvtf(ctx->m_vec2[i].s4(), ctx->m_vec2[i].s4());
-                        cc.ucvtf(v[i].s4(), v[i].s4());
+                        cc.ucvtf(vh[i].s4(), vh[i].s4());
+                        cc.ucvtf(vl[i].s4(), vl[i].s4());
                     }
                 }
             } else {
