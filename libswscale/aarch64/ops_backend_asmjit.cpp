@@ -43,6 +43,8 @@ struct AsmJitContext {
     std::vector<BaseNode *> m_prologue;
     a64::Gp m_exec;
     a64::Vec m_vec[4];
+    a64::Vec m_vec2[4];
+    bool m_vec2_init;
 
     AsmJitContext()
     {
@@ -101,27 +103,19 @@ static void free_context(void *_ctx)
 
 static int vpost(const SwsOp &op)
 {
-    if (op.type == SWS_PIXEL_U8)
-        return op.vcount;
     if (op.type == SWS_PIXEL_U16)
         return op.vcount * 2;
-    return op.vcount * 4;
+    return op.vcount;
 }
 
 static a64::Vec vop(const SwsOp &op, const a64::Vec &src)
 {
     if (op.vcount == 8) {
-        if (op.type == SWS_PIXEL_U8)
-            return src.b8();
         if (op.type == SWS_PIXEL_U16)
-            return src.h4();
-        return src.s2();
+            return src.h8();
+        return src.b8();
     }
-    if (op.type == SWS_PIXEL_U8)
-        return src.b16();
-    if (op.type == SWS_PIXEL_U16)
-        return src.h8();
-    return src.s4();
+    return src.b16();
 }
 
 static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compiled)
@@ -131,7 +125,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
     a64::Gp &exec = ctx->m_exec;
     a64::Vec *v = ctx->m_vec;
 
-    SwsOp op = ops->ops[0];
+    const SwsOp &op = ops->ops[0];
     switch (op.op) {
     /* Input/output handling */
     case SWS_OP_READ:            /* gather raw pixels from planes */
@@ -165,16 +159,16 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 ctx->m_prologue.push_back(cc.cursor());
             }
             for (int i = 0; i < op.rw.elems; i++)
-                cc.st1(vop(op, v[i]), a64::ptr(out[i]).post(vpost(op)));
+                cc.st1(vop(op, v[i]), a64::ptr(out[i]) /* .post(vpost(op)) */);
         } else {
             a64::Gp out = cc.newGpz();
             cc.ldr(out, a64::ptr(exec, offsetof(SwsOpExec, out) + offsetof(SwsImg, data)));
             ctx->m_prologue.push_back(cc.cursor());
             switch (op.rw.elems) {
-            case 1: cc.st1(vop(op, v[0]),                                              a64::ptr(out).post(vpost(op) * 1)); break;
-            case 2: cc.st2(vop(op, v[0]), vop(op, v[1]),                               a64::ptr(out).post(vpost(op) * 2)); break;
+            case 1: cc.st1(vop(op, v[0]),                                              a64::ptr(out)/* .post(vpost(op) * 1) */); break;
+            case 2: cc.st2(vop(op, v[0]), vop(op, v[1]),                               a64::ptr(out)/* .post(vpost(op) * 2) */); break;
             case 3: cc.st3(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]),                a64::ptr(out).post(vpost(op) * 3)); break;
-            case 4: cc.st4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(out).post(vpost(op) * 4)); break;
+            case 4: cc.st4(vop(op, v[0]), vop(op, v[1]), vop(op, v[2]), vop(op, v[3]), a64::ptr(out)/* .post(vpost(op) * 4) */); break;
             }
         }
         break;
@@ -189,7 +183,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
     /* Pixel manipulation */
     case SWS_OP_CLEAR:           /* clear pixel values */
         for (int i = 0; i < 4; i++) {
-            if (op.clear.value[i].den) {
+            if (/* !op.comps.unused[i] && */ op.clear.value[i].den) {
                 int val = op.clear.value[i].num / op.clear.value[i].den;
                 cc.movi(vop(op, v[i]), val);
             }
@@ -204,13 +198,77 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
     case SWS_OP_SWIZZLE:         /* rearrange channel order, or duplicate channels */
         {
             a64::Vec orig[4] = { v[0], v[1], v[2], v[3] };
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 4; i++) {
                 v[i] = orig[op.swizzle.in[i]];
+            }
+        }
+        break;
+    case SWS_OP_CONVERT:         /* convert (cast) between formats */
+        if (op.type == SWS_PIXEL_U8) {
+            if (op.convert.to == SWS_PIXEL_U16 && op.convert.expand) {
+                a64::Vec mulvec = cc.newVecQ();
+                cc.movi(mulvec.b16(), 1);
+                ctx->m_prologue.push_back(cc.cursor());
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i])
+                        cc.uxtl(v[i].h8(), v[i].b8());
+                }
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i])
+                        cc.mul(v[i].h8(), v[i].h8(), mulvec.h8());
+                }
+            } else if (op.convert.to == SWS_PIXEL_F32 && !op.convert.expand) {
+                if (!ctx->m_vec2_init) {
+                    for (int i = 0; i < 4; i++)
+                        ctx->m_vec2[i] = cc.newVecQ();
+                    ctx->m_vec2_init = true;
+                }
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i])
+                        cc.uxtl(ctx->m_vec2[i].h8(), v[i].b8());
+                }
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.uxtl(v[i].s4(), ctx->m_vec2[i].h4());
+                        cc.uxtl2(ctx->m_vec2[i].s4(), ctx->m_vec2[i].h8());
+                    }
+                }
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.ucvtf(v[i].s4(), v[i].s4());
+                        cc.ucvtf(ctx->m_vec2[i].s4(), ctx->m_vec2[i].s4());
+                    }
+                }
+            } else {
+                return AVERROR(ENOTSUP);
+            }
+        } else if (op.type == SWS_PIXEL_U16) {
+            if (op.convert.to == SWS_PIXEL_F32 && !op.convert.expand) {
+                if (!ctx->m_vec2_init) {
+                    for (int i = 0; i < 4; i++)
+                        ctx->m_vec2[i] = cc.newVecQ();
+                    ctx->m_vec2_init = true;
+                }
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.uxtl2(ctx->m_vec2[i].s4(), v[i].h8());
+                        cc.uxtl(v[i].s4(), v[i].h4());
+                    }
+                }
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.ucvtf(ctx->m_vec2[i].s4(), ctx->m_vec2[i].s4());
+                        cc.ucvtf(v[i].s4(), v[i].s4());
+                    }
+                }
+            } else {
+                return AVERROR(ENOTSUP);
+            }
+        } else {
+            return AVERROR(ENOTSUP);
         }
         break;
 #if 0
-    case SWS_OP_CONVERT:         /* convert (cast) between formats */
-        break;
     case SWS_OP_DITHER:          /* add dithering noise */
         break;
     case SWS_OP_CLAMP:           /* clamp pixel values to value range */
@@ -227,8 +285,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
     }
 
     *out_compiled = (SwsCompiledOp) {
-        .chunk_size = 16,
-        .alignment  = 16,
+        .chunk_size = op.vcount,
+        .alignment  = op.vcount,
         .func       = nullptr,
         .func_n     = nullptr,
         .priv       = nullptr,
