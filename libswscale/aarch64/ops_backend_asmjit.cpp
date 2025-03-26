@@ -176,6 +176,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         cc.comment("read");
         if (op.rw.planar) {
             /* Load input pointers in prologue */
+            cc.comment("prologue (read)");
+            ctx->m_prologue.push_back(cc.cursor());
             a64::Gp in[4];
             for (int i = 0; i < op.rw.elems; i++) {
                 in[i] = cc.newGpz();
@@ -197,6 +199,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             }
         } else {
             /* Load input pointer in prologue */
+            cc.comment("prologue (read)");
+            ctx->m_prologue.push_back(cc.cursor());
             a64::Gp in = cc.newGpz();
             cc.ldr(in, a64::ptr(exec, offsetof(SwsOpExec, in) + offsetof(SwsImg, data)));
             ctx->m_prologue.push_back(cc.cursor());
@@ -236,6 +240,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         cc.comment("write");
         if (op.rw.planar) {
             /* Load output pointers in prologue */
+            cc.comment("prologue (write)");
+            ctx->m_prologue.push_back(cc.cursor());
             a64::Gp out[4];
             for (int i = 0; i < op.rw.elems; i++) {
                 out[i] = cc.newGpz();
@@ -251,6 +257,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             }
         } else {
             /* Load output pointer in prologue */
+            cc.comment("prologue (write)");
+            ctx->m_prologue.push_back(cc.cursor());
             a64::Gp out = cc.newGpz();
             cc.ldr(out, a64::ptr(exec, offsetof(SwsOpExec, out) + offsetof(SwsImg, data)));
             ctx->m_prologue.push_back(cc.cursor());
@@ -459,8 +467,12 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         cc.embed(fdata.data(), size * size * sizeof(float));
         cc.setCursor(cursor);
 
+        cc.comment("prologue (dither)");
+        ctx->m_prologue.push_back(cc.cursor());
+
         a64::Gp rdata = cc.newGpz();
         cc.adr(rdata, ldata);
+        ctx->m_prologue.push_back(cc.cursor());
 
         int mask = (size - 1);
 
@@ -562,6 +574,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             cc.setCursor(cursor);
 
             /* Read matrix data into vectors */
+            cc.comment("prologue (linear)");
+            ctx->m_prologue.push_back(cc.cursor());
             a64::Vec vdata[3];
             for (int i = 0; i < 3; i++)
                 vdata[i] = cc.newVecQ();
