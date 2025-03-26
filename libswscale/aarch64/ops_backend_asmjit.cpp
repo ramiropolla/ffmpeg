@@ -527,8 +527,46 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
 #endif
         break;
     case SWS_OP_CLAMP:           /* clamp pixel values to value range */
+        {
+            const SwsOp *next = &ops->ops[1];
+            if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U8) {
+                cc.comment("convert+clamp");
+                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+                a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+                /* Convert from f32 to u32 */
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
+                        cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
+                    }
+                }
+                /* Convert from u32 to u16 */
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.xtn(vl[i].h4(), vl[i].s4());
+                        cc.xtn(vh[i].h4(), vh[i].s4());
+                    }
+                }
+                /* Saturating convert from u16 to u8 */
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.uqxtn(vl[i].b8(), vl[i].h8());
+                        cc.uqxtn(vh[i].b8(), vh[i].h8());
+                    }
+                }
+                /* Merge vl and vh into vl */
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.zip1(vl[i].s2(), vl[i].s2(), vh[i].s2());
+                    }
+                }
+                ops->ops++;
+                ops->num_ops--;
+                break;
+            }
+        }
         cc.comment("clamp");
-#if 0
+#if 1
         {
             a64::Vec vzer = cc.newVecQ();
             a64::Vec v255 = cc.newVecQ();
