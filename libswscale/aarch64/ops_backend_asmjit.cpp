@@ -173,6 +173,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
     switch (op.op) {
     /* Input/output handling */
     case SWS_OP_READ:            /* gather raw pixels from planes */
+        cc.comment("read");
         if (op.rw.planar) {
             /* Load input pointers in prologue */
             a64::Gp in[4];
@@ -232,6 +233,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         }
         break;
     case SWS_OP_WRITE:           /* write raw pixels to planes */
+        cc.comment("write");
         if (op.rw.planar) {
             /* Load output pointers in prologue */
             a64::Gp out[4];
@@ -288,6 +290,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
 #endif
     /* Pixel manipulation */
     case SWS_OP_CLEAR:           /* clear pixel values */
+        cc.comment("clear");
         /* Create output vectors */
         for (int i = 0; i < 4; i++) {
             if (op.clear.value[i].den) {
@@ -313,6 +316,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         break;
 #endif
     case SWS_OP_SWIZZLE:         /* rearrange channel order, or duplicate channels */
+        cc.comment("swizzle");
         /* It shouldn't matter if the vectors are initialized or not */
         {
             a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
@@ -324,6 +328,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         }
         break;
     case SWS_OP_CONVERT:         /* convert (cast) between formats */
+        cc.comment("convert");
         if (op.type == SWS_PIXEL_U8) {
             if (op.convert.to == SWS_PIXEL_U16 && op.convert.expand) {
                 /* Create output vectors */
@@ -437,7 +442,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         }
         break;
     case SWS_OP_DITHER:          /* add dithering noise */
-        cc.nop();
+        cc.comment("dither");
     {
         /* Write matrix data after function */
         Label ldata = cc.newLabel();
@@ -478,7 +483,6 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         static const int y_off[4] = { 0, 3, 5, 7 };
         for (int i = 0; i < 4; i++) {
             if (!op.comps.unused[i]) {
-cc.nop();
                 a64::Gp z = cc.newGpz();
                 cc.add(z, y, y_off[i]);
                 cc.and_(z, z, mask);
@@ -496,7 +500,7 @@ cc.nop();
             }
         }
     }
-if ( 1 )
+#if 0
 {
     int size = 1 << op.dither.size_log2;
 
@@ -508,30 +512,31 @@ if ( 1 )
         //     c.matrix[y][x] = c.matrix[y][x % size]; /* pad to chunk size */
     }
 }
-        cc.nop();
+#endif
         break;
-#if 1
     case SWS_OP_CLAMP:           /* clamp pixel values to value range */
-if ( 0 )
-{
-        a64::Vec vzer = cc.newVecQ();
-        a64::Vec v255 = cc.newVecQ();
-        cc.movi(vzer.s4(), 0);
-        cc.movi(v255.s4(), 0xff);
-        cc.ucvtf(v255.s4(), v255.s4());
-        for (int i = 0; i < 4; i++) {
-            if (!op.comps.unused[i]) {
-                cc.fmax(vl[i].s4(), vl[i].s4(), vzer.s4());
-                cc.fmax(vh[i].s4(), vh[i].s4(), vzer.s4());
-                cc.fmin(vl[i].s4(), vl[i].s4(), v255.s4());
-                cc.fmin(vh[i].s4(), vh[i].s4(), v255.s4());
+        cc.comment("clamp");
+#if 0
+        {
+            a64::Vec vzer = cc.newVecQ();
+            a64::Vec v255 = cc.newVecQ();
+            cc.movi(vzer.s4(), 0);
+            cc.movi(v255.s4(), 0xff);
+            cc.ucvtf(v255.s4(), v255.s4());
+            for (int i = 0; i < 4; i++) {
+                if (!op.comps.unused[i]) {
+                    cc.fmax(vl[i].s4(), vl[i].s4(), vzer.s4());
+                    cc.fmax(vh[i].s4(), vh[i].s4(), vzer.s4());
+                    cc.fmin(vl[i].s4(), vl[i].s4(), v255.s4());
+                    cc.fmin(vh[i].s4(), vh[i].s4(), v255.s4());
+                }
             }
         }
-}
-        break;
 #endif
+        break;
     /* Arithmetic operations */
     case SWS_OP_LINEAR:          /* generalized linear affine transform */
+        cc.comment("linear");
         if (op.lin.mask == (SWS_MASK_MAT3 | SWS_MASK_OFF3)) {
             /* Write matrix data after function */
             Label ldata = cc.newLabel();
@@ -585,9 +590,10 @@ if ( 0 )
                 cc.fmla(vh[i].s4(), orig_vh[1].s4(), vdata[i].s(2));
                 cc.fmla(vh[i].s4(), orig_vh[2].s4(), vdata[i].s(3));
             }
-            break;
+        } else {
+            return AVERROR(ENOTSUP);
         }
-        return AVERROR(ENOTSUP);
+        break;
 #if 0
     case SWS_OP_SCALE:           /* multiplication by scalar */
         break;
