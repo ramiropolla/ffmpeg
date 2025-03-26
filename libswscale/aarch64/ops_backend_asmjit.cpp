@@ -430,10 +430,19 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             }
         } else if (op.type == SWS_PIXEL_U16) {
             if (op.convert.to == SWS_PIXEL_F32 && !op.convert.expand) {
+                /* Create output vectors */
+                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+                a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        cc.uxtl2(vh[i].s4(), vl[i].h8());
-                        cc.uxtl (vl[i].s4(), vl[i].h4());
+                        vl[i] = cc.newVecQ();
+                        vh[i] = cc.newVecQ();
+                    }
+                }
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
+                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
                     }
                 }
                 for (int i = 0; i < 4; i++) {
