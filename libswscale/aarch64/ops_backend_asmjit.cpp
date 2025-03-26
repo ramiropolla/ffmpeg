@@ -422,7 +422,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 /* Merge vl and vh into vl */
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        cc.zip1(vl[i].b8(), vl[i].b8(), vh[i].b8());
+                        cc.zip1(vl[i].s2(), vl[i].s2(), vh[i].s2());
                     }
                 }
             } else {
