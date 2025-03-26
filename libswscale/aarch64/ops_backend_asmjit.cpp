@@ -605,17 +605,10 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             cc.bind(ldata);
             float fdata[12];
             for (int i = 0; i < 3; i++) {
-#if 0
                 fdata[(i * 4) + 0] = av_q2d(op.lin.m[i][4]);
                 fdata[(i * 4) + 1] = av_q2d(op.lin.m[i][0]);
                 fdata[(i * 4) + 2] = av_q2d(op.lin.m[i][1]);
                 fdata[(i * 4) + 3] = av_q2d(op.lin.m[i][2]);
-#else
-                fdata[(i * 4) + 0] = (float) op.lin.m[i][4].num / op.lin.m[i][4].den;
-                fdata[(i * 4) + 1] = (float) op.lin.m[i][0].num / op.lin.m[i][0].den;
-                fdata[(i * 4) + 2] = (float) op.lin.m[i][1].num / op.lin.m[i][1].den;
-                fdata[(i * 4) + 3] = (float) op.lin.m[i][2].num / op.lin.m[i][2].den;
-#endif
             }
             cc.embed(fdata, sizeof(fdata));
             cc.setCursor(cursor);
