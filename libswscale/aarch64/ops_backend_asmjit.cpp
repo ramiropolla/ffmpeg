@@ -394,14 +394,14 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                 vh[i] = cc.newVecQ();
             }
 
-            cc.comment("convert");
-
             if        (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && op.convert.expand && vcount == 8) {
+                cc.comment("convert (u8 -> u16, expand, 8)");
                 /* Convert 8 from u8 to u16 (expand) */
                 LOOP_USED(i) {
                     cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                 }
             } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && op.convert.expand && vcount == 16) {
+                cc.comment("convert (u8 -> u16, expand, 16)");
                 /* Convert 16 from u8 to u16 (expand) */
                 LOOP_USED(i) {
                     cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
@@ -421,6 +421,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                 }
 #endif
             } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_F32 && !op.convert.expand && vcount == 8) {
+                cc.comment("convert (u8 -> f32, !expand, 8)");
                 /* Convert 8 from u8 to u16 (no expand) */
                 LOOP_USED(i) {
                     cc.uxtl(orig_vl[i].h8(), orig_vl[i].b8());
@@ -436,6 +437,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                     cc.ucvtf(vh[i].s4(), vh[i].s4());
                 }
             } else if (op.type == SWS_PIXEL_U16 && op.convert.to == SWS_PIXEL_F32 && !op.convert.expand && vcount == 8) {
+                cc.comment("convert (u16 -> f32, !expand, 8)");
                 /* Convert 8 from u16 to u32 (no expand) */
                 LOOP_USED(i) {
                     cc.uxtl (vl[i].s4(), orig_vl[i].h4());
@@ -447,6 +449,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                     cc.ucvtf(vh[i].s4(), vh[i].s4());
                 }
             } else if (op.type == SWS_PIXEL_F32 && op.convert.to == SWS_PIXEL_U8 && !op.convert.expand && vcount == 8) {
+                cc.comment("convert (f32 -> u8, !expand, 8)");
                 /* Convert from f32 to u32 */
                 LOOP_USED(i) {
                     cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
