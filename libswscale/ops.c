@@ -27,10 +27,14 @@
 #include "ops.h"
 #include "ops_internal.h"
 
+extern SwsOpBackend backend_asmjit;
 extern SwsOpBackend backend_x86;
 extern SwsOpBackend backend_c;
 
 const SwsOpBackend * const ff_sws_op_backends[] = {
+#if CONFIG_ASMJIT
+    &backend_asmjit,
+#endif
 #if ARCH_X86
     &backend_x86,
 #endif
@@ -1416,6 +1420,23 @@ int ff_sws_op_list_optimize(SwsOpList *ops)
         }
     } while (prev_num_ops != ops->num_ops || progress);
 
+    // u8:      16 pixels in 1 full vector
+    // u16:     16 pixels in 2 full vectors
+    // u32/f32:  8 pixels in 2 full vectors
+    {
+        int vcount = 16;
+        for (int n = 0; n < ops->num_ops; n++) {
+            const SwsOp *op = &ops->ops[n];
+            if (op->type == SWS_PIXEL_U32 || op->type == SWS_PIXEL_F32)
+                vcount = 8;
+        }
+        // printf("vcount %d\n", vcount);
+        for (int n = 0; n < ops->num_ops; n++) {
+            SwsOp *op = &ops->ops[n];
+            op->vcount = vcount;
+        }
+    }
+
     return 0;
 }
 
@@ -1651,6 +1672,7 @@ int ff_sws_ops_compile_backend(void *logctx, const SwsOpBackend *backend,
 {
     SwsOpChain chain = {0};
     SwsOpList *copy, rest;
+    void *bctx = NULL;
     int ret = 0;
 
     copy = ff_sws_op_list_duplicate(ops);
@@ -1660,11 +1682,14 @@ int ff_sws_ops_compile_backend(void *logctx, const SwsOpBackend *backend,
     /* Ensure these are always set during compilation */
     op_list_update_comps(copy);
 
+    if (backend->alloc_context)
+        bctx = backend->alloc_context();
+
     /* Make an on-stack copy of `ops` to ensure we can still properly clean up
      * the copy afterwards */
     rest = *copy;
     do {
-        ret = backend->compile(&rest, &chain);
+        ret = backend->compile(bctx, &rest, &chain);
     } while (ret == AVERROR(EAGAIN));
 
     if (ret == AVERROR(ENOTSUP)) {
@@ -1678,6 +1703,15 @@ int ff_sws_ops_compile_backend(void *logctx, const SwsOpBackend *backend,
     }
 
     ff_sws_op_list_free(&copy);
+
+    if (backend->compile_end) {
+        chain.entry = backend->compile_end(bctx);
+        if (!chain.entry) {
+            ret = AVERROR(ENOTSUP);
+            goto fail;
+        }
+    }
+
     *out_chain = chain;
     return 0;
 
@@ -1687,7 +1721,7 @@ fail:
     return ret;
 }
 
-int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
+int ff_sws_ops_compile(SwsContext *logctx, const SwsOpList *ops, SwsOpChain *chain)
 {
     for (int n = 0; ff_sws_op_backends[n]; n++) {
         const SwsOpBackend *backend = ff_sws_op_backends[n];
@@ -1697,6 +1731,7 @@ int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
         av_log(logctx, AV_LOG_VERBOSE, "Compiled using backend '%s': "
                "num_impl = %d, block size = %dx%d\n",
                backend->name, chain->num_impl, chain->block_w, chain->block_h);
+        logctx->backend_name = backend->name;
         return 0;
     }
 

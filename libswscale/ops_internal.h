@@ -123,13 +123,17 @@ int ff_sws_op_chain_append(SwsOpChain *chain, SwsFunc func,
 typedef struct SwsOpBackend {
     const char *name; /* Descriptive name for this backend */
 
+    void *(*alloc_context)(void);
+    void *(*compile_end)(void *ctx);
+    void (*free_context)(void *ctx);
+
     /**
      * Compile an operation list to an implementation chain. May modify `ops`
      * freely; the original list will be freed automatically by the caller.
      *
      * Returns 0 or a negative error code.
      */
-    int (*compile)(SwsOpList *ops, SwsOpChain *chain);
+    int (*compile)(void *ctx, SwsOpList *ops, SwsOpChain *chain);
 } SwsOpBackend;
 
 /* List of all backends, terminated by NULL */
@@ -149,7 +153,7 @@ int ff_sws_ops_compile_backend(void *logctx, const SwsOpBackend *backend,
  *
  * Returns 0 on success, or a negative error code on failure.
  */
-int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain);
+int ff_sws_ops_compile(SwsContext *logctx, const SwsOpList *ops, SwsOpChain *chain);
 
 /**
  * Set of helpers for writing backends based on static function tables.

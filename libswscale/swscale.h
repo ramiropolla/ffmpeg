@@ -245,6 +245,8 @@ typedef struct SwsContext {
      */
     int intent;
 
+    const char *backend_name;
+
     /* Remember to add new fields to graph.c:opts_equal() */
 } SwsContext;
 

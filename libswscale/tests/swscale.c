@@ -37,6 +37,7 @@
 #include "libavutil/pixfmt.h"
 #include "libavutil/avassert.h"
 #include "libavutil/macros.h"
+#include "libavutil/md5.h"
 
 #include "libswscale/swscale.h"
 
@@ -130,6 +131,46 @@ static int fmt_comps(enum AVPixelFormat fmt)
         comps |= 0b1000;
     return comps;
 }
+
+// #define DO_SPAM
+// #define DO_MD5
+
+#ifdef DO_MD5
+static void print_md5(const AVFrame *out, int comps)
+{
+    struct AVMD5 *md5 = av_md5_alloc();
+    uint8_t hash[16];
+
+    for (int p = 0; p < 4; p++) {
+        if (comps & (1 << p)) {
+#ifdef DO_SPAM
+            printf("plane %d\n", p);
+#endif
+            for (int y = 0; y < out->height; y++) {
+                av_md5_update(md5, &out->data[p][y * out->linesize[p]], out->width);
+#ifdef DO_SPAM
+                printf("[%4d] ", y);
+                for (int x = 0; x < out->width; x++) {
+                    printf(" %3d", out->data[p][y * out->linesize[p] + x]);
+                }
+                printf("\n");
+#endif
+            }
+#ifdef DO_SPAM
+            printf("\n");
+#endif
+        }
+    }
+
+    av_md5_final(md5, hash);
+    printf("md5: ");
+    for (int i = 0; i < 16; i++)
+        printf("%02x", hash[i]);
+    printf("\n");
+
+    av_free(md5);
+}
+#endif
 
 static void get_ssim(float ssim[4], const AVFrame *out, const AVFrame *ref, int comps)
 {
@@ -291,12 +332,16 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     }
 
     get_ssim(ssim, out, ref, comps);
-    printf("%s %dx%d -> %s %3dx%3d, flags=%u dither=%u, "
-           "SSIM {Y=%f U=%f V=%f A=%f}\n",
+    printf("[%-6s] %-12s %dx%d -> %-12s %3dx%3d, flags=%u dither=%u, "
+           "SSIM {Y=%f U=%f V=%f A=%f}",
+           sws[1]->backend_name,
            av_get_pix_fmt_name(src->format), src->width, src->height,
            av_get_pix_fmt_name(dst->format), dst->width, dst->height,
            mode.flags, mode.dither,
            ssim[0], ssim[1], ssim[2], ssim[3]);
+#ifdef DO_MD5
+    print_md5(out, comps);
+#endif
 
     loss = get_loss(ssim);
     if (loss - expected_loss > 1e-4 && dst_w >= ref->width && dst_h >= ref->height) {
@@ -340,6 +385,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         const float loss_ref = get_loss(ssim_ref);
         if (loss - loss_ref > 1e-4) {
             int bad = loss - loss_ref > 1e-2;
+            printf("\n");
             printf("\033[1;31m  loss %g is %s by %g, ref loss %g, "
                    "SSIM {Y=%f U=%f V=%f A=%f}\033[0m\n",
                    loss, bad ? "WORSE" : "worse", loss - loss_ref, loss_ref,
@@ -358,11 +404,13 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
             speedup_count++;
         }
 
-        printf("  time=%"PRId64" us, ref=%"PRId64" us, speedup=%.3fx %s%s\033[0m\n",
+        printf("  time=%6" PRId64 " us, ref=%6" PRId64 " us, speedup=%6.3fx %s%s\033[0m\n",
                time / opts.iters, time_ref / opts.iters, ratio,
                speedup_color(ratio), ratio >= 1.0 ? "faster" : "slower");
     } else if (opts.bench) {
-        printf("  time=%"PRId64" us\n", time / opts.iters);
+        printf("  time=%6" PRId64 " us\n", time / opts.iters);
+    } else {
+        printf("\n");
     }
 
     fflush(stdout);

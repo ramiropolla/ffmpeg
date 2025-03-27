@@ -66,18 +66,18 @@
 #define bitfn(name, ext)  bitfn2(name, ext)
 
 #define FN_SUFFIX AV_JOIN(FMT_CHAR, BIT_DEPTH)
-#define fn(name)  bitfn(name, FN_SUFFIX)
+#define bfn(name)  bitfn(name, FN_SUFFIX)
 
 /* Helper macros to make writing common function signatures less painful */
 #define DECL_FUNC(NAME, ...)                                                    \
-    static av_always_inline void fn(NAME)(const SwsOpExec *restrict exec,       \
+    static av_always_inline void bfn(NAME)(const SwsOpExec *restrict exec,       \
                                           const SwsOpImpl *restrict impl,       \
                                           block_t x, block_t y,                 \
                                           block_t z, block_t w,                 \
                                           __VA_ARGS__)
 
 #define DECL_READ(NAME, ...)                                                    \
-    static av_always_inline void fn(NAME)(const SwsOpExec *restrict exec,       \
+    static av_always_inline void bfn(NAME)(const SwsOpExec *restrict exec,       \
                                           const SwsOpImpl *restrict impl,       \
                                           const pixel_t *restrict in0,          \
                                           const pixel_t *restrict in1,          \
@@ -92,10 +92,10 @@
 
 /* Helper macros to call into functions declared with DECL_FUNC_* */
 #define CALL(FUNC, ...) \
-    fn(FUNC)(exec, impl, x, y, z, w, __VA_ARGS__)
+    bfn(FUNC)(exec, impl, x, y, z, w, __VA_ARGS__)
 
 #define CALL_READ(FUNC, ...)                                                    \
-    fn(FUNC)(exec, impl, (const pixel_t *) exec->in[0],                         \
+    bfn(FUNC)(exec, impl, (const pixel_t *) exec->in[0],                         \
                          (const pixel_t *) exec->in[1],                         \
                          (const pixel_t *) exec->in[2],                         \
                          (const pixel_t *) exec->in[3], __VA_ARGS__)
@@ -106,7 +106,7 @@
 
 /* Helper macros to declare continuation functions */
 #define DECL_IMPL(NAME)                                                         \
-    static SWS_FUNC void fn(NAME)(const SwsOpExec *restrict exec,               \
+    static SWS_FUNC void bfn(NAME)(const SwsOpExec *restrict exec,               \
                                   const SwsOpImpl *restrict impl,               \
                                   block_t x, block_t y,                         \
                                   block_t z, block_t w)                         \
@@ -119,7 +119,7 @@
 
 /* Helper macros for common op setup code */
 #define DECL_SETUP(NAME)                                                        \
-    static int fn(setup_##NAME)(const SwsOp *op, SwsOpPriv *out)
+    static int bfn(setup_##NAME)(const SwsOp *op, SwsOpPriv *out)
 
 #define SETUP_MEMDUP(c) ff_setup_memdup(&(c), sizeof(c), out)
 static inline int ff_setup_memdup(const void *c, size_t size, SwsOpPriv *out)
@@ -130,8 +130,8 @@ static inline int ff_setup_memdup(const void *c, size_t size, SwsOpPriv *out)
 
 /* Helper macros for declaring op table entries */
 #define DECL_ENTRY(NAME, ...)                                                   \
-    static const SwsOpEntry fn(op_##NAME) = {                                   \
-        .func = (SwsFunc) fn(NAME),                                             \
+    static const SwsOpEntry bfn(op_##NAME) = {                                   \
+        .func = (SwsFunc) bfn(NAME),                                             \
         .op = {                                                                 \
             .type = PIXEL_TYPE,                                                 \
             __VA_ARGS__                                                         \
@@ -139,9 +139,9 @@ static inline int ff_setup_memdup(const void *c, size_t size, SwsOpPriv *out)
     }
 
 #define DECL_ENTRY_SETUP(NAME, SETUP, FREE, ...)                                \
-    static const SwsOpEntry fn(op_##NAME) = {                                   \
-        .func  = (SwsFunc) fn(NAME),                                            \
-        .setup = fn(setup_##SETUP),                                             \
+    static const SwsOpEntry bfn(op_##NAME) = {                                   \
+        .func  = (SwsFunc) bfn(NAME),                                            \
+        .setup = bfn(setup_##SETUP),                                             \
         .free  = FREE,                                                          \
         .op = {                                                                 \
             .type = PIXEL_TYPE,                                                 \
