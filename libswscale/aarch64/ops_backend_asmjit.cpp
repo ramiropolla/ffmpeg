@@ -475,79 +475,63 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
         }
         break;
     case SWS_OP_DITHER:          /* add dithering noise */
-        cc.comment("dither");
-    {
-        /* Write matrix data after function */
-        Label ldata = cc.newLabel();
-        BaseNode *cursor = cc.cursor();
-        cc.setCursor(ctx->m_func->endNode()->prev());
-        cc.align(AlignMode::kData, 16);
-        cc.bind(ldata);
-        int size = 1 << op.dither.size_log2;
-        std::vector<float> fdata;
-        fdata.resize(size * size);
-        for (int i = 0; i < size * size; i++) {
-            fdata[i] = av_q2d(op.dither.matrix[i]);
+        {
+            cc.comment("dither");
+
+            /* Write matrix data after function */
+            Label ldata = cc.newLabel();
+            BaseNode *cursor = cc.cursor();
+            cc.setCursor(ctx->m_func->endNode()->prev());
+            cc.align(AlignMode::kData, 16);
+            cc.bind(ldata);
+            int size = 1 << op.dither.size_log2;
+            std::vector<float> fdata;
+            fdata.resize(size * size);
+            for (int i = 0; i < size * size; i++) {
+                fdata[i] = av_q2d(op.dither.matrix[i]);
+            }
+            cc.embed(fdata.data(), size * size * sizeof(float));
+            cc.setCursor(cursor);
+
+            a64::Gp rdatal = cc.newGpz();
+            a64::Gp rdatah = cc.newGpz();
+            a64::Gp x = cc.newGpz();
+            a64::Gp y = cc.newGpz();
+
+            cc.adr(rdatal, ldata);
+            cc.ldr(x.r32(), a64::ptr(exec, offsetof(SwsOpExec, x)));
+            cc.ldr(y.r32(), a64::ptr(exec, offsetof(SwsOpExec, y)));
+            /* x = (x & ((1 << size_log2) - 1)) * sizeof(float32) */
+            cc.ubfiz(x, x, 2, op.dither.size_log2);
+            cc.add(rdatah, rdatal, 16);
+            cc.add(rdatal, rdatal, x);
+            cc.add(rdatah, rdatah, x);
+
+            static const int y_off[4] = { 0, 3, 5, 7 };
+            LOOP_USED(i) {
+                // offset = ((((y + yoff[i]) & mask) << log2_size) + (x & mask)) * sizeof(float32);
+
+                a64::Gp ry_off = cc.newGpz();
+                a64::Gp ptrl = cc.newGpz();
+                a64::Gp ptrh = cc.newGpz();
+                a64::Vec dither_vl = cc.newVecQ();
+                a64::Vec dither_vh = cc.newVecQ();
+
+                if (y_off[i] == 0) {
+                    cc.ubfiz(ry_off, y, op.dither.size_log2 + 2, op.dither.size_log2);
+                } else {
+                    cc.add(ry_off, y, y_off[i]);
+                    cc.ubfiz(ry_off, ry_off, op.dither.size_log2 + 2, op.dither.size_log2);
+                }
+                cc.add(ptrl, rdatal, ry_off);
+                cc.add(ptrh, rdatah, ry_off);
+
+                cc.ld1(dither_vl.s4(), a64::ptr(ptrl));
+                cc.ld1(dither_vh.s4(), a64::ptr(ptrh));
+                cc.fadd(vl[i].s4(), vl[i].s4(), dither_vl.s4());
+                cc.fadd(vh[i].s4(), vh[i].s4(), dither_vh.s4());
+            }
         }
-        cc.embed(fdata.data(), size * size * sizeof(float));
-        cc.setCursor(cursor);
-
-        cc.comment("prologue (dither)");
-        ctx->m_prologue.push_back(cc.cursor());
-
-        a64::Gp rdata = cc.newGpz();
-        cc.adr(rdata, ldata);
-        ctx->m_prologue.push_back(cc.cursor());
-
-        int mask = (size - 1);
-
-        /* x */
-        a64::Gp wx = cc.newGpw();
-        a64::Gp wy = cc.newGpw();
-        a64::Gp x = cc.newGpz();
-        a64::Gp y = cc.newGpz();
-        cc.ldr(wx, a64::ptr(exec, offsetof(SwsOpExec, x)));
-        ctx->m_prologue.push_back(cc.cursor());
-        cc.ldr(wy, a64::ptr(exec, offsetof(SwsOpExec, y)));
-        ctx->m_prologue.push_back(cc.cursor());
-        cc.sxtw(x, wx);
-        ctx->m_prologue.push_back(cc.cursor());
-        cc.sxtw(y, wy);
-        ctx->m_prologue.push_back(cc.cursor());
-        cc.and_(x, x, mask);
-        ctx->m_prologue.push_back(cc.cursor());
-
-        static const int y_off[4] = { 0, 3, 5, 7 };
-        LOOP_USED(i) {
-            a64::Gp z = cc.newGpz();
-            cc.add(z, y, y_off[i]);
-            cc.and_(z, z, mask);
-            cc.lsl(z, z, op.dither.size_log2);
-            cc.add(z, z, x);
-            cc.lsl(z, z, 2);
-            cc.add(z, z, rdata);
-            // offset = ((((y + yoff[i]) & mask) << log2_size) + (x & mask)) * sizeof(float32);
-
-            a64::Vec v = cc.newVecQ();
-            cc.ld1(v.s4(), a64::ptr(z).post(16));
-            cc.fadd(vl[i].s4(), vl[i].s4(), v.s4());
-            cc.ld1(v.s4(), a64::ptr(z));
-            cc.fadd(vh[i].s4(), vh[i].s4(), v.s4());
-        }
-    }
-#if 0
-{
-    int size = 1 << op.dither.size_log2;
-
-    for (int y = 0; y < size; y++) {
-        for (int x = 0; x < size; x++)
-            printf(" %12.9g", av_q2d(op.dither.matrix[y * size + x]));
-        printf("\n");
-        // for (int x = size; x < SWS_CHUNK_SIZE; x++)
-        //     c.matrix[y][x] = c.matrix[y][x % size]; /* pad to chunk size */
-    }
-}
-#endif
         break;
     case SWS_OP_CLAMP:           /* clamp pixel values to value range */
         {
@@ -666,19 +650,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
         return AVERROR(ENOTSUP);
     }
 
-#if 0
-    *out_compiled = (SwsCompiledOp) {
-        .chunk_size = op.vcount,
-        .alignment  = op.vcount,
-        .func       = nullptr,
-        .func_n     = nullptr,
-        .priv       = nullptr,
-        .free_priv  = nullptr,
-    };
-#else
     chain->block_w = op.vcount;
     chain->block_h = 1;
-#endif
 
     ops->ops++;
     ops->num_ops--;
