@@ -27,10 +27,14 @@
 #include "ops.h"
 #include "ops_internal.h"
 
+extern SwsOpBackend backend_asmjit;
 extern SwsOpBackend backend_x86;
 extern SwsOpBackend backend_c;
 
 const SwsOpBackend * const ff_sws_op_backends[] = {
+#if CONFIG_ASMJIT
+    &backend_asmjit,
+#endif
 #if ARCH_X86
     &backend_x86,
 #endif
@@ -1527,6 +1531,7 @@ run_main(const SwsOpPass *p, const SwsImg *out_base, const SwsImg *in_base,
             exec.out[i] = out.data[i];
         }
 
+        exec.x_end = x_end;
         for (exec.x = 0; exec.x < x_end; exec.x += exec.block_w) {
             entry(&exec, impl);
 
@@ -1557,7 +1562,6 @@ run_tail(const SwsOpPass *p, const SwsImg *out_base, const bool copy_out,
 
     DECLARE_ALIGNED_64(uint8_t, tmp)[2][4][64];
 
-    exec.x = x_tail;
     for (int i = 0; i < 4; i++) {
         if (copy_in) {
             exec.in[i] = tmp[0][i];
@@ -1582,6 +1586,8 @@ run_tail(const SwsOpPass *p, const SwsImg *out_base, const bool copy_out,
         for (int i = 0; copy_in && in.data[i] && i < 4; i++)
             memcpy(tmp[0][i], in.data[i] + offset_in, rest_size);
 
+        exec.x = x_tail;
+        exec.x_end = x_tail + exec.block_w;
         entry(&exec, impl);
 
         for (int i = 0; copy_out && out.data[i] && i < 4; i++)
@@ -1687,7 +1693,7 @@ fail:
     return ret;
 }
 
-int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
+int ff_sws_ops_compile(SwsContext *logctx, const SwsOpList *ops, SwsOpChain *chain)
 {
     for (int n = 0; ff_sws_op_backends[n]; n++) {
         const SwsOpBackend *backend = ff_sws_op_backends[n];
@@ -1697,6 +1703,7 @@ int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
         av_log(logctx, AV_LOG_VERBOSE, "Compiled using backend '%s': "
                "num_impl = %d, block size = %dx%d\n",
                backend->name, chain->num_impl, chain->block_w, chain->block_h);
+        logctx->backend_name = backend->name;
         return 0;
     }
 
