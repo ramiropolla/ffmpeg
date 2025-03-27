@@ -19,6 +19,7 @@
  */
 
 // #define EMIT_BRK
+#define LOG_ASMJIT
 
 extern "C" {
 #include "libavutil/cpu.h"
@@ -50,7 +51,9 @@ struct AsmJitContext {
     AsmJitContext()
     {
         m_code.init(m_rt.environment(), m_rt.cpuFeatures());
+#ifdef LOG_ASMJIT
         m_code.setLogger(&m_logger);
+#endif
         m_cc = new a64::Compiler(&m_code);
         a64::Compiler &cc = *m_cc;
         cc.addDiagnosticOptions(DiagnosticOptions::kRAAnnotate);
@@ -151,10 +154,18 @@ static a64::Vec vop(const SwsOp &op, const a64::Vec &src)
         return src.b8(); /* half vector */
     if (op.type == SWS_PIXEL_U16 && op.vcount == 8)
         return src.h8(); /* full vector */
+    if (op.type == SWS_PIXEL_U32 && op.vcount == 8)
+        return src.s4(); /* full vector (TRUNCATE) */
+    if (op.type == SWS_PIXEL_F32 && op.vcount == 8)
+        return src.s4(); /* full vector (TRUNCATE) */
     if (op.type == SWS_PIXEL_U8  && op.vcount == 16)
         return src.b16(); /* full vector */
     if (op.type == SWS_PIXEL_U16 && op.vcount == 16)
         return src.h8(); /* full vector (TRUNCATE) */
+    if (op.type == SWS_PIXEL_U32 && op.vcount == 16)
+        return src.s4(); /* full vector (TRUNCATE) */
+    if (op.type == SWS_PIXEL_F32 && op.vcount == 16)
+        return src.s4(); /* full vector (TRUNCATE) */
     printf("ERORROORORRORORO %d %d\n", op.type, op.vcount);
     return src.b16();
 }
@@ -169,7 +180,9 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
 
     const SwsOp &op = ops->ops[0];
     int vcount = op.vcount;
-    bool use_vh = (op.type == SWS_PIXEL_U16) && op.vcount == 16;
+    bool use_vh = ((op.type == SWS_PIXEL_U16) && op.vcount == 16)
+               || ((op.type == SWS_PIXEL_U32) && op.vcount == 8)
+               || ((op.type == SWS_PIXEL_F32) && op.vcount == 8);
     switch (op.op) {
     /* Input/output handling */
     case SWS_OP_READ:            /* gather raw pixels from planes */
@@ -324,53 +337,103 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         break;
 #endif
     case SWS_OP_SWIZZLE:         /* rearrange channel order, or duplicate channels */
-        cc.comment("swizzle");
-        /* It shouldn't matter if the vectors are initialized or not */
         {
-            a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-            a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+            bool reorder = true;
+            bool used[4] = { false, false, false, false };
             for (int i = 0; i < 4; i++) {
-                vl[i] = orig_vl[op.swizzle.in[i]];
-                vh[i] = orig_vh[op.swizzle.in[i]];
+                if (used[op.swizzle.in[i]]) {
+                    reorder = false;
+                    break;
+                }
+                used[op.swizzle.in[i]] = true;
+            }
+
+            if (reorder) {
+                cc.comment("swizzle (reorder)");
+                /* It shouldn't matter if the vectors are initialized or not */
+                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+                a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+                for (int i = 0; i < 4; i++) {
+                    vl[i] = orig_vl[op.swizzle.in[i]];
+                    vh[i] = orig_vh[op.swizzle.in[i]];
+                }
+            } else {
+                cc.comment("swizzle (copy)");
+
+                /* Create output vectors */
+                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+                // a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+                for (int i = 0; i < 4; i++) {
+                    vl[i] = cc.newVecQ();
+                    // vh[i] = cc.newVecQ();
+                }
+
+                for (int i = 0; i < 4; i++) {
+                    if (op.comps.unused[op.swizzle.in[i]])
+                        continue;
+                    if (i == op.swizzle.in[i]) {
+                        vl[i] = orig_vl[op.swizzle.in[i]];
+                    } else {
+                        cc.mov(vl[i].b16(), orig_vl[op.swizzle.in[i]].b16());
+                    }
+                }
             }
         }
         break;
     case SWS_OP_CONVERT:         /* convert (cast) between formats */
-        cc.comment("convert");
-        if (op.type == SWS_PIXEL_U8) {
-            if (op.convert.to == SWS_PIXEL_U16 && op.convert.expand) {
-                /* Create output vectors */
-                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+        {
+            /* Create output vectors */
+            a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+            a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+            for (int i = 0; i < 4; i++) {
+                if (!op.comps.unused[i]) {
+                    vl[i] = cc.newVecQ();
+                    vh[i] = cc.newVecQ();
+                }
+            }
+
+            cc.comment("convert");
+
+            if        (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && op.convert.expand && vcount == 8) {
+                /* Convert 8 from u8 to u16 (expand) */
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        vl[i] = cc.newVecQ();
-                        if (vcount == 16)
-                            vh[i] = cc.newVecQ();
+                        cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                     }
                 }
-                /* Convert from u8 to u16 (expand) */
+            } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && op.convert.expand && vcount == 16) {
+                /* Convert 16 from u8 to u16 (expand) */
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        cc.zip1    (vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-                        if (vcount == 16)
-                            cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                        cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                        cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                     }
                 }
-            } else if (op.convert.to == SWS_PIXEL_F32 && !op.convert.expand) {
-                /* Create output vectors */
-                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+#if 0
+// TODO it should expand
+            } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U32 && !op.convert.expand && vcount == 8) {
+                /* Convert 8 from u8 to u16 (no expand) */
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        vl[i] = cc.newVecQ();
-                        vh[i] = cc.newVecQ();
-                    }
-                }
-                /* Convert from u8 to u16 */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i])
                         cc.uxtl(orig_vl[i].h8(), orig_vl[i].b8());
+                    }
                 }
-                /* Convert from u16 to u32 */
+                /* Convert 8 from u16 to u32 (no expand) */
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
+                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
+                    }
+                }
+#endif
+            } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_F32 && !op.convert.expand && vcount == 8) {
+                /* Convert 8 from u8 to u16 (no expand) */
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.uxtl(orig_vl[i].h8(), orig_vl[i].b8());
+                    }
+                }
+                /* Convert 8 from u16 to u32 (no expand) */
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
                         cc.uxtl (vl[i].s4(), orig_vl[i].h4());
@@ -384,20 +447,22 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                         cc.ucvtf(vh[i].s4(), vh[i].s4());
                     }
                 }
-            } else {
-                return AVERROR(ENOTSUP);
-            }
-        } else if (op.type == SWS_PIXEL_F32) {
-            if (op.convert.to == SWS_PIXEL_U8) {
-                /* Create output vectors */
-                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-                a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+            } else if (op.type == SWS_PIXEL_U16 && op.convert.to == SWS_PIXEL_F32 && !op.convert.expand && vcount == 8) {
+                /* Convert 8 from u16 to u32 (no expand) */
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
-                        vl[i] = cc.newVecQ();
-                        vh[i] = cc.newVecQ();
+                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
+                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
                     }
                 }
+                /* Convert from u32 to f32 */
+                for (int i = 0; i < 4; i++) {
+                    if (!op.comps.unused[i]) {
+                        cc.ucvtf(vl[i].s4(), vl[i].s4());
+                        cc.ucvtf(vh[i].s4(), vh[i].s4());
+                    }
+                }
+            } else if (op.type == SWS_PIXEL_F32 && op.convert.to == SWS_PIXEL_U8 && !op.convert.expand && vcount == 8) {
                 /* Convert from f32 to u32 */
                 for (int i = 0; i < 4; i++) {
                     if (!op.comps.unused[i]) {
@@ -428,34 +493,6 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             } else {
                 return AVERROR(ENOTSUP);
             }
-        } else if (op.type == SWS_PIXEL_U16) {
-            if (op.convert.to == SWS_PIXEL_F32 && !op.convert.expand) {
-                /* Create output vectors */
-                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-                a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        vl[i] = cc.newVecQ();
-                        vh[i] = cc.newVecQ();
-                    }
-                }
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
-                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
-                    }
-                }
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.ucvtf(vh[i].s4(), vh[i].s4());
-                        cc.ucvtf(vl[i].s4(), vl[i].s4());
-                    }
-                }
-            } else {
-                return AVERROR(ENOTSUP);
-            }
-        } else {
-            return AVERROR(ENOTSUP);
         }
         break;
     case SWS_OP_DITHER:          /* add dithering noise */

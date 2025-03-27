@@ -1408,7 +1408,7 @@ static int rw_pixel_bits(const SwsOp *op)
     return elems * size * bits;
 }
 
-int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat dst,
+int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat src, SwsFormat dst,
                         SwsPass *input, SwsPass **output)
 {
     const SwsOp *input_op, *output_op;
@@ -1491,7 +1491,12 @@ int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat ds
         if (backend->compile_end) {
             p->read = backend->compile_end(bctx);
             p->read_n = p->read;
-            av_log(ctx, AV_LOG_ERROR, "Using AsmJit!\n");
+#if 1
+            av_log(ctx, AV_LOG_ERROR, "Using AsmJit (%s -> %s)!\n",
+                av_get_pix_fmt_name(src.format), av_get_pix_fmt_name(dst.format));
+#else
+            printf("== Using AsmJit ==\n");
+#endif
         }
 
 #if 0
