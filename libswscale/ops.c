@@ -27,10 +27,14 @@
 #include "ops.h"
 #include "ops_internal.h"
 
+extern SwsOpBackend backend_asmjit;
 extern SwsOpBackend backend_x86;
 extern SwsOpBackend backend_c;
 
 const SwsOpBackend * const ff_sws_op_backends[] = {
+#if CONFIG_ASMJIT
+    &backend_asmjit,
+#endif
 #if ARCH_X86
     &backend_x86,
 #endif
@@ -1690,7 +1694,7 @@ fail:
     return ret;
 }
 
-int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
+int ff_sws_ops_compile(SwsContext *logctx, const SwsOpList *ops, SwsOpChain *chain)
 {
     for (int n = 0; ff_sws_op_backends[n]; n++) {
         const SwsOpBackend *backend = ff_sws_op_backends[n];
@@ -1700,6 +1704,7 @@ int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
         av_log(logctx, AV_LOG_VERBOSE, "Compiled using backend '%s': "
                "num_impl = %d, block size = %dx%d\n",
                backend->name, chain->num_impl, chain->block_w, chain->block_h);
+        logctx->backend_name = backend->name;
         return 0;
     }
 

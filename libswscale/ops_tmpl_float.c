@@ -49,11 +49,11 @@
 
 typedef struct {
     pixel_t matrix[MAX_DITHER_SIZE][DITHER_ROW_SIZE];
-} fn(DitherCoeffs);
+} bfn(DitherCoeffs);
 
 DECL_SETUP(dither)
 {
-    fn(DitherCoeffs) c = {0};
+    bfn(DitherCoeffs) c = {0};
     const int size = 1 << op->dither.size_log2;
 
     if (!size) {
@@ -75,7 +75,7 @@ DECL_SETUP(dither)
 
 DECL_FUNC(dither, const int size_log2)
 {
-    const fn(DitherCoeffs) *restrict c = impl->priv.ptr;
+    const bfn(DitherCoeffs) *restrict c = impl->priv.ptr;
     const int mask = (1 << size_log2) - 1;
     const int y_line = exec->y;
     const int row0 = (y_line + 0) & mask;
@@ -116,11 +116,11 @@ typedef struct {
     /* Stored in split form for convenience */
     pixel_t m[4][4];
     pixel_t k[4];
-} fn(LinCoeffs);
+} bfn(LinCoeffs);
 
 DECL_SETUP(linear)
 {
-    fn(LinCoeffs) c;
+    bfn(LinCoeffs) c;
 
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++)
@@ -139,7 +139,7 @@ DECL_SETUP(linear)
  */
 DECL_FUNC(linear_mask, const uint32_t mask)
 {
-    const fn(LinCoeffs) c = *(const fn(LinCoeffs) *) impl->priv.ptr;
+    const bfn(LinCoeffs) c = *(const bfn(LinCoeffs) *) impl->priv.ptr;
 
     SWS_LOOP
     for (int i = 0; i < SWS_CHUNK_SIZE; i++) {
@@ -208,38 +208,38 @@ WRAP_LINEAR(affine3a,  SWS_MASK_MAT3 | SWS_MASK_OFF3 | SWS_MASK_ALPHA)
 WRAP_LINEAR(matrix4,   SWS_MASK_MAT4)
 WRAP_LINEAR(affine4,   SWS_MASK_MAT4 | SWS_MASK_OFF4)
 
-static const SwsOpTable fn(op_table_float) = {
+static const SwsOpTable bfn(op_table_float) = {
     .block_w = SWS_CHUNK_SIZE,
     .block_h = 1,
     .entries = {
-        fn(op_convert_uint8),
-        fn(op_convert_uint16),
-        fn(op_convert_uint32),
+        bfn(op_convert_uint8),
+        bfn(op_convert_uint16),
+        bfn(op_convert_uint32),
 
-        fn(op_clear_1110),
-        fn(op_clamp),
-        fn(op_scale),
+        bfn(op_clear_1110),
+        bfn(op_clamp),
+        bfn(op_scale),
 
-        fn(op_dither0),
-        fn(op_dither1),
-        fn(op_dither2),
-        fn(op_dither3),
-        fn(op_dither4),
+        bfn(op_dither0),
+        bfn(op_dither1),
+        bfn(op_dither2),
+        bfn(op_dither3),
+        bfn(op_dither4),
 
-        fn(op_linear_luma),
-        fn(op_linear_alpha),
-        fn(op_linear_lumalpha),
-        fn(op_linear_dot3),
-        fn(op_linear_row0),
-        fn(op_linear_row0a),
-        fn(op_linear_diag3),
-        fn(op_linear_diag4),
-        fn(op_linear_diagoff3),
-        fn(op_linear_matrix3),
-        fn(op_linear_affine3),
-        fn(op_linear_affine3a),
-        fn(op_linear_matrix4),
-        fn(op_linear_affine4),
+        bfn(op_linear_luma),
+        bfn(op_linear_alpha),
+        bfn(op_linear_lumalpha),
+        bfn(op_linear_dot3),
+        bfn(op_linear_row0),
+        bfn(op_linear_row0a),
+        bfn(op_linear_diag3),
+        bfn(op_linear_diag4),
+        bfn(op_linear_diagoff3),
+        bfn(op_linear_matrix3),
+        bfn(op_linear_affine3),
+        bfn(op_linear_affine3a),
+        bfn(op_linear_matrix4),
+        bfn(op_linear_affine4),
 
         {{0}}
     },
