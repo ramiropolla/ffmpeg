@@ -149,7 +149,7 @@ int ff_sws_ops_compile_backend(void *logctx, const SwsOpBackend *backend,
  *
  * Returns 0 on success, or a negative error code on failure.
  */
-int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain);
+int ff_sws_ops_compile(SwsContext *logctx, const SwsOpList *ops, SwsOpChain *chain);
 
 /**
  * Set of helpers for writing backends based on static function tables.
