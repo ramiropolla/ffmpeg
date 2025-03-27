@@ -37,6 +37,7 @@
 #include "libavutil/pixfmt.h"
 #include "libavutil/avassert.h"
 #include "libavutil/macros.h"
+#include "libavutil/md5.h"
 
 #include "libswscale/swscale.h"
 
@@ -130,6 +131,46 @@ static int fmt_comps(enum AVPixelFormat fmt)
         comps |= 0b1000;
     return comps;
 }
+
+// #define DO_SPAM
+// #define DO_MD5
+
+#ifdef DO_MD5
+static void print_md5(const AVFrame *out, int comps)
+{
+    struct AVMD5 *md5 = av_md5_alloc();
+    uint8_t hash[16];
+
+    for (int p = 0; p < 4; p++) {
+        if (comps & (1 << p)) {
+#ifdef DO_SPAM
+            printf("plane %d\n", p);
+#endif
+            for (int y = 0; y < out->height; y++) {
+                av_md5_update(md5, &out->data[p][y * out->linesize[p]], out->width);
+#ifdef DO_SPAM
+                printf("[%4d] ", y);
+                for (int x = 0; x < out->width; x++) {
+                    printf(" %3d", out->data[p][y * out->linesize[p] + x]);
+                }
+                printf("\n");
+#endif
+            }
+#ifdef DO_SPAM
+            printf("\n");
+#endif
+        }
+    }
+
+    av_md5_final(md5, hash);
+    printf("md5: ");
+    for (int i = 0; i < 16; i++)
+        printf("%02x", hash[i]);
+    printf("\n");
+
+    av_free(md5);
+}
+#endif
 
 static void get_ssim(float ssim[4], const AVFrame *out, const AVFrame *ref, int comps)
 {
@@ -297,6 +338,9 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
            av_get_pix_fmt_name(dst->format), dst->width, dst->height,
            mode.flags, mode.dither,
            ssim[0], ssim[1], ssim[2], ssim[3]);
+#ifdef DO_MD5
+    print_md5(out, comps);
+#endif
 
     loss = get_loss(ssim);
     if (loss - expected_loss > 1e-4 && dst_w >= ref->width && dst_h >= ref->height) {
