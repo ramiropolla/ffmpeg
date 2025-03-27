@@ -974,9 +974,9 @@ static SwsPixelType get_packed_type(SwsPackOp pack)
 {
     const int sum = pack.pattern[0] + pack.pattern[1] +
                     pack.pattern[2] + pack.pattern[3];
-    if (sum >= 16)
+    if (sum > 16)
         return SWS_PIXEL_U32;
-    else if (sum >= 8)
+    else if (sum > 8)
         return SWS_PIXEL_U16;
     else
         return SWS_PIXEL_U8;

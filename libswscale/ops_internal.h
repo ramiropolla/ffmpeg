@@ -68,6 +68,10 @@ typedef struct __attribute__((packed)) SwsOpExec {
     int32_t w, h;               /* Overall dimensions being processed */
     int32_t slice_y, slice_h;   /* Start and height of current slice */
     int32_t block_w, block_h;   /* Configured processing block size */
+
+    int32_t x_end, y_end;       /* Coordinates of the end of the loop */
+    ptrdiff_t in_padding[4];
+    ptrdiff_t out_padding[4];
 } SwsOpExec;
 
 typedef struct SwsOpImpl SwsOpImpl;
@@ -149,7 +153,7 @@ int ff_sws_ops_compile_backend(void *logctx, const SwsOpBackend *backend,
  *
  * Returns 0 on success, or a negative error code on failure.
  */
-int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain);
+int ff_sws_ops_compile(SwsContext *logctx, const SwsOpList *ops, SwsOpChain *chain);
 
 /**
  * Set of helpers for writing backends based on static function tables.
