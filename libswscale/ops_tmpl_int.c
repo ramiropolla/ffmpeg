@@ -324,7 +324,7 @@ DECL_ENTRY(pack_##X##Y##Z##W,                                                   
 );                                                                              \
                                                                                 \
 inline static SWS_FUNC void                                                     \
-fn(unpack_##X##Y##Z##W)(const SwsOpExec *restrict exec,                         \
+bfn(unpack_##X##Y##Z##W)(const SwsOpExec *restrict exec,                         \
                         const SwsOpImpl *restrict impl,                         \
                         PACK_PIXEL *restrict x, PACK_PIXEL *restrict y,         \
                         PACK_PIXEL *restrict z, PACK_PIXEL *restrict w)         \
@@ -396,12 +396,12 @@ DECL_FUNC(rshift, const int amount)
 #define WRAP_SHIFT(N)                                                           \
 DECL_IMPL(lshift_##N)                                                           \
 {                                                                               \
-    fn(lshift)(exec, impl, x, y, z, w, N);                                      \
+    bfn(lshift)(exec, impl, x, y, z, w, N);                                      \
 }                                                                               \
                                                                                 \
 DECL_IMPL(rshift_##N)                                                           \
 {                                                                               \
-    fn(rshift)(exec, impl, x, y, z, w, N);                                      \
+    bfn(rshift)(exec, impl, x, y, z, w, N);                                      \
 }                                                                               \
                                                                                 \
 DECL_ENTRY(lshift_##N,                                                          \
@@ -451,7 +451,7 @@ DECL_ENTRY(convert_float,
  */
 #define DECL_SWIZZLE(X, Y, Z, W)                                                \
 static SWS_FUNC void                                                            \
-fn(swizzle_##X##Y##Z##W)(const SwsOpExec *restrict exec,                        \
+bfn(swizzle_##X##Y##Z##W)(const SwsOpExec *restrict exec,                        \
                          const SwsOpImpl *restrict impl,                        \
                          pixel_t *restrict c0, pixel_t *restrict c1,            \
                          pixel_t *restrict c2, pixel_t *restrict c3)            \
@@ -485,7 +485,7 @@ DECL_SWIZZLE(0, 3, 2, 1)
 /* Broadcast luma -> rgb (only used for y(a) -> rgb(a)) */
 #define DECL_EXPAND_LUMA(X, W, T0, T1)                                          \
 static SWS_FUNC void                                                            \
-fn(expand_luma_##X##W)(const SwsOpExec *restrict exec,                          \
+bfn(expand_luma_##X##W)(const SwsOpExec *restrict exec,                          \
                        const SwsOpImpl *restrict impl,                          \
                        pixel_t *restrict c0, pixel_t *restrict c1,              \
                        pixel_t *restrict c2, pixel_t *restrict c3)              \
@@ -507,124 +507,124 @@ DECL_EXPAND_LUMA(3, 0, c1, c2)
 DECL_EXPAND_LUMA(1, 0, c2, c3)
 DECL_EXPAND_LUMA(0, 1, c2, c3)
 
-static const SwsOpTable fn(op_table_int) = {
+static const SwsOpTable bfn(op_table_int) = {
     .block_w = SWS_CHUNK_SIZE,
     .block_h = 1,
     .entries = {
-        fn(op_read_planar1),
-        fn(op_read_planar2),
-        fn(op_read_planar3),
-        fn(op_read_planar4),
-        fn(op_read_packed2),
-        fn(op_read_packed3),
-        fn(op_read_packed4),
+        bfn(op_read_planar1),
+        bfn(op_read_planar2),
+        bfn(op_read_planar3),
+        bfn(op_read_planar4),
+        bfn(op_read_packed2),
+        bfn(op_read_packed3),
+        bfn(op_read_packed4),
 
-        fn(op_write_planar1),
-        fn(op_write_planar2),
-        fn(op_write_planar3),
-        fn(op_write_planar4),
-        fn(op_write_packed2),
-        fn(op_write_packed3),
-        fn(op_write_packed4),
+        bfn(op_write_planar1),
+        bfn(op_write_planar2),
+        bfn(op_write_planar3),
+        bfn(op_write_planar4),
+        bfn(op_write_packed2),
+        bfn(op_write_packed3),
+        bfn(op_write_packed4),
 
 #if BIT_DEPTH == 8
-        fn(op_read_bits1),
-        fn(op_read_nibbles1),
-        fn(op_write_bits1),
-        fn(op_write_nibbles1),
+        bfn(op_read_bits1),
+        bfn(op_read_nibbles1),
+        bfn(op_write_bits1),
+        bfn(op_write_nibbles1),
 
-        fn(op_pack_1210),
-        fn(op_pack_2330),
-        fn(op_pack_3320),
-        fn(op_pack_4440),
-        fn(op_pack_5550),
-        fn(op_pack_5650),
+        bfn(op_pack_1210),
+        bfn(op_pack_2330),
+        bfn(op_pack_3320),
+        bfn(op_pack_4440),
+        bfn(op_pack_5550),
+        bfn(op_pack_5650),
 
-        fn(op_unpack_1210),
-        fn(op_unpack_2330),
-        fn(op_unpack_3320),
-        fn(op_unpack_4440),
-        fn(op_unpack_5550),
-        fn(op_unpack_5650),
+        bfn(op_unpack_1210),
+        bfn(op_unpack_2330),
+        bfn(op_unpack_3320),
+        bfn(op_unpack_4440),
+        bfn(op_unpack_5550),
+        bfn(op_unpack_5650),
 
-        fn(op_expand16),
-        fn(op_expand32),
+        bfn(op_expand16),
+        bfn(op_expand32),
 #elif BIT_DEPTH == 16
-        fn(op_pack_2101010),
-        fn(op_pack_1010102),
-        fn(op_unpack_2101010),
-        fn(op_unpack_1010102),
+        bfn(op_pack_2101010),
+        bfn(op_pack_1010102),
+        bfn(op_unpack_2101010),
+        bfn(op_unpack_1010102),
 #endif
 
 #ifdef SWAP_BYTES
-        fn(op_swap_bytes),
+        bfn(op_swap_bytes),
 #endif
 
-        fn(op_clamp),
-        fn(op_scale),
-        fn(op_convert_float),
+        bfn(op_clamp),
+        bfn(op_scale),
+        bfn(op_convert_float),
 
-        fn(op_clear_1110),
-        fn(op_clear_0111),
-        fn(op_clear_0011),
-        fn(op_clear_1001),
-        fn(op_clear_1100),
-        fn(op_clear_0101),
-        fn(op_clear_1010),
-        fn(op_clear_1000),
-        fn(op_clear_0100),
-        fn(op_clear_0010),
+        bfn(op_clear_1110),
+        bfn(op_clear_0111),
+        bfn(op_clear_0011),
+        bfn(op_clear_1001),
+        bfn(op_clear_1100),
+        bfn(op_clear_0101),
+        bfn(op_clear_1010),
+        bfn(op_clear_1000),
+        bfn(op_clear_0100),
+        bfn(op_clear_0010),
 
-        fn(op_swizzle_0123),
-        fn(op_swizzle_3012),
-        fn(op_swizzle_2103),
-        fn(op_swizzle_3210),
-        fn(op_swizzle_3102),
-        fn(op_swizzle_3201),
-        fn(op_swizzle_1203),
-        fn(op_swizzle_1023),
-        fn(op_swizzle_2013),
-        fn(op_swizzle_2310),
-        fn(op_swizzle_2130),
-        fn(op_swizzle_1230),
-        fn(op_swizzle_0213),
-        fn(op_swizzle_0231),
-        fn(op_swizzle_0312),
-        fn(op_swizzle_3120),
-        fn(op_swizzle_0321),
+        bfn(op_swizzle_0123),
+        bfn(op_swizzle_3012),
+        bfn(op_swizzle_2103),
+        bfn(op_swizzle_3210),
+        bfn(op_swizzle_3102),
+        bfn(op_swizzle_3201),
+        bfn(op_swizzle_1203),
+        bfn(op_swizzle_1023),
+        bfn(op_swizzle_2013),
+        bfn(op_swizzle_2310),
+        bfn(op_swizzle_2130),
+        bfn(op_swizzle_1230),
+        bfn(op_swizzle_0213),
+        bfn(op_swizzle_0231),
+        bfn(op_swizzle_0312),
+        bfn(op_swizzle_3120),
+        bfn(op_swizzle_0321),
 
-        fn(op_expand_luma_03),
-        fn(op_expand_luma_30),
-        fn(op_expand_luma_10),
-        fn(op_expand_luma_01),
+        bfn(op_expand_luma_03),
+        bfn(op_expand_luma_30),
+        bfn(op_expand_luma_10),
+        bfn(op_expand_luma_01),
 
 #if BIT_DEPTH != 8
-        fn(op_lshift_1),
-        fn(op_lshift_2),
-        fn(op_lshift_3),
-        fn(op_lshift_4),
-        fn(op_lshift_5),
-        fn(op_lshift_6),
-        fn(op_lshift_7),
-        fn(op_lshift_8),
+        bfn(op_lshift_1),
+        bfn(op_lshift_2),
+        bfn(op_lshift_3),
+        bfn(op_lshift_4),
+        bfn(op_lshift_5),
+        bfn(op_lshift_6),
+        bfn(op_lshift_7),
+        bfn(op_lshift_8),
 
-        fn(op_rshift_1),
-        fn(op_rshift_2),
-        fn(op_rshift_3),
-        fn(op_rshift_4),
-        fn(op_rshift_5),
-        fn(op_rshift_6),
-        fn(op_rshift_7),
-        fn(op_rshift_8),
+        bfn(op_rshift_1),
+        bfn(op_rshift_2),
+        bfn(op_rshift_3),
+        bfn(op_rshift_4),
+        bfn(op_rshift_5),
+        bfn(op_rshift_6),
+        bfn(op_rshift_7),
+        bfn(op_rshift_8),
 
-        fn(op_convert_uint8),
+        bfn(op_convert_uint8),
 #endif /* BIT_DEPTH != 8 */
 
 #if BIT_DEPTH != 16
-        fn(op_convert_uint16),
+        bfn(op_convert_uint16),
 #endif
 #if BIT_DEPTH != 32
-        fn(op_convert_uint32),
+        bfn(op_convert_uint32),
 #endif
 
         {{0}}

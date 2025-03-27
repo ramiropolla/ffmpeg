@@ -28,15 +28,6 @@
 #include "graph.h"
 #include "format.h"
 
-typedef enum SwsPixelType {
-    SWS_PIXEL_NONE = 0,
-    SWS_PIXEL_U8,
-    SWS_PIXEL_U16,
-    SWS_PIXEL_U32,
-    SWS_PIXEL_F32,
-    SWS_PIXEL_TYPE_NB
-} SwsPixelType;
-
 const char *ff_sws_pixel_type_name(SwsPixelType type);
 int ff_sws_pixel_type_size(SwsPixelType type) av_const;
 bool ff_sws_pixel_type_is_int(SwsPixelType type) av_const;
@@ -190,6 +181,7 @@ uint32_t ff_sws_linear_mask(SwsLinearOp);
 typedef struct SwsOp {
     SwsOpType op;      /* operation to perform */
     SwsPixelType type; /* pixel type to operate on */
+    int vcount;
     union {
         SwsReadWriteOp  rw;
         SwsPackOp       pack;
