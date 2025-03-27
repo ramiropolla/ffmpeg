@@ -170,6 +170,10 @@ static a64::Vec vop(const SwsOp &op, const a64::Vec &src)
     return src.b16();
 }
 
+#define LOOP_USED(idx)                \
+    for (int idx = 0; idx < 4; idx++) \
+        if (!op.comps.unused[idx])
+
 static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compiled)
 {
     AsmJitContext *ctx = static_cast<AsmJitContext *>(_ctx);
@@ -385,110 +389,82 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             /* Create output vectors */
             a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
             a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
-            for (int i = 0; i < 4; i++) {
-                if (!op.comps.unused[i]) {
-                    vl[i] = cc.newVecQ();
-                    vh[i] = cc.newVecQ();
-                }
+            LOOP_USED(i) {
+                vl[i] = cc.newVecQ();
+                vh[i] = cc.newVecQ();
             }
 
             cc.comment("convert");
 
             if        (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && op.convert.expand && vcount == 8) {
                 /* Convert 8 from u8 to u16 (expand) */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-                    }
+                LOOP_USED(i) {
+                    cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                 }
             } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && op.convert.expand && vcount == 16) {
                 /* Convert 16 from u8 to u16 (expand) */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-                        cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-                    }
+                LOOP_USED(i) {
+                    cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                    cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                 }
 #if 0
 // TODO it should expand
             } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U32 && !op.convert.expand && vcount == 8) {
                 /* Convert 8 from u8 to u16 (no expand) */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.uxtl(orig_vl[i].h8(), orig_vl[i].b8());
-                    }
+                LOOP_USED(i) {
+                    cc.uxtl(orig_vl[i].h8(), orig_vl[i].b8());
                 }
                 /* Convert 8 from u16 to u32 (no expand) */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
-                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
-                    }
+                LOOP_USED(i) {
+                    cc.uxtl (vl[i].s4(), orig_vl[i].h4());
+                    cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
                 }
 #endif
             } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_F32 && !op.convert.expand && vcount == 8) {
                 /* Convert 8 from u8 to u16 (no expand) */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.uxtl(orig_vl[i].h8(), orig_vl[i].b8());
-                    }
+                LOOP_USED(i) {
+                    cc.uxtl(orig_vl[i].h8(), orig_vl[i].b8());
                 }
                 /* Convert 8 from u16 to u32 (no expand) */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
-                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
-                    }
+                LOOP_USED(i) {
+                    cc.uxtl (vl[i].s4(), orig_vl[i].h4());
+                    cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
                 }
                 /* Convert from u32 to f32 */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.ucvtf(vl[i].s4(), vl[i].s4());
-                        cc.ucvtf(vh[i].s4(), vh[i].s4());
-                    }
+                LOOP_USED(i) {
+                    cc.ucvtf(vl[i].s4(), vl[i].s4());
+                    cc.ucvtf(vh[i].s4(), vh[i].s4());
                 }
             } else if (op.type == SWS_PIXEL_U16 && op.convert.to == SWS_PIXEL_F32 && !op.convert.expand && vcount == 8) {
                 /* Convert 8 from u16 to u32 (no expand) */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
-                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
-                    }
+                LOOP_USED(i) {
+                    cc.uxtl (vl[i].s4(), orig_vl[i].h4());
+                    cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
                 }
                 /* Convert from u32 to f32 */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.ucvtf(vl[i].s4(), vl[i].s4());
-                        cc.ucvtf(vh[i].s4(), vh[i].s4());
-                    }
+                LOOP_USED(i) {
+                    cc.ucvtf(vl[i].s4(), vl[i].s4());
+                    cc.ucvtf(vh[i].s4(), vh[i].s4());
                 }
             } else if (op.type == SWS_PIXEL_F32 && op.convert.to == SWS_PIXEL_U8 && !op.convert.expand && vcount == 8) {
                 /* Convert from f32 to u32 */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
-                        cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
-                    }
+                LOOP_USED(i) {
+                    cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
+                    cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
                 }
                 /* Convert from u32 to u16 */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.xtn(vl[i].h4(), vl[i].s4());
-                        cc.xtn(vh[i].h4(), vh[i].s4());
-                    }
+                LOOP_USED(i) {
+                    cc.xtn(vl[i].h4(), vl[i].s4());
+                    cc.xtn(vh[i].h4(), vh[i].s4());
                 }
                 /* Convert from u16 to u8 */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.xtn(vl[i].b8(), vl[i].h8());
-                        cc.xtn(vh[i].b8(), vh[i].h8());
-                    }
+                LOOP_USED(i) {
+                    cc.xtn(vl[i].b8(), vl[i].h8());
+                    cc.xtn(vh[i].b8(), vh[i].h8());
                 }
                 /* Merge vl and vh into vl */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.zip1(vl[i].s2(), vl[i].s2(), vh[i].s2());
-                    }
+                LOOP_USED(i) {
+                    cc.zip1(vl[i].s2(), vl[i].s2(), vh[i].s2());
                 }
             } else {
                 return AVERROR(ENOTSUP);
@@ -539,23 +515,21 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
         ctx->m_prologue.push_back(cc.cursor());
 
         static const int y_off[4] = { 0, 3, 5, 7 };
-        for (int i = 0; i < 4; i++) {
-            if (!op.comps.unused[i]) {
-                a64::Gp z = cc.newGpz();
-                cc.add(z, y, y_off[i]);
-                cc.and_(z, z, mask);
-                cc.lsl(z, z, op.dither.size_log2);
-                cc.add(z, z, x);
-                cc.lsl(z, z, 2);
-                cc.add(z, z, rdata);
-                // offset = ((((y + yoff[i]) & mask) << log2_size) + (x & mask)) * sizeof(float32);
+        LOOP_USED(i) {
+            a64::Gp z = cc.newGpz();
+            cc.add(z, y, y_off[i]);
+            cc.and_(z, z, mask);
+            cc.lsl(z, z, op.dither.size_log2);
+            cc.add(z, z, x);
+            cc.lsl(z, z, 2);
+            cc.add(z, z, rdata);
+            // offset = ((((y + yoff[i]) & mask) << log2_size) + (x & mask)) * sizeof(float32);
 
-                a64::Vec v = cc.newVecQ();
-                cc.ld1(v.s4(), a64::ptr(z).post(16));
-                cc.fadd(vl[i].s4(), vl[i].s4(), v.s4());
-                cc.ld1(v.s4(), a64::ptr(z));
-                cc.fadd(vh[i].s4(), vh[i].s4(), v.s4());
-            }
+            a64::Vec v = cc.newVecQ();
+            cc.ld1(v.s4(), a64::ptr(z).post(16));
+            cc.fadd(vl[i].s4(), vl[i].s4(), v.s4());
+            cc.ld1(v.s4(), a64::ptr(z));
+            cc.fadd(vh[i].s4(), vh[i].s4(), v.s4());
         }
     }
 #if 0
@@ -580,31 +554,23 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
                 a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
                 a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
                 /* Convert from f32 to u32 */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
-                        cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
-                    }
+                LOOP_USED(i) {
+                    cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
+                    cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
                 }
                 /* Convert from u32 to u16 */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.xtn(vl[i].h4(), vl[i].s4());
-                        cc.xtn(vh[i].h4(), vh[i].s4());
-                    }
+                LOOP_USED(i) {
+                    cc.xtn(vl[i].h4(), vl[i].s4());
+                    cc.xtn(vh[i].h4(), vh[i].s4());
                 }
                 /* Saturating convert from u16 to u8 */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.uqxtn(vl[i].b8(), vl[i].h8());
-                        cc.uqxtn(vh[i].b8(), vh[i].h8());
-                    }
+                LOOP_USED(i) {
+                    cc.uqxtn(vl[i].b8(), vl[i].h8());
+                    cc.uqxtn(vh[i].b8(), vh[i].h8());
                 }
                 /* Merge vl and vh into vl */
-                for (int i = 0; i < 4; i++) {
-                    if (!op.comps.unused[i]) {
-                        cc.zip1(vl[i].s2(), vl[i].s2(), vh[i].s2());
-                    }
+                LOOP_USED(i) {
+                    cc.zip1(vl[i].s2(), vl[i].s2(), vh[i].s2());
                 }
                 ops->ops++;
                 ops->num_ops--;
@@ -619,13 +585,11 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             cc.movi(vzer.s4(), 0);
             cc.movi(v255.s4(), 0xff);
             cc.ucvtf(v255.s4(), v255.s4());
-            for (int i = 0; i < 4; i++) {
-                if (!op.comps.unused[i]) {
-                    cc.fmax(vl[i].s4(), vl[i].s4(), vzer.s4());
-                    cc.fmax(vh[i].s4(), vh[i].s4(), vzer.s4());
-                    cc.fmin(vl[i].s4(), vl[i].s4(), v255.s4());
-                    cc.fmin(vh[i].s4(), vh[i].s4(), v255.s4());
-                }
+            LOOP_USED(i) {
+                cc.fmax(vl[i].s4(), vl[i].s4(), vzer.s4());
+                cc.fmax(vh[i].s4(), vh[i].s4(), vzer.s4());
+                cc.fmin(vl[i].s4(), vl[i].s4(), v255.s4());
+                cc.fmin(vh[i].s4(), vh[i].s4(), v255.s4());
             }
         }
 #endif
