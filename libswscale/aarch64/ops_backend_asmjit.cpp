@@ -551,8 +551,13 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsCompiledOp *out_compile
             const SwsOp *next = &ops->ops[1];
             if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U8) {
                 cc.comment("convert+clamp");
+                /* Create output vectors */
                 a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
                 a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+                LOOP_USED(i) {
+                    vl[i] = cc.newVecQ();
+                    vh[i] = cc.newVecQ();
+                }
                 /* Convert from f32 to u32 */
                 LOOP_USED(i) {
                     cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
