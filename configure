@@ -199,6 +199,7 @@ External library support:
   --disable-appkit         disable Apple AppKit framework [autodetect]
   --disable-avfoundation   disable Apple AVFoundation framework [autodetect]
   --enable-avisynth        enable reading of AviSynth script files [no]
+  --enable-asmjit          enable AsmJit in libswscale [autodetect]
   --disable-bzlib          disable bzlib [autodetect]
   --disable-coreimage      disable Apple CoreImage framework [autodetect]
   --enable-chromaprint     enable audio fingerprinting with chromaprint [no]
@@ -1853,6 +1854,7 @@ EXAMPLE_LIST="
 EXTERNAL_AUTODETECT_LIBRARY_LIST="
     alsa
     appkit
+    asmjit
     avfoundation
     bzlib
     coreimage
@@ -4087,6 +4089,7 @@ swscale_suggest="libm stdatomic"
 avcodec_extralibs="pthreads_extralibs iconv_extralibs dxva2_extralibs liblcevc_dec_extralibs lcms2_extralibs"
 avfilter_extralibs="pthreads_extralibs"
 avutil_extralibs="d3d11va_extralibs d3d12va_extralibs mediacodec_extralibs nanosleep_extralibs pthreads_extralibs vaapi_drm_extralibs vaapi_x11_extralibs vaapi_win32_extralibs vdpau_x11_extralibs"
+swscale_extralibs="asmjit_extralibs"
 
 # programs
 ffmpeg_deps="avcodec avfilter avformat threads"
@@ -5186,7 +5189,7 @@ test -n "$cc_type" && enable $cc_type ||
 : ${as_default:=$cc}
 : ${objcc_default:=$cc}
 : ${dep_cc_default:=$cc}
-: ${ld_default:=$cc}
+: ${ld_default:=$cxx}
 : ${host_ld_default:=$host_cc}
 set_default ar as objcc dep_cc ld ln_s host_ld windres response_files
 
@@ -6912,6 +6915,7 @@ done
 enabled avisynth          && { require_headers "avisynth/avisynth_c.h avisynth/avs/version.h" &&
                                { test_cpp_condition avisynth/avs/version.h "AVS_MAJOR_VER >= 3 && AVS_MINOR_VER >= 7 && AVS_BUGFIX_VER >= 3 || AVS_MAJOR_VER >= 3 && AVS_MINOR_VER > 7 || AVS_MAJOR_VER > 3" ||
                                  die "ERROR: AviSynth+ header version must be >= 3.7.3"; } }
+enabled asmjit            && require_cpp asmjit asmjit/asmjit.h "asmjit::JitRuntime" -lasmjit
 enabled cuda_nvcc         && { check_nvcc cuda_nvcc || die "ERROR: failed checking for nvcc."; }
 enabled chromaprint       && { check_pkg_config chromaprint libchromaprint "chromaprint.h" chromaprint_get_version ||
                                require chromaprint chromaprint.h chromaprint_get_version -lchromaprint; }

@@ -20,6 +20,7 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/bswap.h"
+#include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/rational.h"
 #include "libavutil/refstruct.h"
@@ -27,10 +28,14 @@
 #include "ops.h"
 #include "ops_internal.h"
 
+extern SwsOpBackend backend_asmjit;
 extern SwsOpBackend backend_x86;
 extern SwsOpBackend backend_c;
 
 const SwsOpBackend * const ff_sws_op_backends[] = {
+#if CONFIG_ASMJIT
+    &backend_asmjit,
+#endif
 #if ARCH_X86
     &backend_x86,
 #endif
@@ -1536,8 +1541,20 @@ static void op_pass_setup(const SwsImg *out, const SwsImg *in, const SwsPass *pa
     }
 }
 
+static void update_exec_linesizes(SwsOpExec *exec, const SwsImg *out_base, const SwsImg *in_base, int width)
+{
+    int linesizes[4];
+
+    av_image_fill_linesizes(linesizes, in_base->fmt, width);
+    for (int i = 0; i < 4; i++)
+        exec->in_padding[i] = in_base->linesize[i] - linesizes[i];
+    av_image_fill_linesizes(linesizes, out_base->fmt, width);
+    for (int i = 0; i < 4; i++)
+        exec->out_padding[i] = out_base->linesize[i] - linesizes[i];
+}
+
 /* Dispatch kernel over the "main" part of the image, no extra padding */
-static av_always_inline void
+static av_noinline void
 run_main(const SwsOpPass *p, const SwsImg *out_base, const SwsImg *in_base,
          const int y_start, const int y_end, const int x_end)
 {
@@ -1549,6 +1566,8 @@ run_main(const SwsOpPass *p, const SwsImg *out_base, const SwsImg *in_base,
     const ptrdiff_t block_step_in  = (exec.block_w * p->pixel_bits_in)  >> 3;
     const ptrdiff_t block_step_out = (exec.block_w * p->pixel_bits_out) >> 3;
 
+    update_exec_linesizes(&exec, out_base, in_base, x_end);
+    exec.y_end = y_end;
     for (exec.y = y_start; exec.y < y_end; exec.y += exec.block_h) {
         const SwsImg in  = ff_sws_img_shift(*in_base,  exec.y);
         const SwsImg out = ff_sws_img_shift(*out_base, exec.y);
@@ -1557,6 +1576,7 @@ run_main(const SwsOpPass *p, const SwsImg *out_base, const SwsImg *in_base,
             exec.out[i] = out.data[i];
         }
 
+        exec.x_end = x_end;
         for (exec.x = 0; exec.x < x_end; exec.x += exec.block_w) {
             entry(&exec, impl);
 
@@ -1587,7 +1607,6 @@ run_tail(const SwsOpPass *p, const SwsImg *out_base, const bool copy_out,
 
     DECLARE_ALIGNED_64(uint8_t, tmp)[2][4][64];
 
-    exec.x = x_tail;
     for (int i = 0; i < 4; i++) {
         if (copy_in) {
             exec.in[i] = tmp[0][i];
@@ -1612,6 +1631,8 @@ run_tail(const SwsOpPass *p, const SwsImg *out_base, const bool copy_out,
         for (int i = 0; copy_in && in.data[i] && i < 4; i++)
             memcpy(tmp[0][i], in.data[i] + offset_in, rest_size);
 
+        exec.x = x_tail;
+        exec.x_end = x_tail + exec.block_w;
         entry(&exec, impl);
 
         for (int i = 0; copy_out && out.data[i] && i < 4; i++)
@@ -1693,6 +1714,8 @@ int ff_sws_ops_compile_backend(void *logctx, const SwsOpBackend *backend,
     /* Make an on-stack copy of `ops` to ensure we can still properly clean up
      * the copy afterwards */
     rest = *copy;
+    chain.src = out_chain->src;
+    chain.dst = out_chain->dst;
     do {
         ret = backend->compile(&rest, &chain);
     } while (ret == AVERROR(EAGAIN));
@@ -1717,7 +1740,7 @@ fail:
     return ret;
 }
 
-int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
+int ff_sws_ops_compile(SwsContext *logctx, const SwsOpList *ops, SwsOpChain *chain)
 {
     for (int n = 0; ff_sws_op_backends[n]; n++) {
         const SwsOpBackend *backend = ff_sws_op_backends[n];
@@ -1727,6 +1750,7 @@ int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
         av_log(logctx, AV_LOG_VERBOSE, "Compiled using backend '%s': "
                "num_impl = %d, block size = %dx%d\n",
                backend->name, chain->num_impl, chain->block_w, chain->block_h);
+        logctx->backend_name = backend->name;
         return 0;
     }
 
@@ -1735,7 +1759,8 @@ int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
     return AVERROR(ENOTSUP);
 }
 
-int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat dst,
+int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags,
+                        SwsFormat src, SwsFormat dst,
                         SwsPass *input, SwsPass **output)
 {
     SwsContext *ctx = graph->ctx;
@@ -1771,6 +1796,8 @@ int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat ds
         .w = dst.width,
         .h = dst.height,
     };
+    p->chain.src = src;
+    p->chain.dst = dst;
 
     ret = ff_sws_ops_compile(ctx, ops, &p->chain);
     if (ret < 0)

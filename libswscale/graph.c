@@ -513,7 +513,7 @@ static int add_convert_pass(SwsGraph *graph, SwsFormat src, SwsFormat dst,
 
     ff_sws_op_list_print(ctx, AV_LOG_VERBOSE, ops);
 
-    ret = ff_sws_compile_pass(graph, ops, 0, dst, input, output);
+    ret = ff_sws_compile_pass(graph, ops, 0, src, dst, input, output);
     if (ret < 0)
         goto fail;
 

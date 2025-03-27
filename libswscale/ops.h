@@ -28,15 +28,6 @@
 #include "graph.h"
 #include "format.h"
 
-typedef enum SwsPixelType {
-    SWS_PIXEL_NONE = 0,
-    SWS_PIXEL_U8,
-    SWS_PIXEL_U16,
-    SWS_PIXEL_U32,
-    SWS_PIXEL_F32,
-    SWS_PIXEL_TYPE_NB
-} SwsPixelType;
-
 const char *ff_sws_pixel_type_name(SwsPixelType type);
 int ff_sws_pixel_type_size(SwsPixelType type) av_const;
 bool ff_sws_pixel_type_is_int(SwsPixelType type) av_const;
@@ -254,7 +245,8 @@ enum SwsOpCompileFlags {
  *
  * Note: `ops` may be modified by this function.
  */
-int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat dst,
+int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags,
+                        SwsFormat src, SwsFormat dst,
                         SwsPass *input, SwsPass **output);
 
 #endif
