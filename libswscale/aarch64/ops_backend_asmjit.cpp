@@ -347,9 +347,18 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
         for (int i = 0; i < 4; i++) {
             if (op.clear.value[i].den) {
                 int val = op.clear.value[i].num / op.clear.value[i].den;
-                cc.movi(vop(op, vl[i]), val);
-                if (use_vh)
-                    cc.movi(vop(op, vh[i]), val);
+                if (val <= 255) {
+                    cc.movi(vop(op, vl[i]), val);
+                    if (use_vh)
+                        cc.movi(vop(op, vh[i]), val);
+                } else {
+                    /* TODO load tmp only once if possible */
+                    a64::Gp tmp = cc.newGpw();
+                    cc.mov(tmp, val);
+                    cc.dup(vop(op, vl[i]), tmp);
+                    if (use_vh)
+                        cc.dup(vop(op, vh[i]), tmp);
+                }
             }
         }
         break;
