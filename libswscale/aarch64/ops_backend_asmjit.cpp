@@ -315,18 +315,13 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                 if (use_vh)
                     cc.rev16(vh[i].b16(), vh[i].b16());
             }
-        } else if (op.type == SWS_PIXEL_U32) {
-#if 0
-/* TODO test */
+        } else if (op.type == SWS_PIXEL_U32 || op.type == SWS_PIXEL_F32) {
             cc.comment("swap_bytes (u32)");
             LOOP_USED(i) {
-                cc.rev32    (vl[i].s4(), vl[i].s4());
+                cc.rev32    (vl[i].b16(), vl[i].b16());
                 if (use_vh)
-                    cc.rev32(vh[i].s4(), vh[i].s4());
+                    cc.rev32(vh[i].b16(), vh[i].b16());
             }
-#else
-            return AVERROR(ENOTSUP);
-#endif
         } else {
             return AVERROR(ENOTSUP);
         }
