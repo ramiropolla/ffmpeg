@@ -336,7 +336,6 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
 #endif
     /* Pixel manipulation */
     case SWS_OP_CLEAR:           /* clear pixel values */
-        cc.comment("clear");
         /* Create output vectors */
         for (int i = 0; i < 4; i++) {
             if (op.clear.value[i].den) {
