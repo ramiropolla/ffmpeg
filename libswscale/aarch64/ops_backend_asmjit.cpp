@@ -588,8 +588,9 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
         break;
     /* Arithmetic operations */
     case SWS_OP_LINEAR:          /* generalized linear affine transform */
-        cc.comment("linear");
         if (op.lin.mask == (SWS_MASK_MAT3 | SWS_MASK_OFF3)) {
+            cc.comment("linear (matrix3+off3)");
+
             /* Write matrix data after function */
             Label ldata = cc.newLabel();
             BaseNode *cursor = cc.cursor();
@@ -637,6 +638,46 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                 cc.fmla(vh[i].s4(), orig_vh[1].s4(), vdata[i].s(2));
                 cc.fmla(vh[i].s4(), orig_vh[2].s4(), vdata[i].s(3));
             }
+        } else if (op.lin.mask == 0b111) {
+            cc.comment("linear (dot3)");
+
+            /* Write matrix data after function */
+            Label ldata = cc.newLabel();
+            BaseNode *cursor = cc.cursor();
+            cc.setCursor(ctx->m_func->endNode()->prev());
+            cc.align(AlignMode::kData, 16);
+            cc.bind(ldata);
+            float fdata[4];
+            fdata[0] = av_q2d(op.lin.m[0][0]);
+            fdata[1] = av_q2d(op.lin.m[0][1]);
+            fdata[2] = av_q2d(op.lin.m[0][2]);
+            fdata[3] = 0;
+            cc.embed(fdata, sizeof(fdata));
+            cc.setCursor(cursor);
+
+            /* Read matrix data into vectors */
+            cc.comment("prologue (linear)");
+            ctx->m_prologue.push_back(cc.cursor());
+            a64::Vec vdata = cc.newVecQ();
+            a64::Gp rdata = cc.newGpz();
+            cc.adr(rdata, ldata);
+            ctx->m_prologue.push_back(cc.cursor());
+            cc.ld1(vdata.b16(), a64::ptr(rdata));
+            ctx->m_prologue.push_back(cc.cursor());
+
+            /* Create new output vectors */
+            a64::Vec orig_vl[3] = { vl[0], vl[1], vl[2] };
+            a64::Vec orig_vh[3] = { vh[0], vh[1], vh[2] };
+            vl[0] = cc.newVecQ();
+            vh[0] = cc.newVecQ();
+
+            /* Do the salmon dance */
+            cc.fmul(vl[0].s4(), orig_vl[0].s4(), vdata.s(0));
+            cc.fmla(vl[0].s4(), orig_vl[1].s4(), vdata.s(1));
+            cc.fmla(vl[0].s4(), orig_vl[2].s4(), vdata.s(2));
+            cc.fmul(vh[0].s4(), orig_vh[0].s4(), vdata.s(0));
+            cc.fmla(vh[0].s4(), orig_vh[1].s4(), vdata.s(1));
+            cc.fmla(vh[0].s4(), orig_vh[2].s4(), vdata.s(2));
         } else {
             return AVERROR(ENOTSUP);
         }
