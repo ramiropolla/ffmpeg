@@ -305,9 +305,31 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
             }
         }
         break;
-#if 0
     case SWS_OP_SWAP_BYTES:      /* swap byte order (for differing endianness) */
+        if        (op.type == SWS_PIXEL_U16) {
+            cc.comment("swap_bytes (u16)");
+            LOOP_USED(i) {
+                cc.rev16    (vl[i].b16(), vl[i].b16());
+                if (use_vh)
+                    cc.rev16(vh[i].b16(), vh[i].b16());
+            }
+        } else if (op.type == SWS_PIXEL_U32) {
+#if 0
+/* TODO test */
+            cc.comment("swap_bytes (u32)");
+            LOOP_USED(i) {
+                cc.rev32    (vl[i].s4(), vl[i].s4());
+                if (use_vh)
+                    cc.rev32(vh[i].s4(), vh[i].s4());
+            }
+#else
+            return AVERROR(ENOTSUP);
+#endif
+        } else {
+            return AVERROR(ENOTSUP);
+        }
         break;
+#if 0
     case SWS_OP_UNPACK:          /* split tightly packed data into components */
         break;
     case SWS_OP_PACK:            /* compress components into tightly packed data */
