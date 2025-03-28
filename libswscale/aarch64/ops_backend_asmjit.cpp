@@ -19,7 +19,6 @@
  */
 
 // #define EMIT_BRK
-#define LOG_ASMJIT
 
 extern "C" {
 #include "libavutil/cpu.h"
@@ -51,9 +50,8 @@ struct AsmJitContext {
     AsmJitContext()
     {
         m_code.init(m_rt.environment(), m_rt.cpuFeatures());
-#ifdef LOG_ASMJIT
-        m_code.setLogger(&m_logger);
-#endif
+        if (av_log_get_level() >= AV_LOG_DEBUG)
+            m_code.setLogger(&m_logger);
         m_cc = new a64::Compiler(&m_code);
         a64::Compiler &cc = *m_cc;
         cc.addDiagnosticOptions(DiagnosticOptions::kRAAnnotate);
