@@ -420,9 +420,24 @@ if (use_vh) {
             return AVERROR(ENOTSUP);
         }
         break;
-#if 0
     case SWS_OP_LSHIFT:          /* logical left shift of raw pixel values */
+        if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+            /* Create output vectors */
+            a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+            a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+            LOOP_USED(i) {
+                vl[i] = cc.newVecQ();
+                vh[i] = cc.newVecQ();
+            }
+
+            LOOP_USED(i) {
+                cc.shl    (vop(op, vl[i]), vop(op, orig_vl[i]), op.shift.amount);
+                if (use_vh)
+                    cc.shl(vop(op, vh[i]), vop(op, orig_vh[i]), op.shift.amount);
+            }
+        }
         break;
+#if 0
     case SWS_OP_RSHIFT:          /* right shift of raw pixel values */
         break;
 #endif
