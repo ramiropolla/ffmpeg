@@ -506,12 +506,25 @@ if (use_vh) {
                 LOOP_USED(i) {
                     cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                 }
+            } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && !op.convert.expand && vcount == 8) {
+                cc.comment("convert (u8 -> u16, !expand, 8)");
+                /* Convert 8 from u8 to u16 (no expand) */
+                LOOP_USED(i) {
+                    cc.uxtl(vl[i].h8(), orig_vl[i].b8());
+                }
             } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && op.convert.expand && vcount == 16) {
                 cc.comment("convert (u8 -> u16, expand, 16)");
                 /* Convert 16 from u8 to u16 (expand) */
                 LOOP_USED(i) {
                     cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                     cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                }
+            } else if (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && !op.convert.expand && vcount == 16) {
+                cc.comment("convert (u8 -> u16, !expand, 16)");
+                /* Convert 16 from u8 to u16 (no expand) */
+                LOOP_USED(i) {
+                    cc.uxtl (vl[i].h8(), orig_vl[i].b8());
+                    cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
                 }
 #if 0
 // TODO it should expand
