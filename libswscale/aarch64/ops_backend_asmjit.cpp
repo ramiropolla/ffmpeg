@@ -434,10 +434,11 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
 
                 /* Create output vectors */
                 a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-                // a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+                a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
                 for (int i = 0; i < 4; i++) {
                     vl[i] = cc.newVecQ();
-                    // vh[i] = cc.newVecQ();
+                    if (use_vh)
+                        vh[i] = cc.newVecQ();
                 }
 
                 for (int i = 0; i < 4; i++) {
@@ -445,8 +446,12 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                         continue;
                     if (i == op.swizzle.in[i]) {
                         vl[i] = orig_vl[op.swizzle.in[i]];
+                        if (use_vh)
+                            vh[i] = orig_vh[op.swizzle.in[i]];
                     } else {
                         cc.mov(vl[i].b16(), orig_vl[op.swizzle.in[i]].b16());
+                        if (use_vh)
+                            cc.mov(vh[i].b16(), orig_vh[op.swizzle.in[i]].b16());
                     }
                 }
             }
