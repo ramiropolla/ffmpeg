@@ -346,22 +346,61 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
             }
         }
         /* Set vectors to constant value */
-        for (int i = 0; i < 4; i++) {
-            if (op.clear.value[i].den) {
-                int val = op.clear.value[i].num / op.clear.value[i].den;
-                if (val <= 255) {
-                    cc.movi(vop(op, vl[i]), val);
-                    if (use_vh)
-                        cc.movi(vop(op, vh[i]), val);
-                } else {
-                    /* TODO load tmp only once if possible */
-                    a64::Gp tmp = cc.newGpw();
-                    cc.mov(tmp, val);
-                    cc.dup(vop(op, vl[i]), tmp);
-                    if (use_vh)
-                        cc.dup(vop(op, vh[i]), tmp);
+        if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+            cc.comment("clear (integer)");
+            for (int i = 0; i < 4; i++) {
+                if (op.clear.value[i].den) {
+                    int val = op.clear.value[i].num / op.clear.value[i].den;
+                    if (val <= 255) {
+                        cc.movi(vop(op, vl[i]), val);
+                        if (use_vh)
+                            cc.movi(vop(op, vh[i]), val);
+                    } else {
+                        /* TODO load tmp only once if possible */
+                        a64::Gp tmp = cc.newGpw();
+                        cc.mov(tmp, val);
+                        cc.dup(vop(op, vl[i]), tmp);
+                        if (use_vh)
+                            cc.dup(vop(op, vh[i]), tmp);
+                    }
                 }
             }
+        } else if (op.type == SWS_PIXEL_F32) {
+            cc.comment("clear (f32)");
+
+            /* Write matrix data after function */
+            Label ldata = cc.newLabel();
+            BaseNode *cursor = cc.cursor();
+            cc.setCursor(ctx->m_func->endNode()->prev());
+            cc.align(AlignMode::kData, 16);
+            cc.bind(ldata);
+            /* TODO use less data, maybe even ld1r */
+            float fdata[4];
+            for (int i = 0; i < 4; i++)
+                fdata[i] = av_q2d(op.clear.value[i]);
+            cc.embed(fdata, sizeof(fdata));
+            cc.setCursor(cursor);
+
+            /* Read matrix data into vectors */
+            cc.comment("prologue (linear)");
+            ctx->m_prologue.push_back(cc.cursor());
+            a64::Vec vdata;
+            vdata = cc.newVecQ();
+            a64::Gp rdata = cc.newGpz();
+            cc.adr(rdata, ldata);
+            ctx->m_prologue.push_back(cc.cursor());
+            cc.ld1(vdata.b16(), a64::ptr(rdata));
+            ctx->m_prologue.push_back(cc.cursor());
+
+            /* Do the salmon dance */
+            for (int i = 0; i < 4; i++) {
+                if (op.clear.value[i].den) {
+                    cc.dup(vl[i].s4(), vdata.s(i));
+                    cc.dup(vh[i].s4(), vdata.s(i));
+                }
+            }
+        } else {
+            return AVERROR(ENOTSUP);
         }
         break;
 #if 0
