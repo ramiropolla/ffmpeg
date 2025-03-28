@@ -581,6 +581,11 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
         {
             const SwsOp *next = &ops->ops[1];
             if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U8) {
+                LOOP_USED(i) {
+                    if (av_cmp_q(op.clamp.max[i], (AVRational) {255, 1}) != 0)
+                        goto normal_clamp;
+                }
+
                 cc.comment("convert+clamp");
                 /* Create output vectors */
                 a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
@@ -613,22 +618,34 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                 break;
             }
         }
-        cc.comment("clamp");
-#if 1
         {
-            a64::Vec vzer = cc.newVecQ();
-            a64::Vec v255 = cc.newVecQ();
-            cc.movi(vzer.s4(), 0);
-            cc.movi(v255.s4(), 0xff);
-            cc.ucvtf(v255.s4(), v255.s4());
+normal_clamp:
+            cc.comment("clamp");
+            a64::Vec vmin = cc.newVecQ();
+            a64::Vec vmax = cc.newVecQ();
+            cc.movi(vmin.s4(), 0);
+            AVRational last_max = { -1, 0 };
             LOOP_USED(i) {
-                cc.fmax(vl[i].s4(), vl[i].s4(), vzer.s4());
-                cc.fmax(vh[i].s4(), vh[i].s4(), vzer.s4());
-                cc.fmin(vl[i].s4(), vl[i].s4(), v255.s4());
-                cc.fmin(vh[i].s4(), vh[i].s4(), v255.s4());
+                if (op.clamp.max[i].den) {
+                    if (av_cmp_q(last_max, op.clamp.max[i]) != 0) {
+                        int val = av_q2d(op.clamp.max[i]);
+                        if (val <= 255) {
+                            cc.movi(vmax.s4(), val);
+                        } else {
+                            a64::Gp tmp = cc.newGpw();
+                            cc.mov(tmp, val);
+                            cc.dup(vmax.s4(), tmp);
+                        }
+                        cc.ucvtf(vmax.s4(), vmax.s4());
+                        last_max = op.clamp.max[i];
+                    }
+                    cc.fmax(vl[i].s4(), vl[i].s4(), vmin.s4());
+                    cc.fmax(vh[i].s4(), vh[i].s4(), vmin.s4());
+                    cc.fmin(vl[i].s4(), vl[i].s4(), vmax.s4());
+                    cc.fmin(vh[i].s4(), vh[i].s4(), vmax.s4());
+                }
             }
         }
-#endif
         break;
     /* Arithmetic operations */
     case SWS_OP_LINEAR:          /* generalized linear affine transform */
