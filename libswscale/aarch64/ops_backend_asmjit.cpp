@@ -712,7 +712,27 @@ normal_clamp:
         break;
     /* Arithmetic operations */
     case SWS_OP_LINEAR:          /* generalized linear affine transform */
-        if (op.lin.mask == (SWS_MASK_MAT3 | SWS_MASK_OFF3)) {
+#if 0
+printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
+#define Q(N) ((AVRational) { N, 1 })
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 5; j++) {
+            printf(" [% 9d / % 9d]", op.lin.m[i][j].num, op.lin.m[i][j].den);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 5; j++) {
+            if (op.lin.m[i][j].num && av_cmp_q(op.lin.m[i][j], Q(i == j)))
+//            if (av_cmp_q(op.lin.m[i][j], Q(i == j)))
+                printf("x");
+            else
+                printf("_");
+        }
+        printf("\n");
+    }
+#endif
+        if ((op.lin.mask | 0b10 /* HACK to select yuv2rgb as well */) == (SWS_MASK_MAT3 | SWS_MASK_OFF3)) {
             cc.comment("linear (matrix3+off3)");
 
             /* Write matrix data after function */
@@ -754,13 +774,19 @@ normal_clamp:
             /* Do the salmon dance */
             for (int i = 0; i < 3; i++) {
                 cc.dup (vl[i].s4(),                  vdata[i].s(0));
-                cc.fmla(vl[i].s4(), orig_vl[0].s4(), vdata[i].s(1));
-                cc.fmla(vl[i].s4(), orig_vl[1].s4(), vdata[i].s(2));
-                cc.fmla(vl[i].s4(), orig_vl[2].s4(), vdata[i].s(3));
+                if (op.lin.m[i][0].num)
+                    cc.fmla(vl[i].s4(), orig_vl[0].s4(), vdata[i].s(1));
+                if (op.lin.m[i][1].num)
+                    cc.fmla(vl[i].s4(), orig_vl[1].s4(), vdata[i].s(2));
+                if (op.lin.m[i][2].num)
+                    cc.fmla(vl[i].s4(), orig_vl[2].s4(), vdata[i].s(3));
                 cc.dup (vh[i].s4(),                  vdata[i].s(0));
-                cc.fmla(vh[i].s4(), orig_vh[0].s4(), vdata[i].s(1));
-                cc.fmla(vh[i].s4(), orig_vh[1].s4(), vdata[i].s(2));
-                cc.fmla(vh[i].s4(), orig_vh[2].s4(), vdata[i].s(3));
+                if (op.lin.m[i][0].num)
+                    cc.fmla(vh[i].s4(), orig_vh[0].s4(), vdata[i].s(1));
+                if (op.lin.m[i][1].num)
+                    cc.fmla(vh[i].s4(), orig_vh[1].s4(), vdata[i].s(2));
+                if (op.lin.m[i][2].num)
+                    cc.fmla(vh[i].s4(), orig_vh[2].s4(), vdata[i].s(3));
             }
         } else if (op.lin.mask == 0b111) {
             cc.comment("linear (dot3)");
