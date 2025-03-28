@@ -188,6 +188,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
     switch (op.op) {
     /* Input/output handling */
     case SWS_OP_READ:            /* gather raw pixels from planes */
+        if (op.rw.frac)
+            return AVERROR(ENOTSUP);
         cc.comment("read");
         if (!op.rw.packed) {
             /* Load input pointers in prologue */
@@ -252,6 +254,8 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
         }
         break;
     case SWS_OP_WRITE:           /* write raw pixels to planes */
+        if (op.rw.frac)
+            return AVERROR(ENOTSUP);
         cc.comment("write");
         if (!op.rw.packed) {
             /* Load output pointers in prologue */
