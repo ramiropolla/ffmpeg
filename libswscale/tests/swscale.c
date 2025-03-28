@@ -332,8 +332,9 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     }
 
     get_ssim(ssim, out, ref, comps);
-    printf("%s %dx%d -> %s %3dx%3d, flags=%u dither=%u, "
-           "SSIM {Y=%f U=%f V=%f A=%f}\n",
+    printf("[%-6s] %-12s %dx%d -> %-12s %3dx%3d, flags=%u dither=%u, "
+           "SSIM {Y=%f U=%f V=%f A=%f}",
+           sws[1]->backend_name,
            av_get_pix_fmt_name(src->format), src->width, src->height,
            av_get_pix_fmt_name(dst->format), dst->width, dst->height,
            mode.flags, mode.dither,
@@ -384,6 +385,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         const float loss_ref = get_loss(ssim_ref);
         if (loss - loss_ref > 1e-4) {
             int bad = loss - loss_ref > 1e-2;
+            printf("\n");
             printf("\033[1;31m  loss %g is %s by %g, ref loss %g, "
                    "SSIM {Y=%f U=%f V=%f A=%f}\033[0m\n",
                    loss, bad ? "WORSE" : "worse", loss - loss_ref, loss_ref,
@@ -402,11 +404,13 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
             speedup_count++;
         }
 
-        printf("  time=%"PRId64" us, ref=%"PRId64" us, speedup=%.3fx %s%s\033[0m\n",
+        printf("  time=%6" PRId64 " us, ref=%6" PRId64 " us, speedup=%6.3fx %s%s\033[0m\n",
                time / opts.iters, time_ref / opts.iters, ratio,
                speedup_color(ratio), ratio >= 1.0 ? "faster" : "slower");
     } else if (opts.bench) {
-        printf("  time=%"PRId64" us\n", time / opts.iters);
+        printf("  time=%6" PRId64 " us\n", time / opts.iters);
+    } else {
+        printf("\n");
     }
 
     fflush(stdout);

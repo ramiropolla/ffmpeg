@@ -861,7 +861,7 @@ normal_clamp:
 }
 
 SwsOpBackend backend_asmjit = {
-    .name    = "AsmJitNeon",
+    .name    = "asmjit",
     .alloc_context = alloc_context,
     .compile_end = compile_end,
     .free_context = free_context,

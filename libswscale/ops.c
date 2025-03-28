@@ -1652,7 +1652,7 @@ fail:
     return ret;
 }
 
-int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
+int ff_sws_ops_compile(SwsContext *logctx, const SwsOpList *ops, SwsOpChain *chain)
 {
     for (int n = 0; ff_sws_op_backends[n]; n++) {
         const SwsOpBackend *backend = ff_sws_op_backends[n];
@@ -1671,6 +1671,7 @@ int ff_sws_ops_compile(void *logctx, const SwsOpList *ops, SwsOpChain *chain)
         av_log(logctx, AV_LOG_VERBOSE, "Compiled using backend '%s': "
                "num_impl = %d, block size = %dx%d\n",
                backend->name, chain->num_impl, chain->block_w, chain->block_h);
+        logctx->backend_name = backend->name;
         return 0;
     }
 
