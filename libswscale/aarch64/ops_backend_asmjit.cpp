@@ -123,8 +123,10 @@ const char *name = "ffjit";
              << name << '\n';
     }
 }
+
     // At this point, logger already contains the output
-    std::cout << ctx->m_logger.data() << "\n";
+    if (av_log_get_level() >= AV_LOG_DEBUG)
+        std::cout << ctx->m_logger.data() << "\n";
 
     return ptr;
 }
