@@ -302,9 +302,25 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                     cc.st3(vop(op, vh[0]), vop(op, vh[1]), vop(op, vh[2]),                 a64::ptr(out).post(vsize(op) * 3));
                 break;
             case 4:
+{
+#if 0
                 cc.st4    (vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(out).post(vsize(op) * 4));
                 if (use_vh)
                     cc.st4(vop(op, vh[0]), vop(op, vh[1]), vop(op, vh[2]), vop(op, vh[3]), a64::ptr(out).post(vsize(op) * 4));
+#else
+// TODO help asmjit's register allocator
+if (use_vh) {
+    cc.st4(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(out).post(vsize(op) * 4));
+    cc.mov(vl[0].b16(), vh[0].b16());
+    cc.mov(vl[1].b16(), vh[1].b16());
+    cc.mov(vl[2].b16(), vh[2].b16());
+    cc.mov(vl[3].b16(), vh[3].b16());
+    cc.st4(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(out).post(vsize(op) * 4));
+} else {
+    cc.st4(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(out).post(vsize(op) * 4));
+}
+#endif
+}
                 break;
             }
         }
