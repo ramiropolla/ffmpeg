@@ -815,15 +815,15 @@ normal_clamp:
             ctx->m_prologue.push_back(cc.cursor());
 
             /* Create new output vectors */
-            a64::Vec orig_vl[3] = { vl[0], vl[1], vl[2] };
-            a64::Vec orig_vh[3] = { vh[0], vh[1], vh[2] };
-            for (int i = 0; i < 3; i++) {
+            a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
+            a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
+            LOOP_USED(i) {
                 vl[i] = cc.newVecQ();
                 vh[i] = cc.newVecQ();
             }
 
             /* Do the salmon dance */
-            for (int i = 0; i < 3; i++) {
+            LOOP_USED(i) {
                 cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata.s4());
                 cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata.s4());
             }
