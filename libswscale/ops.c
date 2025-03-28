@@ -1638,12 +1638,10 @@ int ff_sws_ops_compile_backend(const SwsOpBackend *backend,
 
     if (backend->compile_end) {
         chain.entry = backend->compile_end(bctx);
-#if 0
-        av_log(ctx, AV_LOG_ERROR, "Using AsmJit (%s -> %s)!\n",
-               av_get_pix_fmt_name(src.format), av_get_pix_fmt_name(dst.format));
-#else
-        printf("Using AsmJit!\n");
-#endif
+        if (!chain.entry) {
+            ret = AVERROR(ENOTSUP);
+            goto fail;
+        }
     }
 
     *out_chain = chain;

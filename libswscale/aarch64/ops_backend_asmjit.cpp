@@ -99,11 +99,13 @@ static void *compile_end(void *_ctx)
 
     err = cc.endFunc();
     if (err) {
-        std::cerr << "Failed to end function: " << DebugUtils::errorAsString(err) << "\n";
+        std::cout << "Failed to end function: " << DebugUtils::errorAsString(err) << "\n";
+        return nullptr;
     }
     err = cc.finalize();
     if (err) {
-        std::cerr << "Failed to finalize code: " << DebugUtils::errorAsString(err) << "\n";
+        std::cout << "Failed to finalize code: " << DebugUtils::errorAsString(err) << "\n";
+        return nullptr;
     }
 
     void *ptr = nullptr;
