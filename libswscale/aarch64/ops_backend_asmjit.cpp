@@ -745,10 +745,47 @@ normal_clamp:
             return AVERROR(ENOTSUP);
         }
         break;
-#if 0
     case SWS_OP_SCALE:           /* multiplication by scalar */
+        {
+            cc.comment("scale");
+
+            /* Write matrix data after function */
+            Label ldata = cc.newLabel();
+            BaseNode *cursor = cc.cursor();
+            cc.setCursor(ctx->m_func->endNode()->prev());
+            cc.align(AlignMode::kData, 16);
+            cc.bind(ldata);
+            float fdata[1];
+            fdata[0] = av_q2d(op.scale.factor);
+            cc.embed(fdata, sizeof(fdata));
+            cc.setCursor(cursor);
+
+            /* Read matrix data into vectors */
+            cc.comment("prologue (linear)");
+            ctx->m_prologue.push_back(cc.cursor());
+            a64::Vec vdata;
+            vdata = cc.newVecQ();
+            a64::Gp rdata = cc.newGpz();
+            cc.adr(rdata, ldata);
+            ctx->m_prologue.push_back(cc.cursor());
+            cc.ld1r(vdata.s4(), a64::ptr(rdata));
+            ctx->m_prologue.push_back(cc.cursor());
+
+            /* Create new output vectors */
+            a64::Vec orig_vl[3] = { vl[0], vl[1], vl[2] };
+            a64::Vec orig_vh[3] = { vh[0], vh[1], vh[2] };
+            for (int i = 0; i < 3; i++) {
+                vl[i] = cc.newVecQ();
+                vh[i] = cc.newVecQ();
+            }
+
+            /* Do the salmon dance */
+            for (int i = 0; i < 3; i++) {
+                cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata.s4());
+                cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata.s4());
+            }
+        }
         break;
-#endif
 
     default:
         return AVERROR(ENOTSUP);
