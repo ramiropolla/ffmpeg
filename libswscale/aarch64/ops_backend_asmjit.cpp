@@ -826,16 +826,16 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
         printf("\n");
     }
 #endif
-        if ((op.lin.mask | 0b10 /* HACK to select yuv2rgb as well */) == (SWS_MASK_MAT3 | SWS_MASK_OFF3)) {
-            cc.comment("linear (matrix3+off3)");
+        if ((op.lin.mask | 0b10010 /* HACK to select yuv2rgb as well */) == (SWS_MASK_MAT3 | SWS_MASK_OFF3)) {
+            const int fdata_swizzle[4] = { 4, 0, 1, 2 };
 
             /* Write const data after function */
             float fdata[12];
             for (int i = 0; i < 3; i++) {
-                fdata[(i * 4) + 0] = av_q2d(op.lin.m[i][4]);
-                fdata[(i * 4) + 1] = av_q2d(op.lin.m[i][0]);
-                fdata[(i * 4) + 2] = av_q2d(op.lin.m[i][1]);
-                fdata[(i * 4) + 3] = av_q2d(op.lin.m[i][2]);
+                for (int j = 0; j < 4; j++) {
+                    int sj = fdata_swizzle[j];
+                    fdata[(i * 4) + j] = av_q2d(op.lin.m[i][sj]);
+                }
             }
             Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
@@ -844,28 +844,38 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             ctx->m_prologue.push_back(cc.cursor());
             read_vdata(ctx, ldata, 3);
 
-            refresh_vectors_count(ctx, 3);
-
             /* Do the salmon dance */
+            cc.comment("linear (matrix3+off3)");
+            refresh_vectors_count(ctx, 3);
             for (int i = 0; i < 3; i++) {
-                cc.dup(vl[i].s4(), vdata[i].s(0));
-                if (op.lin.m[i][0].num)
-                    cc.fmla(vl[i].s4(), orig_vl[0].s4(), vdata[i].s(1));
-                if (op.lin.m[i][1].num)
-                    cc.fmla(vl[i].s4(), orig_vl[1].s4(), vdata[i].s(2));
-                if (op.lin.m[i][2].num)
-                    cc.fmla(vl[i].s4(), orig_vl[2].s4(), vdata[i].s(3));
-                cc.dup(vh[i].s4(), vdata[i].s(0));
-                if (op.lin.m[i][0].num)
-                    cc.fmla(vh[i].s4(), orig_vh[0].s4(), vdata[i].s(1));
-                if (op.lin.m[i][1].num)
-                    cc.fmla(vh[i].s4(), orig_vh[1].s4(), vdata[i].s(2));
-                if (op.lin.m[i][2].num)
-                    cc.fmla(vh[i].s4(), orig_vh[2].s4(), vdata[i].s(3));
+                int count = 0;
+                for (int j = 0; j < 4; j++) {
+                    int sj = fdata_swizzle[j];
+                    if (op.lin.m[i][sj].num) {
+                        if (j == 0)
+                            cc.dup(vl[i].s4(), vdata[i].s(j));
+                        else if (count == 0)
+                            cc.fmul(vl[i].s4(), orig_vl[sj].s4(), vdata[i].s(j));
+                        else
+                            cc.fmla(vl[i].s4(), orig_vl[sj].s4(), vdata[i].s(j));
+                        count++;
+                    }
+                }
+                count = 0;
+                for (int j = 0; j < 4; j++) {
+                    int sj = fdata_swizzle[j];
+                    if (op.lin.m[i][sj].num) {
+                        if (j == 0)
+                            cc.dup(vh[i].s4(), vdata[i].s(j));
+                        else if (count == 0)
+                            cc.fmul(vh[i].s4(), orig_vh[sj].s4(), vdata[i].s(j));
+                        else
+                            cc.fmla(vh[i].s4(), orig_vh[sj].s4(), vdata[i].s(j));
+                        count++;
+                    }
+                }
             }
         } else if (op.lin.mask == 0b111) {
-            cc.comment("linear (dot3)");
-
             /* Write const data after function */
             float fdata[4];
             fdata[0] = av_q2d(op.lin.m[0][0]);
@@ -879,10 +889,10 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             ctx->m_prologue.push_back(cc.cursor());
             read_vdata(ctx, ldata, 1);
 
+            /* Do the salmon dance */
+            cc.comment("linear (dot3)");
             save_vectors_count(ctx, 3);
             new_vectors_count(ctx, 1);
-
-            /* Do the salmon dance */
             cc.fmul(vl[0].s4(), orig_vl[0].s4(), vdata[0].s(0));
             cc.fmla(vl[0].s4(), orig_vl[1].s4(), vdata[0].s(1));
             cc.fmla(vl[0].s4(), orig_vl[2].s4(), vdata[0].s(2));
