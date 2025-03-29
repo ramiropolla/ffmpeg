@@ -292,6 +292,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
     case SWS_OP_READ:            /* gather raw pixels from planes */
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
+        new_vectors_mask(ctx, mask_from_count(op.rw.elems) & (use_vh ? 0xff : 0x0f));
         cc.comment("read");
         if (!op.rw.packed) {
             /* Load input pointers in prologue */
@@ -302,12 +303,6 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
                 in[i] = cc.newGpz();
                 cc.ldr(in[i], a64::ptr(exec, offsetof(SwsOpExec, in) + sizeof(uint8_t *) * i));
                 ctx->m_prologue.push_back(cc.cursor());
-            }
-            /* Create input vectors */
-            for (int i = 0; i < op.rw.elems; i++) {
-                vl[i] = cc.newVecQ();
-                if (use_vh)
-                    vh[i] = cc.newVecQ();
             }
             /* Read vectors from input pointers */
             for (int i = 0; i < op.rw.elems; i++) {
@@ -323,12 +318,6 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
             a64::Gp in = cc.newGpz();
             cc.ldr(in, a64::ptr(exec, offsetof(SwsOpExec, in)));
             ctx->m_prologue.push_back(cc.cursor());
-            /* Create input vectors */
-            for (int i = 0; i < op.rw.elems; i++) {
-                vl[i] = cc.newVecQ();
-                if (use_vh)
-                    vh[i] = cc.newVecQ();
-            }
             /* Read vectors from input pointer */
             switch (op.rw.elems) {
             case 1:
@@ -552,11 +541,7 @@ if (use_vh) {
                 cc.comment("swizzle (copy)");
 
                 /* Create output vectors */
-                for (int i = 0; i < 4; i++) {
-                    vl[i] = cc.newVecQ();
-                    if (use_vh)
-                        vh[i] = cc.newVecQ();
-                }
+                new_vectors_mask(ctx, use_vh ? 0xff : 0x0f);
 
                 for (int i = 0; i < 4; i++) {
                     if (op.comps.unused[op.swizzle.in[i]])
