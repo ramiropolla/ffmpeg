@@ -48,6 +48,7 @@ struct AsmJitContext {
     a64::Vec m_orig_vh[4];
     a64::Vec m_vl[4];
     a64::Vec m_vh[4];
+    a64::Vec m_vdata[4];
 
     AsmJitContext()
     {
@@ -187,6 +188,27 @@ static Label emit_data(AsmJitContext *ctx, void *data, size_t size)
     return ldata;
 }
 
+static void read_vdata(AsmJitContext *ctx, Label ldata, int count)
+{
+    a64::Compiler &cc = *ctx->m_cc;
+    a64::Vec *vdata = ctx->m_vdata;
+    a64::Gp rdata = cc.newGpz();
+
+    for (int i = 0; i < count; i++) {
+        vdata[i] = cc.newVecQ();
+    }
+
+    cc.adr(rdata, ldata);
+    ctx->m_prologue.push_back(cc.cursor());
+    switch (count) {
+    case 1: cc.ld1(vdata[0].b16(), a64::ptr(rdata)); break;
+    case 2: cc.ld1(vdata[0].b16(), vdata[1].b16(), a64::ptr(rdata)); break;
+    case 3: cc.ld1(vdata[0].b16(), vdata[1].b16(), vdata[2].b16(), a64::ptr(rdata)); break;
+    case 4: cc.ld1(vdata[0].b16(), vdata[1].b16(), vdata[2].b16(), vdata[3].b16(), a64::ptr(rdata)); break;
+    }
+    ctx->m_prologue.push_back(cc.cursor());
+}
+
 static inline uint32_t mask_from_used(const SwsOp &op)
 {
     uint32_t mask = 0;
@@ -281,6 +303,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
     a64::Vec *orig_vh = ctx->m_orig_vh;
     a64::Vec *vl = ctx->m_vl;
     a64::Vec *vh = ctx->m_vh;
+    a64::Vec *vdata = ctx->m_vdata;
 
     const SwsOp &op = ops->ops[0];
     int vcount = op.vcount;
@@ -470,9 +493,6 @@ if (use_vh) {
                 }
             }
         } else if (op.type == SWS_PIXEL_F32) {
-            cc.comment("clear (f32)");
-
-            /* TODO use less data, maybe even ld1r */
             /* Write const data after function */
             float fdata[4];
             for (int i = 0; i < 4; i++)
@@ -480,21 +500,16 @@ if (use_vh) {
             Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
             /* Read matrix data into vectors */
-            cc.comment("prologue (linear)");
+            cc.comment("prologue (clear)");
             ctx->m_prologue.push_back(cc.cursor());
-            a64::Vec vdata;
-            vdata = cc.newVecQ();
-            a64::Gp rdata = cc.newGpz();
-            cc.adr(rdata, ldata);
-            ctx->m_prologue.push_back(cc.cursor());
-            cc.ld1(vdata.b16(), a64::ptr(rdata));
-            ctx->m_prologue.push_back(cc.cursor());
+            read_vdata(ctx, ldata, 1);
 
             /* Do the salmon dance */
+            cc.comment("clear (f32)");
             for (int i = 0; i < 4; i++) {
                 if (op.clear.value[i].den) {
-                    cc.dup(vl[i].s4(), vdata.s(i));
-                    cc.dup(vh[i].s4(), vdata.s(i));
+                    cc.dup(vl[i].s4(), vdata[0].s(i));
+                    cc.dup(vh[i].s4(), vdata[0].s(i));
                 }
             }
         } else {
@@ -827,14 +842,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             /* Read matrix data into vectors */
             cc.comment("prologue (linear)");
             ctx->m_prologue.push_back(cc.cursor());
-            a64::Vec vdata[3];
-            for (int i = 0; i < 3; i++)
-                vdata[i] = cc.newVecQ();
-            a64::Gp rdata = cc.newGpz();
-            cc.adr(rdata, ldata);
-            ctx->m_prologue.push_back(cc.cursor());
-            cc.ld1(vdata[0].b16(), vdata[1].b16(), vdata[2].b16(), a64::ptr(rdata));
-            ctx->m_prologue.push_back(cc.cursor());
+            read_vdata(ctx, ldata, 3);
 
             refresh_vectors_count(ctx, 3);
 
@@ -869,23 +877,18 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             /* Read matrix data into vectors */
             cc.comment("prologue (linear)");
             ctx->m_prologue.push_back(cc.cursor());
-            a64::Vec vdata = cc.newVecQ();
-            a64::Gp rdata = cc.newGpz();
-            cc.adr(rdata, ldata);
-            ctx->m_prologue.push_back(cc.cursor());
-            cc.ld1(vdata.b16(), a64::ptr(rdata));
-            ctx->m_prologue.push_back(cc.cursor());
+            read_vdata(ctx, ldata, 1);
 
             save_vectors_count(ctx, 3);
             new_vectors_count(ctx, 1);
 
             /* Do the salmon dance */
-            cc.fmul(vl[0].s4(), orig_vl[0].s4(), vdata.s(0));
-            cc.fmla(vl[0].s4(), orig_vl[1].s4(), vdata.s(1));
-            cc.fmla(vl[0].s4(), orig_vl[2].s4(), vdata.s(2));
-            cc.fmul(vh[0].s4(), orig_vh[0].s4(), vdata.s(0));
-            cc.fmla(vh[0].s4(), orig_vh[1].s4(), vdata.s(1));
-            cc.fmla(vh[0].s4(), orig_vh[2].s4(), vdata.s(2));
+            cc.fmul(vl[0].s4(), orig_vl[0].s4(), vdata[0].s(0));
+            cc.fmla(vl[0].s4(), orig_vl[1].s4(), vdata[0].s(1));
+            cc.fmla(vl[0].s4(), orig_vl[2].s4(), vdata[0].s(2));
+            cc.fmul(vh[0].s4(), orig_vh[0].s4(), vdata[0].s(0));
+            cc.fmla(vh[0].s4(), orig_vh[1].s4(), vdata[0].s(1));
+            cc.fmla(vh[0].s4(), orig_vh[2].s4(), vdata[0].s(2));
         } else {
             return AVERROR(ENOTSUP);
         }
@@ -902,20 +905,19 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             /* Read matrix data into vectors */
             cc.comment("prologue (linear)");
             ctx->m_prologue.push_back(cc.cursor());
-            a64::Vec vdata;
-            vdata = cc.newVecQ();
+            vdata[0] = cc.newVecQ();
             a64::Gp rdata = cc.newGpz();
             cc.adr(rdata, ldata);
             ctx->m_prologue.push_back(cc.cursor());
-            cc.ld1r(vdata.s4(), a64::ptr(rdata));
+            cc.ld1r(vdata[0].s4(), a64::ptr(rdata));
             ctx->m_prologue.push_back(cc.cursor());
 
             refresh_vectors_used(ctx, op);
 
             /* Do the salmon dance */
             LOOP_USED(i) {
-                cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata.s4());
-                cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata.s4());
+                cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata[0].s4());
+                cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[0].s4());
             }
         }
         break;
