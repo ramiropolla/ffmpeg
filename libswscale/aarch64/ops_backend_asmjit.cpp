@@ -44,8 +44,10 @@ struct AsmJitContext {
     FuncNode *m_func;
     std::vector<BaseNode *> m_prologue;
     a64::Gp m_exec;
-    a64::Vec m_vecl[4];
-    a64::Vec m_vech[4];
+    a64::Vec m_orig_vl[4];
+    a64::Vec m_orig_vh[4];
+    a64::Vec m_vl[4];
+    a64::Vec m_vh[4];
 
     AsmJitContext()
     {
@@ -62,12 +64,6 @@ struct AsmJitContext {
 #endif
         m_exec = cc.newGpz();
         m_func->setArg(0, m_exec);
-#if 0
-        for (int i = 0; i < 4; i++) {
-            m_vecl[i] = cc.newVecQ();
-            m_vech[i] = cc.newVecQ();
-        }
-#endif
     }
 };
 
@@ -191,13 +187,100 @@ static Label emit_data(AsmJitContext *ctx, void *data, size_t size)
     return ldata;
 }
 
+static inline uint32_t mask_from_used(const SwsOp &op)
+{
+    uint32_t mask = 0;
+    LOOP_USED(i) {
+        mask |= (1 << i) | (1 << (i + 4));
+    }
+    return mask;
+}
+
+static inline uint32_t mask_from_count(int count)
+{
+    uint32_t mask = 0;
+    for (int i = 0; i < count; i++) {
+        mask |= (1 << i) | (1 << (i + 4));
+    }
+    return mask;
+}
+
+static void save_vectors_mask(AsmJitContext *ctx, uint32_t mask)
+{
+    a64::Vec *orig_vl = ctx->m_orig_vl;
+    a64::Vec *orig_vh = ctx->m_orig_vh;
+    a64::Vec *vl = ctx->m_vl;
+    a64::Vec *vh = ctx->m_vh;
+    for (int i = 0; i < 4; i++) {
+        if (mask & (1 << i)) {
+            orig_vl[i] = vl[i];
+        }
+        if (mask & (1 << (i + 4))) {
+            orig_vh[i] = vh[i];
+        }
+    }
+}
+
+static void new_vectors_mask(AsmJitContext *ctx, uint32_t mask)
+{
+    a64::Compiler &cc = *ctx->m_cc;
+    a64::Vec *vl = ctx->m_vl;
+    a64::Vec *vh = ctx->m_vh;
+    for (int i = 0; i < 4; i++) {
+        if (mask & (1 << i)) {
+            vl[i] = cc.newVecQ();
+        }
+        if (mask & (1 << (i + 4))) {
+            vh[i] = cc.newVecQ();
+        }
+    }
+}
+
+static void new_vectors_used(AsmJitContext *ctx, const SwsOp &op)
+{
+    new_vectors_mask(ctx, mask_from_used(op));
+}
+
+static void new_vectors_count(AsmJitContext *ctx, int count)
+{
+    new_vectors_mask(ctx, mask_from_count(count));
+}
+
+static void save_vectors_used(AsmJitContext *ctx, const SwsOp &op)
+{
+    save_vectors_mask(ctx, mask_from_used(op));
+}
+
+static void save_vectors_count(AsmJitContext *ctx, int count)
+{
+    save_vectors_mask(ctx, mask_from_count(count));
+}
+
+static void refresh_vectors_mask(AsmJitContext *ctx, uint32_t mask)
+{
+    save_vectors_mask(ctx, mask);
+    new_vectors_mask(ctx, mask);
+}
+
+static void refresh_vectors_used(AsmJitContext *ctx, const SwsOp &op)
+{
+    refresh_vectors_mask(ctx, mask_from_used(op));
+}
+
+static void refresh_vectors_count(AsmJitContext *ctx, int count)
+{
+    refresh_vectors_mask(ctx, mask_from_count(count));
+}
+
 static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
 {
     AsmJitContext *ctx = static_cast<AsmJitContext *>(_ctx);
     a64::Compiler &cc = *ctx->m_cc;
     a64::Gp &exec = ctx->m_exec;
-    a64::Vec *vl = ctx->m_vecl;
-    a64::Vec *vh = ctx->m_vech;
+    a64::Vec *orig_vl = ctx->m_orig_vl;
+    a64::Vec *orig_vh = ctx->m_orig_vh;
+    a64::Vec *vl = ctx->m_vl;
+    a64::Vec *vh = ctx->m_vh;
 
     const SwsOp &op = ops->ops[0];
     int vcount = op.vcount;
@@ -431,13 +514,7 @@ if (use_vh) {
         break;
     case SWS_OP_LSHIFT:          /* logical left shift of raw pixel values */
         if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
-            /* Create output vectors */
-            a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-            a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
-            LOOP_USED(i) {
-                vl[i] = cc.newVecQ();
-                vh[i] = cc.newVecQ();
-            }
+            refresh_vectors_used(ctx, op);
 
             LOOP_USED(i) {
                 cc.shl    (vop(op, vl[i]), vop(op, orig_vl[i]), op.shift.amount);
@@ -462,11 +539,11 @@ if (use_vh) {
                 used[op.swizzle.in[i]] = true;
             }
 
+            save_vectors_count(ctx, 4);
+
             if (reorder) {
                 cc.comment("swizzle (reorder)");
                 /* It shouldn't matter if the vectors are initialized or not */
-                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-                a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
                 for (int i = 0; i < 4; i++) {
                     vl[i] = orig_vl[op.swizzle.in[i]];
                     vh[i] = orig_vh[op.swizzle.in[i]];
@@ -475,8 +552,6 @@ if (use_vh) {
                 cc.comment("swizzle (copy)");
 
                 /* Create output vectors */
-                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-                a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
                 for (int i = 0; i < 4; i++) {
                     vl[i] = cc.newVecQ();
                     if (use_vh)
@@ -501,13 +576,7 @@ if (use_vh) {
         break;
     case SWS_OP_CONVERT:         /* convert (cast) between formats */
         {
-            /* Create output vectors */
-            a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-            a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
-            LOOP_USED(i) {
-                vl[i] = cc.newVecQ();
-                vh[i] = cc.newVecQ();
-            }
+            refresh_vectors_used(ctx, op);
 
             if        (op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && op.convert.expand && vcount == 8) {
                 cc.comment("convert (u8 -> u16, expand, 8)");
@@ -681,13 +750,7 @@ if (use_vh) {
                 }
 
                 cc.comment("convert+clamp");
-                /* Create output vectors */
-                a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-                a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
-                LOOP_USED(i) {
-                    vl[i] = cc.newVecQ();
-                    vh[i] = cc.newVecQ();
-                }
+                refresh_vectors_used(ctx, op);
                 /* Convert from f32 to u32 */
                 LOOP_USED(i) {
                     cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
@@ -788,13 +851,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             cc.ld1(vdata[0].b16(), vdata[1].b16(), vdata[2].b16(), a64::ptr(rdata));
             ctx->m_prologue.push_back(cc.cursor());
 
-            /* Create new output vectors */
-            a64::Vec orig_vl[3] = { vl[0], vl[1], vl[2] };
-            a64::Vec orig_vh[3] = { vh[0], vh[1], vh[2] };
-            for (int i = 0; i < 3; i++) {
-                vl[i] = cc.newVecQ();
-                vh[i] = cc.newVecQ();
-            }
+            refresh_vectors_count(ctx, 3);
 
             /* Do the salmon dance */
             for (int i = 0; i < 3; i++) {
@@ -834,11 +891,8 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             cc.ld1(vdata.b16(), a64::ptr(rdata));
             ctx->m_prologue.push_back(cc.cursor());
 
-            /* Create new output vectors */
-            a64::Vec orig_vl[3] = { vl[0], vl[1], vl[2] };
-            a64::Vec orig_vh[3] = { vh[0], vh[1], vh[2] };
-            vl[0] = cc.newVecQ();
-            vh[0] = cc.newVecQ();
+            save_vectors_count(ctx, 3);
+            new_vectors_count(ctx, 1);
 
             /* Do the salmon dance */
             cc.fmul(vl[0].s4(), orig_vl[0].s4(), vdata.s(0));
@@ -871,13 +925,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             cc.ld1r(vdata.s4(), a64::ptr(rdata));
             ctx->m_prologue.push_back(cc.cursor());
 
-            /* Create new output vectors */
-            a64::Vec orig_vl[4] = { vl[0], vl[1], vl[2], vl[3] };
-            a64::Vec orig_vh[4] = { vh[0], vh[1], vh[2], vh[3] };
-            LOOP_USED(i) {
-                vl[i] = cc.newVecQ();
-                vh[i] = cc.newVecQ();
-            }
+            refresh_vectors_used(ctx, op);
 
             /* Do the salmon dance */
             LOOP_USED(i) {
