@@ -59,8 +59,8 @@ struct AsmJitContext {
         cc.addDiagnosticOptions(DiagnosticOptions::kRAAnnotate);
         m_func = cc.addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, uint8_t *, uint8_t *>());
 #ifdef EMIT_BRK
-       cc.brk(0xf000);
-       m_prologue.push_back(cc.cursor());
+        cc.brk(0xf000);
+        m_prologue.push_back(cc.cursor());
 #endif
         m_exec = cc.newGpz();
         m_func->setArg(0, m_exec);
@@ -503,8 +503,8 @@ if (use_vh) {
         break;
     case SWS_OP_LSHIFT:          /* logical left shift of raw pixel values */
         if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+            cc.comment("lshift");
             refresh_vectors_used(ctx, op);
-
             LOOP_USED(i) {
                 cc.shl    (vop(op, vl[i]), vop(op, orig_vl[i]), op.shift.amount);
                 if (use_vh)
@@ -840,14 +840,14 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 
             /* Do the salmon dance */
             for (int i = 0; i < 3; i++) {
-                cc.dup (vl[i].s4(),                  vdata[i].s(0));
+                cc.dup(vl[i].s4(), vdata[i].s(0));
                 if (op.lin.m[i][0].num)
                     cc.fmla(vl[i].s4(), orig_vl[0].s4(), vdata[i].s(1));
                 if (op.lin.m[i][1].num)
                     cc.fmla(vl[i].s4(), orig_vl[1].s4(), vdata[i].s(2));
                 if (op.lin.m[i][2].num)
                     cc.fmla(vl[i].s4(), orig_vl[2].s4(), vdata[i].s(3));
-                cc.dup (vh[i].s4(),                  vdata[i].s(0));
+                cc.dup(vh[i].s4(), vdata[i].s(0));
                 if (op.lin.m[i][0].num)
                     cc.fmla(vh[i].s4(), orig_vh[0].s4(), vdata[i].s(1));
                 if (op.lin.m[i][1].num)
