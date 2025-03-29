@@ -176,6 +176,21 @@ static a64::Vec vop(const SwsOp &op, const a64::Vec &src)
     for (int idx = 0; idx < 4; idx++) \
         if (!op.comps.unused[idx])
 
+static Label emit_data(AsmJitContext *ctx, void *data, size_t size)
+{
+    a64::Compiler &cc = *ctx->m_cc;
+
+    Label ldata = cc.newLabel();
+    BaseNode *cursor = cc.cursor();
+    cc.setCursor(ctx->m_func->endNode()->prev());
+    cc.align(AlignMode::kData, 16);
+    cc.bind(ldata);
+    cc.embed(data, size);
+    cc.setCursor(cursor);
+
+    return ldata;
+}
+
 static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
 {
     AsmJitContext *ctx = static_cast<AsmJitContext *>(_ctx);
@@ -385,18 +400,12 @@ if (use_vh) {
         } else if (op.type == SWS_PIXEL_F32) {
             cc.comment("clear (f32)");
 
-            /* Write matrix data after function */
-            Label ldata = cc.newLabel();
-            BaseNode *cursor = cc.cursor();
-            cc.setCursor(ctx->m_func->endNode()->prev());
-            cc.align(AlignMode::kData, 16);
-            cc.bind(ldata);
             /* TODO use less data, maybe even ld1r */
+            /* Write const data after function */
             float fdata[4];
             for (int i = 0; i < 4; i++)
                 fdata[i] = av_q2d(op.clear.value[i]);
-            cc.embed(fdata, sizeof(fdata));
-            cc.setCursor(cursor);
+            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
             /* Read matrix data into vectors */
             cc.comment("prologue (linear)");
@@ -613,20 +622,14 @@ if (use_vh) {
         {
             cc.comment("dither");
 
-            /* Write matrix data after function */
-            Label ldata = cc.newLabel();
-            BaseNode *cursor = cc.cursor();
-            cc.setCursor(ctx->m_func->endNode()->prev());
-            cc.align(AlignMode::kData, 16);
-            cc.bind(ldata);
+            /* Write const data after function */
             int size = 1 << op.dither.size_log2;
             std::vector<float> fdata;
             fdata.resize(size * size);
             for (int i = 0; i < size * size; i++) {
                 fdata[i] = av_q2d(op.dither.matrix[i]);
             }
-            cc.embed(fdata.data(), size * size * sizeof(float));
-            cc.setCursor(cursor);
+            Label ldata = emit_data(ctx, fdata.data(), size * size * sizeof(float));
 
             a64::Gp rdatal = cc.newGpz();
             a64::Gp rdatah = cc.newGpz();
@@ -763,12 +766,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
         if ((op.lin.mask | 0b10 /* HACK to select yuv2rgb as well */) == (SWS_MASK_MAT3 | SWS_MASK_OFF3)) {
             cc.comment("linear (matrix3+off3)");
 
-            /* Write matrix data after function */
-            Label ldata = cc.newLabel();
-            BaseNode *cursor = cc.cursor();
-            cc.setCursor(ctx->m_func->endNode()->prev());
-            cc.align(AlignMode::kData, 16);
-            cc.bind(ldata);
+            /* Write const data after function */
             float fdata[12];
             for (int i = 0; i < 3; i++) {
                 fdata[(i * 4) + 0] = av_q2d(op.lin.m[i][4]);
@@ -776,8 +774,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                 fdata[(i * 4) + 2] = av_q2d(op.lin.m[i][1]);
                 fdata[(i * 4) + 3] = av_q2d(op.lin.m[i][2]);
             }
-            cc.embed(fdata, sizeof(fdata));
-            cc.setCursor(cursor);
+            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
             /* Read matrix data into vectors */
             cc.comment("prologue (linear)");
@@ -819,19 +816,13 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
         } else if (op.lin.mask == 0b111) {
             cc.comment("linear (dot3)");
 
-            /* Write matrix data after function */
-            Label ldata = cc.newLabel();
-            BaseNode *cursor = cc.cursor();
-            cc.setCursor(ctx->m_func->endNode()->prev());
-            cc.align(AlignMode::kData, 16);
-            cc.bind(ldata);
+            /* Write const data after function */
             float fdata[4];
             fdata[0] = av_q2d(op.lin.m[0][0]);
             fdata[1] = av_q2d(op.lin.m[0][1]);
             fdata[2] = av_q2d(op.lin.m[0][2]);
             fdata[3] = 0;
-            cc.embed(fdata, sizeof(fdata));
-            cc.setCursor(cursor);
+            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
             /* Read matrix data into vectors */
             cc.comment("prologue (linear)");
@@ -864,16 +855,10 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
         {
             cc.comment("scale");
 
-            /* Write matrix data after function */
-            Label ldata = cc.newLabel();
-            BaseNode *cursor = cc.cursor();
-            cc.setCursor(ctx->m_func->endNode()->prev());
-            cc.align(AlignMode::kData, 16);
-            cc.bind(ldata);
+            /* Write const data after function */
             float fdata[1];
             fdata[0] = av_q2d(op.scale.factor);
-            cc.embed(fdata, sizeof(fdata));
-            cc.setCursor(cursor);
+            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
             /* Read matrix data into vectors */
             cc.comment("prologue (linear)");
