@@ -1113,7 +1113,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 
             /* Read matrix data into vectors */
             ctx->to_prologue();
-            cc.comment("prologue (linear)");
+            cc.comment("prologue (scale)");
             vdata[0] = cc.newVecQ();
             a64::Gp rdata = cc.newGpz();
             cc.adr(rdata, ldata);
