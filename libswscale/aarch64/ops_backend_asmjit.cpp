@@ -909,6 +909,32 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             /* Start with offset and the coeffs */
             const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
 
+            /* Check which vectors are used after this operation */
+            int used[4] = { 0 };
+            LOOP_USED(i) {
+                used[i] = 1;
+            }
+            for (int i = 0; i < 4; i++) {
+                bool is_identity = true;
+                if (!used[i])
+                    continue;
+                for (int j = 0; j < 5; j++) {
+                    if (i == j) {
+                        if (op.lin.m[i][j].num != 1 || op.lin.m[i][j].den != 1) {
+                            is_identity = false;
+                            break;
+                        }
+                    } else {
+                        if (op.lin.m[i][j].num != 0) {
+                            is_identity = false;
+                            break;
+                        }
+                    }
+                }
+                if (is_identity)
+                    used[i] = 0;
+            }
+
             /* Write const data after function */
             std::vector<float> fdata;
             bool identity[4][5];
@@ -939,7 +965,12 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             /* Do the salmon dance */
             cc.comment("linear");
             refresh_vectors_count(ctx, 4);
-            LOOP_USED(i) {
+            for (int i = 0; i < 4; i++) {
+                if (!used[i]) {
+                    vl[i] = orig_vl[i];
+                    vh[i] = orig_vh[i];
+                    continue;
+                }
                 int count = 0;
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
@@ -958,8 +989,6 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                         count++;
                     }
                 }
-                if (count == 0)
-                    vl[i] = orig_vl[i];
                 count = 0;
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
@@ -978,8 +1007,6 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                         count++;
                     }
                 }
-                if (count == 0)
-                    vh[i] = orig_vh[i];
             }
         }
         break;
