@@ -662,14 +662,13 @@ if (use_vh) {
                     cc.xtn(vl[i].h4(), vl[i].s4());
                     cc.xtn(vh[i].h4(), vh[i].s4());
                 }
+                /* Merge vl and vh into vl */
+                LOOP_USED(i) {
+                    cc.ins(vl[i].d(1), vh[i].d(0));
+                }
                 /* Convert from u16 to u8 */
                 LOOP_USED(i) {
                     cc.xtn(vl[i].b8(), vl[i].h8());
-                    cc.xtn(vh[i].b8(), vh[i].h8());
-                }
-                /* Merge vl and vh into vl */
-                LOOP_USED(i) {
-                    cc.zip1(vl[i].s2(), vl[i].s2(), vh[i].s2());
                 }
             } else if (op.type == SWS_PIXEL_F32 && op.convert.to == SWS_PIXEL_U16 && !op.convert.expand && vcount == 8) {
                 cc.comment("convert (f32 -> u16, !expand, 8)");
