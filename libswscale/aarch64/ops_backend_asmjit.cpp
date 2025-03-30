@@ -911,17 +911,19 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 
             /* Write const data after function */
             std::vector<float> fdata;
-            size_t vpos[4][5];
+            bool identity[4][5];
+            int vpos[4][5];
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
-                    if (!op.lin.m[i][sj].num) {
-                        /* Zero */
-                        vpos[i][sj] = -1;
-                    } else {
-                        /* Coefficient */
+                    if (op.lin.m[i][sj].num) {
                         vpos[i][sj] = fdata.size();
                         fdata.push_back(av_q2d(op.lin.m[i][sj]));
+                        /* TODO don't emit identity data */
+                        identity[i][sj] = (op.lin.m[i][sj].num == 1 && op.lin.m[i][sj].den == 1);
+                    } else {
+                        vpos[i][sj] = -1;
+                        identity[i][sj] = false;
                     }
                 }
             }
@@ -941,12 +943,14 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                 int count = 0;
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
-                    size_t vidx = vpos[i][sj];
+                    int vidx = vpos[i][sj];
                     if (vidx != -1) {
                         int vdata_i = vidx >> 2;
                         int vdata_j = vidx & 3;
                         if (j == 0)
                             cc.dup(vl[i].s4(), vdata[vdata_i].s(vdata_j));
+                        else if (count == 0 && identity[i][sj])
+                            cc.mov(vl[i].s4(), orig_vl[sj].s4());
                         else if (count == 0)
                             cc.fmul(vl[i].s4(), orig_vl[sj].s4(), vdata[vdata_i].s(vdata_j));
                         else
@@ -959,12 +963,14 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                 count = 0;
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
-                    size_t vidx = vpos[i][sj];
+                    int vidx = vpos[i][sj];
                     if (vidx != -1) {
                         int vdata_i = vidx >> 2;
                         int vdata_j = vidx & 3;
                         if (j == 0)
                             cc.dup(vh[i].s4(), vdata[vdata_i].s(vdata_j));
+                        else if (count == 0 && identity[i][sj])
+                            cc.mov(vh[i].s4(), orig_vh[sj].s4());
                         else if (count == 0)
                             cc.fmul(vh[i].s4(), orig_vh[sj].s4(), vdata[vdata_i].s(vdata_j));
                         else
