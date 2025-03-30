@@ -321,14 +321,13 @@ static void refresh_vector(AsmJitContext *ctx, int i, int mask = 0xff)
     refresh_vectors_mask(ctx, mask_from_i(i) & mask);
 }
 
-static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType to, bool expand)
+static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, SwsPixelType to, bool expand)
 {
     a64::Compiler &cc = *ctx->m_cc;
     a64::Vec *orig_vl = ctx->m_orig_vl;
     a64::Vec *orig_vh = ctx->m_orig_vh;
     a64::Vec *vl = ctx->m_vl;
     a64::Vec *vh = ctx->m_vh;
-    SwsPixelType from = op.type;
     int vcount = op.vcount;
     int from_size = ff_sws_pixel_type_size(from);
     int to_size   = ff_sws_pixel_type_size(to);
@@ -629,7 +628,7 @@ if (use_vh) {
 
             cc.comment("pack");
             /* TODO ushll instead */
-            if (op.type != op.pack.type && emit_convert(ctx, op, op.pack.type, false) < 0)
+            if (op.type != op.pack.type && emit_convert(ctx, op, op.type, op.pack.type, false) < 0)
                 return AVERROR(ENOTSUP);
             LOOP_USED(i) {
                 if (offsets[i]) {
@@ -761,7 +760,7 @@ if (use_vh) {
         }
         break;
     case SWS_OP_CONVERT:         /* convert (cast) between formats */
-        if (emit_convert(ctx, op, op.convert.to, op.convert.expand) < 0)
+        if (emit_convert(ctx, op, op.type, op.convert.to, op.convert.expand) < 0)
             return AVERROR(ENOTSUP);
         break;
     case SWS_OP_DITHER:          /* add dithering noise */
@@ -825,7 +824,7 @@ if (use_vh) {
             }
 
             cc.comment("convert+clamp");
-            if (emit_convert(ctx, op, SWS_PIXEL_U16, false) < 0)
+            if (emit_convert(ctx, op, op.type, SWS_PIXEL_U16, false) < 0)
                 return AVERROR(ENOTSUP);
             /* Saturating convert from u16 to u8 */
             LOOP_USED(i) {
@@ -841,7 +840,7 @@ if (use_vh) {
             }
 
             cc.comment("convert+clamp");
-            if (emit_convert(ctx, op, SWS_PIXEL_U32, false) < 0)
+            if (emit_convert(ctx, op, op.type, SWS_PIXEL_U32, false) < 0)
                 return AVERROR(ENOTSUP);
             /* Saturating convert from u32 to u16 */
             LOOP_USED(i) {
