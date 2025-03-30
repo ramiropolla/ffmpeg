@@ -910,8 +910,6 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
         break;
     case SWS_OP_SCALE:           /* multiplication by scalar */
         {
-            cc.comment("scale");
-
             /* Write const data after function */
             float fdata[1];
             fdata[0] = av_q2d(op.scale.factor);
@@ -927,9 +925,9 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             cc.ld1r(vdata[0].s4(), a64::ptr(rdata));
             ctx->m_prologue.push_back(cc.cursor());
 
-            refresh_vectors_used(ctx, op);
-
             /* Do the salmon dance */
+            cc.comment("scale");
+            refresh_vectors_used(ctx, op);
             LOOP_USED(i) {
                 cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata[0].s4());
                 cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[0].s4());
