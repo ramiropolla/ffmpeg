@@ -209,11 +209,16 @@ static void read_vdata(AsmJitContext *ctx, Label ldata, int count)
     ctx->m_prologue.push_back(cc.cursor());
 }
 
+static inline uint32_t mask_from_i(int i)
+{
+    return (1 << i) | (1 << (i + 4));
+}
+
 static inline uint32_t mask_from_used(const SwsOp &op)
 {
     uint32_t mask = 0;
     LOOP_USED(i) {
-        mask |= (1 << i) | (1 << (i + 4));
+        mask |= mask_from_i(i);
     }
     return mask;
 }
@@ -222,7 +227,7 @@ static inline uint32_t mask_from_count(int count)
 {
     uint32_t mask = 0;
     for (int i = 0; i < count; i++) {
-        mask |= (1 << i) | (1 << (i + 4));
+        mask |= mask_from_i(i);
     }
     return mask;
 }
