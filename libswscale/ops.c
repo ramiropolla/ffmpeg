@@ -1175,14 +1175,25 @@ int ff_sws_op_list_optimize(SwsOpList *ops)
                 }
                 break;
 
-            case SWS_OP_SWIZZLE:
-                /* Identity swizzle */
+            case SWS_OP_SWIZZLE: {
+                bool has_duplicates = false;
                 for (int i = 0; i < 4; i++) {
-                    if (next->comps.unused[i])
-                        op->swizzle.in[i] = i; /* mask out unneeded comps */
-                    else if (op->swizzle.in[i] != i)
-                        noop = false;
+                    if (next->comps.unused[i]) {
+                        op->swizzle.in[i] = i; /* reset unneeded comps */
+                        op->comps = (SwsComps) {0}; /* force reinfer */
+                    } else {
+                        if (op->swizzle.in[i] != i)
+                            noop = false;
+                        for (int j = 0; !has_duplicates && j < i; j++) {
+                            if (next->comps.unused[j])
+                                continue;
+                            if (op->swizzle.in[i] == op->swizzle.in[j])
+                                has_duplicates = true;
+                        }
+                    }
                 }
+
+                /* Identity swizzle */
                 if (noop) {
                     ff_sws_op_list_remove_at(ops, n, 1);
                     continue;
@@ -1198,19 +1209,19 @@ int ff_sws_op_list_optimize(SwsOpList *ops)
                     continue;
                 }
 
-                /* Prefer swizzling on smaller element size */
-                if (prev->op == SWS_OP_CONVERT &&
-                    ff_sws_pixel_type_size(prev->type) < ff_sws_pixel_type_size(op->type))
-                {
-                    op->type = prev->type;
-                    swap_ops(op, prev);
+                /* Try to push swizzles towards the output */
+                if (op_type_is_independent(next->op)) {
+                    if (next->op == SWS_OP_CONVERT)
+                        op->type = next->convert.to;
+                    swap_ops(op, next);
                     progress = true;
                     continue;
                 }
 
-                /* Otherwise, try to push swizzles towards the output */
-                // TODO
+                /* TODO: also push swizzles past non-independent ops when
+                 * the swizzle does not contain duplicate elements */
                 break;
+            }
 
             case SWS_OP_CONVERT:
                 /* No-op conversion */
