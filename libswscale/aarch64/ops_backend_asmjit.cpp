@@ -428,7 +428,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, 
     }
 
     if (to == SWS_PIXEL_F32) {
-        cc.comment("convert (f32 -> u32)");
+        cc.comment("convert (u32 -> f32)");
         LOOP_USED(i) {
             refresh_vector(ctx, i);
             cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
