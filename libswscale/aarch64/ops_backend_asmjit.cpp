@@ -613,14 +613,12 @@ if (use_vh) {
             if (op.convert.expand) {
                 if        (from_size == 1 && to_size == 2 && vcount == 8) {
                     cc.comment("convert (u8 -> u16, expand, 8)");
-                    /* Convert 8 from u8 to u16 (expand) */
                     LOOP_USED(i) {
                         refresh_vector(ctx, i, 0x0f);
                         cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                     }
                 } else if (from_size == 1 && to_size == 2 && vcount == 16) {
                     cc.comment("convert (u8 -> u16, expand, 16)");
-                    /* Convert 16 from u8 to u16 (expand) */
                     LOOP_USED(i) {
                         save_vector(ctx, i, 0x0f);
                         new_vector(ctx, i);
@@ -651,7 +649,7 @@ if (use_vh) {
                     from_size = 2;
                 }
 
-                if (from_size == 2 && to_size > from_size && vcount == 8) {
+                if (from_size == 2 && to_size == 4 && vcount == 8) {
                     cc.comment("convert (u16 -> u32, !expand, 8)");
                     LOOP_USED(i) {
                         save_vector(ctx, i, 0x0f);
@@ -782,14 +780,13 @@ if (use_vh) {
                     cc.xtn(vl[i].h4(), vl[i].s4());
                     cc.xtn(vh[i].h4(), vh[i].s4());
                 }
+                /* Merge vl and vh into vl */
+                LOOP_USED(i) {
+                    cc.ins(vl[i].d(1), vh[i].d(0));
+                }
                 /* Saturating convert from u16 to u8 */
                 LOOP_USED(i) {
                     cc.uqxtn(vl[i].b8(), vl[i].h8());
-                    cc.uqxtn(vh[i].b8(), vh[i].h8());
-                }
-                /* Merge vl and vh into vl */
-                LOOP_USED(i) {
-                    cc.zip1(vl[i].s2(), vl[i].s2(), vh[i].s2());
                 }
                 ops->ops++;
                 ops->num_ops--;
