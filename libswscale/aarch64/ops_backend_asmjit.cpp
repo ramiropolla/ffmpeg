@@ -905,203 +905,76 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
         printf("\n");
     }
 #endif
-        if (!(op.lin.mask & ~(0))) {
-            /* noop */
-            break;
-        } else if (!(op.lin.mask & ~(SWS_MASK_LUMA))) {
+        {
+            /* Start with offset and the coeffs */
+            const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
+
             /* Write const data after function */
-            float fdata[4];
-            fdata[0] = av_q2d(op.lin.m[0][4]);
-            fdata[1] = av_q2d(op.lin.m[0][0]);
-            fdata[2] = 0;
-            fdata[3] = 0;
-            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
+            std::vector<float> fdata;
+            size_t vpos[4][5];
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 5; j++) {
+                    int sj = fdata_swizzle[j];
+                    if (!op.lin.m[i][sj].num) {
+                        /* Zero */
+                        vpos[i][sj] = -1;
+                    } else {
+                        /* Coefficient */
+                        vpos[i][sj] = fdata.size();
+                        fdata.push_back(av_q2d(op.lin.m[i][sj]));
+                    }
+                }
+            }
+            Label ldata = emit_data(ctx, fdata.data(), fdata.size() * sizeof(float));
 
             /* Read matrix data into vectors */
             ctx->to_prologue();
             cc.comment("prologue (linear)");
-            read_vdata(ctx, ldata, 1);
+            int vdata_count = (fdata.size() + 3) >> 2;
+            read_vdata(ctx, ldata, vdata_count);
             ctx->from_prologue();
 
             /* Do the salmon dance */
-            cc.comment("linear (luma)");
-            refresh_vectors_count(ctx, 1);
-            cc.dup(vl[0].s4(), vdata[0].s(0));
-            cc.dup(vh[0].s4(), vdata[0].s(0));
-            cc.fmla(vl[0].s4(), orig_vl[0].s4(), vdata[0].s(1));
-            cc.fmla(vh[0].s4(), orig_vh[0].s4(), vdata[0].s(1));
-        } else if (!(op.lin.mask & ~(SWS_MASK_ALPHA))) {
-            /* Write const data after function */
-            float fdata[1];
-            fdata[0] = av_q2d(op.lin.m[3][3]);
-            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
-
-            /* Read matrix data into vectors */
-            ctx->to_prologue();
-            cc.comment("prologue (linear)");
-            vdata[0] = cc.newVecQ();
-            a64::Gp rdata = cc.newGpz();
-            cc.adr(rdata, ldata);
-            cc.ld1r(vdata[0].s4(), a64::ptr(rdata));
-            ctx->from_prologue();
-
-            /* Do the salmon dance */
-            cc.comment("linear (alpha)");
-            refresh_vector(ctx, 3);
-            cc.fmul(vl[3].s4(), orig_vl[3].s4(), vdata[0].s4());
-            cc.fmul(vh[3].s4(), orig_vh[3].s4(), vdata[0].s4());
-        } else if (!(op.lin.mask & ~(SWS_MASK_LUMA | SWS_MASK_ALPHA))) {
-            /* luma+alpha */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(0b111))) {
-            /* Write const data after function */
-            float fdata[4];
-            fdata[0] = av_q2d(op.lin.m[0][0]);
-            fdata[1] = av_q2d(op.lin.m[0][1]);
-            fdata[2] = av_q2d(op.lin.m[0][2]);
-            fdata[3] = 0;
-            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
-
-            /* Read matrix data into vectors */
-            ctx->to_prologue();
-            cc.comment("prologue (linear)");
-            read_vdata(ctx, ldata, 1);
-            ctx->from_prologue();
-
-            /* Do the salmon dance */
-            cc.comment("linear (dot3)");
-            save_vectors_count(ctx, 3);
-            new_vectors_count(ctx, 1);
-            cc.fmul(vl[0].s4(), orig_vl[0].s4(), vdata[0].s(0));
-            cc.fmla(vl[0].s4(), orig_vl[1].s4(), vdata[0].s(1));
-            cc.fmla(vl[0].s4(), orig_vl[2].s4(), vdata[0].s(2));
-            cc.fmul(vh[0].s4(), orig_vh[0].s4(), vdata[0].s(0));
-            cc.fmla(vh[0].s4(), orig_vh[1].s4(), vdata[0].s(1));
-            cc.fmla(vh[0].s4(), orig_vh[2].s4(), vdata[0].s(2));
-        } else if (!(op.lin.mask & ~(0b1111))) {
-            /* dot4 */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_ROW(0)))) {
-            /* row0 */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_ROW(0) | SWS_MASK_ALPHA))) {
-            /* row0+alpha */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_COL(0)))) {
-            /* col0 */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_COL(0) | SWS_MASK_OFF3))) {
-            /* col0+off3 */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_OFF3))) {
-            /* off3 */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_OFF3 | SWS_MASK_ALPHA))) {
-            /* off3+alpha */
-            return AVERROR(ENOTSUP);
-#if 0
-        } else if (!(op.lin.mask & ~(SWS_MASK_DIAG3))) {
-            /* diag3 */
-            /* NOTE same as diag4 */
-#endif
-        } else if (!(op.lin.mask & ~(SWS_MASK_DIAG4))) {
-            /* Write const data after function */
-            float fdata[4];
-            fdata[0] = av_q2d(op.lin.m[0][0]);
-            fdata[1] = av_q2d(op.lin.m[1][1]);
-            fdata[2] = av_q2d(op.lin.m[2][2]);
-            fdata[3] = av_q2d(op.lin.m[3][3]);
-            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
-
-            /* Read matrix data into vectors */
-            ctx->to_prologue();
-            cc.comment("prologue (linear)");
-            read_vdata(ctx, ldata, 1);
-            ctx->from_prologue();
-
-            /* Do the salmon dance */
-            cc.comment("linear (diag)");
+            cc.comment("linear");
+            refresh_vectors_count(ctx, 4);
             LOOP_USED(i) {
-                refresh_vector(ctx, i);
-                cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata[0].s(i));
-                cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[0].s(i));
-            }
-        } else if (!(op.lin.mask & ~(SWS_MASK_DIAG3 | SWS_MASK_ALPHA))) {
-            /* diag3+alpha */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_DIAG3 | SWS_MASK_OFF3))) {
-            /* diag3+off3 */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_DIAG3 | SWS_MASK_OFF3 | SWS_MASK_ALPHA))) {
-            /* diag3+off3+alpha */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_DIAG4 | SWS_MASK_OFF4))) {
-            /* diag4+off4 */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_MAT3))) {
-            /* matrix3 */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_MAT3 | SWS_MASK_OFF3))) {
-            const int fdata_swizzle[4] = { 4, 0, 1, 2 };
-
-            /* Write const data after function */
-            float fdata[12];
-            for (int i = 0; i < 3; i++) {
-                for (int j = 0; j < 4; j++) {
-                    int sj = fdata_swizzle[j];
-                    fdata[(i * 4) + j] = av_q2d(op.lin.m[i][sj]);
-                }
-            }
-            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
-
-            /* Read matrix data into vectors */
-            ctx->to_prologue();
-            cc.comment("prologue (linear)");
-            read_vdata(ctx, ldata, 3);
-            ctx->from_prologue();
-
-            /* Do the salmon dance */
-            cc.comment("linear (matrix3+off3)");
-            refresh_vectors_count(ctx, 3);
-            for (int i = 0; i < 3; i++) {
                 int count = 0;
-                for (int j = 0; j < 4; j++) {
+                for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
-                    if (op.lin.m[i][sj].num) {
+                    size_t vidx = vpos[i][sj];
+                    if (vidx != -1) {
+                        int vdata_i = vidx >> 2;
+                        int vdata_j = vidx & 3;
                         if (j == 0)
-                            cc.dup(vl[i].s4(), vdata[i].s(j));
+                            cc.dup(vl[i].s4(), vdata[vdata_i].s(vdata_j));
                         else if (count == 0)
-                            cc.fmul(vl[i].s4(), orig_vl[sj].s4(), vdata[i].s(j));
+                            cc.fmul(vl[i].s4(), orig_vl[sj].s4(), vdata[vdata_i].s(vdata_j));
                         else
-                            cc.fmla(vl[i].s4(), orig_vl[sj].s4(), vdata[i].s(j));
+                            cc.fmla(vl[i].s4(), orig_vl[sj].s4(), vdata[vdata_i].s(vdata_j));
                         count++;
                     }
                 }
+                if (count == 0)
+                    vl[i] = orig_vl[i];
                 count = 0;
-                for (int j = 0; j < 4; j++) {
+                for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
-                    if (op.lin.m[i][sj].num) {
+                    size_t vidx = vpos[i][sj];
+                    if (vidx != -1) {
+                        int vdata_i = vidx >> 2;
+                        int vdata_j = vidx & 3;
                         if (j == 0)
-                            cc.dup(vh[i].s4(), vdata[i].s(j));
+                            cc.dup(vh[i].s4(), vdata[vdata_i].s(vdata_j));
                         else if (count == 0)
-                            cc.fmul(vh[i].s4(), orig_vh[sj].s4(), vdata[i].s(j));
+                            cc.fmul(vh[i].s4(), orig_vh[sj].s4(), vdata[vdata_i].s(vdata_j));
                         else
-                            cc.fmla(vh[i].s4(), orig_vh[sj].s4(), vdata[i].s(j));
+                            cc.fmla(vh[i].s4(), orig_vh[sj].s4(), vdata[vdata_i].s(vdata_j));
                         count++;
                     }
                 }
+                if (count == 0)
+                    vh[i] = orig_vh[i];
             }
-        } else if (!(op.lin.mask & ~(SWS_MASK_MAT3 | SWS_MASK_OFF3 | SWS_MASK_ALPHA))) {
-            /* matrix3+off3+alpha */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_MAT4))) {
-            /* matrix4 */
-            return AVERROR(ENOTSUP);
-        } else if (!(op.lin.mask & ~(SWS_MASK_MAT4 | SWS_MASK_OFF4))) {
-            /* matrix4+off4 */
-            return AVERROR(ENOTSUP);
-        } else {
-            return AVERROR(ENOTSUP);
         }
         break;
     case SWS_OP_SCALE:           /* multiplication by scalar */
