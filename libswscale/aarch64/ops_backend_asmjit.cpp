@@ -450,6 +450,7 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
     a64::Vec *vh = ctx->m_vh;
     a64::Vec *vdata = ctx->m_vdata;
 
+    SwsOp *prev = &ops->ops[-1];
     SwsOp &op = ops->ops[0];
     SwsOp *next = &ops->ops[1];
 
@@ -609,10 +610,58 @@ if (use_vh) {
             return AVERROR(ENOTSUP);
         }
         break;
-#if 0
     case SWS_OP_UNPACK:          /* split tightly packed data into components */
+        /* TODO this function is a mess */
+        {
+            int offsets[4] = {
+                op.pack.pattern[3] + op.pack.pattern[2] + op.pack.pattern[1],
+                op.pack.pattern[3] + op.pack.pattern[2],
+                op.pack.pattern[3],
+                0
+            };
+
+            use_vh = ((op.pack.type == SWS_PIXEL_U16) && next->vcount == 16)
+                  || ((op.pack.type == SWS_PIXEL_U32) && next->vcount == 8)
+                  || ((op.pack.type == SWS_PIXEL_F32) && next->vcount == 8);
+
+            /* Override op.comps.unused so that I can use LOOP_USED */
+            for (int i = 0; i < 4; i++) {
+                op.comps.unused[i] = !op.pack.pattern[i];
+            }
+
+            cc.comment("unpack");
+            save_vector(ctx, 0);
+            LOOP_USED(i) {
+                new_vector(ctx, i);
+                if (offsets[i]) {
+                    cc.ushr    (vop(*prev, vl[i]), vop(*prev, orig_vl[0]), offsets[i]);
+                    if (use_vh)
+                        cc.ushr(vop(*prev, vh[i]), vop(*prev, orig_vh[0]), offsets[i]);
+                } else {
+                    vl[i] = orig_vl[0];
+                    if (use_vh)
+                        vh[i] = orig_vh[0];
+                }
+            }
+            LOOP_USED(i) {
+                uint32_t mask = (1u << op.pack.pattern[i]) - 1;
+                a64::Vec vmask = cc.newVecQ();
+                if (mask <= 255) {
+                    cc.movi(vop(*prev, vmask), mask);
+                } else {
+                    a64::Gp rmask = cc.newGpz();
+                    cc.mov(rmask, (1 << op.pack.pattern[i]) - 1);
+                    cc.dup(vop(*prev, vmask), rmask);
+                }
+                cc.and_    (vl[i].b16(), vl[i].b16(), vmask.b16());
+                if (use_vh)
+                    cc.and_(vh[i].b16(), vh[i].b16(), vmask.b16());
+            }
+            /* TODO improve! */
+            if (op.type != op.pack.type && emit_convert(ctx, op, op.pack.type, op.type, false) < 0)
+                return AVERROR(ENOTSUP);
+        }
         break;
-#endif
     case SWS_OP_PACK:            /* compress components into tightly packed data */
         {
             int offsets[4] = {
