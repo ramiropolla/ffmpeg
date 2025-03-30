@@ -779,24 +779,12 @@ if (use_vh) {
                 }
 
                 cc.comment("convert+clamp");
-                refresh_vectors_used(ctx, op);
-                /* Convert from f32 to u32 */
-                LOOP_USED(i) {
-                    cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
-                    cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
-                }
-                /* Convert from u32 to u16 */
-                LOOP_USED(i) {
-                    cc.xtn(vl[i].h4(), vl[i].s4());
-                    cc.xtn(vh[i].h4(), vh[i].s4());
-                }
-                /* Merge vl and vh into vl */
-                LOOP_USED(i) {
-                    cc.ins(vl[i].d(1), vh[i].d(0));
-                }
+                if (emit_convert(ctx, op, SWS_PIXEL_U16, false) < 0)
+                    return AVERROR(ENOTSUP);
                 /* Saturating convert from u16 to u8 */
                 LOOP_USED(i) {
-                    cc.uqxtn(vl[i].b8(), vl[i].h8());
+                    refresh_vector(ctx, i);
+                    cc.uqxtn(vl[i].b8(), orig_vl[i].h8());
                 }
                 ops->ops++;
                 ops->num_ops--;
