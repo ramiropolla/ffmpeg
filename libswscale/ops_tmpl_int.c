@@ -464,8 +464,8 @@ DECL_ENTRY(swizzle_##X##Y##Z##W,                                                
     .swizzle = SWS_SWIZZLE(X, Y, Z, W),                                         \
 );
 
-DECL_SWIZZLE(0, 1, 2, 3)
 DECL_SWIZZLE(3, 0, 1, 2)
+DECL_SWIZZLE(3, 0, 2, 1)
 DECL_SWIZZLE(2, 1, 0, 3)
 DECL_SWIZZLE(3, 2, 1, 0)
 DECL_SWIZZLE(3, 1, 0, 2)
@@ -476,6 +476,7 @@ DECL_SWIZZLE(2, 0, 1, 3)
 DECL_SWIZZLE(2, 3, 1, 0)
 DECL_SWIZZLE(2, 1, 3, 0)
 DECL_SWIZZLE(1, 2, 3, 0)
+DECL_SWIZZLE(1, 3, 2, 0)
 DECL_SWIZZLE(0, 2, 1, 3)
 DECL_SWIZZLE(0, 2, 3, 1)
 DECL_SWIZZLE(0, 3, 1, 2)
@@ -575,8 +576,8 @@ static const SwsOpTable fn(op_table_int) = {
         fn(op_clear_0100),
         fn(op_clear_0010),
 
-        fn(op_swizzle_0123),
         fn(op_swizzle_3012),
+        fn(op_swizzle_3021),
         fn(op_swizzle_2103),
         fn(op_swizzle_3210),
         fn(op_swizzle_3102),
@@ -587,6 +588,7 @@ static const SwsOpTable fn(op_table_int) = {
         fn(op_swizzle_2310),
         fn(op_swizzle_2130),
         fn(op_swizzle_1230),
+        fn(op_swizzle_1320),
         fn(op_swizzle_0213),
         fn(op_swizzle_0231),
         fn(op_swizzle_0312),
