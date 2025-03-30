@@ -907,7 +907,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 #endif
         if (!(op.lin.mask & ~(0))) {
             /* noop */
-            return AVERROR(ENOTSUP);
+            break;
         } else if (!(op.lin.mask & ~(SWS_MASK_LUMA))) {
             /* Write const data after function */
             float fdata[4];
