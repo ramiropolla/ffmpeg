@@ -1199,15 +1199,6 @@ static SwsLinearOp fmt_decode_range(const SwsFormat fmt, bool *incomplete)
     return c;
 }
 
-/* Generates constant 0.5 */
-static AVRational *generate_round_matrix(void)
-{
-    AVRational *m = av_refstruct_allocz(sizeof(*m));
-    if (m)
-        *m = (AVRational) {1, 2};
-    return m;
-}
-
 static AVRational *generate_bayer_matrix(const int size_log2)
 {
     const int size = 1 << size_log2;
