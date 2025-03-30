@@ -451,8 +451,15 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
     a64::Vec *vh = ctx->m_vh;
     a64::Vec *vdata = ctx->m_vdata;
 
-    const SwsOp &op = ops->ops[0];
-    const SwsOp *next = &ops->ops[1];
+    SwsOp &op = ops->ops[0];
+    SwsOp *next = &ops->ops[1];
+
+    /* Optimize convert if followed by pack */
+    if (op.op == SWS_OP_CONVERT && next->op == SWS_OP_PACK && op.convert.to != next->pack.type) {
+        next->type = next->pack.type;
+        op.convert.to = next->pack.type;
+    }
+
     bool use_vh = ((op.type == SWS_PIXEL_U16) && op.vcount == 16)
                || ((op.type == SWS_PIXEL_U32) && op.vcount == 8)
                || ((op.type == SWS_PIXEL_F32) && op.vcount == 8);
@@ -606,9 +613,40 @@ if (use_vh) {
 #if 0
     case SWS_OP_UNPACK:          /* split tightly packed data into components */
         break;
-    case SWS_OP_PACK:            /* compress components into tightly packed data */
-        break;
 #endif
+    case SWS_OP_PACK:            /* compress components into tightly packed data */
+        {
+            int offsets[4] = {
+                op.pack.pattern[3] + op.pack.pattern[2] + op.pack.pattern[1],
+                op.pack.pattern[3] + op.pack.pattern[2],
+                op.pack.pattern[3],
+                0
+            };
+
+            use_vh = ((next->type == SWS_PIXEL_U16) && next->vcount == 16)
+                  || ((next->type == SWS_PIXEL_U32) && next->vcount == 8)
+                  || ((next->type == SWS_PIXEL_F32) && next->vcount == 8);
+
+            cc.comment("pack");
+            /* TODO ushll instead */
+            if (op.type != op.pack.type && emit_convert(ctx, op, op.pack.type, false) < 0)
+                return AVERROR(ENOTSUP);
+            LOOP_USED(i) {
+                if (offsets[i]) {
+                    cc.shl    (vop(*next, vl[i]), vop(*next, vl[i]), offsets[i]);
+                    if (use_vh)
+                        cc.shl(vop(*next, vh[i]), vop(*next, vh[i]), offsets[i]);
+                }
+            }
+            LOOP_USED(i) {
+                if (i != 0) {
+                    cc.orr    (vl[0].b16(), vl[0].b16(), vl[i].b16());
+                    if (use_vh)
+                        cc.orr(vh[0].b16(), vh[0].b16(), vh[i].b16());
+                }
+            }
+        }
+        break;
     /* Pixel manipulation */
     case SWS_OP_CLEAR:           /* clear pixel values */
         /* Create output vectors */
