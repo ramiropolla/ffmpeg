@@ -42,7 +42,8 @@ struct AsmJitContext {
     a64::Compiler *m_cc;
 
     FuncNode *m_func;
-    std::vector<BaseNode *> m_prologue;
+    BaseNode *m_prologue;
+    BaseNode *m_tail;
     a64::Gp m_exec;
     a64::Vec m_orig_vl[4];
     a64::Vec m_orig_vh[4];
@@ -59,12 +60,27 @@ struct AsmJitContext {
         a64::Compiler &cc = *m_cc;
         cc.addDiagnosticOptions(DiagnosticOptions::kRAAnnotate);
         m_func = cc.addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, uint8_t *, uint8_t *>());
+        m_prologue = cc.firstNode()->next();
+        m_tail = cc.cursor();
 #ifdef EMIT_BRK
+        to_prologue();
         cc.brk(0xf000);
-        m_prologue.push_back(cc.cursor());
+        from_prologue();
 #endif
         m_exec = cc.newGpz();
         m_func->setArg(0, m_exec);
+    }
+
+    void to_prologue(void)
+    {
+        a64::Compiler &cc = *m_cc;
+        m_tail = cc.setCursor(m_prologue);
+    }
+
+    void from_prologue(void)
+    {
+        a64::Compiler &cc = *m_cc;
+        m_prologue = cc.setCursor(m_tail);
     }
 };
 
@@ -86,13 +102,6 @@ static void *compile_end(void *_ctx)
     Error err;
 
     cc.ret();
-
-    // move prologue instructions
-    cc.setCursor(cc.firstNode()->next());
-    for (BaseNode *node: ctx->m_prologue) {
-        cc.removeNode(node);
-        cc.addNode(node);
-    }
 
     err = cc.endFunc();
     if (err) {
@@ -199,14 +208,12 @@ static void read_vdata(AsmJitContext *ctx, Label ldata, int count)
     }
 
     cc.adr(rdata, ldata);
-    ctx->m_prologue.push_back(cc.cursor());
     switch (count) {
     case 1: cc.ld1(vdata[0].b16(), a64::ptr(rdata)); break;
     case 2: cc.ld1(vdata[0].b16(), vdata[1].b16(), a64::ptr(rdata)); break;
     case 3: cc.ld1(vdata[0].b16(), vdata[1].b16(), vdata[2].b16(), a64::ptr(rdata)); break;
     case 4: cc.ld1(vdata[0].b16(), vdata[1].b16(), vdata[2].b16(), vdata[3].b16(), a64::ptr(rdata)); break;
     }
-    ctx->m_prologue.push_back(cc.cursor());
 }
 
 static inline uint32_t mask_from_i(int i)
@@ -457,14 +464,14 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
         cc.comment("read");
         if (!op.rw.packed) {
             /* Load input pointers in prologue */
+            ctx->to_prologue();
             cc.comment("prologue (read)");
-            ctx->m_prologue.push_back(cc.cursor());
             a64::Gp in[4];
             for (int i = 0; i < op.rw.elems; i++) {
                 in[i] = cc.newGpz();
                 cc.ldr(in[i], a64::ptr(exec, offsetof(SwsOpExec, in) + sizeof(uint8_t *) * i));
-                ctx->m_prologue.push_back(cc.cursor());
             }
+            ctx->from_prologue();
             /* Read vectors from input pointers */
             for (int i = 0; i < op.rw.elems; i++) {
                 if (use_vh)
@@ -474,11 +481,11 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
             }
         } else {
             /* Load input pointer in prologue */
+            ctx->to_prologue();
             cc.comment("prologue (read)");
-            ctx->m_prologue.push_back(cc.cursor());
             a64::Gp in = cc.newGpz();
             cc.ldr(in, a64::ptr(exec, offsetof(SwsOpExec, in)));
-            ctx->m_prologue.push_back(cc.cursor());
+            ctx->from_prologue();
             /* Read vectors from input pointer */
             switch (op.rw.elems) {
             case 1:
@@ -511,14 +518,14 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
         cc.comment("write");
         if (!op.rw.packed) {
             /* Load output pointers in prologue */
+            ctx->to_prologue();
             cc.comment("prologue (write)");
-            ctx->m_prologue.push_back(cc.cursor());
             a64::Gp out[4];
             for (int i = 0; i < op.rw.elems; i++) {
                 out[i] = cc.newGpz();
                 cc.ldr(out[i], a64::ptr(exec, offsetof(SwsOpExec, out) + sizeof(uint8_t *) * i));
-                ctx->m_prologue.push_back(cc.cursor());
             }
+            ctx->from_prologue();
             /* Write vectors to output pointers */
             for (int i = 0; i < op.rw.elems; i++) {
                 if (use_vh)
@@ -528,11 +535,11 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
             }
         } else {
             /* Load output pointer in prologue */
+            ctx->to_prologue();
             cc.comment("prologue (write)");
-            ctx->m_prologue.push_back(cc.cursor());
             a64::Gp out = cc.newGpz();
             cc.ldr(out, a64::ptr(exec, offsetof(SwsOpExec, out)));
-            ctx->m_prologue.push_back(cc.cursor());
+            ctx->from_prologue();
             /* Write vectors to output pointer */
             switch (op.rw.elems) {
             case 1:
@@ -638,9 +645,10 @@ if (use_vh) {
             Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
             /* Read matrix data into vectors */
+            ctx->to_prologue();
             cc.comment("prologue (clear)");
-            ctx->m_prologue.push_back(cc.cursor());
             read_vdata(ctx, ldata, 1);
+            ctx->from_prologue();
 
             /* Do the salmon dance */
             cc.comment("clear (f32)");
@@ -856,9 +864,10 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
             /* Read matrix data into vectors */
+            ctx->to_prologue();
             cc.comment("prologue (linear)");
-            ctx->m_prologue.push_back(cc.cursor());
             read_vdata(ctx, ldata, 3);
+            ctx->from_prologue();
 
             /* Do the salmon dance */
             cc.comment("linear (matrix3+off3)");
@@ -901,9 +910,10 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
             /* Read matrix data into vectors */
+            ctx->to_prologue();
             cc.comment("prologue (linear)");
-            ctx->m_prologue.push_back(cc.cursor());
             read_vdata(ctx, ldata, 1);
+            ctx->from_prologue();
 
             /* Do the salmon dance */
             cc.comment("linear (dot3)");
@@ -927,14 +937,13 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             Label ldata = emit_data(ctx, fdata, sizeof(fdata));
 
             /* Read matrix data into vectors */
+            ctx->to_prologue();
             cc.comment("prologue (linear)");
-            ctx->m_prologue.push_back(cc.cursor());
             vdata[0] = cc.newVecQ();
             a64::Gp rdata = cc.newGpz();
             cc.adr(rdata, ldata);
-            ctx->m_prologue.push_back(cc.cursor());
             cc.ld1r(vdata[0].s4(), a64::ptr(rdata));
-            ctx->m_prologue.push_back(cc.cursor());
+            ctx->from_prologue();
 
             /* Do the salmon dance */
             cc.comment("scale");
