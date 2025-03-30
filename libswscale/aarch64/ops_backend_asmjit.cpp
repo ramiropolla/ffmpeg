@@ -791,7 +791,7 @@ if (use_vh) {
                     return AVERROR(ENOTSUP);
                 /* Saturating convert from u16 to u8 */
                 LOOP_USED(i) {
-                    refresh_vector(ctx, i);
+                    refresh_vector(ctx, i, 0x0f);
                     cc.uqxtn(vl[i].b8(), orig_vl[i].h8());
                 }
                 ops->ops++;
