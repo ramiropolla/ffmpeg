@@ -598,16 +598,27 @@ if (use_vh) {
         {
             SwsPixelType from = op.type;
             SwsPixelType to = op.convert.to;
+            int from_size = ff_sws_pixel_type_size(from);
+            int to_size   = ff_sws_pixel_type_size(to);
+
+            if (from == SWS_PIXEL_F32) {
+                cc.comment("convert (f32 -> u32)");
+                LOOP_USED(i) {
+                    refresh_vector(ctx, i);
+                    cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
+                    cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
+                }
+            }
 
             if (op.convert.expand) {
-                if        (from == SWS_PIXEL_U8 && to == SWS_PIXEL_U16 && vcount == 8) {
+                if        (from_size == 1 && to_size == 2 && vcount == 8) {
                     cc.comment("convert (u8 -> u16, expand, 8)");
                     /* Convert 8 from u8 to u16 (expand) */
                     LOOP_USED(i) {
                         refresh_vector(ctx, i, 0x0f);
                         cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                     }
-                } else if (from == SWS_PIXEL_U8 && to == SWS_PIXEL_U16 && vcount == 16) {
+                } else if (from_size == 1 && to_size == 2 && vcount == 16) {
                     cc.comment("convert (u8 -> u16, expand, 16)");
                     /* Convert 16 from u8 to u16 (expand) */
                     LOOP_USED(i) {
@@ -620,14 +631,14 @@ if (use_vh) {
                     return AVERROR(ENOTSUP);
                 }
             } else {
-                if        (from == SWS_PIXEL_U8 && to == SWS_PIXEL_U16 && vcount == 8) {
+                if        (from_size == 1 && to_size == 2 && vcount == 8) {
                     cc.comment("convert (u8 -> u16, !expand, 8)");
                     /* Convert 8 from u8 to u16 (no expand) */
                     LOOP_USED(i) {
                         refresh_vector(ctx, i, 0x0f);
                         cc.uxtl(vl[i].h8(), orig_vl[i].b8());
                     }
-                } else if (from == SWS_PIXEL_U8 && to == SWS_PIXEL_U16 && vcount == 16) {
+                } else if (from_size == 1 && to_size == 2 && vcount == 16) {
                     cc.comment("convert (u8 -> u16, !expand, 16)");
                     /* Convert 16 from u8 to u16 (no expand) */
                     LOOP_USED(i) {
@@ -636,8 +647,8 @@ if (use_vh) {
                         cc.uxtl (vl[i].h8(), orig_vl[i].b8());
                         cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
                     }
-                } else if (from == SWS_PIXEL_U8 && to == SWS_PIXEL_F32 && vcount == 8) {
-                    cc.comment("convert (u8 -> f32, !expand, 8)");
+                } else if (from_size == 1 && to_size == 4 && vcount == 8) {
+                    cc.comment("convert (u8 -> u32, !expand, 8)");
                     /* Convert 8 from u8 to u16 (no expand) */
                     LOOP_USED(i) {
                         refresh_vector(ctx, i, 0x0f);
@@ -650,14 +661,8 @@ if (use_vh) {
                         cc.uxtl (vl[i].s4(), orig_vl[i].h4());
                         cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
                     }
-                    /* Convert from u32 to f32 */
-                    LOOP_USED(i) {
-                        refresh_vector(ctx, i);
-                        cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
-                        cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
-                    }
-                } else if (from == SWS_PIXEL_U16 && to == SWS_PIXEL_F32 && vcount == 8) {
-                    cc.comment("convert (u16 -> f32, !expand, 8)");
+                } else if (from_size == 2 && to_size == 4 && vcount == 8) {
+                    cc.comment("convert (u16 -> u32, !expand, 8)");
                     /* Convert 8 from u16 to u32 (no expand) */
                     LOOP_USED(i) {
                         save_vector(ctx, i, 0x0f);
@@ -665,20 +670,8 @@ if (use_vh) {
                         cc.uxtl (vl[i].s4(), orig_vl[i].h4());
                         cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
                     }
-                    /* Convert from u32 to f32 */
-                    LOOP_USED(i) {
-                        refresh_vector(ctx, i);
-                        cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
-                        cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
-                    }
-                } else if (from == SWS_PIXEL_F32 && to == SWS_PIXEL_U8 && vcount == 8) {
-                    cc.comment("convert (f32 -> u8, !expand, 8)");
-                    /* Convert from f32 to u32 */
-                    LOOP_USED(i) {
-                        refresh_vector(ctx, i);
-                        cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
-                        cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
-                    }
+                } else if (from_size == 4 && to_size == 1 && vcount == 8) {
+                    cc.comment("convert (u32 -> u8, !expand, 8)");
                     /* Convert from u32 to u16 */
                     LOOP_USED(i) {
                         refresh_vector(ctx, i);
@@ -693,14 +686,8 @@ if (use_vh) {
                     LOOP_USED(i) {
                         cc.xtn(vl[i].b8(), vl[i].h8());
                     }
-                } else if (from == SWS_PIXEL_F32 && to == SWS_PIXEL_U16 && vcount == 8) {
-                    cc.comment("convert (f32 -> u16, !expand, 8)");
-                    /* Convert from f32 to u32 */
-                    LOOP_USED(i) {
-                        refresh_vector(ctx, i);
-                        cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
-                        cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
-                    }
+                } else if (from_size == 4 && to_size == 2 && vcount == 8) {
+                    cc.comment("convert (u32 -> u16, !expand, 8)");
                     /* Convert from u32 to u16 */
                     LOOP_USED(i) {
                         refresh_vector(ctx, i);
@@ -713,6 +700,15 @@ if (use_vh) {
                     }
                 } else {
                     return AVERROR(ENOTSUP);
+                }
+            }
+
+            if (to == SWS_PIXEL_F32) {
+                cc.comment("convert (f32 -> u32)");
+                LOOP_USED(i) {
+                    refresh_vector(ctx, i);
+                    cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
+                    cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
                 }
             }
         }
