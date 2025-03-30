@@ -452,9 +452,11 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
     a64::Vec *vdata = ctx->m_vdata;
 
     const SwsOp &op = ops->ops[0];
+    const SwsOp *next = &ops->ops[1];
     bool use_vh = ((op.type == SWS_PIXEL_U16) && op.vcount == 16)
                || ((op.type == SWS_PIXEL_U32) && op.vcount == 8)
                || ((op.type == SWS_PIXEL_F32) && op.vcount == 8);
+
     switch (op.op) {
     /* Input/output handling */
     case SWS_OP_READ:            /* gather raw pixels from planes */
@@ -778,28 +780,43 @@ if (use_vh) {
         }
         break;
     case SWS_OP_CLAMP:           /* clamp pixel values to value range */
-        {
-            const SwsOp *next = &ops->ops[1];
-            if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U8) {
-                LOOP_USED(i) {
-                    if (av_cmp_q(op.clamp.max[i], (AVRational) {255, 1}) != 0)
-                        goto normal_clamp;
-                }
-
-                cc.comment("convert+clamp");
-                if (emit_convert(ctx, op, SWS_PIXEL_U16, false) < 0)
-                    return AVERROR(ENOTSUP);
-                /* Saturating convert from u16 to u8 */
-                LOOP_USED(i) {
-                    refresh_vector(ctx, i, 0x0f);
-                    cc.uqxtn(vl[i].b8(), orig_vl[i].h8());
-                }
-                ops->ops++;
-                ops->num_ops--;
-                break;
+        if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U8) {
+            LOOP_USED(i) {
+                if (av_cmp_q(op.clamp.max[i], (AVRational) {255, 1}) != 0)
+                    goto normal_clamp;
             }
-        }
-        {
+
+            cc.comment("convert+clamp");
+            if (emit_convert(ctx, op, SWS_PIXEL_U16, false) < 0)
+                return AVERROR(ENOTSUP);
+            /* Saturating convert from u16 to u8 */
+            LOOP_USED(i) {
+                refresh_vector(ctx, i, 0x0f);
+                cc.uqxtn(vl[i].b8(), orig_vl[i].h8());
+            }
+            ops->ops++;
+            ops->num_ops--;
+        } else if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U16) {
+            LOOP_USED(i) {
+                if (av_cmp_q(op.clamp.max[i], (AVRational) {65535, 1}) != 0)
+                    goto normal_clamp;
+            }
+
+            cc.comment("convert+clamp");
+            if (emit_convert(ctx, op, SWS_PIXEL_U32, false) < 0)
+                return AVERROR(ENOTSUP);
+            /* Saturating convert from u32 to u16 */
+            LOOP_USED(i) {
+                refresh_vector(ctx, i);
+                cc.uqxtn(vl[i].h4(), orig_vl[i].s4());
+                cc.uqxtn(vh[i].h4(), orig_vh[i].s4());
+            }
+            LOOP_USED(i) {
+                cc.ins(vl[i].d(1), vh[i].d(0));
+            }
+            ops->ops++;
+            ops->num_ops--;
+        } else {
 normal_clamp:
             cc.comment("clamp");
             a64::Vec vmin = cc.newVecQ();
