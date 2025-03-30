@@ -631,75 +631,70 @@ if (use_vh) {
                     return AVERROR(ENOTSUP);
                 }
             } else {
-                if        (from_size == 1 && to_size == 2 && vcount == 8) {
+                if (from_size == 1 && to_size > from_size && vcount == 8) {
                     cc.comment("convert (u8 -> u16, !expand, 8)");
-                    /* Convert 8 from u8 to u16 (no expand) */
                     LOOP_USED(i) {
                         refresh_vector(ctx, i, 0x0f);
                         cc.uxtl(vl[i].h8(), orig_vl[i].b8());
                     }
-                } else if (from_size == 1 && to_size == 2 && vcount == 16) {
+                    from_size = 2;
+                }
+
+                if (from_size == 1 && to_size > from_size && vcount == 16) {
                     cc.comment("convert (u8 -> u16, !expand, 16)");
-                    /* Convert 16 from u8 to u16 (no expand) */
                     LOOP_USED(i) {
                         save_vector(ctx, i, 0x0f);
                         new_vector(ctx, i);
                         cc.uxtl (vl[i].h8(), orig_vl[i].b8());
                         cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
                     }
-                } else if (from_size == 1 && to_size == 4 && vcount == 8) {
-                    cc.comment("convert (u8 -> u32, !expand, 8)");
-                    /* Convert 8 from u8 to u16 (no expand) */
+                    from_size = 2;
+                }
+
+                if (from_size == 2 && to_size > from_size && vcount == 8) {
+                    cc.comment("convert (u16 -> u32, !expand, 8)");
+                    LOOP_USED(i) {
+                        save_vector(ctx, i, 0x0f);
+                        new_vector(ctx, i);
+                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
+                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
+                    }
+                    from_size = 4;
+                }
+
+                if (from_size == 4 && to_size < from_size && vcount == 8) {
+                    cc.comment("convert (u32 -> u16, !expand, 8)");
+                    LOOP_USED(i) {
+                        refresh_vector(ctx, i);
+                        cc.xtn(vl[i].h4(), orig_vl[i].s4());
+                        cc.xtn(vh[i].h4(), orig_vh[i].s4());
+                    }
+                    LOOP_USED(i) {
+                        cc.ins(vl[i].d(1), vh[i].d(0));
+                    }
+                    from_size = 2;
+                }
+
+                if (from_size == 2 && to_size == 1 && vcount == 8) {
+                    cc.comment("convert (u16 -> u8, !expand, 8)");
                     LOOP_USED(i) {
                         refresh_vector(ctx, i, 0x0f);
-                        cc.uxtl(vl[i].h8(), orig_vl[i].b8());
+                        cc.xtn(vl[i].b8(), orig_vl[i].h8());
                     }
-                    /* Convert 8 from u16 to u32 (no expand) */
-                    LOOP_USED(i) {
-                        save_vector(ctx, i, 0x0f);
-                        new_vector(ctx, i);
-                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
-                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
-                    }
-                } else if (from_size == 2 && to_size == 4 && vcount == 8) {
-                    cc.comment("convert (u16 -> u32, !expand, 8)");
-                    /* Convert 8 from u16 to u32 (no expand) */
-                    LOOP_USED(i) {
-                        save_vector(ctx, i, 0x0f);
-                        new_vector(ctx, i);
-                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
-                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
-                    }
-                } else if (from_size == 4 && to_size == 1 && vcount == 8) {
-                    cc.comment("convert (u32 -> u8, !expand, 8)");
-                    /* Convert from u32 to u16 */
+                    from_size = 1;
+                }
+
+                if (from_size == 2 && to_size == 1 && vcount == 16) {
+                    cc.comment("convert (u16 -> u8, !expand, 16)");
                     LOOP_USED(i) {
                         refresh_vector(ctx, i);
-                        cc.xtn(vl[i].h4(), orig_vl[i].s4());
-                        cc.xtn(vh[i].h4(), orig_vh[i].s4());
+                        cc.xtn(vl[i].b8(), orig_vl[i].h8());
+                        cc.xtn(vh[i].b8(), orig_vh[i].h8());
                     }
-                    /* Merge vl and vh into vl */
                     LOOP_USED(i) {
                         cc.ins(vl[i].d(1), vh[i].d(0));
                     }
-                    /* Convert from u16 to u8 */
-                    LOOP_USED(i) {
-                        cc.xtn(vl[i].b8(), vl[i].h8());
-                    }
-                } else if (from_size == 4 && to_size == 2 && vcount == 8) {
-                    cc.comment("convert (u32 -> u16, !expand, 8)");
-                    /* Convert from u32 to u16 */
-                    LOOP_USED(i) {
-                        refresh_vector(ctx, i);
-                        cc.xtn(vl[i].h4(), orig_vl[i].s4());
-                        cc.xtn(vh[i].h4(), orig_vh[i].s4());
-                    }
-                    /* Merge vl and vh into vl */
-                    LOOP_USED(i) {
-                        cc.ins(vl[i].d(1), vh[i].d(0));
-                    }
-                } else {
-                    return AVERROR(ENOTSUP);
+                    from_size = 1;
                 }
             }
 
