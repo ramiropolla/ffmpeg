@@ -647,8 +647,9 @@ if (use_vh) {
                 }
                 /* Convert from u32 to f32 */
                 LOOP_USED(i) {
-                    cc.ucvtf(vl[i].s4(), vl[i].s4());
-                    cc.ucvtf(vh[i].s4(), vh[i].s4());
+                    refresh_vector(ctx, i);
+                    cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
+                    cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
                 }
             } else if (from == SWS_PIXEL_U16 && to == SWS_PIXEL_F32 && !op.convert.expand && vcount == 8) {
                 cc.comment("convert (u16 -> f32, !expand, 8)");
@@ -661,8 +662,9 @@ if (use_vh) {
                 }
                 /* Convert from u32 to f32 */
                 LOOP_USED(i) {
-                    cc.ucvtf(vl[i].s4(), vl[i].s4());
-                    cc.ucvtf(vh[i].s4(), vh[i].s4());
+                    refresh_vector(ctx, i);
+                    cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
+                    cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
                 }
             } else if (from == SWS_PIXEL_F32 && to == SWS_PIXEL_U8 && !op.convert.expand && vcount == 8) {
                 cc.comment("convert (f32 -> u8, !expand, 8)");
@@ -674,8 +676,9 @@ if (use_vh) {
                 }
                 /* Convert from u32 to u16 */
                 LOOP_USED(i) {
-                    cc.xtn(vl[i].h4(), vl[i].s4());
-                    cc.xtn(vh[i].h4(), vh[i].s4());
+                    refresh_vector(ctx, i);
+                    cc.xtn(vl[i].h4(), orig_vl[i].s4());
+                    cc.xtn(vh[i].h4(), orig_vh[i].s4());
                 }
                 /* Merge vl and vh into vl */
                 LOOP_USED(i) {
@@ -695,8 +698,9 @@ if (use_vh) {
                 }
                 /* Convert from u32 to u16 */
                 LOOP_USED(i) {
-                    cc.xtn(vl[i].h4(), vl[i].s4());
-                    cc.xtn(vh[i].h4(), vh[i].s4());
+                    refresh_vector(ctx, i);
+                    cc.xtn(vl[i].h4(), orig_vl[i].s4());
+                    cc.xtn(vh[i].h4(), orig_vh[i].s4());
                 }
                 /* Merge vl and vh into vl */
                 LOOP_USED(i) {
