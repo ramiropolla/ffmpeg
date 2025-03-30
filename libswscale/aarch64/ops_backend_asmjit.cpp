@@ -931,8 +931,25 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             cc.fmla(vl[0].s4(), orig_vl[0].s4(), vdata[0].s(1));
             cc.fmla(vh[0].s4(), orig_vh[0].s4(), vdata[0].s(1));
         } else if (!(op.lin.mask & ~(SWS_MASK_ALPHA))) {
-            /* alpha */
-            return AVERROR(ENOTSUP);
+            /* Write const data after function */
+            float fdata[1];
+            fdata[0] = av_q2d(op.lin.m[3][3]);
+            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
+
+            /* Read matrix data into vectors */
+            ctx->to_prologue();
+            cc.comment("prologue (linear)");
+            vdata[0] = cc.newVecQ();
+            a64::Gp rdata = cc.newGpz();
+            cc.adr(rdata, ldata);
+            cc.ld1r(vdata[0].s4(), a64::ptr(rdata));
+            ctx->from_prologue();
+
+            /* Do the salmon dance */
+            cc.comment("linear (alpha)");
+            refresh_vector(ctx, 3);
+            cc.fmul(vl[3].s4(), orig_vl[3].s4(), vdata[0].s4());
+            cc.fmul(vh[3].s4(), orig_vh[3].s4(), vdata[0].s4());
         } else if (!(op.lin.mask & ~(SWS_MASK_LUMA | SWS_MASK_ALPHA))) {
             /* luma+alpha */
             return AVERROR(ENOTSUP);
