@@ -1439,7 +1439,9 @@ typedef struct SwsOpPass {
     SwsOpExec exec_base;
     int pixel_bits_in;
     int pixel_bits_out;
-    int aligned_w;  /* aligned to multiple of block width */
+    int safe_w_in;
+    int safe_w_out;
+    int aligned_w;
 } SwsOpPass;
 
 static void op_pass_reset(SwsOpPass *p)
@@ -1483,9 +1485,9 @@ static void op_pass_setup(const SwsImg *out, const SwsImg *in, const SwsPass *pa
     const int w = pass->width;
 
     /* Set up main loop parameters */
+    p->safe_w_in  = safe_width(in,  p->pixel_bits_in);
+    p->safe_w_out = safe_width(out, p->pixel_bits_out);
     p->aligned_w = (w + exec->block_w - 1) / exec->block_w * exec->block_w;
-    if (p->aligned_w > safe_width(out, p->pixel_bits_out))
-        p->aligned_w -= exec->block_w; /* need to handle last column separately */
 
     for (int i = 0; i < 4; i++) {
         exec->in_stride[i]  = in->linesize[i];
@@ -1493,16 +1495,93 @@ static void op_pass_setup(const SwsImg *out, const SwsImg *in, const SwsPass *pa
     }
 }
 
+/* Dispatch kernel over the "main" part of the image, no extra padding */
 static av_always_inline void
-op_pass_run(const SwsImg *out_base, const SwsImg *in_base,
-            const int y_start, const int h, const SwsPass *pass)
+run_main(const SwsOpPass *p, const SwsImg *out_base, const SwsImg *in_base,
+         const int y_start, const int y_end, const int x_end)
 {
-    const SwsOpPass *p = pass->priv;
-    const SwsFunc entry = p->chain.entry;
-    const SwsOpImpl *const impl = p->chain.impl;
 
+    const SwsOpImpl *const impl = p->chain.impl;
+    const SwsFunc entry = p->chain.entry;
     SwsOpExec exec = p->exec_base;
 
+    const ptrdiff_t block_step_in  = (exec.block_w * p->pixel_bits_in)  >> 3;
+    const ptrdiff_t block_step_out = (exec.block_w * p->pixel_bits_out) >> 3;
+
+    for (exec.y = y_start; exec.y < y_end; exec.y += exec.block_h) {
+        const SwsImg in  = ff_sws_img_shift(*in_base,  exec.y);
+        const SwsImg out = ff_sws_img_shift(*out_base, exec.y);
+        for (int i = 0; i < 4; i++) {
+            exec.in[i] = in.data[i];
+            exec.out[i] = out.data[i];
+        }
+
+        for (exec.x = 0; exec.x < x_end; exec.x += exec.block_w) {
+            entry(&exec, impl);
+
+            for (int i = 0; i < 4; i++) {
+                exec.in[i]  += block_step_in;
+                exec.out[i] += block_step_out;
+            }
+        }
+    }
+}
+
+
+/* Dispatch kernel over the last column part of the image using memcpy
+ * into a padded buffer */
+static av_always_inline void
+run_tail(const SwsOpPass *p, const SwsImg *out_base, const bool copy_out,
+         const SwsImg *in_base, const bool copy_in, const int y_start,
+         const int y_end, const int x_tail)
+{
+    const SwsOpImpl *const impl = p->chain.impl;
+    const SwsFunc entry = p->chain.entry;
+    SwsOpExec exec = p->exec_base;
+
+    const int offset_in  = x_tail * p->pixel_bits_in  >> 3;
+    const int offset_out = x_tail * p->pixel_bits_out >> 3;
+    const int rest_w     = exec.w - x_tail;
+    const int rest_size  = (rest_w * p->pixel_bits_in + 7) >> 3;
+
+    DECLARE_ALIGNED_64(uint8_t, tmp)[2][4][64];
+
+    exec.x = x_tail;
+    for (int i = 0; i < 4; i++) {
+        if (copy_in) {
+            exec.in[i] = tmp[0][i];
+            exec.in_stride[i] = 64;
+        }
+        if (copy_out) {
+            exec.out[i] = tmp[1][i];
+            exec.out_stride[i] = 64;
+        }
+    }
+
+    for (exec.y = y_start; exec.y < y_end; exec.y += exec.block_h) {
+        SwsImg in  = ff_sws_img_shift(*in_base,  exec.y);
+        SwsImg out = ff_sws_img_shift(*out_base, exec.y);
+        for (int i = 0; i < 4; i++) {
+            if (!copy_in)
+                exec.in[i] = in.data[i] + offset_in;
+            if (!copy_out)
+                exec.out[i] = out.data[i] + offset_out;
+        }
+
+        for (int i = 0; copy_in && in.data[i] && i < 4; i++)
+            memcpy(tmp[0][i], in.data[i] + offset_in, rest_size);
+
+        entry(&exec, impl);
+
+        for (int i = 0; copy_out && out.data[i] && i < 4; i++)
+            memcpy(out.data[i], tmp[1][i] + offset_out, rest_size);
+    }
+}
+
+static av_always_inline void
+op_pass_run(const SwsImg *out, const SwsImg *in, const int y, const int h,
+            const SwsPass *pass)
+{
     /**
      *  To ensure safety, we need to consider the following:
      *
@@ -1520,61 +1599,30 @@ op_pass_run(const SwsImg *out_base, const SwsImg *in_base,
      *    need to worry about this for the end of a slice.
      */
 
-    /* Process main/safe part of image with direct I/O */
-    const int last_slice = y_start + h == pass->height;
-    const bool in_unpadded = p->aligned_w > safe_width(in_base, p->pixel_bits_in);
-    const int safe_h = last_slice && in_unpadded ? h - 1 : h;
-    const int aligned_h = safe_h / exec.block_h * exec.block_h; /* round down */
-    const int y_end = y_start + aligned_h;
-    const ptrdiff_t block_step_in  = (exec.block_w * p->pixel_bits_in)  >> 3;
-    const ptrdiff_t block_step_out = (exec.block_w * p->pixel_bits_out) >> 3;
-    for (exec.y = y_start; exec.y < y_end; exec.y += exec.block_h) {
-        const SwsImg in  = ff_sws_img_shift(*in_base,  exec.y);
-        const SwsImg out = ff_sws_img_shift(*out_base, exec.y);
-        for (int i = 0; i < 4; i++) {
-            exec.in[i] = in.data[i];
-            exec.out[i] = out.data[i];
-        }
+    const SwsOpPass *p = pass->priv;
+    const int last_slice = y + h == pass->height;
+    const bool in_unpadded = last_slice && p->aligned_w > p->safe_w_in;
+    const bool out_unpadded = p->aligned_w > p->safe_w_out;
+    const int block_w = p->exec_base.block_w;
+    const int block_h = 1; /* = p->exec_base.block_h; not currently needed */
+    const int aligned_h = h / block_h * block_h; /* round down */
+    const int x_end = p->aligned_w;
+    const int y_end = y + aligned_h;
+    const int y_end_safe = y_end - block_h;
+    const int x_end_safe = x_end - block_w;
+    av_assert0(block_h == p->exec_base.block_h);
 
-        for (exec.x = 0; exec.x < p->aligned_w; exec.x += exec.block_w) {
-            entry(&exec, impl);
-
-            for (int i = 0; i < 4; i++) {
-                exec.in[i]  += block_step_in;
-                exec.out[i] += block_step_out;
-            }
-        }
-    }
-
-    if (pass->width > p->aligned_w) {
-        /* Output is not padded to a multiple of the block width, process the
-         * last column separately using an intermediate buffer */
-        const ptrdiff_t x_base = p->aligned_w * p->pixel_bits_out >> 3;
-        const int rest_w = pass->width - p->aligned_w;
-
-        DECLARE_ALIGNED_64(uint8_t, buffer)[4][64];
-        av_assert1(block_step_out <= FF_ARRAY_ELEMS(buffer[0]));
-
-        exec.x = p->aligned_w;
-        for (int i = 0; i < 4; i++)
-            exec.out[i] = buffer[i];
-
-        for (exec.y = y_start; exec.y < y_end; exec.y += exec.block_h) {
-            const SwsImg in  = ff_sws_img_shift(*in_base,  exec.y);
-            const SwsImg out = ff_sws_img_shift(*out_base, exec.y);
-            for (int i = 0; i < 4; i++)
-                exec.in[i] = in.data[i] + x_base;
-
-            entry(&exec, impl);
-            for (int i = 0; out.data[i] && i < 4; i++)
-                memcpy(out.data[i] + x_base, buffer[i], rest_w);
-        }
-    }
-
-    if (h > aligned_h) {
-        /* Input is not padded to a multiple of the (aligned) block height,
-         * process the entire last row separately */
-        abort(); /* TODO */
+    if (out_unpadded) {
+        /* Run last column separately */
+        run_main(p, out, in, y, y_end, x_end_safe);
+        run_tail(p, out, true, in, in_unpadded, y, y_end, x_end_safe);
+    } else if (in_unpadded) {
+        /* Run last row separately */
+        run_main(p, out, in, y, y_end_safe, x_end);
+        run_main(p, out, in, y_end_safe, y_end, x_end_safe);
+        run_tail(p, out, false, in, true, y_end_safe, y_end, x_end_safe);
+    } else {
+        run_main(p, out, in, y, y_end, x_end);
     }
 }
 
