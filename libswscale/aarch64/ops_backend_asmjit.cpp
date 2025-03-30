@@ -273,6 +273,11 @@ static void new_vectors_count(AsmJitContext *ctx, int count)
     new_vectors_mask(ctx, mask_from_count(count));
 }
 
+static void new_vector(AsmJitContext *ctx, int i, int mask = 0xff)
+{
+    new_vectors_mask(ctx, mask_from_i(i) & mask);
+}
+
 static void save_vectors_used(AsmJitContext *ctx, const SwsOp &op)
 {
     save_vectors_mask(ctx, mask_from_used(op));
@@ -281,6 +286,11 @@ static void save_vectors_used(AsmJitContext *ctx, const SwsOp &op)
 static void save_vectors_count(AsmJitContext *ctx, int count)
 {
     save_vectors_mask(ctx, mask_from_count(count));
+}
+
+static void save_vector(AsmJitContext *ctx, int i, int mask = 0xff)
+{
+    save_vectors_mask(ctx, mask_from_i(i) & mask);
 }
 
 static void refresh_vectors_mask(AsmJitContext *ctx, uint32_t mask)
@@ -297,6 +307,11 @@ static void refresh_vectors_used(AsmJitContext *ctx, const SwsOp &op)
 static void refresh_vectors_count(AsmJitContext *ctx, int count)
 {
     refresh_vectors_mask(ctx, mask_from_count(count));
+}
+
+static void refresh_vector(AsmJitContext *ctx, int i, int mask = 0xff)
+{
+    refresh_vectors_mask(ctx, mask_from_i(i) & mask);
 }
 
 static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
@@ -584,24 +599,26 @@ if (use_vh) {
             SwsPixelType from = op.type;
             SwsPixelType to = op.convert.to;
 
-            refresh_vectors_used(ctx, op);
-
             if        (from == SWS_PIXEL_U8 && to == SWS_PIXEL_U16 && op.convert.expand && vcount == 8) {
                 cc.comment("convert (u8 -> u16, expand, 8)");
                 /* Convert 8 from u8 to u16 (expand) */
                 LOOP_USED(i) {
+                    refresh_vector(ctx, i, 0x0f);
                     cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                 }
             } else if (from == SWS_PIXEL_U8 && to == SWS_PIXEL_U16 && !op.convert.expand && vcount == 8) {
                 cc.comment("convert (u8 -> u16, !expand, 8)");
                 /* Convert 8 from u8 to u16 (no expand) */
                 LOOP_USED(i) {
+                    refresh_vector(ctx, i, 0x0f);
                     cc.uxtl(vl[i].h8(), orig_vl[i].b8());
                 }
             } else if (from == SWS_PIXEL_U8 && to == SWS_PIXEL_U16 && op.convert.expand && vcount == 16) {
                 cc.comment("convert (u8 -> u16, expand, 16)");
                 /* Convert 16 from u8 to u16 (expand) */
                 LOOP_USED(i) {
+                    save_vector(ctx, i, 0x0f);
+                    new_vector(ctx, i);
                     cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                     cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                 }
@@ -609,6 +626,8 @@ if (use_vh) {
                 cc.comment("convert (u8 -> u16, !expand, 16)");
                 /* Convert 16 from u8 to u16 (no expand) */
                 LOOP_USED(i) {
+                    save_vector(ctx, i, 0x0f);
+                    new_vector(ctx, i);
                     cc.uxtl (vl[i].h8(), orig_vl[i].b8());
                     cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
                 }
@@ -616,10 +635,13 @@ if (use_vh) {
                 cc.comment("convert (u8 -> f32, !expand, 8)");
                 /* Convert 8 from u8 to u16 (no expand) */
                 LOOP_USED(i) {
-                    cc.uxtl(orig_vl[i].h8(), orig_vl[i].b8());
+                    refresh_vector(ctx, i, 0x0f);
+                    cc.uxtl(vl[i].h8(), orig_vl[i].b8());
                 }
                 /* Convert 8 from u16 to u32 (no expand) */
                 LOOP_USED(i) {
+                    save_vector(ctx, i, 0x0f);
+                    new_vector(ctx, i);
                     cc.uxtl (vl[i].s4(), orig_vl[i].h4());
                     cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
                 }
@@ -632,6 +654,8 @@ if (use_vh) {
                 cc.comment("convert (u16 -> f32, !expand, 8)");
                 /* Convert 8 from u16 to u32 (no expand) */
                 LOOP_USED(i) {
+                    save_vector(ctx, i, 0x0f);
+                    new_vector(ctx, i);
                     cc.uxtl (vl[i].s4(), orig_vl[i].h4());
                     cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
                 }
@@ -644,6 +668,7 @@ if (use_vh) {
                 cc.comment("convert (f32 -> u8, !expand, 8)");
                 /* Convert from f32 to u32 */
                 LOOP_USED(i) {
+                    refresh_vector(ctx, i);
                     cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
                     cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
                 }
@@ -664,6 +689,7 @@ if (use_vh) {
                 cc.comment("convert (f32 -> u16, !expand, 8)");
                 /* Convert from f32 to u32 */
                 LOOP_USED(i) {
+                    refresh_vector(ctx, i);
                     cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
                     cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
                 }
