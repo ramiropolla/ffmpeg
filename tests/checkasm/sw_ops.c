@@ -425,8 +425,8 @@ static void check_swizzle(void)
         const char *type = ff_sws_pixel_type_name(t);
         static const int patterns[][4] = {
             /* Pure swizzle */
-            {0, 1, 2, 3},
             {3, 0, 1, 2},
+            {3, 0, 2, 1},
             {2, 1, 0, 3},
             {3, 2, 1, 0},
             {3, 1, 0, 2},
@@ -437,6 +437,7 @@ static void check_swizzle(void)
             {2, 3, 1, 0},
             {2, 1, 3, 0},
             {1, 2, 3, 0},
+            {1, 3, 2, 0},
             {0, 2, 1, 3},
             {0, 2, 3, 1},
             {0, 3, 1, 2},
