@@ -1059,7 +1059,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
         }
         break;
     case SWS_OP_SCALE:           /* multiplication by scalar */
-        {
+        if (op.type == SWS_PIXEL_F32) {
             /* Write const data after function */
             float fdata[1];
             fdata[0] = av_q2d(op.scale.factor);
@@ -1075,12 +1075,27 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             ctx->from_prologue();
 
             /* Do the salmon dance */
-            cc.comment("scale");
+            cc.comment("scale (f32)");
             refresh_vectors_used(ctx, op);
             LOOP_USED(i) {
                 cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata[0].s4());
                 cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[0].s4());
             }
+        } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+            cc.comment("scale (integer)");
+
+            int32_t factor = op.scale.factor.num / op.scale.factor.den;
+            vdata[0] = cc.newVecQ();
+            cc.movi(vop(op, vdata[0]), factor);
+
+            /* Do the salmon dance */
+            refresh_vectors_used(ctx, op);
+            LOOP_USED(i) {
+                cc.mul(vop(op, vl[i]), vop(op, orig_vl[i]), vop(op, vdata[0]));
+                cc.mul(vop(op, vh[i]), vop(op, orig_vh[i]), vop(op, vdata[0]));
+            }
+        } else {
+            return AVERROR(ENOTSUP);
         }
         break;
 
