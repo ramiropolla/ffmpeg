@@ -1002,6 +1002,28 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                 cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata[0].s(i));
                 cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[0].s(i));
             }
+        } else if (op.lin.mask == SWS_MASK_LUMA) {
+            /* Write const data after function */
+            float fdata[4];
+            fdata[0] = av_q2d(op.lin.m[0][4]);
+            fdata[1] = av_q2d(op.lin.m[0][0]);
+            fdata[2] = 0;
+            fdata[3] = 0;
+            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
+
+            /* Read matrix data into vectors */
+            ctx->to_prologue();
+            cc.comment("prologue (linear)");
+            read_vdata(ctx, ldata, 1);
+            ctx->from_prologue();
+
+            /* Do the salmon dance */
+            cc.comment("linear (luma)");
+            refresh_vectors_count(ctx, 1);
+            cc.dup(vl[0].s4(), vdata[0].s(0));
+            cc.dup(vh[0].s4(), vdata[0].s(0));
+            cc.fmla(vl[0].s4(), orig_vl[0].s4(), vdata[0].s(1));
+            cc.fmla(vh[0].s4(), orig_vh[0].s4(), vdata[0].s(1));
         } else {
             return AVERROR(ENOTSUP);
         }
