@@ -268,7 +268,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         goto error;
     }
 
-    sws[1]->flags  = mode.flags;
+    sws[1]->flags  = mode.flags | SWS_EXPERIMENTAL;
     sws[1]->dither = mode.dither;
     sws[1]->threads = opts.threads;
 
