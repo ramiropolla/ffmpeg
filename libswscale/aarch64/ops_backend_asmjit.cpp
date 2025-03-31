@@ -1020,15 +1020,26 @@ if (use_vh) {
         } else {
 normal_clamp:
             if (op.type == SWS_PIXEL_F32) {
-                /* TODO if a conversion to integer is done later, there is no need to clamp 0 */
+                /* Check whether we need to clamp negative values */
+                bool clamp_negative_values = true;
+                for (int i = 0; i < ops->num_ops; i++) {
+                    if (ops->ops[i].op == SWS_OP_CONVERT && ops->ops[i].convert.to != SWS_PIXEL_F32) {
+                        clamp_negative_values = false;
+                        break;
+                    }
+                }
+
                 cc.comment("clamp");
                 size_t vidx_min = ctx->push_imm32(0);
                 LOOP_USED(i) {
                     if (op.clamp.max[i].den) {
+                        if (clamp_negative_values) {
+                            size_t vidx_min = ctx->push_imm32(0);
+                            cc.fmax    (vl[i].s4(), vl[i].s4(), vimm[vidx_min].s4());
+                            if (use_vh)
+                                cc.fmax(vh[i].s4(), vh[i].s4(), vimm[vidx_min].s4());
+                        }
                         size_t vidx_max = ctx->push_immq(op.clamp.max[i]);
-                        cc.fmax    (vl[i].s4(), vl[i].s4(), vimm[vidx_min].s4());
-                        if (use_vh)
-                            cc.fmax(vh[i].s4(), vh[i].s4(), vimm[vidx_min].s4());
                         cc.fmin    (vl[i].s4(), vl[i].s4(), vimm[vidx_max].s4());
                         if (use_vh)
                             cc.fmin(vh[i].s4(), vh[i].s4(), vimm[vidx_max].s4());
