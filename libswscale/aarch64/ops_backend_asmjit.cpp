@@ -984,6 +984,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             }
 
             /* Write const data after function */
+            std::vector<AVRational> qdata;
             std::vector<float> fdata;
             bool identity[4][5];
             int vpos[4][5];
@@ -991,8 +992,19 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
                     if (op.lin.m[i][sj].num) {
-                        vpos[i][sj] = fdata.size();
-                        fdata.push_back(av_q2d(op.lin.m[i][sj]));
+                        bool repeated = false;
+                        for (int k = 0; k < fdata.size(); k++) {
+                            if (av_cmp_q(qdata[k], op.lin.m[i][sj]) == 0) {
+                                vpos[i][sj] = k;
+                                repeated = true;
+                                break;
+                            }
+                        }
+                        if (!repeated) {
+                            vpos[i][sj] = fdata.size();
+                            fdata.push_back(av_q2d(op.lin.m[i][sj]));
+                            qdata.push_back(op.lin.m[i][sj]);
+                        }
                         /* TODO don't emit identity data */
                         identity[i][sj] = (op.lin.m[i][sj].num == 1 && op.lin.m[i][sj].den == 1);
                     } else {
