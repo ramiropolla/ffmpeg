@@ -105,7 +105,9 @@ static void run_copy(const SwsImg *out_base, const SwsImg *in_base,
         const int lines = h >> ff_fmt_vshift(in.fmt, i);
         av_assert1(in.data[i]);
 
-        if (in.linesize[i] == out.linesize[i]) {
+        if (out.data[i] == in.data[i]) {
+            /* noop */
+        } else if (in.linesize[i] == out.linesize[i]) {
             memcpy(out.data[i], in.data[i], lines * out.linesize[i]);
         } else {
             const int linesize = FFMIN(out.linesize[i], in.linesize[i]);
