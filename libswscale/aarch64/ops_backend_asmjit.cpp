@@ -1008,10 +1008,12 @@ normal_clamp:
             cc.comment("clamp");
             LOOP_USED(i) {
                 if (op.clamp.max[i].den) {
-                    cc.fmax(vl[i].s4(), vl[i].s4(), vimm[vidx_min   ].s4());
-                    cc.fmax(vh[i].s4(), vh[i].s4(), vimm[vidx_min   ].s4());
-                    cc.fmin(vl[i].s4(), vl[i].s4(), vimm[vidx_max[i]].s4());
-                    cc.fmin(vh[i].s4(), vh[i].s4(), vimm[vidx_max[i]].s4());
+                    cc.fmax    (vl[i].s4(), vl[i].s4(), vimm[vidx_min   ].s4());
+                    if (use_vh)
+                        cc.fmax(vh[i].s4(), vh[i].s4(), vimm[vidx_min   ].s4());
+                    cc.fmin    (vl[i].s4(), vl[i].s4(), vimm[vidx_max[i]].s4());
+                    if (use_vh)
+                        cc.fmin(vh[i].s4(), vh[i].s4(), vimm[vidx_max[i]].s4());
                 }
             }
         }
