@@ -263,6 +263,11 @@ struct AsmJitContext {
         case 2: cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(),                                     a64::ptr(rdata)); break;
         case 3: cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(), m_vdata[2].b16(),                   a64::ptr(rdata)); break;
         case 4: cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(), m_vdata[2].b16(), m_vdata[3].b16(), a64::ptr(rdata)); break;
+        case 5:
+            /* help out asmjit with smaller ld1 */
+            cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(),                   a64::ptr(rdata).post(32));
+            cc.ld1(m_vdata[2].b16(), m_vdata[3].b16(), m_vdata[4].b16(), a64::ptr(rdata));
+            break;
         default:
             __builtin_trap();
             break;
