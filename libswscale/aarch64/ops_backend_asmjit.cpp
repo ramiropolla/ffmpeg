@@ -848,10 +848,17 @@ if (use_vh) {
             }
         }
         break;
-#if 0
     case SWS_OP_RSHIFT:          /* right shift of raw pixel values */
+        if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+            cc.comment("rshift");
+            refresh_vectors_used(ctx, op);
+            LOOP_USED(i) {
+                cc.ushr    (vet(vl[i], op), vet(orig_vl[i], op), op.shift.amount);
+                if (use_vh)
+                    cc.ushr(vet(vh[i], op), vet(orig_vh[i], op), op.shift.amount);
+            }
+        }
         break;
-#endif
     case SWS_OP_SWIZZLE:         /* rearrange channel order, or duplicate channels */
         {
             bool reorder = true;
