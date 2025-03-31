@@ -642,6 +642,10 @@ bad_option:
         if (!sws[i])
             goto error;
         sws[i]->flags = SWS_BILINEAR;
+#if 1
+        if (i != 1)
+            sws[i]->flags |= SWS_FORCE_LEGACY;
+#endif
     }
 
     rgb = av_frame_alloc();
