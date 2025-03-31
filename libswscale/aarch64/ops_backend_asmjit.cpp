@@ -1212,6 +1212,10 @@ static av_cold void free_context(void *_ctx)
 
 static av_cold int asmjit_compile(SwsOpList *ops, SwsOpChain *chain)
 {
+    const unsigned cpu_flags = av_get_cpu_flags();
+    if (!(cpu_flags & AV_CPU_FLAG_NEON))
+        return AVERROR(ENOTSUP);
+
     AsmJitContext *ctx = new AsmJitContext;
     a64::Compiler &cc = *ctx->m_cc;
     Error err;
