@@ -20,17 +20,22 @@
 
 %include "ops_common.asm"
 
-SECTION_RODATA 32
+SECTION_RODATA
 
-expand16_shuf: db  0,  0,  2,  2,  4,  4,  6,  6,  8,  8, 10, 10, 12, 12, 14, 14, \
-                  16, 16, 18, 18, 20, 20, 22, 22, 24, 24, 26, 26, 28, 28, 30, 30
-expand32_shuf: db  0,  0,  0,  0,  4,  4,  4,  4,  8,  8,  8,  8, 12, 12, 12, 12, \
-                  16, 16, 16, 16, 20, 20, 20, 20, 24, 24, 24, 24, 28, 28, 28, 28
-
-read8_unpack2: db  0,  2,  4,  6,  8, 10, 12, 14,  1,  3,  5,  7,  9, 11, 13, 15, \
-                  16, 18, 20, 22, 24, 26, 28, 30, 17, 19, 21, 23, 25, 27, 29, 31
+expand16_shuf: db  0,  0,  2,  2,  4,  4,  6,  6,  8,  8, 10, 10, 12, 12, 14, 14
+expand32_shuf: db  0,  0,  0,  0,  4,  4,  4,  4,  8,  8,  8,  8, 12, 12, 12, 12
+read8_unpack2: db  0,  2,  4,  6,  8, 10, 12, 14,  1,  3,  5,  7,  9, 11, 13, 15
 
 SECTION .text
+
+; Helper for loading shuffle masks
+%macro broadcasti128 2
+    %if avx_enabled
+        vbroadcasti128 %1, %2
+    %else
+        mova %1, %2
+    %endif
+%endmacro
 
 ;---------------------------------------------------------
 ; Planar reads / writes
@@ -77,21 +82,21 @@ IF %1 > 3,  movu [r4 + mmsize], mw2
 %macro read8_packed2 0
 op read8_packed2
         mov r2, [execq + SwsOpExec.in0]
-        mova m8, [read8_unpack2]
+        broadcasti128 m12, [read8_unpack2]
         LOAD_CONT r3
-        movu mz, [r2]               ; XYXY XYXY XYXY XYXY ...
-        movu mw, [r2 + mmsize]
-IF V2,  movu mz2, [r2 + 2*mmsize]
-IF V2,  movu mw2, [r2 + 3*mmsize]
-        pshufb mz, mz, m8           ; XXXX XXXX YYYY YYYY ...
-        pshufb mw, mw, m8
-        unpcklpd mx, mz, mw
-        unpckhpd my, mz, mw
+        movu mx, [r2]               ; XYXYXYXY XYXYXYXY XYXYXYXY XYXYXYXY
+        movu my, [r2 + mmsize]
+IF V2,  movu mx2, [r2 + 2*mmsize]
+IF V2,  movu my2, [r2 + 3*mmsize]
+        pshufb m8, mx, m12          ; XXXXXXXX YYYYYYYY XXXXXXXX YYYYYYYY
+        pshufb m9, my, m12
+        unpcklpd mx, m8, m9
+        unpckhpd my, m8, m9
 %if V2
-        pshufb mz2, mz2, m8
-        pshufb mw2, mw2, m8
-        unpcklpd mx2, mz2, mw2
-        unpckhpd my2, mz2, mw2
+        pshufb m8, mx2, m12
+        pshufb m9, my2, m12
+        unpcklpd mx2, m8, m9
+        unpckhpd my2, m8, m9
 %endif
 %if avx_enabled
         vpermq mx, mx, q3120
@@ -205,16 +210,17 @@ IF Y,   pmovzxbw my, xmy
 IF Z,   pmovzxbw mz, xmz
 IF W,   pmovzxbw mw, xmw
 %ifidn %1, expand
+    broadcasti128 m8, [expand16_shuf]
     %if V2
-IF X,   pshufb mx2, mx2, [expand16_shuf]
-IF Y,   pshufb my2, my2, [expand16_shuf]
-IF Z,   pshufb mz2, mz2, [expand16_shuf]
-IF W,   pshufb mw2, mw2, [expand16_shuf]
+IF X,   pshufb mx2, mx2, m8
+IF Y,   pshufb my2, my2, m8
+IF Z,   pshufb mz2, mz2, m8
+IF W,   pshufb mw2, mw2, m8
     %endif
-IF X,   pshufb mx, mx, [expand16_shuf]
-IF Y,   pshufb my, my, [expand16_shuf]
-IF Z,   pshufb mz, mz, [expand16_shuf]
-IF W,   pshufb mw, mw, [expand16_shuf]
+IF X,   pshufb mx, mx, m8
+IF Y,   pshufb my, my, m8
+IF Z,   pshufb mz, mz, m8
+IF W,   pshufb mw, mw, m8
 %endif ; expand
         CONTINUE r2
 %endmacro
@@ -261,14 +267,15 @@ IF Y,   pmovzxbd my2, xmy2
 IF Z,   pmovzxbd mz2, xmz2
 IF W,   pmovzxbd mw2, xmw2
 %ifidn %1, expand
-IF X,   pshufb mx, mx, [expand32_shuf]
-IF Y,   pshufb my, my, [expand32_shuf]
-IF Z,   pshufb mz, mz, [expand32_shuf]
-IF W,   pshufb mw, mw, [expand32_shuf]
-IF X,   pshufb mx2, mx2, [expand32_shuf]
-IF Y,   pshufb my2, my2, [expand32_shuf]
-IF Z,   pshufb mz2, mz2, [expand32_shuf]
-IF W,   pshufb mw2, mw2, [expand32_shuf]
+        broadcasti128 m8, [expand32_shuf]
+IF X,   pshufb mx, mx, m8
+IF Y,   pshufb my, my, m8
+IF Z,   pshufb mz, mz, m8
+IF W,   pshufb mw, mw, m8
+IF X,   pshufb mx2, mx2, m8
+IF Y,   pshufb my2, my2, m8
+IF Z,   pshufb mz2, mz2, m8
+IF W,   pshufb mw2, mw2, m8
 %endif ; expand
         CONTINUE r2
 %endmacro
