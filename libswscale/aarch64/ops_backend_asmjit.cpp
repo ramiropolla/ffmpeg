@@ -1019,25 +1019,31 @@ if (use_vh) {
             ops->num_ops--;
         } else {
 normal_clamp:
-            /* TODO if a conversion to integer is done later, there is no need to clamp 0 */
-
-            size_t vidx_min = ctx->push_imm32(0);
-            size_t vidx_max[4];
-            LOOP_USED(i) {
-                if (op.clamp.max[i].den) {
-                    vidx_max[i] = ctx->push_immq(op.clamp.max[i]);
+            if (op.type == SWS_PIXEL_F32) {
+                /* TODO if a conversion to integer is done later, there is no need to clamp 0 */
+                cc.comment("clamp");
+                size_t vidx_min = ctx->push_imm32(0);
+                LOOP_USED(i) {
+                    if (op.clamp.max[i].den) {
+                        size_t vidx_max = ctx->push_immq(op.clamp.max[i]);
+                        cc.fmax    (vl[i].s4(), vl[i].s4(), vimm[vidx_min].s4());
+                        if (use_vh)
+                            cc.fmax(vh[i].s4(), vh[i].s4(), vimm[vidx_min].s4());
+                        cc.fmin    (vl[i].s4(), vl[i].s4(), vimm[vidx_max].s4());
+                        if (use_vh)
+                            cc.fmin(vh[i].s4(), vh[i].s4(), vimm[vidx_max].s4());
+                    }
                 }
-            }
-
-            cc.comment("clamp");
-            LOOP_USED(i) {
-                if (op.clamp.max[i].den) {
-                    cc.fmax    (vl[i].s4(), vl[i].s4(), vimm[vidx_min   ].s4());
-                    if (use_vh)
-                        cc.fmax(vh[i].s4(), vh[i].s4(), vimm[vidx_min   ].s4());
-                    cc.fmin    (vl[i].s4(), vl[i].s4(), vimm[vidx_max[i]].s4());
-                    if (use_vh)
-                        cc.fmin(vh[i].s4(), vh[i].s4(), vimm[vidx_max[i]].s4());
+            } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+                cc.comment("clamp");
+                LOOP_USED(i) {
+                    if (op.clamp.max[i].den) {
+                        int32_t val = op.clamp.max[i].num / op.clamp.max[i].den;
+                        size_t vidx_max = ctx->push_imm32_op(op, val);
+                        cc.umin    (vet(vl[i], op), vet(vl[i], op), vet(vimm[vidx_max], op));
+                        if (use_vh)
+                            cc.umin(vet(vh[i], op), vet(vh[i], op), vet(vimm[vidx_max], op));
+                    }
                 }
             }
         }
