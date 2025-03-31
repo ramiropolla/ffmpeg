@@ -49,7 +49,14 @@ struct AsmJitContext {
     a64::Vec m_orig_vh[4];
     a64::Vec m_vl[4];
     a64::Vec m_vh[4];
-    a64::Vec m_vdata[4];
+
+    /* const data */
+    std::vector<uint32_t> m_data;
+    std::vector<a64::Vec> m_vdata;
+
+    /* imm data */
+    std::vector<std::pair<uint32_t, uint32_t>> m_imm;
+    std::vector<a64::Vec> m_vimm;
 
     AsmJitContext()
     {
@@ -81,6 +88,186 @@ struct AsmJitContext {
     {
         a64::Compiler &cc = *m_cc;
         m_prologue = cc.setCursor(m_tail);
+    }
+
+    /* imm */
+    size_t push_imm32(uint32_t val, int len = 4)
+    {
+        /* First check if we already have it */
+        for (size_t i = 0; i < m_imm.size(); i++) {
+            if (m_imm[i].first == val) {
+                return i;
+            }
+        }
+        /* Check if data can be represented by repeating smaller value */
+        int repeat_len;
+        union {
+            uint32_t u32;
+            uint16_t u16[2];
+            uint8_t  u8[4];
+        } u;
+        u.u32 = val;
+        if (u.u16[0] != u.u16[1]) {
+            repeat_len = 4;
+        } else if (u.u8[0] != u.u8[1]) {
+            repeat_len = 2;
+        } else {
+            repeat_len = 1;
+        }
+        /* Add it to our data and create a new vector */
+        size_t ret = m_imm.size();
+        m_imm.push_back(std::make_pair(val, (repeat_len << 8) | len));
+        m_vimm.push_back(m_cc->newVecQ());
+        return ret;
+    }
+
+    size_t push_imm16(uint16_t _val, int len = 2)
+    {
+        uint32_t val = _val;
+        val |= val << 16;
+        return push_imm32(val, len);
+    }
+
+    size_t push_imm8(uint8_t _val, int len = 1)
+    {
+        uint16_t val = _val;
+        val |= val << 8;
+        return push_imm16(val, len);
+    }
+
+    size_t push_imm32_op(const SwsOp &op, uint32_t val)
+    {
+        if (op.type == SWS_PIXEL_U8)
+            return push_imm8(val);
+        if (op.type == SWS_PIXEL_U16)
+            return push_imm16(val);
+        return push_imm32(val);
+    }
+
+    size_t push_immq(AVRational q)
+    {
+        union {
+            uint32_t u32;
+            float    f32;
+        } u;
+        u.f32 = av_q2d(q);
+        return push_imm32(u.u32);
+    }
+
+    void load_immediates(void)
+    {
+        size_t size = m_imm.size();
+        if (size == 0)
+            return;
+
+        a64::Compiler &cc = *m_cc;
+        to_prologue();
+        cc.comment("prologue (immediates)");
+        std::vector<a64::Gp> tmp(size);
+        /* First load immediates larger than 0xff into temporary registers */
+        for (size_t i = 0; i < size; i++) {
+            int repeat_len = m_imm[i].second >> 8;
+            if (repeat_len == 4) {
+                tmp[i] = cc.newGpz();
+                cc.mov(tmp[i], m_imm[i].first);
+            } else if (repeat_len == 2) {
+                tmp[i] = cc.newGpz();
+                cc.mov(tmp[i], m_imm[i].first & 0xffff);
+            }
+        }
+        /* Then load small immediates directly into vectors */
+        for (size_t i = 0; i < size; i++) {
+            int repeat_len = m_imm[i].second >> 8;
+            if (repeat_len == 1) {
+                cc.movi(m_vimm[i].b16(), m_imm[i].first & 0xff);
+            }
+        }
+        /* Then dup the temporary registers into vectors */
+        for (size_t i = 0; i < size; i++) {
+            int repeat_len = m_imm[i].second >> 8;
+            int len = m_imm[i].second & 0x0f;
+            switch (len) {
+            case 4:
+                if (repeat_len != 1)
+                    cc.dup(m_vimm[i].s4(), tmp[i]);
+                break;
+            case 2:
+                if (repeat_len != 1)
+                    cc.dup(m_vimm[i].h8(), tmp[i]);
+                break;
+            }
+        }
+        from_prologue();
+    }
+
+    /* const data */
+    size_t push_u32(uint32_t val)
+    {
+        /* First check if we already have it */
+        for (size_t i = 0; i < m_data.size(); i++) {
+            if (m_data[i] == val) {
+                return i;
+            }
+        }
+        /* Add it to our data and create a new vector if necessary */
+        size_t ret = m_data.size();
+        m_data.push_back(val);
+        if ((ret & 3) == 0) {
+            m_vdata.push_back(m_cc->newVecQ());
+        }
+        return ret;
+    }
+
+    size_t push_q(AVRational q)
+    {
+        union {
+            uint32_t u32;
+            float    f32;
+        } u;
+        u.f32 = av_q2d(q);
+        return push_u32(u.u32);
+    }
+
+    Label emit_data(void *data, size_t size)
+    {
+        a64::Compiler &cc = *m_cc;
+
+        Label ldata = cc.newLabel();
+        BaseNode *cursor = cc.cursor();
+        cc.setCursor(m_func->endNode()->prev());
+        cc.align(AlignMode::kData, 16);
+        cc.bind(ldata);
+        cc.embed(data, size);
+        cc.setCursor(cursor);
+
+        return ldata;
+    }
+
+    void emit_const()
+    {
+        if (m_vdata.size() == 0)
+            return;
+
+        /* Write const data after function */
+        Label ldata = emit_data(m_data.data(), m_data.size() * sizeof(uint32_t));
+
+        /* Read matrix data into vectors */
+        a64::Compiler &cc = *m_cc;
+        a64::Gp rdata = cc.newGpz();
+
+        to_prologue();
+        cc.comment("prologue (const data)");
+        cc.adr(rdata, ldata);
+        switch (m_vdata.size()) {
+        case 1: cc.ld1(m_vdata[0].b16(),                                                       a64::ptr(rdata)); break;
+        case 2: cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(),                                     a64::ptr(rdata)); break;
+        case 3: cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(), m_vdata[2].b16(),                   a64::ptr(rdata)); break;
+        case 4: cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(), m_vdata[2].b16(), m_vdata[3].b16(), a64::ptr(rdata)); break;
+        default:
+            __builtin_trap();
+            break;
+        }
+        from_prologue();
     }
 };
 
@@ -128,40 +315,6 @@ struct VectorElementType {
 #define LOOP_USED(idx)                \
     for (int idx = 0; idx < 4; idx++) \
         if (!op.comps.unused[idx])
-
-static Label emit_data(AsmJitContext *ctx, void *data, size_t size)
-{
-    a64::Compiler &cc = *ctx->m_cc;
-
-    Label ldata = cc.newLabel();
-    BaseNode *cursor = cc.cursor();
-    cc.setCursor(ctx->m_func->endNode()->prev());
-    cc.align(AlignMode::kData, 16);
-    cc.bind(ldata);
-    cc.embed(data, size);
-    cc.setCursor(cursor);
-
-    return ldata;
-}
-
-static void read_vdata(AsmJitContext *ctx, Label ldata, int count)
-{
-    a64::Compiler &cc = *ctx->m_cc;
-    a64::Vec *vdata = ctx->m_vdata;
-    a64::Gp rdata = cc.newGpz();
-
-    for (int i = 0; i < count; i++) {
-        vdata[i] = cc.newVecQ();
-    }
-
-    cc.adr(rdata, ldata);
-    switch (count) {
-    case 1: cc.ld1(vdata[0].b16(), a64::ptr(rdata)); break;
-    case 2: cc.ld1(vdata[0].b16(), vdata[1].b16(), a64::ptr(rdata)); break;
-    case 3: cc.ld1(vdata[0].b16(), vdata[1].b16(), vdata[2].b16(), a64::ptr(rdata)); break;
-    case 4: cc.ld1(vdata[0].b16(), vdata[1].b16(), vdata[2].b16(), vdata[3].b16(), a64::ptr(rdata)); break;
-    }
-}
 
 static inline uint32_t mask_from_i(int i)
 {
@@ -393,7 +546,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
     a64::Vec *orig_vh = ctx->m_orig_vh;
     a64::Vec *vl = ctx->m_vl;
     a64::Vec *vh = ctx->m_vh;
-    a64::Vec *vdata = ctx->m_vdata;
+    std::vector<a64::Vec> &vdata = ctx->m_vdata;
+    std::vector<a64::Vec> &vimm = ctx->m_vimm;
 
     SwsOp *prev = &ops->ops[-1];
     SwsOp &op = ops->ops[0];
@@ -592,17 +746,10 @@ if (use_vh) {
             }
             LOOP_USED(i) {
                 uint32_t mask = (1u << op.pack.pattern[i]) - 1;
-                a64::Vec vmask = cc.newVecQ();
-                if (mask <= 255) {
-                    cc.movi(vet(vmask, *prev), mask);
-                } else {
-                    a64::Gp rmask = cc.newGpz();
-                    cc.mov(rmask, (1 << op.pack.pattern[i]) - 1);
-                    cc.dup(vet(vmask, *prev), rmask);
-                }
-                cc.and_    (vl[i].b16(), vl[i].b16(), vmask.b16());
+                size_t vidx = ctx->push_imm32_op(*prev, mask);
+                cc.and_    (vl[i].b16(), vl[i].b16(), vimm[vidx].b16());
                 if (use_vh)
-                    cc.and_(vh[i].b16(), vh[i].b16(), vmask.b16());
+                    cc.and_(vh[i].b16(), vh[i].b16(), vimm[vidx].b16());
             }
             /* TODO improve! */
             if (op.type != op.pack.type && emit_convert(ctx, chain, op, op.pack.type, op.type, false) < 0)
@@ -657,44 +804,32 @@ if (use_vh) {
             cc.comment("clear (integer)");
             for (int i = 0; i < 4; i++) {
                 if (op.clear.value[i].den) {
-                    int val = op.clear.value[i].num / op.clear.value[i].den;
-                    if (val <= 255) {
-                        cc.movi(vet(vl[i], op), val);
-                        if (use_vh)
-                            cc.movi(vet(vh[i], op), val);
-                    } else {
-                        /* TODO load tmp only once if possible */
-                        a64::Gp tmp = cc.newGpw();
-                        cc.mov(tmp, val);
-                        cc.dup(vet(vl[i], op), tmp);
-                        if (use_vh)
-                            cc.dup(vet(vh[i], op), tmp);
-                    }
+                    int32_t val = op.clear.value[i].num / op.clear.value[i].den;
+                    size_t vidx = ctx->push_imm32_op(op, val);
+                    /* TODO if the value is no longer modified, just do vl[i] = vimm[vidx] instead */
+                    cc.mov    (vet(vl[i], op), vet(vimm[vidx], op));
+                    if (use_vh)
+                        cc.mov(vet(vh[i], op), vet(vimm[vidx], op));
                 }
             }
         } else if (op.type == SWS_PIXEL_F32) {
-            /* Write const data after function */
-            float fdata[4];
+            /* Add const data */
+            size_t vpos[4];
             for (int i = 0; i < 4; i++)
-                fdata[i] = av_q2d(op.clear.value[i]);
-            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
-
-            /* Read matrix data into vectors */
-            ctx->to_prologue();
-            cc.comment("prologue (clear)");
-            read_vdata(ctx, ldata, 1);
-            ctx->from_prologue();
+                if (op.clear.value[i].den)
+                    vpos[i] = ctx->push_q(op.clear.value[i]);
 
             /* Do the salmon dance */
             cc.comment("clear (f32)");
             for (int i = 0; i < 4; i++) {
                 if (op.clear.value[i].den) {
-                    cc.dup(vl[i].s4(), vdata[0].s(i));
-                    cc.dup(vh[i].s4(), vdata[0].s(i));
+                    size_t vidx = vpos[i];
+                    int vdata_i = vidx >> 2;
+                    int vdata_j = vidx & 3;
+                    cc.dup(vl[i].s4(), vdata[vdata_i].s(vdata_j));
+                    cc.dup(vh[i].s4(), vdata[vdata_i].s(vdata_j));
                 }
             }
-        } else {
-            return AVERROR(ENOTSUP);
         }
         break;
     case SWS_OP_LSHIFT:          /* logical left shift of raw pixel values */
@@ -770,7 +905,7 @@ if (use_vh) {
             for (int i = 0; i < size * size; i++) {
                 fdata[i] = av_q2d(op.dither.matrix[i]);
             }
-            Label ldata = emit_data(ctx, fdata.data(), size * size * sizeof(float));
+            Label ldata = ctx->emit_data(fdata.data(), size * size * sizeof(float));
 
             a64::Gp rdatal = cc.newGpz();
             a64::Gp rdatah = cc.newGpz();
@@ -851,29 +986,23 @@ if (use_vh) {
             ops->num_ops--;
         } else {
 normal_clamp:
-            cc.comment("clamp");
-            a64::Vec vmin = cc.newVecQ();
-            a64::Vec vmax = cc.newVecQ();
-            cc.movi(vmin.s4(), 0);
-            AVRational last_max = { -1, 0 };
+            /* TODO if a conversion to integer is done later, there is no need to clamp 0 */
+
+            size_t vidx_min = ctx->push_imm32(0);
+            size_t vidx_max[4];
             LOOP_USED(i) {
                 if (op.clamp.max[i].den) {
-                    if (av_cmp_q(last_max, op.clamp.max[i]) != 0) {
-                        int val = av_q2d(op.clamp.max[i]);
-                        if (val <= 255) {
-                            cc.movi(vmax.s4(), val);
-                        } else {
-                            a64::Gp tmp = cc.newGpw();
-                            cc.mov(tmp, val);
-                            cc.dup(vmax.s4(), tmp);
-                        }
-                        cc.ucvtf(vmax.s4(), vmax.s4());
-                        last_max = op.clamp.max[i];
-                    }
-                    cc.fmax(vl[i].s4(), vl[i].s4(), vmin.s4());
-                    cc.fmax(vh[i].s4(), vh[i].s4(), vmin.s4());
-                    cc.fmin(vl[i].s4(), vl[i].s4(), vmax.s4());
-                    cc.fmin(vh[i].s4(), vh[i].s4(), vmax.s4());
+                    vidx_max[i] = ctx->push_immq(op.clamp.max[i]);
+                }
+            }
+
+            cc.comment("clamp");
+            LOOP_USED(i) {
+                if (op.clamp.max[i].den) {
+                    cc.fmax(vl[i].s4(), vl[i].s4(), vimm[vidx_min   ].s4());
+                    cc.fmax(vh[i].s4(), vh[i].s4(), vimm[vidx_min   ].s4());
+                    cc.fmin(vl[i].s4(), vl[i].s4(), vimm[vidx_max[i]].s4());
+                    cc.fmin(vh[i].s4(), vh[i].s4(), vimm[vidx_max[i]].s4());
                 }
             }
         }
@@ -931,43 +1060,21 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             }
 
             /* Write const data after function */
-            std::vector<AVRational> qdata;
-            std::vector<float> fdata;
             bool identity[4][5];
             int vpos[4][5];
             for (int i = 0; i < 4; i++) {
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
                     if (op.lin.m[i][sj].num) {
-                        bool repeated = false;
-                        for (size_t k = 0; k < fdata.size(); k++) {
-                            if (av_cmp_q(qdata[k], op.lin.m[i][sj]) == 0) {
-                                vpos[i][sj] = k;
-                                repeated = true;
-                                break;
-                            }
-                        }
-                        if (!repeated) {
-                            vpos[i][sj] = fdata.size();
-                            fdata.push_back(av_q2d(op.lin.m[i][sj]));
-                            qdata.push_back(op.lin.m[i][sj]);
-                        }
                         /* TODO don't emit identity data */
                         identity[i][sj] = (op.lin.m[i][sj].num == 1 && op.lin.m[i][sj].den == 1);
+                        vpos[i][sj] = ctx->push_q(op.lin.m[i][sj]);
                     } else {
                         vpos[i][sj] = -1;
                         identity[i][sj] = false;
                     }
                 }
             }
-            Label ldata = emit_data(ctx, fdata.data(), fdata.size() * sizeof(float));
-
-            /* Read matrix data into vectors */
-            ctx->to_prologue();
-            cc.comment("prologue (linear)");
-            int vdata_count = (fdata.size() + 3) >> 2;
-            read_vdata(ctx, ldata, vdata_count);
-            ctx->from_prologue();
 
             /* Do the salmon dance */
             cc.comment("linear");
@@ -1019,48 +1126,29 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
         break;
     case SWS_OP_SCALE:           /* multiplication by scalar */
         if (op.type == SWS_PIXEL_F32) {
-            /* Write const data after function */
-            float fdata[1];
-            fdata[0] = av_q2d(op.scale.factor);
-            Label ldata = emit_data(ctx, fdata, sizeof(fdata));
-
-            /* Read matrix data into vectors */
-            ctx->to_prologue();
-            cc.comment("prologue (scale)");
-            vdata[0] = cc.newVecQ();
-            a64::Gp rdata = cc.newGpz();
-            cc.adr(rdata, ldata);
-            cc.ld1r(vdata[0].s4(), a64::ptr(rdata));
-            ctx->from_prologue();
+            /* Add const data */
+            size_t vidx = ctx->push_q(op.scale.factor);
+            int vdata_i = vidx >> 2;
+            int vdata_j = vidx & 3;
 
             /* Do the salmon dance */
             cc.comment("scale (f32)");
             refresh_vectors_used(ctx, op);
             LOOP_USED(i) {
-                cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata[0].s4());
-                cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[0].s4());
+                cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata[vdata_i].s(vdata_j));
+                cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[vdata_i].s(vdata_j));
             }
         } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
-            cc.comment("scale (integer)");
-
-            int32_t factor = op.scale.factor.num / op.scale.factor.den;
-            vdata[0] = cc.newVecQ();
-            if (factor <= 255) {
-                cc.movi(vet(vdata[0], op), factor);
-            } else {
-                a64::Gp tmp = cc.newGpz();
-                cc.mov(tmp, factor);
-                cc.dup(vet(vdata[0], op), tmp);
-            }
-
             /* Do the salmon dance */
+            cc.comment("scale (integer)");
             refresh_vectors_used(ctx, op);
             LOOP_USED(i) {
-                cc.mul(vet(vl[i], op), vet(orig_vl[i], op), vet(vdata[0], op));
-                cc.mul(vet(vh[i], op), vet(orig_vh[i], op), vet(vdata[0], op));
+                int32_t val = op.scale.factor.num / op.scale.factor.den;
+                size_t vidx = ctx->push_imm32_op(op, val);
+                cc.mul    (vet(vl[i], op), vet(orig_vl[i], op), vet(vimm[vidx], op));
+                if (use_vh)
+                    cc.mul(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx], op));
             }
-        } else {
-            return AVERROR(ENOTSUP);
         }
         break;
 
@@ -1099,6 +1187,9 @@ static av_cold int asmjit_compile(SwsOpList *ops, SwsOpChain *chain)
         goto error;
 
     cc.ret();
+
+    ctx->emit_const();
+    ctx->load_immediates();
 
     err = cc.endFunc();
     if (err) {
