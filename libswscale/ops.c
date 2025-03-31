@@ -1443,6 +1443,7 @@ int ff_sws_op_chain_append(SwsOpChain *chain, SwsFunc func, void (*free)(void *)
     else
         chain->impl[idx - 1].cont = func;
     chain->impl[idx].priv = priv;
+    chain->free[idx] = free;
     chain->num_impl++;
     return 0;
 }
