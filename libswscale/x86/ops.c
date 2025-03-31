@@ -196,7 +196,7 @@ static int setup_shift(const SwsOp *op, SwsOpPriv *out)
     REF_COMMON_PATTERNS(convert_F32_U16##EXT),  \
     REF_COMMON_PATTERNS(expand_U8_U32##EXT),
 
-DECL_FUNCS_8(_m1_sse2)
+DECL_FUNCS_8(_m1_ssse3)
 DECL_FUNCS_8(_m1_avx2)
 DECL_FUNCS_8(_m2_avx2)
 
@@ -205,12 +205,12 @@ DECL_FUNCS_16(_m2_avx2)
 
 DECL_FUNCS_32(_avx2)
 
-static const SwsOpTable ops8_m1_sse2 = {
-    .cpu_flags = AV_CPU_FLAG_SSE2,
+static const SwsOpTable ops8_m1_ssse3 = {
+    .cpu_flags = AV_CPU_FLAG_SSSE3,
     .block_w = 16,
     .block_h = 1,
     .entries = {
-        REF_OPS_8(_m1_sse2)
+        REF_OPS_8(_m1_ssse3)
         {{0}}
     },
 };
@@ -270,7 +270,7 @@ static av_const int get_mmsize(void)
     const int cpu_flags = av_get_cpu_flags();
     if (cpu_flags & AV_CPU_FLAG_AVX2)
         return 32;
-    else if (cpu_flags & AV_CPU_FLAG_SSE2)
+    else if (cpu_flags & AV_CPU_FLAG_SSSE3)
         return 16;
     else
         return AVERROR(ENOTSUP);
@@ -298,7 +298,7 @@ static int compile(SwsOpList *ops, SwsOpChain *chain)
     int ret;
 
     static const SwsOpTable *const tables[] = {
-        &ops8_m1_sse2,
+        &ops8_m1_ssse3,
         &ops8_m1_avx2,
         &ops8_m2_avx2,
         &ops16_m1_avx2,

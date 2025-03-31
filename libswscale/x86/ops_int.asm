@@ -20,12 +20,15 @@
 
 %include "ops_common.asm"
 
-SECTION_RODATA
+SECTION_RODATA 32
 
 expand16_shuf: db  0,  0,  2,  2,  4,  4,  6,  6,  8,  8, 10, 10, 12, 12, 14, 14, \
                   16, 16, 18, 18, 20, 20, 22, 22, 24, 24, 26, 26, 28, 28, 30, 30
 expand32_shuf: db  0,  0,  0,  0,  4,  4,  4,  4,  8,  8,  8,  8, 12, 12, 12, 12, \
                   16, 16, 16, 16, 20, 20, 20, 20, 24, 24, 24, 24, 28, 28, 28, 28
+
+read8_unpack2: db  0,  2,  4,  6,  8, 10, 12, 14,  1,  3,  5,  7,  9, 11, 13, 15, \
+                  16, 18, 20, 22, 24, 26, 28, 30, 17, 19, 21, 23, 25, 27, 29, 31
 
 SECTION .text
 
@@ -71,29 +74,24 @@ IF %1 > 3,  movu [r4 + mmsize], mw2
             END
 %endmacro
 
-%macro read8_packed 0
+%macro read8_packed2 0
 op read8_packed2
         mov r2, [execq + SwsOpExec.in0]
+        mova m8, [read8_unpack2]
         LOAD_CONT r3
-        movu mx, [r2]               ; YAYA low
-        movu mw, [r2 + mmsize]      ; YAYA high
-IF V2,  movu mx2, [r2 + 2*mmsize]   ; YAYA low
-IF V2,  movu mw2, [r2 + 3*mmsize]   ; YAYA high
-        pcmpeqb mz, mz, mz          ; FFFF
-        psrlw mz, mz, 8             ; F0F0
-        pand m6, mx, mz             ; Y0Y0 low
-        pand m8, mw, mz             ; Y0Y0 high
-        psrlw my, mx, 8             ; A0A0 low
-        psrlw mw, mw, 8             ; A0A0 high
-        packuswb mx, m6, m8         ; YYYY low+high
-        packuswb my, my, mw         ; AAAA low+high
+        movu mz, [r2]               ; XYXY XYXY XYXY XYXY ...
+        movu mw, [r2 + mmsize]
+IF V2,  movu mz2, [r2 + 2*mmsize]
+IF V2,  movu mw2, [r2 + 3*mmsize]
+        pshufb mz, mz, m8           ; XXXX XXXX YYYY YYYY ...
+        pshufb mw, mw, m8
+        unpcklpd mx, mz, mw
+        unpckhpd my, mz, mw
 %if V2
-        pand m6, mx2, mz            ; Y0Y0 low
-        pand m8, mw2, mz            ; Y0Y0 high
-        psrlw my2, mx2, 8           ; A0A0 low
-        psrlw mw2, mw2, 8           ; A0A0 high
-        packuswb mx2, m6, m8        ; YYYY low+high
-        packuswb my2, my2, mw2      ; AAAA low+high
+        pshufb mz2, mz2, m8
+        pshufb mw2, mw2, m8
+        unpcklpd mx2, mz2, mw2
+        unpckhpd my2, mz2, mw2
 %endif
 %if avx_enabled
         vpermq mx, mx, q3120
@@ -101,7 +99,7 @@ IF V2,  movu mw2, [r2 + 3*mmsize]   ; YAYA high
 IF V2,  vpermq mx2, mx2, q3120
 IF V2,  vpermq my2, my2, q3120
 %endif
-    CONTINUE r3
+        CONTINUE r3
 %endmacro
 
 ;---------------------------------------------------------
@@ -374,7 +372,7 @@ IF W,   psrlw mw2, mw2, xm8
     read_planar 2
     read_planar 3
     read_planar 4
-    read8_packed
+    read8_packed2
     write_planar 1
     write_planar 2
     write_planar 3
@@ -393,7 +391,7 @@ IF W,   psrlw mw2, mw2, xm8
     decl_common_patterns rshift16
 %endmacro
 
-INIT_XMM sse2
+INIT_XMM ssse3
 decl_v2 0, funcs_u8
 
 INIT_YMM avx2
