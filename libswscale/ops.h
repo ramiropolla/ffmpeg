@@ -181,7 +181,6 @@ uint32_t ff_sws_linear_mask(SwsLinearOp);
 typedef struct SwsOp {
     SwsOpType op;      /* operation to perform */
     SwsPixelType type; /* pixel type to operate on */
-    int vcount;
     union {
         SwsReadWriteOp  rw;
         SwsPackOp       pack;

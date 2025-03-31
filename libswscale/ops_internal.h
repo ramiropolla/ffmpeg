@@ -123,17 +123,13 @@ int ff_sws_op_chain_append(SwsOpChain *chain, SwsFunc func,
 typedef struct SwsOpBackend {
     const char *name; /* Descriptive name for this backend */
 
-    void *(*alloc_context)(void);
-    void *(*compile_end)(void *ctx);
-    void (*free_context)(void *ctx);
-
     /**
      * Compile an operation list to an implementation chain. May modify `ops`
      * freely; the original list will be freed automatically by the caller.
      *
      * Returns 0 or a negative error code.
      */
-    int (*compile)(void *ctx, SwsOpList *ops, SwsOpChain *chain);
+    int (*compile)(SwsOpList *ops, SwsOpChain *chain);
 } SwsOpBackend;
 
 /* List of all backends, terminated by NULL */

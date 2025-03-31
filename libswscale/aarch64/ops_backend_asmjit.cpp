@@ -84,99 +84,46 @@ struct AsmJitContext {
     }
 };
 
-static void *alloc_context(void)
-{
-    AsmJitContext *ctx = new AsmJitContext;
-    return (void *) ctx;
-}
-
-#include <fstream>
-#include <iomanip>
-#include <unistd.h>
-#include <sstream>
-
-static void *compile_end(void *_ctx)
-{
-    AsmJitContext *ctx = static_cast<AsmJitContext *>(_ctx);
-    a64::Compiler &cc = *ctx->m_cc;
-    Error err;
-
-    cc.ret();
-
-    err = cc.endFunc();
-    if (err) {
-        std::cout << "Failed to end function: " << DebugUtils::errorAsString(err) << "\n";
-        return nullptr;
-    }
-    err = cc.finalize();
-    if (err) {
-        std::cout << "Failed to finalize code: " << DebugUtils::errorAsString(err) << "\n";
-        return nullptr;
+/* Vector element type for given SwsOp */
+struct VectorElementType {
+    VectorElementType(const SwsOpChain *const chain)
+        : m_chain(chain)
+    {
     }
 
-    void *ptr = nullptr;
-    ctx->m_rt.add(&ptr, &ctx->m_code);
-
-{
-size_t funcSize = ctx->m_code.codeSize();
-const char *name = "ffjit";
-
-    std::ostringstream path;
-    path << "/tmp/perf-" << getpid() << ".map";
-
-    std::ofstream file(path.str(), std::ios::app); // append
-    if (file.is_open()) {
-        file << std::hex << reinterpret_cast<uintptr_t>(ptr) << ' '
-             << std::hex << funcSize << ' '
-             << name << '\n';
+    a64::Vec operator()(const a64::Vec &vreg, const SwsOp &op) const
+    {
+        if (op.type == SWS_PIXEL_U8  && m_chain->block_w == 8)
+            return vreg.b8(); /* half vector */
+        if (op.type == SWS_PIXEL_U16 && m_chain->block_w == 8)
+            return vreg.h8(); /* full vector */
+        if (op.type == SWS_PIXEL_U32 && m_chain->block_w == 8)
+            return vreg.s4(); /* full vector (TRUNCATE) */
+        if (op.type == SWS_PIXEL_F32 && m_chain->block_w == 8)
+            return vreg.s4(); /* full vector (TRUNCATE) */
+        if (op.type == SWS_PIXEL_U8  && m_chain->block_w == 16)
+            return vreg.b16(); /* full vector */
+        if (op.type == SWS_PIXEL_U16 && m_chain->block_w == 16)
+            return vreg.h8(); /* full vector (TRUNCATE) */
+        if (op.type == SWS_PIXEL_U32 && m_chain->block_w == 16)
+            return vreg.s4(); /* full vector (TRUNCATE) */
+        if (op.type == SWS_PIXEL_F32 && m_chain->block_w == 16)
+            return vreg.s4(); /* full vector (TRUNCATE) */
+        printf("ERORROORORRORORO %d %d\n", op.type, m_chain->block_w);
+        return vreg.b16();
     }
-}
 
-    // At this point, logger already contains the output
-    if (av_log_get_level() >= AV_LOG_DEBUG)
-        std::cout << ctx->m_logger.data() << "\n";
+    int size(const SwsOp &op)
+    {
+        int elsize = (op.type == SWS_PIXEL_U8)  ? 1
+                   : (op.type == SWS_PIXEL_U16) ? 2
+                   :                              4;
+        int ret = m_chain->block_w * elsize;
+        return FFMIN(ret, 16);
+    }
 
-    return ptr;
-}
-
-static void free_context(void *_ctx)
-{
-    AsmJitContext *ctx = static_cast<AsmJitContext *>(_ctx);
-    if (ctx->m_cc)
-        delete(ctx->m_cc);
-    delete ctx;
-}
-
-static int vsize(const SwsOp &op)
-{
-    int elsize = (op.type == SWS_PIXEL_U8)  ? 1
-               : (op.type == SWS_PIXEL_U16) ? 2
-               :                              4;
-    int ret = op.vcount * elsize;
-    return FFMIN(ret, 16);
-}
-
-static a64::Vec vop(const SwsOp &op, const a64::Vec &src)
-{
-    if (op.type == SWS_PIXEL_U8  && op.vcount == 8)
-        return src.b8(); /* half vector */
-    if (op.type == SWS_PIXEL_U16 && op.vcount == 8)
-        return src.h8(); /* full vector */
-    if (op.type == SWS_PIXEL_U32 && op.vcount == 8)
-        return src.s4(); /* full vector (TRUNCATE) */
-    if (op.type == SWS_PIXEL_F32 && op.vcount == 8)
-        return src.s4(); /* full vector (TRUNCATE) */
-    if (op.type == SWS_PIXEL_U8  && op.vcount == 16)
-        return src.b16(); /* full vector */
-    if (op.type == SWS_PIXEL_U16 && op.vcount == 16)
-        return src.h8(); /* full vector (TRUNCATE) */
-    if (op.type == SWS_PIXEL_U32 && op.vcount == 16)
-        return src.s4(); /* full vector (TRUNCATE) */
-    if (op.type == SWS_PIXEL_F32 && op.vcount == 16)
-        return src.s4(); /* full vector (TRUNCATE) */
-    printf("ERORROORORRORORO %d %d\n", op.type, op.vcount);
-    return src.b16();
-}
+    const SwsOpChain *m_chain;
+};
 
 #define LOOP_USED(idx)                \
     for (int idx = 0; idx < 4; idx++) \
@@ -321,14 +268,13 @@ static void refresh_vector(AsmJitContext *ctx, int i, int mask = 0xff)
     refresh_vectors_mask(ctx, mask_from_i(i) & mask);
 }
 
-static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, SwsPixelType to, bool expand)
+static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp &op, SwsPixelType from, SwsPixelType to, bool expand)
 {
     a64::Compiler &cc = *ctx->m_cc;
     a64::Vec *orig_vl = ctx->m_orig_vl;
     a64::Vec *orig_vh = ctx->m_orig_vh;
     a64::Vec *vl = ctx->m_vl;
     a64::Vec *vh = ctx->m_vh;
-    int vcount = op.vcount;
     int from_size = ff_sws_pixel_type_size(from);
     int to_size   = ff_sws_pixel_type_size(to);
 
@@ -342,13 +288,13 @@ static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, 
     }
 
     if (expand) {
-        if        (from_size == 1 && to_size == 2 && vcount == 8) {
+        if        (from_size == 1 && to_size == 2 && chain->block_w == 8) {
             cc.comment("convert (u8 -> u16, expand, 8)");
             LOOP_USED(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
             }
-        } else if (from_size == 1 && to_size == 2 && vcount == 16) {
+        } else if (from_size == 1 && to_size == 2 && chain->block_w == 16) {
             cc.comment("convert (u8 -> u16, expand, 16)");
             LOOP_USED(i) {
                 save_vector(ctx, i, 0x0f);
@@ -360,7 +306,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, 
             return AVERROR(ENOTSUP);
         }
     } else {
-        if (from_size == 1 && to_size > from_size && vcount == 8) {
+        if (from_size == 1 && to_size > from_size && chain->block_w == 8) {
             cc.comment("convert (u8 -> u16, !expand, 8)");
             LOOP_USED(i) {
                 refresh_vector(ctx, i, 0x0f);
@@ -369,7 +315,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, 
             from_size = 2;
         }
 
-        if (from_size == 1 && to_size > from_size && vcount == 16) {
+        if (from_size == 1 && to_size > from_size && chain->block_w == 16) {
             cc.comment("convert (u8 -> u16, !expand, 16)");
             LOOP_USED(i) {
                 save_vector(ctx, i, 0x0f);
@@ -380,7 +326,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, 
             from_size = 2;
         }
 
-        if (from_size == 2 && to_size == 4 && vcount == 8) {
+        if (from_size == 2 && to_size == 4 && chain->block_w == 8) {
             cc.comment("convert (u16 -> u32, !expand, 8)");
             LOOP_USED(i) {
                 save_vector(ctx, i, 0x0f);
@@ -391,7 +337,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, 
             from_size = 4;
         }
 
-        if (from_size == 4 && to_size < from_size && vcount == 8) {
+        if (from_size == 4 && to_size < from_size && chain->block_w == 8) {
             cc.comment("convert (u32 -> u16, !expand, 8)");
             LOOP_USED(i) {
                 refresh_vector(ctx, i);
@@ -404,7 +350,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, 
             from_size = 2;
         }
 
-        if (from_size == 2 && to_size == 1 && vcount == 8) {
+        if (from_size == 2 && to_size == 1 && chain->block_w == 8) {
             cc.comment("convert (u16 -> u8, !expand, 8)");
             LOOP_USED(i) {
                 refresh_vector(ctx, i, 0x0f);
@@ -413,7 +359,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, 
             from_size = 1;
         }
 
-        if (from_size == 2 && to_size == 1 && vcount == 16) {
+        if (from_size == 2 && to_size == 1 && chain->block_w == 16) {
             cc.comment("convert (u16 -> u8, !expand, 16)");
             LOOP_USED(i) {
                 refresh_vector(ctx, i);
@@ -439,9 +385,8 @@ static int emit_convert(AsmJitContext *ctx, const SwsOp &op, SwsPixelType from, 
     return 0;
 }
 
-static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
+static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *chain)
 {
-    AsmJitContext *ctx = static_cast<AsmJitContext *>(_ctx);
     a64::Compiler &cc = *ctx->m_cc;
     a64::Gp &exec = ctx->m_exec;
     a64::Vec *orig_vl = ctx->m_orig_vl;
@@ -454,15 +399,17 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
     SwsOp &op = ops->ops[0];
     SwsOp *next = &ops->ops[1];
 
+    VectorElementType vet(chain);
+
     /* Optimize convert if followed by pack */
     if (op.op == SWS_OP_CONVERT && next->op == SWS_OP_PACK && op.convert.to != next->pack.type) {
         next->type = next->pack.type;
         op.convert.to = next->pack.type;
     }
 
-    bool use_vh = ((op.type == SWS_PIXEL_U16) && op.vcount == 16)
-               || ((op.type == SWS_PIXEL_U32) && op.vcount == 8)
-               || ((op.type == SWS_PIXEL_F32) && op.vcount == 8);
+    bool use_vh = ((op.type == SWS_PIXEL_U16) && chain->block_w == 16)
+               || ((op.type == SWS_PIXEL_U32) && chain->block_w == 8)
+               || ((op.type == SWS_PIXEL_F32) && chain->block_w == 8);
 
     switch (op.op) {
     /* Input/output handling */
@@ -484,9 +431,9 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
             /* Read vectors from input pointers */
             for (int i = 0; i < op.rw.elems; i++) {
                 if (use_vh)
-                    cc.ld1(vop(op, vl[i]), vop(op, vh[i]), a64::ptr(in[i]).post(vsize(op) * 2));
+                    cc.ld1(vet(vl[i], op), vet(vh[i], op), a64::ptr(in[i]).post(vet.size(op) * 2));
                 else
-                    cc.ld1(vop(op, vl[i]),                 a64::ptr(in[i]).post(vsize(op) * 1));
+                    cc.ld1(vet(vl[i], op),                 a64::ptr(in[i]).post(vet.size(op) * 1));
             }
         } else {
             /* Load input pointer in prologue */
@@ -499,24 +446,24 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
             switch (op.rw.elems) {
             case 1:
                 if (use_vh)
-                    cc.ld1(vop(op, vl[0]), vop(op, vh[0]),                                 a64::ptr(in).post(vsize(op) * 2));
+                    cc.ld1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(in).post(vet.size(op) * 2));
                 else
-                    cc.ld1(vop(op, vl[0]),                                                 a64::ptr(in).post(vsize(op) * 1));
+                    cc.ld1(vet(vl[0], op),                                                 a64::ptr(in).post(vet.size(op) * 1));
                 break;
             case 2:
-                cc.ld2    (vop(op, vl[0]), vop(op, vl[1]),                                 a64::ptr(in).post(vsize(op) * 2));
+                cc.ld2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(in).post(vet.size(op) * 2));
                 if (use_vh)
-                    cc.ld2(vop(op, vh[0]), vop(op, vh[1]),                                 a64::ptr(in).post(vsize(op) * 2));
+                    cc.ld2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(in).post(vet.size(op) * 2));
                 break;
             case 3:
-                cc.ld3    (vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]),                 a64::ptr(in).post(vsize(op) * 3));
+                cc.ld3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(in).post(vet.size(op) * 3));
                 if (use_vh)
-                    cc.ld3(vop(op, vh[0]), vop(op, vh[1]), vop(op, vh[2]),                 a64::ptr(in).post(vsize(op) * 3));
+                    cc.ld3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(in).post(vet.size(op) * 3));
                 break;
             case 4:
-                cc.ld4    (vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(in).post(vsize(op) * 4));
+                cc.ld4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(in).post(vet.size(op) * 4));
                 if (use_vh)
-                    cc.ld4(vop(op, vh[0]), vop(op, vh[1]), vop(op, vh[2]), vop(op, vh[3]), a64::ptr(in).post(vsize(op) * 4));
+                    cc.ld4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(in).post(vet.size(op) * 4));
                 break;
             }
         }
@@ -538,9 +485,9 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
             /* Write vectors to output pointers */
             for (int i = 0; i < op.rw.elems; i++) {
                 if (use_vh)
-                    cc.st1(vop(op, vl[i]), vop(op, vh[i]), a64::ptr(out[i]).post(vsize(op) * 2));
+                    cc.st1(vet(vl[i], op), vet(vh[i], op), a64::ptr(out[i]).post(vet.size(op) * 2));
                 else
-                    cc.st1(vop(op, vl[i]),                 a64::ptr(out[i]).post(vsize(op) * 1));
+                    cc.st1(vet(vl[i], op),                 a64::ptr(out[i]).post(vet.size(op) * 1));
             }
         } else {
             /* Load output pointer in prologue */
@@ -553,37 +500,37 @@ static int compile_asmjit(void *_ctx, SwsOpList *ops, SwsOpChain *chain)
             switch (op.rw.elems) {
             case 1:
                 if (use_vh)
-                    cc.st1(vop(op, vl[0]), vop(op, vh[0]),                                 a64::ptr(out).post(vsize(op) * 2));
+                    cc.st1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(out).post(vet.size(op) * 2));
                 else
-                    cc.st1(vop(op, vl[0]),                                                 a64::ptr(out).post(vsize(op) * 1));
+                    cc.st1(vet(vl[0], op),                                                 a64::ptr(out).post(vet.size(op) * 1));
                 break;
             case 2:
-                cc.st2    (vop(op, vl[0]), vop(op, vl[1]),                                 a64::ptr(out).post(vsize(op) * 2));
+                cc.st2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(out).post(vet.size(op) * 2));
                 if (use_vh)
-                    cc.st2(vop(op, vh[0]), vop(op, vh[1]),                                 a64::ptr(out).post(vsize(op) * 2));
+                    cc.st2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(out).post(vet.size(op) * 2));
                 break;
             case 3:
-                cc.st3    (vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]),                 a64::ptr(out).post(vsize(op) * 3));
+                cc.st3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(out).post(vet.size(op) * 3));
                 if (use_vh)
-                    cc.st3(vop(op, vh[0]), vop(op, vh[1]), vop(op, vh[2]),                 a64::ptr(out).post(vsize(op) * 3));
+                    cc.st3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(out).post(vet.size(op) * 3));
                 break;
             case 4:
 {
 #if 0
-                cc.st4    (vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(out).post(vsize(op) * 4));
+                cc.st4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(out).post(vet.size(op) * 4));
                 if (use_vh)
-                    cc.st4(vop(op, vh[0]), vop(op, vh[1]), vop(op, vh[2]), vop(op, vh[3]), a64::ptr(out).post(vsize(op) * 4));
+                    cc.st4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(out).post(vet.size(op) * 4));
 #else
 // TODO help asmjit's register allocator
 if (use_vh) {
-    cc.st4(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(out).post(vsize(op) * 4));
+    cc.st4(vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(out).post(vet.size(op) * 4));
     cc.mov(vl[0].b16(), vh[0].b16());
     cc.mov(vl[1].b16(), vh[1].b16());
     cc.mov(vl[2].b16(), vh[2].b16());
     cc.mov(vl[3].b16(), vh[3].b16());
-    cc.st4(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(out).post(vsize(op) * 4));
+    cc.st4(vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(out).post(vet.size(op) * 4));
 } else {
-    cc.st4(vop(op, vl[0]), vop(op, vl[1]), vop(op, vl[2]), vop(op, vl[3]), a64::ptr(out).post(vsize(op) * 4));
+    cc.st4(vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(out).post(vet.size(op) * 4));
 }
 #endif
 }
@@ -620,9 +567,9 @@ if (use_vh) {
                 0
             };
 
-            use_vh = ((op.pack.type == SWS_PIXEL_U16) && next->vcount == 16)
-                  || ((op.pack.type == SWS_PIXEL_U32) && next->vcount == 8)
-                  || ((op.pack.type == SWS_PIXEL_F32) && next->vcount == 8);
+            use_vh = ((op.pack.type == SWS_PIXEL_U16) && chain->block_w == 16)
+                  || ((op.pack.type == SWS_PIXEL_U32) && chain->block_w == 8)
+                  || ((op.pack.type == SWS_PIXEL_F32) && chain->block_w == 8);
 
             /* Override op.comps.unused so that I can use LOOP_USED */
             for (int i = 0; i < 4; i++) {
@@ -634,9 +581,9 @@ if (use_vh) {
             LOOP_USED(i) {
                 new_vector(ctx, i);
                 if (offsets[i]) {
-                    cc.ushr    (vop(*prev, vl[i]), vop(*prev, orig_vl[0]), offsets[i]);
+                    cc.ushr    (vet(vl[i], *prev), vet(orig_vl[0], *prev), offsets[i]);
                     if (use_vh)
-                        cc.ushr(vop(*prev, vh[i]), vop(*prev, orig_vh[0]), offsets[i]);
+                        cc.ushr(vet(vh[i], *prev), vet(orig_vh[0], *prev), offsets[i]);
                 } else {
                     vl[i] = orig_vl[0];
                     if (use_vh)
@@ -647,18 +594,18 @@ if (use_vh) {
                 uint32_t mask = (1u << op.pack.pattern[i]) - 1;
                 a64::Vec vmask = cc.newVecQ();
                 if (mask <= 255) {
-                    cc.movi(vop(*prev, vmask), mask);
+                    cc.movi(vet(vmask, *prev), mask);
                 } else {
                     a64::Gp rmask = cc.newGpz();
                     cc.mov(rmask, (1 << op.pack.pattern[i]) - 1);
-                    cc.dup(vop(*prev, vmask), rmask);
+                    cc.dup(vet(vmask, *prev), rmask);
                 }
                 cc.and_    (vl[i].b16(), vl[i].b16(), vmask.b16());
                 if (use_vh)
                     cc.and_(vh[i].b16(), vh[i].b16(), vmask.b16());
             }
             /* TODO improve! */
-            if (op.type != op.pack.type && emit_convert(ctx, op, op.pack.type, op.type, false) < 0)
+            if (op.type != op.pack.type && emit_convert(ctx, chain, op, op.pack.type, op.type, false) < 0)
                 return AVERROR(ENOTSUP);
         }
         break;
@@ -671,19 +618,19 @@ if (use_vh) {
                 0
             };
 
-            use_vh = ((next->type == SWS_PIXEL_U16) && next->vcount == 16)
-                  || ((next->type == SWS_PIXEL_U32) && next->vcount == 8)
-                  || ((next->type == SWS_PIXEL_F32) && next->vcount == 8);
+            use_vh = ((next->type == SWS_PIXEL_U16) && chain->block_w == 16)
+                  || ((next->type == SWS_PIXEL_U32) && chain->block_w == 8)
+                  || ((next->type == SWS_PIXEL_F32) && chain->block_w == 8);
 
             cc.comment("pack");
             /* TODO ushll instead */
-            if (op.type != op.pack.type && emit_convert(ctx, op, op.type, op.pack.type, false) < 0)
+            if (op.type != op.pack.type && emit_convert(ctx, chain, op, op.type, op.pack.type, false) < 0)
                 return AVERROR(ENOTSUP);
             LOOP_USED(i) {
                 if (offsets[i]) {
-                    cc.shl    (vop(*next, vl[i]), vop(*next, vl[i]), offsets[i]);
+                    cc.shl    (vet(vl[i], *next), vet(vl[i], *next), offsets[i]);
                     if (use_vh)
-                        cc.shl(vop(*next, vh[i]), vop(*next, vh[i]), offsets[i]);
+                        cc.shl(vet(vh[i], *next), vet(vh[i], *next), offsets[i]);
                 }
             }
             LOOP_USED(i) {
@@ -712,16 +659,16 @@ if (use_vh) {
                 if (op.clear.value[i].den) {
                     int val = op.clear.value[i].num / op.clear.value[i].den;
                     if (val <= 255) {
-                        cc.movi(vop(op, vl[i]), val);
+                        cc.movi(vet(vl[i], op), val);
                         if (use_vh)
-                            cc.movi(vop(op, vh[i]), val);
+                            cc.movi(vet(vh[i], op), val);
                     } else {
                         /* TODO load tmp only once if possible */
                         a64::Gp tmp = cc.newGpw();
                         cc.mov(tmp, val);
-                        cc.dup(vop(op, vl[i]), tmp);
+                        cc.dup(vet(vl[i], op), tmp);
                         if (use_vh)
-                            cc.dup(vop(op, vh[i]), tmp);
+                            cc.dup(vet(vh[i], op), tmp);
                     }
                 }
             }
@@ -755,9 +702,9 @@ if (use_vh) {
             cc.comment("lshift");
             refresh_vectors_used(ctx, op);
             LOOP_USED(i) {
-                cc.shl    (vop(op, vl[i]), vop(op, orig_vl[i]), op.shift.amount);
+                cc.shl    (vet(vl[i], op), vet(orig_vl[i], op), op.shift.amount);
                 if (use_vh)
-                    cc.shl(vop(op, vh[i]), vop(op, orig_vh[i]), op.shift.amount);
+                    cc.shl(vet(vh[i], op), vet(orig_vh[i], op), op.shift.amount);
             }
         }
         break;
@@ -809,7 +756,7 @@ if (use_vh) {
         }
         break;
     case SWS_OP_CONVERT:         /* convert (cast) between formats */
-        if (emit_convert(ctx, op, op.type, op.convert.to, op.convert.expand) < 0)
+        if (emit_convert(ctx, chain, op, op.type, op.convert.to, op.convert.expand) < 0)
             return AVERROR(ENOTSUP);
         break;
     case SWS_OP_DITHER:          /* add dithering noise */
@@ -873,7 +820,7 @@ if (use_vh) {
             }
 
             cc.comment("convert+clamp");
-            if (emit_convert(ctx, op, op.type, SWS_PIXEL_U16, false) < 0)
+            if (emit_convert(ctx, chain, op, op.type, SWS_PIXEL_U16, false) < 0)
                 return AVERROR(ENOTSUP);
             /* Saturating convert from u16 to u8 */
             LOOP_USED(i) {
@@ -889,7 +836,7 @@ if (use_vh) {
             }
 
             cc.comment("convert+clamp");
-            if (emit_convert(ctx, op, op.type, SWS_PIXEL_U32, false) < 0)
+            if (emit_convert(ctx, chain, op, op.type, SWS_PIXEL_U32, false) < 0)
                 return AVERROR(ENOTSUP);
             /* Saturating convert from u32 to u16 */
             LOOP_USED(i) {
@@ -993,7 +940,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                     int sj = fdata_swizzle[j];
                     if (op.lin.m[i][sj].num) {
                         bool repeated = false;
-                        for (int k = 0; k < fdata.size(); k++) {
+                        for (size_t k = 0; k < fdata.size(); k++) {
                             if (av_cmp_q(qdata[k], op.lin.m[i][sj]) == 0) {
                                 vpos[i][sj] = k;
                                 repeated = true;
@@ -1099,18 +1046,18 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             int32_t factor = op.scale.factor.num / op.scale.factor.den;
             vdata[0] = cc.newVecQ();
             if (factor <= 255) {
-                cc.movi(vop(op, vdata[0]), factor);
+                cc.movi(vet(vdata[0], op), factor);
             } else {
                 a64::Gp tmp = cc.newGpz();
                 cc.mov(tmp, factor);
-                cc.dup(vop(op, vdata[0]), tmp);
+                cc.dup(vet(vdata[0], op), tmp);
             }
 
             /* Do the salmon dance */
             refresh_vectors_used(ctx, op);
             LOOP_USED(i) {
-                cc.mul(vop(op, vl[i]), vop(op, orig_vl[i]), vop(op, vdata[0]));
-                cc.mul(vop(op, vh[i]), vop(op, orig_vh[i]), vop(op, vdata[0]));
+                cc.mul(vet(vl[i], op), vet(orig_vl[i], op), vet(vdata[0], op));
+                cc.mul(vet(vh[i], op), vet(orig_vh[i], op), vet(vdata[0], op));
             }
         } else {
             return AVERROR(ENOTSUP);
@@ -1121,18 +1068,69 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
         return AVERROR(ENOTSUP);
     }
 
-    chain->block_w = op.vcount;
-    chain->block_h = 1;
-
     ops->ops++;
     ops->num_ops--;
     return ops->num_ops ? AVERROR(EAGAIN) : 0;
 }
 
+static av_cold void free_context(void *_ctx)
+{
+    AsmJitContext *ctx = static_cast<AsmJitContext *>(_ctx);
+    if (ctx->m_cc)
+        delete(ctx->m_cc);
+    delete ctx;
+}
+
+static av_cold int asmjit_compile(SwsOpList *ops, SwsOpChain *chain)
+{
+    AsmJitContext *ctx = new AsmJitContext;
+    a64::Compiler &cc = *ctx->m_cc;
+    Error err;
+    int ret;
+
+    /* Use at most two full vregs during the widest precision section */
+    chain->block_w = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
+    chain->block_h = 1;
+
+    do {
+        ret = asmjit_compile_op(ctx, ops, chain);
+    } while (ret == AVERROR(EAGAIN));
+    if (ret < 0)
+        goto error;
+
+    cc.ret();
+
+    err = cc.endFunc();
+    if (err) {
+        std::cout << "Failed to end function: " << DebugUtils::errorAsString(err) << "\n";
+        goto error;
+    }
+    err = cc.finalize();
+    if (err) {
+        std::cout << "Failed to finalize code: " << DebugUtils::errorAsString(err) << "\n";
+        goto error;
+    }
+
+    ctx->m_rt.add(&chain->entry, &ctx->m_code);
+    if (chain->entry == nullptr)
+        goto error;
+
+    // At this point, logger already contains the output
+    if (av_log_get_level() >= AV_LOG_DEBUG)
+        std::cout << ctx->m_logger.data() << "\n";
+
+    chain->impl[0].priv.ptr = ctx;
+    chain->free[0] = free_context;
+    chain->num_impl++;
+
+    return 0;
+
+error:
+    free_context(ctx);
+    return AVERROR(ENOTSUP);
+}
+
 SwsOpBackend backend_asmjit = {
     .name    = "asmjit",
-    .alloc_context = alloc_context,
-    .compile_end = compile_end,
-    .free_context = free_context,
-    .compile = compile_asmjit,
+    .compile = asmjit_compile,
 };

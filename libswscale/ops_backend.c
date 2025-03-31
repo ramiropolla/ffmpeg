@@ -42,7 +42,7 @@
 # include "ops_tmpl_float.c"
 #undef BIT_DEPTH
 
-static int compile(void *ctx, SwsOpList *ops, SwsOpChain *chain)
+static int compile(SwsOpList *ops, SwsOpChain *chain)
 {
     static const SwsOpTable *const tables[] = {
         &bitfn(op_table_int,    u8),
