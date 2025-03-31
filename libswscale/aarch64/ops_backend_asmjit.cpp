@@ -460,6 +460,18 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
                 cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                 cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
             }
+        } else if (from_size == 1 && to_size == 4 && chain->block_w == 8) {
+            cc.comment("convert (u8 -> u32, expand, 8)");
+            LOOP_USED(i) {
+                refresh_vector(ctx, i, 0x0f);
+                cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+            }
+            LOOP_USED(i) {
+                save_vector(ctx, i, 0x0f);
+                new_vector(ctx, i);
+                cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+            }
         } else {
             return AVERROR(ENOTSUP);
         }
