@@ -334,11 +334,12 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     get_ssim(ssim, out, ref, comps);
     printf("[%-6s] %-12s %dx%d -> %-12s %3dx%3d, flags=%u dither=%u, "
            "SSIM {Y=%f U=%f V=%f A=%f}",
-           sws[1]->backend_name,
+           sws[1]->backend_name ? sws[1]->backend_name : "",
            av_get_pix_fmt_name(src->format), src->width, src->height,
            av_get_pix_fmt_name(dst->format), dst->width, dst->height,
            mode.flags, mode.dither,
            ssim[0], ssim[1], ssim[2], ssim[3]);
+    sws[1]->backend_name = NULL;
 #ifdef DO_MD5
     print_md5(out, comps);
 #endif
