@@ -895,7 +895,16 @@ if (use_vh) {
             return AVERROR(ENOTSUP);
         break;
     case SWS_OP_DITHER:          /* add dithering noise */
-        {
+        if (op.dither.size_log2 == 0) {
+            /* TODO dither(none) + convert(f32->u) use rounding convert instead */
+            cc.comment("dither (none)");
+
+            size_t vidx = ctx->push_immq(op.dither.matrix[0]);
+            LOOP_USED(i) {
+                cc.fadd(vl[i].s4(), vl[i].s4(), vet(vimm[vidx], op));
+                cc.fadd(vh[i].s4(), vh[i].s4(), vet(vimm[vidx], op));
+            }
+        } else {
             cc.comment("dither");
 
             /* Write const data after function */
