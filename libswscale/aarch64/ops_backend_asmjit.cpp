@@ -1098,7 +1098,13 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 
             int32_t factor = op.scale.factor.num / op.scale.factor.den;
             vdata[0] = cc.newVecQ();
-            cc.movi(vop(op, vdata[0]), factor);
+            if (factor <= 255) {
+                cc.movi(vop(op, vdata[0]), factor);
+            } else {
+                a64::Gp tmp = cc.newGpz();
+                cc.mov(tmp, factor);
+                cc.dup(vop(op, vdata[0]), tmp);
+            }
 
             /* Do the salmon dance */
             refresh_vectors_used(ctx, op);
