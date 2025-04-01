@@ -129,7 +129,7 @@ static void check_ops(const char *report, const uint32_t mask, const SwsOp *ops)
     exec0.w = exec1.w = exec1.block_w;
     exec0.h = exec1.h = exec0.slice_h = exec1.slice_h = exec1.block_h;
 
-    if (check_func(chain1.entry, "%s", report)) {
+    if (check_func(chain1.entry, "%s_%dx%d", report, exec1.block_w, exec1.block_h)) {
         func_ref = chain0.entry; /* ignore any other asm versions */
 
         /* Reference function may have smaller block size, so make sure
