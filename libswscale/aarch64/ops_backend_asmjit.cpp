@@ -57,7 +57,7 @@ struct AsmJitContext {
     std::vector<uint32_t> m_data;
     std::vector<a64::Vec> m_vdata;
 
-    /* imm data */
+    /* immediates */
     std::vector<std::pair<uint32_t, uint32_t>> m_imm;
     std::vector<a64::Vec> m_vimm;
 
@@ -73,8 +73,10 @@ struct AsmJitContext {
         m_prologue = cc.firstNode()->next();
         m_tail = cc.cursor();
 #ifdef EMIT_BRK
+        cc.comment("make asmjit happy");
         to_prologue();
-        cc.brk(0xf000);
+        cc.comment("breakpoint");
+        cc.brk(0x0f00);
         from_prologue();
 #endif
         m_exec = cc.newGpz();
@@ -93,7 +95,7 @@ struct AsmJitContext {
         m_prologue = cc.setCursor(m_tail);
     }
 
-    /* imm */
+    /* immediates */
     size_t push_imm32(uint32_t val, int len = 4)
     {
         /* First check if we already have it */
@@ -727,8 +729,6 @@ if (use_vh) {
                 if (use_vh)
                     cc.rev32(vh[i].b16(), vh[i].b16());
             }
-        } else {
-            return AVERROR(ENOTSUP);
         }
         break;
     case SWS_OP_UNPACK:          /* split tightly packed data into components */
@@ -753,8 +753,8 @@ if (use_vh) {
             cc.comment("unpack");
             save_vector(ctx, 0);
             LOOP_USED(i) {
-                new_vector(ctx, i);
                 if (offsets[i]) {
+                    new_vector(ctx, i);
                     cc.ushr    (vet(vl[i], *prev), vet(orig_vl[0], *prev), offsets[i]);
                     if (use_vh)
                         cc.ushr(vet(vh[i], *prev), vet(orig_vh[0], *prev), offsets[i]);
@@ -1036,7 +1036,6 @@ normal_clamp:
                 LOOP_USED(i) {
                     if (op.clamp.max[i].den) {
                         if (clamp_negative_values) {
-                            size_t vidx_min = ctx->push_imm32(0);
                             cc.fmax    (vl[i].s4(), vl[i].s4(), vimm[vidx_min].s4());
                             if (use_vh)
                                 cc.fmax(vh[i].s4(), vh[i].s4(), vimm[vidx_min].s4());
@@ -1192,11 +1191,13 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                 cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[vdata_i].s(vdata_j));
             }
         } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+            /* Add immediate */
+            size_t vidx = ctx->push_imm32_op(op, av_q2i(op.scale.factor));
+
             /* Do the salmon dance */
             cc.comment("scale (integer)");
             refresh_vectors_used(ctx, op);
             LOOP_USED(i) {
-                size_t vidx = ctx->push_imm32_op(op, av_q2i(op.scale.factor));
                 cc.mul    (vet(vl[i], op), vet(orig_vl[i], op), vet(vimm[vidx], op));
                 if (use_vh)
                     cc.mul(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx], op));
