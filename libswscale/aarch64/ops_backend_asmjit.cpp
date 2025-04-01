@@ -33,6 +33,9 @@ extern "C" {
 #include <iostream>
 #include <vector>
 
+#define av_q2f(q) ((q).den ? (float) (q).num / (q).den : 0)
+#define av_q2i(q) ((q).den ? (int32_t) (q).num / (q).den : 0)
+
 using namespace asmjit;
 
 struct AsmJitContext {
@@ -150,7 +153,7 @@ struct AsmJitContext {
             uint32_t u32;
             float    f32;
         } u;
-        u.f32 = av_q2d(q);
+        u.f32 = av_q2f(q);
         return push_imm32(u.u32);
     }
 
@@ -224,7 +227,7 @@ struct AsmJitContext {
             uint32_t u32;
             float    f32;
         } u;
-        u.f32 = av_q2d(q);
+        u.f32 = av_q2f(q);
         return push_u32(u.u32);
     }
 
@@ -821,8 +824,7 @@ if (use_vh) {
             cc.comment("clear (integer)");
             for (int i = 0; i < 4; i++) {
                 if (op.clear.value[i].den) {
-                    int32_t val = op.clear.value[i].num / op.clear.value[i].den;
-                    size_t vidx = ctx->push_imm32_op(op, val);
+                    size_t vidx = ctx->push_imm32_op(op, av_q2i(op.clear.value[i]));
                     /* TODO if the value is no longer modified, just do vl[i] = vimm[vidx] instead */
                     cc.mov    (vet(vl[i], op), vet(vimm[vidx], op));
                     if (use_vh)
@@ -936,7 +938,7 @@ if (use_vh) {
             std::vector<float> fdata;
             fdata.resize(size * size);
             for (int i = 0; i < size * size; i++) {
-                fdata[i] = av_q2d(op.dither.matrix[i]);
+                fdata[i] = av_q2f(op.dither.matrix[i]);
             }
             Label ldata = ctx->emit_data(fdata.data(), size * size * sizeof(float));
 
@@ -1049,8 +1051,7 @@ normal_clamp:
                 cc.comment("clamp");
                 LOOP_USED(i) {
                     if (op.clamp.max[i].den) {
-                        int32_t val = op.clamp.max[i].num / op.clamp.max[i].den;
-                        size_t vidx_max = ctx->push_imm32_op(op, val);
+                        size_t vidx_max = ctx->push_imm32_op(op, av_q2i(op.clamp.max[i]));
                         cc.umin    (vet(vl[i], op), vet(vl[i], op), vet(vimm[vidx_max], op));
                         if (use_vh)
                             cc.umin(vet(vh[i], op), vet(vh[i], op), vet(vimm[vidx_max], op));
@@ -1195,8 +1196,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             cc.comment("scale (integer)");
             refresh_vectors_used(ctx, op);
             LOOP_USED(i) {
-                int32_t val = op.scale.factor.num / op.scale.factor.den;
-                size_t vidx = ctx->push_imm32_op(op, val);
+                size_t vidx = ctx->push_imm32_op(op, av_q2i(op.scale.factor));
                 cc.mul    (vet(vl[i], op), vet(orig_vl[i], op), vet(vimm[vidx], op));
                 if (use_vh)
                     cc.mul(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx], op));
