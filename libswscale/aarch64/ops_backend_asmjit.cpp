@@ -517,9 +517,19 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
     VectorElementType vet(chain);
 
     /* Optimize convert if followed by pack */
+    /* SWS_OP_CONVERT op.type    => op.convert.to */
+    /* SWS_OP_PACK    next->type => next->pack.type */
     if (op.op == SWS_OP_CONVERT && next->op == SWS_OP_PACK && op.convert.to != next->pack.type) {
         next->type = next->pack.type;
         op.convert.to = next->pack.type;
+    }
+
+    /* Optimize unpack followed by convert */
+    /* SWS_OP_UNPACK  op.pack.type => op.type */
+    /* SWS_OP_CONVERT next->type   => next->convert.to */
+    if (op.op == SWS_OP_UNPACK && next->op == SWS_OP_CONVERT && op.pack.type != op.type) {
+        op.type = next->convert.to;
+        next->type = next->convert.to;
     }
 
     bool use_vh = ((op.type == SWS_PIXEL_U16) && chain->block_w == 16)
@@ -843,7 +853,7 @@ if (use_vh) {
         }
         break;
     case SWS_OP_CONVERT:         /* convert (cast) between formats */
-        if (emit_convert(ctx, chain, next, op.type, op.convert.to, op.convert.expand) < 0)
+        if (op.type != op.convert.to && emit_convert(ctx, chain, next, op.type, op.convert.to, op.convert.expand) < 0)
             return AVERROR(ENOTSUP);
         break;
     case SWS_OP_DITHER:          /* add dithering noise */
