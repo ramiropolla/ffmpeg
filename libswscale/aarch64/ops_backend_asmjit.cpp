@@ -747,31 +747,36 @@ if (use_vh) {
 
             if        (op.type == SWS_PIXEL_U8  && op.pack.type == SWS_PIXEL_U16 && chain->block_w ==  8) {
                 cc.comment("pack");
-                /* Normal convert for offsets 0 and >= 8 */
+                /* Merge convert into shift if possible */
                 LOOP_IN(i) {
                     if (offsets[i] == 0 || offsets[i] >= 8) {
                         refresh_vector(ctx, i, 0x0f);
                         cc.uxtl(vl[i].h8(), orig_vl[i].b8());
+                    } else {
+                        refresh_vector(ctx, i, 0x0f);
+                        cc.ushll(vl[i].h8(), orig_vl[i].b8(), offsets[i]);
                     }
                 }
                 LOOP_IN(i) {
                     if (offsets[i] >= 8) {
                         refresh_vector(ctx, i, 0x0f);
                         cc.shl(vl[i].h8(), orig_vl[i].h8(), offsets[i]);
-                    } else if (offsets[i] != 0) {
-                        refresh_vector(ctx, i, 0x0f);
-                        cc.ushll(vl[i].h8(), orig_vl[i].b8(), offsets[i]);
                     }
                 }
             } else if (op.type == SWS_PIXEL_U8  && op.pack.type == SWS_PIXEL_U16 && chain->block_w == 16) {
                 cc.comment("pack");
-                /* Normal convert for offsets 0 and >= 8 */
+                /* Merge convert into shift if possible */
                 LOOP_IN(i) {
                     if (offsets[i] == 0 || offsets[i] >= 8) {
                         save_vector(ctx, i, 0x0f);
                         new_vector(ctx, i);
                         cc.uxtl (vl[i].h8(), orig_vl[i].b8());
                         cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
+                    } else {
+                        save_vector(ctx, i, 0x0f);
+                        new_vector(ctx, i);
+                        cc.ushll (vl[i].h8(), orig_vl[i].b8(),  offsets[i]);
+                        cc.ushll2(vh[i].h8(), orig_vl[i].b16(), offsets[i]);
                     }
                 }
                 LOOP_IN(i) {
@@ -779,11 +784,6 @@ if (use_vh) {
                         refresh_vector(ctx, i);
                         cc.shl(vl[i].h8(), orig_vl[i].h8(), offsets[i]);
                         cc.shl(vh[i].h8(), orig_vh[i].h8(), offsets[i]);
-                    } else if (offsets[i] != 0) {
-                        save_vector(ctx, i, 0x0f);
-                        new_vector(ctx, i);
-                        cc.ushll (vl[i].h8(), orig_vl[i].b8(),  offsets[i]);
-                        cc.ushll2(vh[i].h8(), orig_vl[i].b16(), offsets[i]);
                     }
                 }
 #if 0
@@ -792,13 +792,18 @@ if (use_vh) {
 #endif
             } else if (op.type == SWS_PIXEL_U16 && op.pack.type == SWS_PIXEL_U32 && chain->block_w ==  8) {
                 cc.comment("pack");
-                /* Normal convert for offsets 0 and >=16 */
+                /* Merge convert into shift if possible */
                 LOOP_IN(i) {
                     if (offsets[i] == 0 || offsets[i] >= 16) {
                         save_vector(ctx, i, 0x0f);
                         new_vector(ctx, i);
                         cc.uxtl (vl[i].s4(), orig_vl[i].h4());
                         cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
+                    } else {
+                        save_vector(ctx, i, 0x0f);
+                        new_vector(ctx, i);
+                        cc.ushll (vl[i].s4(), orig_vl[i].h4(), offsets[i]);
+                        cc.ushll2(vh[i].s4(), orig_vl[i].h8(), offsets[i]);
                     }
                 }
                 LOOP_IN(i) {
@@ -806,11 +811,6 @@ if (use_vh) {
                         refresh_vector(ctx, i);
                         cc.shl(vl[i].s4(), orig_vl[i].s4(), offsets[i]);
                         cc.shl(vh[i].s4(), orig_vh[i].s4(), offsets[i]);
-                    } else if (offsets[i] != 0) {
-                        save_vector(ctx, i, 0x0f);
-                        new_vector(ctx, i);
-                        cc.ushll (vl[i].s4(), orig_vl[i].h4(), offsets[i]);
-                        cc.ushll2(vh[i].s4(), orig_vl[i].h8(), offsets[i]);
                     }
                 }
             } else {
