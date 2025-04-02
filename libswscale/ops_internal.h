@@ -68,6 +68,8 @@ typedef struct __attribute__((packed)) SwsOpExec {
     int32_t w, h;               /* Overall dimensions being processed */
     int32_t slice_y, slice_h;   /* Start and height of current slice */
     int32_t block_w, block_h;   /* Configured processing block size */
+
+    int32_t x_end;              /* X coordinate for ending the line */
 } SwsOpExec;
 
 typedef struct SwsOpImpl SwsOpImpl;

@@ -19,6 +19,7 @@
  */
 
 // #define EMIT_BRK
+#define EMIT_LOOP
 
 extern "C" {
 #include "libavutil/cpu.h"
@@ -53,6 +54,9 @@ struct AsmJitContext {
     a64::Vec m_vl[4];
     a64::Vec m_vh[4];
 
+    a64::Gp m_exec_x;
+    a64::Gp m_exec_x_end;
+
     /* const data */
     std::vector<uint32_t> m_data;
     std::vector<a64::Vec> m_vdata;
@@ -80,6 +84,8 @@ struct AsmJitContext {
         from_prologue();
 #endif
         m_exec = cc.newGpz();
+        m_exec_x = cc.newGpz();
+        m_exec_x_end = cc.newGpz();
         m_func->setArg(0, m_exec);
     }
 
@@ -288,6 +294,30 @@ struct AsmJitContext {
             break;
         }
         from_prologue();
+    }
+
+    void emit_loop(const SwsOpChain *const chain)
+    {
+#ifdef EMIT_LOOP
+        a64::Compiler &cc = *m_cc;
+        Label loop = cc.newLabel();
+
+        to_prologue();
+        cc.comment("prologue (x, x_end)");
+        cc.ldr(m_exec_x.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
+        cc.ldr(m_exec_x_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x_end)));
+        cc.comment("main loop");
+        cc.bind(loop);
+        from_prologue();
+
+        cc.comment("loop back");
+        cc.add(m_exec_x.r32(), m_exec_x.r32(), chain->block_w);
+        cc.cmp(m_exec_x.r32(), m_exec_x_end.r32());
+        cc.b(a64::CondCode::kLO, loop);
+
+        cc.comment("epilogue");
+        cc.str(m_exec_x.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
+#endif
     }
 };
 
@@ -980,10 +1010,12 @@ if (use_vh) {
             a64::Gp y = cc.newGpz();
 
             cc.adr(rdatal, ldata);
-            cc.ldr(x.r32(), a64::ptr(exec, offsetof(SwsOpExec, x)));
+#ifndef EMIT_LOOP
+            cc.ldr(ctx->m_exec_x.r32(), a64::ptr(ctx->m_exec, offsetof(SwsOpExec, x)));
+#endif
             cc.ldr(y.r32(), a64::ptr(exec, offsetof(SwsOpExec, y)));
             /* x = (x & ((1 << size_log2) - 1)) * sizeof(float32) */
-            cc.ubfiz(x, x, 2, op.dither.size_log2);
+            cc.ubfiz(x, ctx->m_exec_x, 2, op.dither.size_log2);
             cc.add(rdatah, rdatal, 16);
             cc.add(rdatal, rdatal, x);
             cc.add(rdatah, rdatah, x);
@@ -1281,10 +1313,11 @@ static av_cold int asmjit_compile(SwsOpList *ops, SwsOpChain *chain)
     if (ret < 0)
         goto error;
 
-    cc.ret();
-
     ctx->emit_const();
     ctx->load_immediates();
+    ctx->emit_loop(chain);
+
+    cc.ret();
 
     err = cc.endFunc();
     if (err) {
