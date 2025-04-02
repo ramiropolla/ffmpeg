@@ -1051,18 +1051,21 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
             }
 
             /* Write const data after function */
-            bool identity[4][5];
             int vpos[4][5];
             for (int i = 0; i < 4; i++) {
+                int count = 0;
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
                     if (op.lin.m[i][sj].num) {
-                        /* TODO don't emit identity data */
-                        identity[i][sj] = (op.lin.m[i][sj].num == 1 && op.lin.m[i][sj].den == 1);
-                        vpos[i][sj] = ctx->push_q(op.lin.m[i][sj]);
+                        if (count == 0 && i == sj && (op.lin.m[i][sj].num == 1 && op.lin.m[i][sj].den == 1)) {
+                            /* Don't emit identify coefficient where a mov will be used */
+                            vpos[i][sj] = -2;
+                        } else {
+                            vpos[i][sj] = ctx->push_q(op.lin.m[i][sj]);
+                        }
+                        count++;
                     } else {
                         vpos[i][sj] = -1;
-                        identity[i][sj] = false;
                     }
                 }
             }
@@ -1083,7 +1086,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                         int vdata_j = vidx & 3;
                         if (j == 0)
                             cc.dup(vl[i].s4(), vdata[vdata_i].s(vdata_j));
-                        else if (count == 0 && identity[i][sj])
+                        else if (count == 0 && vidx == -2)
                             cc.mov(vl[i].s4(), orig_vl[sj].s4());
                         else if (count == 0)
                             cc.fmul(vl[i].s4(), orig_vl[sj].s4(), vdata[vdata_i].s(vdata_j));
@@ -1101,7 +1104,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
                         int vdata_j = vidx & 3;
                         if (j == 0)
                             cc.dup(vh[i].s4(), vdata[vdata_i].s(vdata_j));
-                        else if (count == 0 && identity[i][sj])
+                        else if (count == 0 && vidx == -2)
                             cc.mov(vh[i].s4(), orig_vh[sj].s4());
                         else if (count == 0)
                             cc.fmul(vh[i].s4(), orig_vh[sj].s4(), vdata[vdata_i].s(vdata_j));
