@@ -524,15 +524,28 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
 
     VectorElementType vet(chain);
 
-    /* Optimize convert if followed by pack */
+    /* Optimize convert+pack */
     /* SWS_OP_CONVERT op.type    => op.convert.to */
     /* SWS_OP_PACK    next->type => next->pack.type */
     if (op.op == SWS_OP_CONVERT && next->op == SWS_OP_PACK && op.convert.to != next->pack.type) {
-        next->type = next->pack.type;
         op.convert.to = next->pack.type;
+        next->type = next->pack.type;
     }
 
-    /* Optimize unpack followed by convert */
+    /* Optimize convert+swizzle+pack */
+    /* SWS_OP_CONVERT op.type    => op.convert.to */
+    /* SWS_OP_SWIZZLE op.type */
+    /* SWS_OP_PACK    next->type => next->pack.type */
+    if (op.op == SWS_OP_CONVERT && next->op == SWS_OP_SWIZZLE && ops->ops[2].op == SWS_OP_PACK && op.convert.to != ops->ops[2].type) {
+        /* TODO the pattern of convert+swizzle+pack that I saw actually came from unpack+swizzle+pack */
+#if 0
+        op.convert.to = ops->ops[2].pack.type;
+        next->type = ops->ops[2].pack.type;
+        ops->ops[2].type = ops->ops[2].pack.type;
+#endif
+    }
+
+    /* Optimize unpack+convert */
     /* SWS_OP_UNPACK  op.pack.type => op.type */
     /* SWS_OP_CONVERT next->type   => next->convert.to */
     if (op.op == SWS_OP_UNPACK && next->op == SWS_OP_CONVERT && op.pack.type != op.type) {
