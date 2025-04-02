@@ -322,38 +322,18 @@ struct VectorElementType {
     const SwsOpChain *m_chain;
 };
 
-#define LOOP_USED(idx)                \
+#define LOOP_ARRAY(idx, arr)          \
     for (int idx = 0; idx < 4; idx++) \
-        if (!op.comps.unused[idx])
-
-#define LOOP_OUT(idx)                 \
-    for (int idx = 0; idx < 4; idx++) \
-        if (!next->comps.unused[idx])
+        if (arr[idx])
+#define LOOP_OUT(idx) LOOP_ARRAY(idx, !next->comps.unused)
+#define LOOP_IN(idx)  LOOP_ARRAY(idx, !op.comps.unused)
 
 static inline uint32_t mask_from_i(int i)
 {
     return (1 << i) | (1 << (i + 4));
 }
 
-static inline uint32_t mask_from_used(const SwsOp &op)
-{
-    uint32_t mask = 0;
-    LOOP_USED(i) {
-        mask |= mask_from_i(i);
-    }
-    return mask;
-}
-
-static inline uint32_t mask_from_count(int count)
-{
-    uint32_t mask = 0;
-    for (int i = 0; i < count; i++) {
-        mask |= mask_from_i(i);
-    }
-    return mask;
-}
-
-static void save_vectors_mask(AsmJitContext *ctx, uint32_t mask)
+static inline void save_vectors_mask(AsmJitContext *ctx, uint32_t mask)
 {
     a64::Vec *orig_vl = ctx->m_orig_vl;
     a64::Vec *orig_vh = ctx->m_orig_vh;
@@ -369,7 +349,7 @@ static void save_vectors_mask(AsmJitContext *ctx, uint32_t mask)
     }
 }
 
-static void new_vectors_mask(AsmJitContext *ctx, uint32_t mask)
+static inline void new_vectors_mask(AsmJitContext *ctx, uint32_t mask)
 {
     a64::Compiler &cc = *ctx->m_cc;
     a64::Vec *vl = ctx->m_vl;
@@ -384,58 +364,26 @@ static void new_vectors_mask(AsmJitContext *ctx, uint32_t mask)
     }
 }
 
-static void new_vectors_used(AsmJitContext *ctx, const SwsOp &op)
-{
-    new_vectors_mask(ctx, mask_from_used(op));
-}
-
-static void new_vectors_count(AsmJitContext *ctx, int count)
-{
-    new_vectors_mask(ctx, mask_from_count(count));
-}
-
 static void new_vector(AsmJitContext *ctx, int i, int mask = 0xff)
 {
-    new_vectors_mask(ctx, mask_from_i(i) & mask);
-}
-
-static void save_vectors_used(AsmJitContext *ctx, const SwsOp &op)
-{
-    save_vectors_mask(ctx, mask_from_used(op));
-}
-
-static void save_vectors_count(AsmJitContext *ctx, int count)
-{
-    save_vectors_mask(ctx, mask_from_count(count));
+    mask &= mask_from_i(i);
+    new_vectors_mask(ctx, mask);
 }
 
 static void save_vector(AsmJitContext *ctx, int i, int mask = 0xff)
 {
-    save_vectors_mask(ctx, mask_from_i(i) & mask);
-}
-
-static void refresh_vectors_mask(AsmJitContext *ctx, uint32_t mask)
-{
+    mask &= mask_from_i(i);
     save_vectors_mask(ctx, mask);
-    new_vectors_mask(ctx, mask);
-}
-
-static void refresh_vectors_used(AsmJitContext *ctx, const SwsOp &op)
-{
-    refresh_vectors_mask(ctx, mask_from_used(op));
-}
-
-static void refresh_vectors_count(AsmJitContext *ctx, int count)
-{
-    refresh_vectors_mask(ctx, mask_from_count(count));
 }
 
 static void refresh_vector(AsmJitContext *ctx, int i, int mask = 0xff)
 {
-    refresh_vectors_mask(ctx, mask_from_i(i) & mask);
+    mask &= mask_from_i(i);
+    save_vectors_mask(ctx, mask);
+    new_vectors_mask(ctx, mask);
 }
 
-static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp &op, SwsPixelType from, SwsPixelType to, bool expand)
+static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp *next, SwsPixelType from, SwsPixelType to, bool expand)
 {
     a64::Compiler &cc = *ctx->m_cc;
     a64::Vec *orig_vl = ctx->m_orig_vl;
@@ -447,7 +395,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
 
     if (from == SWS_PIXEL_F32) {
         cc.comment("convert (f32 -> u32)");
-        LOOP_USED(i) {
+        LOOP_OUT(i) {
             refresh_vector(ctx, i);
             cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
             cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
@@ -457,13 +405,13 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
     if (expand) {
         if        (from_size == 1 && to_size == 2 && chain->block_w == 8) {
             cc.comment("convert (u8 -> u16, expand, 8)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
             }
         } else if (from_size == 1 && to_size == 2 && chain->block_w == 16) {
             cc.comment("convert (u8 -> u16, expand, 16)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 save_vector(ctx, i, 0x0f);
                 new_vector(ctx, i);
                 cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
@@ -471,11 +419,11 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
             }
         } else if (from_size == 1 && to_size == 4 && chain->block_w == 8) {
             cc.comment("convert (u8 -> u32, expand, 8)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
             }
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 save_vector(ctx, i, 0x0f);
                 new_vector(ctx, i);
                 cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
@@ -487,7 +435,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
     } else {
         if (from_size == 1 && to_size > from_size && chain->block_w == 8) {
             cc.comment("convert (u8 -> u16, !expand, 8)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.uxtl(vl[i].h8(), orig_vl[i].b8());
             }
@@ -496,7 +444,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
 
         if (from_size == 1 && to_size > from_size && chain->block_w == 16) {
             cc.comment("convert (u8 -> u16, !expand, 16)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 save_vector(ctx, i, 0x0f);
                 new_vector(ctx, i);
                 cc.uxtl (vl[i].h8(), orig_vl[i].b8());
@@ -507,7 +455,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
 
         if (from_size == 2 && to_size == 4 && chain->block_w == 8) {
             cc.comment("convert (u16 -> u32, !expand, 8)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 save_vector(ctx, i, 0x0f);
                 new_vector(ctx, i);
                 cc.uxtl (vl[i].s4(), orig_vl[i].h4());
@@ -518,12 +466,12 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
 
         if (from_size == 4 && to_size < from_size && chain->block_w == 8) {
             cc.comment("convert (u32 -> u16, !expand, 8)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 refresh_vector(ctx, i);
                 cc.xtn(vl[i].h4(), orig_vl[i].s4());
                 cc.xtn(vh[i].h4(), orig_vh[i].s4());
             }
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 cc.ins(vl[i].d(1), vh[i].d(0));
             }
             from_size = 2;
@@ -531,7 +479,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
 
         if (from_size == 2 && to_size == 1 && chain->block_w == 8) {
             cc.comment("convert (u16 -> u8, !expand, 8)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.xtn(vl[i].b8(), orig_vl[i].h8());
             }
@@ -540,12 +488,12 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
 
         if (from_size == 2 && to_size == 1 && chain->block_w == 16) {
             cc.comment("convert (u16 -> u8, !expand, 16)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 refresh_vector(ctx, i);
                 cc.xtn(vl[i].b8(), orig_vl[i].h8());
                 cc.xtn(vh[i].b8(), orig_vh[i].h8());
             }
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 cc.ins(vl[i].d(1), vh[i].d(0));
             }
             from_size = 1;
@@ -554,7 +502,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
 
     if (to == SWS_PIXEL_F32) {
         cc.comment("convert (u32 -> f32)");
-        LOOP_USED(i) {
+        LOOP_OUT(i) {
             refresh_vector(ctx, i);
             cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
             cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
@@ -596,7 +544,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
     case SWS_OP_READ:            /* gather raw pixels from planes */
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
-        new_vectors_mask(ctx, mask_from_count(op.rw.elems) & (use_vh ? 0xff : 0x0f));
         cc.comment("read");
         if (!op.rw.packed) {
             /* Load input pointers in prologue */
@@ -610,13 +557,13 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
             ctx->from_prologue();
             /* Read vectors from input pointers */
             LOOP_OUT(i) {
+                new_vector(ctx, i, use_vh ? 0xff : 0x0f);
                 if (use_vh)
                     cc.ld1(vet(vl[i], op), vet(vh[i], op), a64::ptr(in[i]).post(vet.size(op) * 2));
                 else
                     cc.ld1(vet(vl[i], op),                 a64::ptr(in[i]).post(vet.size(op) * 1));
             }
         } else {
-            /* TODO partial loads when not all output is used */
             /* Load input pointer in prologue */
             ctx->to_prologue();
             cc.comment("prologue (read)");
@@ -624,6 +571,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
             cc.ldr(in, a64::ptr(exec, offsetof(SwsOpExec, in)));
             ctx->from_prologue();
             /* Read vectors from input pointer */
+            for (int i = 0; i < op.rw.elems; i++) {
+                new_vector(ctx, i, use_vh ? 0xff : 0x0f);
+            }
             switch (op.rw.elems) {
             case 1:
                 if (use_vh)
@@ -658,13 +608,13 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
             ctx->to_prologue();
             cc.comment("prologue (write)");
             a64::Gp out[4];
-            for (int i = 0; i < op.rw.elems; i++) {
+            LOOP_IN(i) {
                 out[i] = cc.newGpz();
                 cc.ldr(out[i], a64::ptr(exec, offsetof(SwsOpExec, out) + sizeof(uint8_t *) * i));
             }
             ctx->from_prologue();
             /* Write vectors to output pointers */
-            for (int i = 0; i < op.rw.elems; i++) {
+            LOOP_IN(i) {
                 if (use_vh)
                     cc.st1(vet(vl[i], op), vet(vh[i], op), a64::ptr(out[i]).post(vet.size(op) * 2));
                 else
@@ -722,14 +672,14 @@ if (use_vh) {
     case SWS_OP_SWAP_BYTES:      /* swap byte order (for differing endianness) */
         if        (op.type == SWS_PIXEL_U16) {
             cc.comment("swap_bytes (u16)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 cc.rev16    (vl[i].b16(), vl[i].b16());
                 if (use_vh)
                     cc.rev16(vh[i].b16(), vh[i].b16());
             }
         } else if (op.type == SWS_PIXEL_U32 || op.type == SWS_PIXEL_F32) {
             cc.comment("swap_bytes (u32)");
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 cc.rev32    (vl[i].b16(), vl[i].b16());
                 if (use_vh)
                     cc.rev32(vh[i].b16(), vh[i].b16());
@@ -750,14 +700,9 @@ if (use_vh) {
                   || ((op.pack.type == SWS_PIXEL_U32) && chain->block_w == 8)
                   || ((op.pack.type == SWS_PIXEL_F32) && chain->block_w == 8);
 
-            /* Override op.comps.unused so that I can use LOOP_USED */
-            for (int i = 0; i < 4; i++) {
-                op.comps.unused[i] = !op.pack.pattern[i];
-            }
-
             cc.comment("unpack");
             save_vector(ctx, 0);
-            LOOP_USED(i) {
+            LOOP_ARRAY(i, op.pack.pattern) {
                 if (offsets[i]) {
                     new_vector(ctx, i);
                     cc.ushr    (vet(vl[i], *prev), vet(orig_vl[0], *prev), offsets[i]);
@@ -769,7 +714,7 @@ if (use_vh) {
                         vh[i] = orig_vh[0];
                 }
             }
-            LOOP_USED(i) {
+            LOOP_ARRAY(i, op.pack.pattern) {
                 uint32_t mask = (1u << op.pack.pattern[i]) - 1;
                 size_t vidx = ctx->push_imm32_op(*prev, mask);
                 cc.and_    (vl[i].b16(), vl[i].b16(), vimm[vidx].b16());
@@ -777,7 +722,7 @@ if (use_vh) {
                     cc.and_(vh[i].b16(), vh[i].b16(), vimm[vidx].b16());
             }
             /* TODO improve! */
-            if (op.type != op.pack.type && emit_convert(ctx, chain, op, op.pack.type, op.type, false) < 0)
+            if (op.type != op.pack.type && emit_convert(ctx, chain, next, op.pack.type, op.type, false) < 0)
                 return AVERROR(ENOTSUP);
         }
         break;
@@ -796,16 +741,16 @@ if (use_vh) {
 
             cc.comment("pack");
             /* TODO ushll instead */
-            if (op.type != op.pack.type && emit_convert(ctx, chain, op, op.type, op.pack.type, false) < 0)
+            if (op.type != op.pack.type && emit_convert(ctx, chain, &op, op.type, op.pack.type, false) < 0)
                 return AVERROR(ENOTSUP);
-            LOOP_USED(i) {
+            LOOP_IN(i) {
                 if (offsets[i]) {
                     cc.shl    (vet(vl[i], *next), vet(vl[i], *next), offsets[i]);
                     if (use_vh)
                         cc.shl(vet(vh[i], *next), vet(vh[i], *next), offsets[i]);
                 }
             }
-            LOOP_USED(i) {
+            LOOP_IN(i) {
                 if (i != 0) {
                     cc.orr    (vl[0].b16(), vl[0].b16(), vl[i].b16());
                     if (use_vh)
@@ -816,14 +761,6 @@ if (use_vh) {
         break;
     /* Pixel manipulation */
     case SWS_OP_CLEAR:           /* clear pixel values */
-        /* Create output vectors */
-        for (int i = 0; i < 4; i++) {
-            if (op.clear.value[i].den) {
-                vl[i] = cc.newVecQ();
-                if (use_vh)
-                    vh[i] = cc.newVecQ();
-            }
-        }
         /* Set vectors to constant value */
         if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             cc.comment("clear (integer)");
@@ -831,6 +768,7 @@ if (use_vh) {
                 if (op.clear.value[i].den) {
                     size_t vidx = ctx->push_imm32_op(op, av_q2i(op.clear.value[i]));
                     /* TODO if the value is no longer modified, just do vl[i] = vimm[vidx] instead */
+                    new_vector(ctx, i, use_vh ? 0xff : 0x0f);
                     cc.mov    (vet(vl[i], op), vet(vimm[vidx], op));
                     if (use_vh)
                         cc.mov(vet(vh[i], op), vet(vimm[vidx], op));
@@ -850,6 +788,7 @@ if (use_vh) {
                     size_t vidx = vpos[i];
                     int vdata_i = vidx >> 2;
                     int vdata_j = vidx & 3;
+                    new_vector(ctx, i);
                     cc.dup(vl[i].s4(), vdata[vdata_i].s(vdata_j));
                     cc.dup(vh[i].s4(), vdata[vdata_i].s(vdata_j));
                 }
@@ -859,8 +798,8 @@ if (use_vh) {
     case SWS_OP_LSHIFT:          /* logical left shift of raw pixel values */
         if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             cc.comment("lshift");
-            refresh_vectors_used(ctx, op);
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
+                refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
                 cc.shl    (vet(vl[i], op), vet(orig_vl[i], op), op.shift.amount);
                 if (use_vh)
                     cc.shl(vet(vh[i], op), vet(orig_vh[i], op), op.shift.amount);
@@ -870,8 +809,8 @@ if (use_vh) {
     case SWS_OP_RSHIFT:          /* right shift of raw pixel values */
         if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             cc.comment("rshift");
-            refresh_vectors_used(ctx, op);
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
+                refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
                 cc.ushr    (vet(vl[i], op), vet(orig_vl[i], op), op.shift.amount);
                 if (use_vh)
                     cc.ushr(vet(vh[i], op), vet(orig_vh[i], op), op.shift.amount);
@@ -890,10 +829,9 @@ if (use_vh) {
                 used[op.swizzle.in[i]] = true;
             }
 
-            save_vectors_count(ctx, 4);
-
             if (reorder) {
                 cc.comment("swizzle (reorder)");
+                save_vectors_mask(ctx, 0xff);
                 /* It shouldn't matter if the vectors are initialized or not */
                 for (int i = 0; i < 4; i++) {
                     vl[i] = orig_vl[op.swizzle.in[i]];
@@ -901,10 +839,7 @@ if (use_vh) {
                 }
             } else {
                 cc.comment("swizzle (copy)");
-
-                /* Create output vectors */
-                new_vectors_mask(ctx, use_vh ? 0xff : 0x0f);
-
+                save_vectors_mask(ctx, 0xff);
                 for (int i = 0; i < 4; i++) {
                     if (op.comps.unused[op.swizzle.in[i]])
                         continue;
@@ -913,7 +848,8 @@ if (use_vh) {
                         if (use_vh)
                             vh[i] = orig_vh[op.swizzle.in[i]];
                     } else {
-                        cc.mov(vl[i].b16(), orig_vl[op.swizzle.in[i]].b16());
+                        new_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                        cc.mov    (vl[i].b16(), orig_vl[op.swizzle.in[i]].b16());
                         if (use_vh)
                             cc.mov(vh[i].b16(), orig_vh[op.swizzle.in[i]].b16());
                     }
@@ -922,7 +858,7 @@ if (use_vh) {
         }
         break;
     case SWS_OP_CONVERT:         /* convert (cast) between formats */
-        if (emit_convert(ctx, chain, op, op.type, op.convert.to, op.convert.expand) < 0)
+        if (emit_convert(ctx, chain, next, op.type, op.convert.to, op.convert.expand) < 0)
             return AVERROR(ENOTSUP);
         break;
     case SWS_OP_DITHER:          /* add dithering noise */
@@ -931,7 +867,7 @@ if (use_vh) {
             cc.comment("dither (none)");
 
             size_t vidx = ctx->push_immq(op.dither.matrix[0]);
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 cc.fadd(vl[i].s4(), vl[i].s4(), vet(vimm[vidx], op));
                 cc.fadd(vh[i].s4(), vh[i].s4(), vet(vimm[vidx], op));
             }
@@ -962,7 +898,7 @@ if (use_vh) {
             cc.add(rdatah, rdatah, x);
 
             static const int y_off[4] = { 0, 3, 5, 7 };
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 // offset = ((((y + yoff[i]) & mask) << log2_size) + (x & mask)) * sizeof(float32);
 
                 a64::Gp ry_off = cc.newGpz();
@@ -989,37 +925,37 @@ if (use_vh) {
         break;
     case SWS_OP_CLAMP:           /* clamp pixel values to value range */
         if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U8) {
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 if (av_cmp_q(op.clamp.max[i], (AVRational) {255, 1}) != 0)
                     goto normal_clamp;
             }
 
             cc.comment("convert+clamp");
-            if (emit_convert(ctx, chain, op, op.type, SWS_PIXEL_U16, false) < 0)
+            if (emit_convert(ctx, chain, next, op.type, SWS_PIXEL_U16, false) < 0)
                 return AVERROR(ENOTSUP);
             /* Saturating convert from u16 to u8 */
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.uqxtn(vl[i].b8(), orig_vl[i].h8());
             }
             ops->ops++;
             ops->num_ops--;
         } else if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U16) {
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 if (av_cmp_q(op.clamp.max[i], (AVRational) {65535, 1}) != 0)
                     goto normal_clamp;
             }
 
             cc.comment("convert+clamp");
-            if (emit_convert(ctx, chain, op, op.type, SWS_PIXEL_U32, false) < 0)
+            if (emit_convert(ctx, chain, next, op.type, SWS_PIXEL_U32, false) < 0)
                 return AVERROR(ENOTSUP);
             /* Saturating convert from u32 to u16 */
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 refresh_vector(ctx, i);
                 cc.uqxtn(vl[i].h4(), orig_vl[i].s4());
                 cc.uqxtn(vh[i].h4(), orig_vh[i].s4());
             }
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
                 cc.ins(vl[i].d(1), vh[i].d(0));
             }
             ops->ops++;
@@ -1038,7 +974,7 @@ normal_clamp:
 
                 cc.comment("clamp");
                 size_t vidx_min = ctx->push_imm32(0);
-                LOOP_USED(i) {
+                LOOP_OUT(i) {
                     if (op.clamp.max[i].den) {
                         if (clamp_negative_values) {
                             cc.fmax    (vl[i].s4(), vl[i].s4(), vimm[vidx_min].s4());
@@ -1053,7 +989,7 @@ normal_clamp:
                 }
             } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
                 cc.comment("clamp");
-                LOOP_USED(i) {
+                LOOP_OUT(i) {
                     if (op.clamp.max[i].den) {
                         size_t vidx_max = ctx->push_imm32_op(op, av_q2i(op.clamp.max[i]));
                         cc.umin    (vet(vl[i], op), vet(vl[i], op), vet(vimm[vidx_max], op));
@@ -1092,7 +1028,7 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 
             /* Check which vectors are used after this operation */
             int used[4] = { 0 };
-            LOOP_USED(i) {
+            LOOP_IN(i) {
                 used[i] = 1;
             }
             for (int i = 0; i < 4; i++) {
@@ -1135,13 +1071,9 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 
             /* Do the salmon dance */
             cc.comment("linear");
-            refresh_vectors_count(ctx, 4);
-            for (int i = 0; i < 4; i++) {
-                if (!used[i]) {
-                    vl[i] = orig_vl[i];
-                    vh[i] = orig_vh[i];
-                    continue;
-                }
+            save_vectors_mask(ctx, 0xff);
+            LOOP_ARRAY(i, used) {
+                new_vector(ctx, i);
                 int count = 0;
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
@@ -1190,8 +1122,8 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 
             /* Do the salmon dance */
             cc.comment("scale (f32)");
-            refresh_vectors_used(ctx, op);
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
+                refresh_vector(ctx, i);
                 cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata[vdata_i].s(vdata_j));
                 cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[vdata_i].s(vdata_j));
             }
@@ -1201,8 +1133,8 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 
             /* Do the salmon dance */
             cc.comment("scale (integer)");
-            refresh_vectors_used(ctx, op);
-            LOOP_USED(i) {
+            LOOP_OUT(i) {
+                refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
                 cc.mul    (vet(vl[i], op), vet(orig_vl[i], op), vet(vimm[vidx], op));
                 if (use_vh)
                     cc.mul(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx], op));
