@@ -443,59 +443,57 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
                 cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
             }
         }
-        if (from_size == 1 && to_size > from_size && chain->block_w == 8) {
-            LOOP_OUT(i) {
-                refresh_vector(ctx, i, 0x0f);
-                cc.uxtl(vl[i].h8(), orig_vl[i].b8());
+        if (chain->block_w == 8) {
+            if        (from_size == 1 && to_size > from_size) {
+                LOOP_OUT(i) {
+                    refresh_vector(ctx, i, 0x0f);
+                    cc.uxtl(vl[i].h8(), orig_vl[i].b8());
+                }
+                from_size = 2;
+            } else if (from_size == 4 && to_size < from_size) {
+                LOOP_OUT(i) {
+                    refresh_vector(ctx, i);
+                    cc.xtn(vl[i].h4(), orig_vl[i].s4());
+                    cc.xtn(vh[i].h4(), orig_vh[i].s4());
+                }
+                LOOP_OUT(i) {
+                    cc.ins(vl[i].d(1), vh[i].d(0));
+                }
+                from_size = 2;
             }
-            from_size = 2;
-        }
-        if (from_size == 1 && to_size > from_size && chain->block_w == 16) {
-            LOOP_OUT(i) {
-                save_vector(ctx, i, 0x0f);
-                new_vector(ctx, i);
-                cc.uxtl (vl[i].h8(), orig_vl[i].b8());
-                cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
+            if        (from_size == 2 && to_size == 4) {
+                LOOP_OUT(i) {
+                    save_vector(ctx, i, 0x0f);
+                    new_vector(ctx, i);
+                    cc.uxtl (vl[i].s4(), orig_vl[i].h4());
+                    cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
+                }
+                from_size = 4;
+            } else if (from_size == 2 && to_size == 1) {
+                LOOP_OUT(i) {
+                    refresh_vector(ctx, i, 0x0f);
+                    cc.xtn(vl[i].b8(), orig_vl[i].h8());
+                }
+                from_size = 1;
             }
-            from_size = 2;
-        }
-        if (from_size == 2 && to_size == 4 && chain->block_w == 8) {
-            LOOP_OUT(i) {
-                save_vector(ctx, i, 0x0f);
-                new_vector(ctx, i);
-                cc.uxtl (vl[i].s4(), orig_vl[i].h4());
-                cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
+        } else /* if (chain->block_w == 16) */ {
+            if        (from_size == 1 && to_size == 2) {
+                LOOP_OUT(i) {
+                    save_vector(ctx, i, 0x0f);
+                    new_vector(ctx, i);
+                    cc.uxtl (vl[i].h8(), orig_vl[i].b8());
+                    cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
+                }
+            } else if (from_size == 2 && to_size == 1) {
+                LOOP_OUT(i) {
+                    refresh_vector(ctx, i);
+                    cc.xtn(vl[i].b8(), orig_vl[i].h8());
+                    cc.xtn(vh[i].b8(), orig_vh[i].h8());
+                }
+                LOOP_OUT(i) {
+                    cc.ins(vl[i].d(1), vh[i].d(0));
+                }
             }
-            from_size = 4;
-        }
-        if (from_size == 4 && to_size < from_size && chain->block_w == 8) {
-            LOOP_OUT(i) {
-                refresh_vector(ctx, i);
-                cc.xtn(vl[i].h4(), orig_vl[i].s4());
-                cc.xtn(vh[i].h4(), orig_vh[i].s4());
-            }
-            LOOP_OUT(i) {
-                cc.ins(vl[i].d(1), vh[i].d(0));
-            }
-            from_size = 2;
-        }
-        if (from_size == 2 && to_size == 1 && chain->block_w == 8) {
-            LOOP_OUT(i) {
-                refresh_vector(ctx, i, 0x0f);
-                cc.xtn(vl[i].b8(), orig_vl[i].h8());
-            }
-            from_size = 1;
-        }
-        if (from_size == 2 && to_size == 1 && chain->block_w == 16) {
-            LOOP_OUT(i) {
-                refresh_vector(ctx, i);
-                cc.xtn(vl[i].b8(), orig_vl[i].h8());
-                cc.xtn(vh[i].b8(), orig_vh[i].h8());
-            }
-            LOOP_OUT(i) {
-                cc.ins(vl[i].d(1), vh[i].d(0));
-            }
-            from_size = 1;
         }
         if (to == SWS_PIXEL_F32) {
             LOOP_OUT(i) {
@@ -730,7 +728,6 @@ if (use_vh) {
                 if (use_vh)
                     cc.and_(vh[i].b16(), vh[i].b16(), vimm[vidx].b16());
             }
-            /* TODO improve! */
             if (op.type != op.pack.type && emit_convert(ctx, chain, next, op.pack.type, op.type, false) < 0)
                 return AVERROR(ENOTSUP);
         }
