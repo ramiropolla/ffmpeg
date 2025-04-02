@@ -364,19 +364,19 @@ static inline void new_vectors_mask(AsmJitContext *ctx, uint32_t mask)
     }
 }
 
-static void new_vector(AsmJitContext *ctx, int i, int mask = 0xff)
+static inline void new_vector(AsmJitContext *ctx, int i, int mask = 0xff)
 {
     mask &= mask_from_i(i);
     new_vectors_mask(ctx, mask);
 }
 
-static void save_vector(AsmJitContext *ctx, int i, int mask = 0xff)
+static inline void save_vector(AsmJitContext *ctx, int i, int mask = 0xff)
 {
     mask &= mask_from_i(i);
     save_vectors_mask(ctx, mask);
 }
 
-static void refresh_vector(AsmJitContext *ctx, int i, int mask = 0xff)
+static inline void refresh_vector(AsmJitContext *ctx, int i, int mask = 0xff)
 {
     mask &= mask_from_i(i);
     save_vectors_mask(ctx, mask);
@@ -829,16 +829,17 @@ if (use_vh) {
                 used[op.swizzle.in[i]] = true;
             }
 
+            LOOP_IN(i) {
+                save_vector(ctx, i);
+            }
             if (reorder) {
                 cc.comment("swizzle (reorder)");
-                save_vectors_mask(ctx, 0xff);
                 LOOP_OUT(i) {
                     vl[i] = orig_vl[op.swizzle.in[i]];
                     vh[i] = orig_vh[op.swizzle.in[i]];
                 }
             } else {
                 cc.comment("swizzle (copy)");
-                save_vectors_mask(ctx, 0xff);
                 LOOP_OUT(i) {
                     if (i == op.swizzle.in[i]) {
                         vl[i] = orig_vl[op.swizzle.in[i]];
@@ -1068,7 +1069,9 @@ printf("[%08x][%08x]\n", op.lin.mask, SWS_MASK_MAT3 | SWS_MASK_OFF3);
 
             /* Do the salmon dance */
             cc.comment("linear");
-            save_vectors_mask(ctx, 0xff);
+            LOOP_IN(i) {
+                save_vector(ctx, i);
+            }
             LOOP_ARRAY(i, used) {
                 new_vector(ctx, i);
                 int count = 0;
