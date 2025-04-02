@@ -106,6 +106,7 @@ struct AsmJitContext {
         }
         /* Check if data can be represented by repeating smaller value */
         int repeat_len;
+        int small_value;
         union {
             uint32_t u32;
             uint16_t u16[2];
@@ -114,14 +115,17 @@ struct AsmJitContext {
         u.u32 = val;
         if (u.u16[0] != u.u16[1]) {
             repeat_len = 4;
+            small_value = (u.u32 < 0x100);
         } else if (u.u8[0] != u.u8[1]) {
             repeat_len = 2;
+            small_value = (u.u16[0] < 0x100);
         } else {
             repeat_len = 1;
+            small_value = 1;
         }
         /* Add it to our data and create a new vector */
         size_t ret = m_imm.size();
-        m_imm.push_back(std::make_pair(val, (repeat_len << 8) | len));
+        m_imm.push_back(std::make_pair(val, (small_value << 16) | (repeat_len << 8) | len));
         m_vimm.push_back(m_cc->newVecQ());
         return ret;
     }
@@ -171,35 +175,41 @@ struct AsmJitContext {
         std::vector<a64::Gp> tmp(size);
         /* First load immediates larger than 0xff into temporary registers */
         for (size_t i = 0; i < size; i++) {
-            int repeat_len = m_imm[i].second >> 8;
-            if (repeat_len == 4) {
+            int small_value = m_imm[i].second >> 16;
+            uint8_t repeat_len = m_imm[i].second >> 8;
+            if (!small_value && repeat_len != 1)
+            {
                 tmp[i] = cc.newGpz();
-                cc.mov(tmp[i], m_imm[i].first);
-            } else if (repeat_len == 2) {
-                tmp[i] = cc.newGpz();
-                cc.mov(tmp[i], m_imm[i].first & 0xffff);
-            }
+                switch (repeat_len) {
+                case 2: cc.mov(tmp[i], m_imm[i].first & 0xffff); break;
+                case 4: cc.mov(tmp[i], m_imm[i].first         ); break;
+                }
+           }
         }
         /* Then load small immediates directly into vectors */
         for (size_t i = 0; i < size; i++) {
-            int repeat_len = m_imm[i].second >> 8;
-            if (repeat_len == 1) {
-                cc.movi(m_vimm[i].b16(), m_imm[i].first & 0xff);
+            int small_value = m_imm[i].second >> 16;
+            if (small_value)
+            {
+                uint8_t repeat_len = m_imm[i].second >> 8;
+                switch (repeat_len) {
+                case 1: cc.movi(m_vimm[i].b16(), m_imm[i].first & 0xff); break;
+                case 2: cc.movi(m_vimm[i].h8 (), m_imm[i].first & 0xff); break;
+                case 4: cc.movi(m_vimm[i].s4 (), m_imm[i].first & 0xff); break;
+                }
             }
         }
         /* Then dup the temporary registers into vectors */
         for (size_t i = 0; i < size; i++) {
-            int repeat_len = m_imm[i].second >> 8;
-            int len = m_imm[i].second & 0x0f;
-            switch (len) {
-            case 4:
-                if (repeat_len != 1)
-                    cc.dup(m_vimm[i].s4(), tmp[i]);
-                break;
-            case 2:
-                if (repeat_len != 1)
-                    cc.dup(m_vimm[i].h8(), tmp[i]);
-                break;
+            int small_value = m_imm[i].second >> 16;
+            uint8_t repeat_len = m_imm[i].second >> 8;
+            if (!small_value && repeat_len != 1)
+            {
+                uint8_t len = m_imm[i].second;
+                switch (len) {
+                case 2: cc.dup(m_vimm[i].h8(), tmp[i]); break;
+                case 4: cc.dup(m_vimm[i].s4(), tmp[i]); break;
+                }
             }
         }
         from_prologue();
