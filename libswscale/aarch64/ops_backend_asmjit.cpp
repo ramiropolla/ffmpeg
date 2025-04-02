@@ -392,25 +392,17 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
     a64::Vec *vh = ctx->m_vh;
     int from_size = ff_sws_pixel_type_size(from);
     int to_size   = ff_sws_pixel_type_size(to);
-
-    if (from == SWS_PIXEL_F32) {
-        cc.comment("convert (f32 -> u32)");
-        LOOP_OUT(i) {
-            refresh_vector(ctx, i);
-            cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
-            cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
-        }
-    }
+    char buf[128];
 
     if (expand) {
+        snprintf(buf, sizeof(buf), "expand(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), chain->block_w);
+        cc.comment(buf);
         if        (from_size == 1 && to_size == 2 && chain->block_w == 8) {
-            cc.comment("convert (u8 -> u16, expand, 8)");
             LOOP_OUT(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
             }
         } else if (from_size == 1 && to_size == 2 && chain->block_w == 16) {
-            cc.comment("convert (u8 -> u16, expand, 16)");
             LOOP_OUT(i) {
                 save_vector(ctx, i, 0x0f);
                 new_vector(ctx, i);
@@ -418,7 +410,6 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
                 cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
             }
         } else if (from_size == 1 && to_size == 4 && chain->block_w == 8) {
-            cc.comment("convert (u8 -> u32, expand, 8)");
             LOOP_OUT(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
@@ -433,17 +424,23 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
             return AVERROR(ENOTSUP);
         }
     } else {
+        snprintf(buf, sizeof(buf), "convert(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), chain->block_w);
+        cc.comment(buf);
+        if (from == SWS_PIXEL_F32) {
+            LOOP_OUT(i) {
+                refresh_vector(ctx, i);
+                cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
+                cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
+            }
+        }
         if (from_size == 1 && to_size > from_size && chain->block_w == 8) {
-            cc.comment("convert (u8 -> u16, !expand, 8)");
             LOOP_OUT(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.uxtl(vl[i].h8(), orig_vl[i].b8());
             }
             from_size = 2;
         }
-
         if (from_size == 1 && to_size > from_size && chain->block_w == 16) {
-            cc.comment("convert (u8 -> u16, !expand, 16)");
             LOOP_OUT(i) {
                 save_vector(ctx, i, 0x0f);
                 new_vector(ctx, i);
@@ -452,9 +449,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
             }
             from_size = 2;
         }
-
         if (from_size == 2 && to_size == 4 && chain->block_w == 8) {
-            cc.comment("convert (u16 -> u32, !expand, 8)");
             LOOP_OUT(i) {
                 save_vector(ctx, i, 0x0f);
                 new_vector(ctx, i);
@@ -463,9 +458,7 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
             }
             from_size = 4;
         }
-
         if (from_size == 4 && to_size < from_size && chain->block_w == 8) {
-            cc.comment("convert (u32 -> u16, !expand, 8)");
             LOOP_OUT(i) {
                 refresh_vector(ctx, i);
                 cc.xtn(vl[i].h4(), orig_vl[i].s4());
@@ -476,18 +469,14 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
             }
             from_size = 2;
         }
-
         if (from_size == 2 && to_size == 1 && chain->block_w == 8) {
-            cc.comment("convert (u16 -> u8, !expand, 8)");
             LOOP_OUT(i) {
                 refresh_vector(ctx, i, 0x0f);
                 cc.xtn(vl[i].b8(), orig_vl[i].h8());
             }
             from_size = 1;
         }
-
         if (from_size == 2 && to_size == 1 && chain->block_w == 16) {
-            cc.comment("convert (u16 -> u8, !expand, 16)");
             LOOP_OUT(i) {
                 refresh_vector(ctx, i);
                 cc.xtn(vl[i].b8(), orig_vl[i].h8());
@@ -498,14 +487,12 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
             }
             from_size = 1;
         }
-    }
-
-    if (to == SWS_PIXEL_F32) {
-        cc.comment("convert (u32 -> f32)");
-        LOOP_OUT(i) {
-            refresh_vector(ctx, i);
-            cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
-            cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
+        if (to == SWS_PIXEL_F32) {
+            LOOP_OUT(i) {
+                refresh_vector(ctx, i);
+                cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
+                cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
+            }
         }
     }
 
@@ -739,10 +726,10 @@ if (use_vh) {
                   || ((next->type == SWS_PIXEL_U32) && chain->block_w == 8)
                   || ((next->type == SWS_PIXEL_F32) && chain->block_w == 8);
 
-            cc.comment("pack");
             /* TODO ushll instead */
             if (op.type != op.pack.type && emit_convert(ctx, chain, &op, op.type, op.pack.type, false) < 0)
                 return AVERROR(ENOTSUP);
+            cc.comment("pack");
             LOOP_IN(i) {
                 if (offsets[i]) {
                     cc.shl    (vet(vl[i], *next), vet(vl[i], *next), offsets[i]);
