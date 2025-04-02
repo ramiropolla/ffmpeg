@@ -680,16 +680,18 @@ if (use_vh) {
         if        (op.type == SWS_PIXEL_U16) {
             cc.comment("swap_bytes (u16)");
             LOOP_OUT(i) {
-                cc.rev16    (vl[i].b16(), vl[i].b16());
+                refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                cc.rev16    (vl[i].b16(), orig_vl[i].b16());
                 if (use_vh)
-                    cc.rev16(vh[i].b16(), vh[i].b16());
+                    cc.rev16(vh[i].b16(), orig_vh[i].b16());
             }
         } else if (op.type == SWS_PIXEL_U32 || op.type == SWS_PIXEL_F32) {
             cc.comment("swap_bytes (u32)");
             LOOP_OUT(i) {
-                cc.rev32    (vl[i].b16(), vl[i].b16());
+                refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                cc.rev32    (vl[i].b16(), orig_vl[i].b16());
                 if (use_vh)
-                    cc.rev32(vh[i].b16(), vh[i].b16());
+                    cc.rev32(vh[i].b16(), orig_vh[i].b16());
             }
         }
         break;
@@ -711,7 +713,7 @@ if (use_vh) {
             save_vector(ctx, 0);
             LOOP_ARRAY(i, op.pack.pattern) {
                 if (offsets[i]) {
-                    new_vector(ctx, i);
+                    new_vector(ctx, i, use_vh ? 0xff : 0x0f);
                     cc.ushr    (vet(vl[i], *prev), vet(orig_vl[0], *prev), offsets[i]);
                     if (use_vh)
                         cc.ushr(vet(vh[i], *prev), vet(orig_vh[0], *prev), offsets[i]);
@@ -873,8 +875,9 @@ if (use_vh) {
 
             size_t vidx = ctx->push_immq(op.dither.matrix[0]);
             LOOP_OUT(i) {
-                cc.fadd(vl[i].s4(), vl[i].s4(), vet(vimm[vidx], op));
-                cc.fadd(vh[i].s4(), vh[i].s4(), vet(vimm[vidx], op));
+                refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                cc.fadd(vl[i].s4(), orig_vl[i].s4(), vet(vimm[vidx], op));
+                cc.fadd(vh[i].s4(), orig_vh[i].s4(), vet(vimm[vidx], op));
             }
         } else {
             cc.comment("dither");
@@ -923,8 +926,10 @@ if (use_vh) {
 
                 cc.ld1(dither_vl.s4(), a64::ptr(ptrl));
                 cc.ld1(dither_vh.s4(), a64::ptr(ptrh));
-                cc.fadd(vl[i].s4(), vl[i].s4(), dither_vl.s4());
-                cc.fadd(vh[i].s4(), vh[i].s4(), dither_vh.s4());
+
+                refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                cc.fadd(vl[i].s4(), orig_vl[i].s4(), dither_vl.s4());
+                cc.fadd(vh[i].s4(), orig_vh[i].s4(), dither_vh.s4());
             }
         }
         break;
@@ -982,14 +987,16 @@ normal_clamp:
                 LOOP_OUT(i) {
                     if (op.clamp.max[i].den) {
                         if (clamp_negative_values) {
-                            cc.fmax    (vl[i].s4(), vl[i].s4(), vimm[vidx_min].s4());
+                            refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                            cc.fmax    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx_min].s4());
                             if (use_vh)
-                                cc.fmax(vh[i].s4(), vh[i].s4(), vimm[vidx_min].s4());
+                                cc.fmax(vh[i].s4(), orig_vh[i].s4(), vimm[vidx_min].s4());
                         }
                         size_t vidx_max = ctx->push_immq(op.clamp.max[i]);
-                        cc.fmin    (vl[i].s4(), vl[i].s4(), vimm[vidx_max].s4());
+                        refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                        cc.fmin    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx_max].s4());
                         if (use_vh)
-                            cc.fmin(vh[i].s4(), vh[i].s4(), vimm[vidx_max].s4());
+                            cc.fmin(vh[i].s4(), orig_vh[i].s4(), vimm[vidx_max].s4());
                     }
                 }
             } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
@@ -997,9 +1004,10 @@ normal_clamp:
                 LOOP_OUT(i) {
                     if (op.clamp.max[i].den) {
                         size_t vidx_max = ctx->push_imm32_op(op, av_q2i(op.clamp.max[i]));
-                        cc.umin    (vet(vl[i], op), vet(vl[i], op), vet(vimm[vidx_max], op));
+                        refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                        cc.umin    (vet(vl[i], op), vet(orig_vl[i], op), vet(vimm[vidx_max], op));
                         if (use_vh)
-                            cc.umin(vet(vh[i], op), vet(vh[i], op), vet(vimm[vidx_max], op));
+                            cc.umin(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx_max], op));
                     }
                 }
             }
