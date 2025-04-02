@@ -821,7 +821,7 @@ if (use_vh) {
         {
             bool reorder = true;
             bool used[4] = { false, false, false, false };
-            for (int i = 0; i < 4; i++) {
+            LOOP_OUT(i) {
                 if (used[op.swizzle.in[i]]) {
                     reorder = false;
                     break;
@@ -832,17 +832,14 @@ if (use_vh) {
             if (reorder) {
                 cc.comment("swizzle (reorder)");
                 save_vectors_mask(ctx, 0xff);
-                /* It shouldn't matter if the vectors are initialized or not */
-                for (int i = 0; i < 4; i++) {
+                LOOP_OUT(i) {
                     vl[i] = orig_vl[op.swizzle.in[i]];
                     vh[i] = orig_vh[op.swizzle.in[i]];
                 }
             } else {
                 cc.comment("swizzle (copy)");
                 save_vectors_mask(ctx, 0xff);
-                for (int i = 0; i < 4; i++) {
-                    if (op.comps.unused[op.swizzle.in[i]])
-                        continue;
+                LOOP_OUT(i) {
                     if (i == op.swizzle.in[i]) {
                         vl[i] = orig_vl[op.swizzle.in[i]];
                         if (use_vh)
