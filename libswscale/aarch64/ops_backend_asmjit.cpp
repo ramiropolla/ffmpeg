@@ -745,15 +745,84 @@ if (use_vh) {
                   || ((next->type == SWS_PIXEL_U32) && chain->block_w == 8)
                   || ((next->type == SWS_PIXEL_F32) && chain->block_w == 8);
 
-            /* TODO ushll instead */
-            if (op.type != op.pack.type && emit_convert(ctx, chain, &op, op.type, op.pack.type, false) < 0)
-                return AVERROR(ENOTSUP);
-            cc.comment("pack");
-            LOOP_IN(i) {
-                if (offsets[i]) {
-                    cc.shl    (vet(vl[i], *next), vet(vl[i], *next), offsets[i]);
-                    if (use_vh)
-                        cc.shl(vet(vh[i], *next), vet(vh[i], *next), offsets[i]);
+            if        (op.type == SWS_PIXEL_U8  && op.pack.type == SWS_PIXEL_U16 && chain->block_w ==  8) {
+                cc.comment("pack");
+                /* Normal convert for offsets 0 and >= 8 */
+                LOOP_IN(i) {
+                    if (offsets[i] == 0 || offsets[i] >= 8) {
+                        refresh_vector(ctx, i, 0x0f);
+                        cc.uxtl(vl[i].h8(), orig_vl[i].b8());
+                    }
+                }
+                LOOP_IN(i) {
+                    if (offsets[i] >= 8) {
+                        refresh_vector(ctx, i, 0x0f);
+                        cc.shl(vl[i].h8(), orig_vl[i].h8(), offsets[i]);
+                    } else if (offsets[i] != 0) {
+                        refresh_vector(ctx, i, 0x0f);
+                        cc.ushll(vl[i].h8(), orig_vl[i].b8(), offsets[i]);
+                    }
+                }
+            } else if (op.type == SWS_PIXEL_U8  && op.pack.type == SWS_PIXEL_U16 && chain->block_w == 16) {
+                cc.comment("pack");
+                /* Normal convert for offsets 0 and >= 8 */
+                LOOP_IN(i) {
+                    if (offsets[i] == 0 || offsets[i] >= 8) {
+                        save_vector(ctx, i, 0x0f);
+                        new_vector(ctx, i);
+                        cc.uxtl (vl[i].h8(), orig_vl[i].b8());
+                        cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
+                    }
+                }
+                LOOP_IN(i) {
+                    if (offsets[i] >= 8) {
+                        refresh_vector(ctx, i);
+                        cc.shl(vl[i].h8(), orig_vl[i].h8(), offsets[i]);
+                        cc.shl(vh[i].h8(), orig_vh[i].h8(), offsets[i]);
+                    } else if (offsets[i] != 0) {
+                        save_vector(ctx, i, 0x0f);
+                        new_vector(ctx, i);
+                        cc.ushll (vl[i].h8(), orig_vl[i].b8(),  offsets[i]);
+                        cc.ushll2(vh[i].h8(), orig_vl[i].b16(), offsets[i]);
+                    }
+                }
+#if 0
+            } else if (op.type == SWS_PIXEL_U8  && op.pack.type == SWS_PIXEL_U32 && chain->block_w ==  8) {
+                /* TODO */
+#endif
+            } else if (op.type == SWS_PIXEL_U16 && op.pack.type == SWS_PIXEL_U32 && chain->block_w ==  8) {
+                cc.comment("pack");
+                /* Normal convert for offsets 0 and >=16 */
+                LOOP_IN(i) {
+                    if (offsets[i] == 0 || offsets[i] >= 16) {
+                        save_vector(ctx, i, 0x0f);
+                        new_vector(ctx, i);
+                        cc.uxtl (vl[i].s4(), orig_vl[i].h4());
+                        cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
+                    }
+                }
+                LOOP_IN(i) {
+                    if (offsets[i] >= 16) {
+                        refresh_vector(ctx, i);
+                        cc.shl(vl[i].s4(), orig_vl[i].s4(), offsets[i]);
+                        cc.shl(vh[i].s4(), orig_vh[i].s4(), offsets[i]);
+                    } else if (offsets[i] != 0) {
+                        save_vector(ctx, i, 0x0f);
+                        new_vector(ctx, i);
+                        cc.ushll (vl[i].s4(), orig_vl[i].h4(), offsets[i]);
+                        cc.ushll2(vh[i].s4(), orig_vl[i].h8(), offsets[i]);
+                    }
+                }
+            } else {
+                if (op.type != op.pack.type && emit_convert(ctx, chain, &op, op.type, op.pack.type, false) < 0)
+                    return AVERROR(ENOTSUP);
+                cc.comment("pack");
+                LOOP_IN(i) {
+                    if (offsets[i]) {
+                        cc.shl    (vet(vl[i], *next), vet(vl[i], *next), offsets[i]);
+                        if (use_vh)
+                            cc.shl(vet(vh[i], *next), vet(vh[i], *next), offsets[i]);
+                    }
                 }
             }
             LOOP_IN(i) {
