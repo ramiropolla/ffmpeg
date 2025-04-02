@@ -326,6 +326,10 @@ struct VectorElementType {
     for (int idx = 0; idx < 4; idx++) \
         if (!op.comps.unused[idx])
 
+#define LOOP_OUT(idx)                 \
+    for (int idx = 0; idx < 4; idx++) \
+        if (!next->comps.unused[idx])
+
 static inline uint32_t mask_from_i(int i)
 {
     return (1 << i) | (1 << (i + 4));
@@ -599,19 +603,20 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
             ctx->to_prologue();
             cc.comment("prologue (read)");
             a64::Gp in[4];
-            for (int i = 0; i < op.rw.elems; i++) {
+            LOOP_OUT(i) {
                 in[i] = cc.newGpz();
                 cc.ldr(in[i], a64::ptr(exec, offsetof(SwsOpExec, in) + sizeof(uint8_t *) * i));
             }
             ctx->from_prologue();
             /* Read vectors from input pointers */
-            for (int i = 0; i < op.rw.elems; i++) {
+            LOOP_OUT(i) {
                 if (use_vh)
                     cc.ld1(vet(vl[i], op), vet(vh[i], op), a64::ptr(in[i]).post(vet.size(op) * 2));
                 else
                     cc.ld1(vet(vl[i], op),                 a64::ptr(in[i]).post(vet.size(op) * 1));
             }
         } else {
+            /* TODO partial loads when not all output is used */
             /* Load input pointer in prologue */
             ctx->to_prologue();
             cc.comment("prologue (read)");
