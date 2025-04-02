@@ -776,11 +776,15 @@ if (use_vh) {
             for (int i = 0; i < 4; i++) {
                 if (op.clear.value[i].den) {
                     size_t vidx = ctx->push_imm32_op(op, av_q2i(op.clear.value[i]));
-                    /* TODO if the value is no longer modified, just do vl[i] = vimm[vidx] instead */
-                    new_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                    cc.mov    (vet(vl[i], op), vet(vimm[vidx], op));
+                    if (next->op == SWS_OP_WRITE) {
+                        /* TODO astmjit's register allocator sometimes fails, so we relieve some pressure */
+                        new_vector(ctx, i, 0x0f);
+                        cc.mov(vet(vl[i], op), vet(vimm[vidx], op));
+                    } else {
+                        vl[i] = vimm[vidx];
+                    }
                     if (use_vh)
-                        cc.mov(vet(vh[i], op), vet(vimm[vidx], op));
+                        vh[i] = vimm[vidx];
                 }
             }
         } else if (op.type == SWS_PIXEL_F32) {
