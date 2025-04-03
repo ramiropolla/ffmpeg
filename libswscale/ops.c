@@ -20,6 +20,7 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/bswap.h"
+#include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/rational.h"
 #include "libavutil/refstruct.h"
@@ -1510,8 +1511,20 @@ static void op_pass_setup(const SwsImg *out, const SwsImg *in, const SwsPass *pa
     }
 }
 
+static void update_exec_linesizes(SwsOpExec *exec, const SwsImg *out_base, const SwsImg *in_base, int width)
+{
+    int linesizes[4];
+
+    av_image_fill_linesizes(linesizes, in_base->fmt, width);
+    for (int i = 0; i < 4; i++)
+        exec->in_padding[i] = in_base->linesize[i] - linesizes[i];
+    av_image_fill_linesizes(linesizes, out_base->fmt, width);
+    for (int i = 0; i < 4; i++)
+        exec->out_padding[i] = out_base->linesize[i] - linesizes[i];
+}
+
 /* Dispatch kernel over the "main" part of the image, no extra padding */
-static av_always_inline void
+static av_noinline void
 run_main(const SwsOpPass *p, const SwsImg *out_base, const SwsImg *in_base,
          const int y_start, const int y_end, const int x_end)
 {
@@ -1523,6 +1536,8 @@ run_main(const SwsOpPass *p, const SwsImg *out_base, const SwsImg *in_base,
     const ptrdiff_t block_step_in  = (exec.block_w * p->pixel_bits_in)  >> 3;
     const ptrdiff_t block_step_out = (exec.block_w * p->pixel_bits_out) >> 3;
 
+    update_exec_linesizes(&exec, out_base, in_base, x_end);
+    exec.y_end = y_end;
     for (exec.y = y_start; exec.y < y_end; exec.y += exec.block_h) {
         const SwsImg in  = ff_sws_img_shift(*in_base,  exec.y);
         const SwsImg out = ff_sws_img_shift(*out_base, exec.y);

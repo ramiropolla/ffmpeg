@@ -49,6 +49,8 @@ struct AsmJitContext {
     BaseNode *m_prologue;
     BaseNode *m_tail;
     a64::Gp m_exec;
+    a64::Gp m_in[4];
+    a64::Gp m_out[4];
     a64::Vec m_orig_vl[4];
     a64::Vec m_orig_vh[4];
     a64::Vec m_vl[4];
@@ -59,6 +61,10 @@ struct AsmJitContext {
     a64::Gp m_exec_x;
     a64::Gp m_exec_x_end;
     a64::Gp m_exec_y_end;
+
+    const SwsOp *m_read_op;
+    const SwsOp *m_dither_op;
+    const SwsOp *m_write_op;
 
     /* const data */
     std::vector<uint32_t> m_data;
@@ -101,6 +107,10 @@ struct AsmJitContext {
         m_exec_x     = cc.newGpz();
         m_exec_x_end = cc.newGpz();
         m_exec_y_end = cc.newGpz();
+
+        m_read_op   = nullptr;
+        m_dither_op = nullptr;
+        m_write_op  = nullptr;
     }
 
     void to_prologue(void)
@@ -314,39 +324,82 @@ struct AsmJitContext {
     {
 #ifdef EMIT_LOOP
         a64::Compiler &cc = *m_cc;
+        a64::Gp width = cc.newGpz();
+        a64::Gp in_padding[4];
+        a64::Gp out_padding[4];
         Label hloop = cc.newLabel();
         Label vloop = cc.newLabel();
+        bool xy_unused = (m_dither_op == nullptr);
 
         to_prologue();
         cc.comment("prologue (vertical)");
         cc.ldr(m_y         .r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y)));
         cc.ldr(m_exec_y_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y_end)));
+        if (xy_unused) {
+            cc.sub(m_y.r32(), m_exec_y_end.r32(), m_y.r32());
+        }
         cc.comment("prologue (horizontal)");
         cc.ldr(m_exec_x    .r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
         cc.ldr(m_exec_x_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x_end)));
-#if 1
-#endif
+        cc.sub(width.r32(), m_exec_x_end.r32(), m_exec_x.r32());
+        for (int i = 0; i < (m_read_op->rw.packed ? 1 : m_read_op->rw.elems); i++) {
+            in_padding[i] = cc.newGpz();
+            cc.ldr(in_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, in_padding) + (i * sizeof(ptrdiff_t))));
+        }
+        for (int i = 0; i < (m_write_op->rw.packed ? 1 : m_write_op->rw.elems); i++) {
+            out_padding[i] = cc.newGpz();
+            cc.ldr(out_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, out_padding) + (i * sizeof(ptrdiff_t))));
+        }
         cc.comment("horizontal loop");
         cc.bind(vloop);
-        cc.mov(m_x.r32(), m_exec_x.r32());
+        if (xy_unused) {
+            cc.mov(m_x.r32(), width.r32());
+        } else {
+            cc.mov(m_x.r32(), m_exec_x.r32());
+        }
         cc.bind(hloop);
         from_prologue();
 
         cc.comment("horizontal loop back");
-        cc.add(m_x.r32(), m_x.r32(), chain->block_w);
-        cc.cmp(m_x.r32(), m_exec_x_end.r32());
-        cc.b(a64::CondCode::kLO, hloop);
+        if (xy_unused) {
+            cc.subs(m_x.r32(), m_x.r32(), chain->block_w);
+            cc.b(a64::CondCode::kGT, hloop);
+        } else {
+            cc.add(m_x.r32(), m_x.r32(), chain->block_w);
+            cc.cmp(m_x.r32(), m_exec_x_end.r32());
+            cc.b(a64::CondCode::kLO, hloop);
+        }
 
-        // TODO add padding to in/out
+        cc.comment("padding (read)");
+        for (int i = 0; i < (m_read_op->rw.packed ? 1 : m_read_op->rw.elems); i++) {
+            cc.add(m_in[i], m_in[i], in_padding[i]);
+        }
+        cc.comment("padding (write)");
+        for (int i = 0; i < (m_write_op->rw.packed ? 1 : m_write_op->rw.elems); i++) {
+            cc.add(m_out[i], m_out[i], out_padding[i]);
+        }
 
         cc.comment("vertical loop back");
-        cc.add(m_y.r32(), m_y.r32(), chain->block_h);
-        cc.cmp(m_y.r32(), m_exec_y_end.r32());
-        cc.b(a64::CondCode::kLO, vloop);
+        if (xy_unused) {
+            cc.subs(m_y.r32(), m_y.r32(), chain->block_h);
+            cc.b(a64::CondCode::kGT, vloop);
+        } else {
+            cc.add(m_y.r32(), m_y.r32(), chain->block_h);
+            cc.cmp(m_y.r32(), m_exec_y_end.r32());
+            cc.b(a64::CondCode::kLO, vloop);
+        }
 
         cc.comment("epilogue");
-        cc.str(m_y.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y)));
-        cc.str(m_x.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
+        /* Write exec.[xy]_end to exec.[xy] to signal we have converted the entire image */
+        if (xy_unused) {
+            cc.ldr(m_exec_y_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y_end)));
+            cc.ldr(m_exec_x_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x_end)));
+            cc.str(m_exec_y_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y)));
+            cc.str(m_exec_x_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
+        } else {
+            cc.str(m_y.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y)));
+            cc.str(m_x.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
+        }
 #endif
     }
 };
@@ -591,31 +644,31 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
     case SWS_OP_READ:            /* gather raw pixels from planes */
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
+        ctx->m_read_op = &op;
         cc.comment("read");
         if (!op.rw.packed) {
             /* Load input pointers in prologue */
             ctx->to_prologue();
             cc.comment("prologue (read)");
-            a64::Gp in[4];
             LOOP_OUT(i) {
-                in[i] = cc.newGpz();
-                cc.ldr(in[i], a64::ptr(exec, offsetof(SwsOpExec, in) + sizeof(uint8_t *) * i));
+                ctx->m_in[i] = cc.newGpz();
+                cc.ldr(ctx->m_in[i], a64::ptr(exec, offsetof(SwsOpExec, in) + sizeof(uint8_t *) * i));
             }
             ctx->from_prologue();
             /* Read vectors from input pointers */
             LOOP_OUT(i) {
                 new_vector(ctx, i, use_vh ? 0xff : 0x0f);
                 if (use_vh)
-                    cc.ld1(vet(vl[i], op), vet(vh[i], op), a64::ptr(in[i]).post(vet.size(op) * 2));
+                    cc.ld1(vet(vl[i], op), vet(vh[i], op), a64::ptr(ctx->m_in[i]).post(vet.size(op) * 2));
                 else
-                    cc.ld1(vet(vl[i], op),                 a64::ptr(in[i]).post(vet.size(op) * 1));
+                    cc.ld1(vet(vl[i], op),                 a64::ptr(ctx->m_in[i]).post(vet.size(op) * 1));
             }
         } else {
             /* Load input pointer in prologue */
             ctx->to_prologue();
             cc.comment("prologue (read)");
-            a64::Gp in = cc.newGpz();
-            cc.ldr(in, a64::ptr(exec, offsetof(SwsOpExec, in)));
+            ctx->m_in[0] = cc.newGpz();
+            cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
             ctx->from_prologue();
             /* Read vectors from input pointer */
             for (int i = 0; i < op.rw.elems; i++) {
@@ -624,24 +677,24 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
             switch (op.rw.elems) {
             case 1:
                 if (use_vh)
-                    cc.ld1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(in).post(vet.size(op) * 2));
+                    cc.ld1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
                 else
-                    cc.ld1(vet(vl[0], op),                                                 a64::ptr(in).post(vet.size(op) * 1));
+                    cc.ld1(vet(vl[0], op),                                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 1));
                 break;
             case 2:
-                cc.ld2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(in).post(vet.size(op) * 2));
+                cc.ld2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
                 if (use_vh)
-                    cc.ld2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(in).post(vet.size(op) * 2));
+                    cc.ld2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
                 break;
             case 3:
-                cc.ld3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(in).post(vet.size(op) * 3));
+                cc.ld3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
                 if (use_vh)
-                    cc.ld3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(in).post(vet.size(op) * 3));
+                    cc.ld3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
                 break;
             case 4:
-                cc.ld4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(in).post(vet.size(op) * 4));
+                cc.ld4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
                 if (use_vh)
-                    cc.ld4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(in).post(vet.size(op) * 4));
+                    cc.ld4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
                 break;
             }
         }
@@ -649,66 +702,66 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
     case SWS_OP_WRITE:           /* write raw pixels to planes */
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
+        ctx->m_write_op = &op;
         cc.comment("write");
         if (!op.rw.packed) {
             /* Load output pointers in prologue */
             ctx->to_prologue();
             cc.comment("prologue (write)");
-            a64::Gp out[4];
             LOOP_IN(i) {
-                out[i] = cc.newGpz();
-                cc.ldr(out[i], a64::ptr(exec, offsetof(SwsOpExec, out) + sizeof(uint8_t *) * i));
+                ctx->m_out[i] = cc.newGpz();
+                cc.ldr(ctx->m_out[i], a64::ptr(exec, offsetof(SwsOpExec, out) + sizeof(uint8_t *) * i));
             }
             ctx->from_prologue();
             /* Write vectors to output pointers */
             LOOP_IN(i) {
                 if (use_vh)
-                    cc.st1(vet(vl[i], op), vet(vh[i], op), a64::ptr(out[i]).post(vet.size(op) * 2));
+                    cc.st1(vet(vl[i], op), vet(vh[i], op), a64::ptr(ctx->m_out[i]).post(vet.size(op) * 2));
                 else
-                    cc.st1(vet(vl[i], op),                 a64::ptr(out[i]).post(vet.size(op) * 1));
+                    cc.st1(vet(vl[i], op),                 a64::ptr(ctx->m_out[i]).post(vet.size(op) * 1));
             }
         } else {
             /* Load output pointer in prologue */
             ctx->to_prologue();
             cc.comment("prologue (write)");
-            a64::Gp out = cc.newGpz();
-            cc.ldr(out, a64::ptr(exec, offsetof(SwsOpExec, out)));
+            ctx->m_out[0] = cc.newGpz();
+            cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
             ctx->from_prologue();
             /* Write vectors to output pointer */
             switch (op.rw.elems) {
             case 1:
                 if (use_vh)
-                    cc.st1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(out).post(vet.size(op) * 2));
+                    cc.st1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
                 else
-                    cc.st1(vet(vl[0], op),                                                 a64::ptr(out).post(vet.size(op) * 1));
+                    cc.st1(vet(vl[0], op),                                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 1));
                 break;
             case 2:
-                cc.st2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(out).post(vet.size(op) * 2));
+                cc.st2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
                 if (use_vh)
-                    cc.st2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(out).post(vet.size(op) * 2));
+                    cc.st2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
                 break;
             case 3:
-                cc.st3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(out).post(vet.size(op) * 3));
+                cc.st3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
                 if (use_vh)
-                    cc.st3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(out).post(vet.size(op) * 3));
+                    cc.st3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
                 break;
             case 4:
 {
 #if 0
-                cc.st4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(out).post(vet.size(op) * 4));
+                cc.st4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
                 if (use_vh)
-                    cc.st4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(out).post(vet.size(op) * 4));
+                    cc.st4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
 #else
 // TODO help asmjit's register allocator
 if (use_vh) {
-    cc.st4(vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(out).post(vet.size(op) * 4));
+    cc.st4(vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
     cc.mov(vl[0].b16(), vh[0].b16());
     cc.mov(vl[1].b16(), vh[1].b16());
     cc.mov(vl[2].b16(), vh[2].b16());
     cc.mov(vl[3].b16(), vh[3].b16());
-    cc.st4(vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(out).post(vet.size(op) * 4));
+    cc.st4(vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
 } else {
-    cc.st4(vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(out).post(vet.size(op) * 4));
+    cc.st4(vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
 }
 #endif
 }
@@ -909,6 +962,9 @@ if (use_vh) {
             }
         } else {
             cc.comment("dither");
+
+            /* Used by emit_loop to optimize away the use of x and y */
+            ctx->m_dither_op = &op;
 
             /* Write const data after function */
             int size = 1 << op.dither.size_log2;
