@@ -786,10 +786,7 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
         return 0;
     case AV_PIX_FMT_RGB4:
     case AV_PIX_FMT_BGR4:
-        *pack_op = (SwsPackOp) {
-            .type    = SWS_PIXEL_U8,
-            .pattern = { 1, 2, 1 },
-        };
+        *pack_op = (SwsPackOp) {{ 1, 2, 1 }};
         *rw_op = (SwsReadWriteOp) {
             .elems = 1,
             .frac  = 1,
@@ -798,25 +795,16 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
     /* Packed 8-bit aligned formats */
     case AV_PIX_FMT_RGB4_BYTE:
     case AV_PIX_FMT_BGR4_BYTE:
+        *pack_op = (SwsPackOp) {{ 1, 2, 1 }};
         *rw_op = (SwsReadWriteOp) { .elems = 1 };
-        *pack_op = (SwsPackOp) {
-            .type    = SWS_PIXEL_U8,
-            .pattern = { 1, 2, 1 },
-        };
         return 0;
     case AV_PIX_FMT_BGR8:
+        *pack_op = (SwsPackOp) {{ 2, 3, 3 }};
         *rw_op = (SwsReadWriteOp) { .elems = 1 };
-        *pack_op = (SwsPackOp) {
-            .type    = SWS_PIXEL_U8,
-            .pattern = { 2, 3, 3 },
-        };
         return 0;
     case AV_PIX_FMT_RGB8:
+        *pack_op = (SwsPackOp) {{ 3, 3, 2 }};
         *rw_op = (SwsReadWriteOp) { .elems = 1 };
-        *pack_op = (SwsPackOp) {
-            .type    = SWS_PIXEL_U8,
-            .pattern = { 3, 3, 2 },
-        };
         return 0;
 
     /* Packed 16-bit aligned formats */
@@ -824,31 +812,22 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
     case AV_PIX_FMT_RGB565LE:
     case AV_PIX_FMT_BGR565BE:
     case AV_PIX_FMT_BGR565LE:
+        *pack_op = (SwsPackOp) {{ 5, 6, 5 }};
         *rw_op = (SwsReadWriteOp) { .elems = 1 };
-        *pack_op = (SwsPackOp) {
-            .type    = SWS_PIXEL_U16,
-            .pattern = { 5, 6, 5 },
-        };
         return 0;
     case AV_PIX_FMT_RGB555BE:
     case AV_PIX_FMT_RGB555LE:
     case AV_PIX_FMT_BGR555BE:
     case AV_PIX_FMT_BGR555LE:
+        *pack_op = (SwsPackOp) {{ 5, 5, 5 }};
         *rw_op = (SwsReadWriteOp) { .elems = 1 };
-        *pack_op = (SwsPackOp) {
-            .type    = SWS_PIXEL_U16,
-            .pattern = { 5, 5, 5 },
-        };
         return 0;
     case AV_PIX_FMT_RGB444BE:
     case AV_PIX_FMT_RGB444LE:
     case AV_PIX_FMT_BGR444BE:
     case AV_PIX_FMT_BGR444LE:
+        *pack_op = (SwsPackOp) {{ 4, 4, 4 }};
         *rw_op = (SwsReadWriteOp) { .elems = 1 };
-        *pack_op = (SwsPackOp) {
-            .type    = SWS_PIXEL_U16,
-            .pattern = { 4, 4, 4 },
-        };
         return 0;
     /* Packed 32-bit aligned 4:4:4 formats */
     case AV_PIX_FMT_X2RGB10BE:
@@ -857,19 +836,13 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
     case AV_PIX_FMT_X2BGR10LE:
     case AV_PIX_FMT_XV30BE:
     case AV_PIX_FMT_XV30LE:
+        *pack_op = (SwsPackOp) {{ 2, 10, 10, 10 }};
         *rw_op = (SwsReadWriteOp) { .elems = 1 };
-        *pack_op = (SwsPackOp) {
-            .type    = SWS_PIXEL_U32,
-            .pattern = { 2, 10, 10, 10 },
-        };
         return 0;
     case AV_PIX_FMT_V30XBE:
     case AV_PIX_FMT_V30XLE:
+        *pack_op = (SwsPackOp) {{ 10, 10, 10, 2 }};
         *rw_op = (SwsReadWriteOp) { .elems = 1 };
-        *pack_op = (SwsPackOp) {
-            .type    = SWS_PIXEL_U32,
-            .pattern = { 10, 10, 10, 2 },
-        };
         return 0;
     /* 3 component formats with one channel ignored */
     case AV_PIX_FMT_RGB0:
@@ -881,8 +854,8 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
     case AV_PIX_FMT_XV48BE:
     case AV_PIX_FMT_XV48LE:
     case AV_PIX_FMT_VUYX:
-        *rw_op = (SwsReadWriteOp) { .elems = 4, .packed = true };
         *pack_op = (SwsPackOp) {0};
+        *rw_op = (SwsReadWriteOp) { .elems = 4, .packed = true };
         return 0;
     /* Unpacked byte-aligned 4:4:4 formats */
     case AV_PIX_FMT_YUV444P:
@@ -997,6 +970,18 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
     return AVERROR(ENOTSUP);
 }
 
+static SwsPixelType get_packed_type(SwsPackOp pack)
+{
+    const int sum = pack.pattern[0] + pack.pattern[1] +
+                    pack.pattern[2] + pack.pattern[3];
+    if (sum >= 16)
+        return SWS_PIXEL_U32;
+    else if (sum >= 8)
+        return SWS_PIXEL_U16;
+    else
+        return SWS_PIXEL_U8;
+}
+
 #if HAVE_BIGENDIAN
 #  define NATIVE_ENDIAN_FLAG AV_PIX_FMT_FLAG_BE
 #else
@@ -1012,8 +997,8 @@ int ff_sws_decode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
     SwsPackOp unpack;
 
     RET(fmt_read_write(fmt, &rw_op, &unpack));
-    if (unpack.type)
-        raw_type = unpack.type;
+    if (unpack.pattern[0])
+        raw_type = get_packed_type(unpack);
 
     /* TODO: handle subsampled or semipacked input formats */
     RET(ff_sws_op_list_append(ops, &(SwsOp) {
@@ -1029,11 +1014,17 @@ int ff_sws_decode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
         }));
     }
 
-    if (unpack.type) {
+    if (unpack.pattern[0]) {
         RET(ff_sws_op_list_append(ops, &(SwsOp) {
             .op   = SWS_OP_UNPACK,
-            .type = pixel_type,
+            .type = raw_type,
             .pack = unpack,
+        }));
+
+        RET(ff_sws_op_list_append(ops, &(SwsOp) {
+            .op   = SWS_OP_CONVERT,
+            .type = raw_type,
+            .convert.to = pixel_type,
         }));
     }
 
@@ -1067,8 +1058,8 @@ int ff_sws_encode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
     SwsPackOp pack;
 
     RET(fmt_read_write(fmt, &rw_op, &pack));
-    if (pack.type)
-        raw_type = pack.type;
+    if (pack.pattern[0])
+        raw_type = get_packed_type(pack);
 
     RET(ff_sws_op_list_append(ops, &(SwsOp) {
         .op           = SWS_OP_LSHIFT,
@@ -1092,10 +1083,16 @@ int ff_sws_encode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
         .swizzle = fmt_swizzle(fmt),
     }));
 
-    if (pack.type) {
+    if (pack.pattern[0]) {
+        RET(ff_sws_op_list_append(ops, &(SwsOp) {
+            .op   = SWS_OP_CONVERT,
+            .type = pixel_type,
+            .convert.to = raw_type,
+        }));
+
         RET(ff_sws_op_list_append(ops, &(SwsOp) {
             .op   = SWS_OP_PACK,
-            .type = pixel_type,
+            .type = raw_type,
             .pack = pack,
         }));
     }
