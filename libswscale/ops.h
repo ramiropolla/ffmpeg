@@ -100,8 +100,7 @@ typedef struct SwsReadWriteOp {
 } SwsReadWriteOp;
 
 typedef struct SwsPackOp {
-    SwsPixelType type; /* packed type (e.g. U16 for rgb565) */
-    int pattern[4];    /* bit depth pattern, from MSB to LSB */
+    int pattern[4]; /* bit depth pattern, from MSB to LSB */
 } SwsPackOp;
 
 typedef struct SwsClearOp {
