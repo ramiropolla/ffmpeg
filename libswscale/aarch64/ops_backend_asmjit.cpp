@@ -734,9 +734,10 @@ if (use_vh) {
             LOOP_ARRAY(i, op.pack.pattern) {
                 uint32_t mask = (1u << op.pack.pattern[i]) - 1;
                 size_t vidx = ctx->push_imm32_op(*prev, mask);
-                cc.and_    (vl[i].b16(), vl[i].b16(), vimm[vidx].b16());
+                refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                cc.and_    (vl[i].b16(), orig_vl[i].b16(), vimm[vidx].b16());
                 if (use_vh)
-                    cc.and_(vh[i].b16(), vh[i].b16(), vimm[vidx].b16());
+                    cc.and_(vh[i].b16(), orig_vh[i].b16(), vimm[vidx].b16());
             }
         }
         break;
