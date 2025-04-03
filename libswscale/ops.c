@@ -168,7 +168,7 @@ void ff_sws_apply_op_q(const SwsOp *op, AVRational x[4])
         return;
     case SWS_OP_UNPACK: {
         unsigned val = x[0].num;
-        int shift = ff_sws_pixel_type_size(op->pack.type) * 8;
+        int shift = ff_sws_pixel_type_size(op->type) * 8;
         for (int i = 0; i < 4; i++) {
             const unsigned mask = (1 << op->pack.pattern[i]) - 1;
             shift -= op->pack.pattern[i];
@@ -178,7 +178,7 @@ void ff_sws_apply_op_q(const SwsOp *op, AVRational x[4])
     }
     case SWS_OP_PACK: {
         unsigned val = 0;
-        int shift = ff_sws_pixel_type_size(op->pack.type) * 8;
+        int shift = ff_sws_pixel_type_size(op->type) * 8;
         for (int i = 0; i < 4; i++) {
             const unsigned mask = (1 << op->pack.pattern[i]) - 1;
             shift -= op->pack.pattern[i];
@@ -313,8 +313,6 @@ int ff_sws_op_match(const SwsOp *op, const SwsOp *ref, const SwsComps next)
         return score;
     case SWS_OP_PACK:
     case SWS_OP_UNPACK:
-        if (op->pack.type != ref->pack.type)
-            return 0;
         for (int i = 0; i < 4; i++) {
             if (!op->pack.pattern[i]) /* allow ignoring unused extra components */
                 break;
@@ -619,12 +617,11 @@ void ff_sws_op_list_print(void *log, int lev, const SwsOpList *ops)
             break;
         case SWS_OP_PACK:
         case SWS_OP_UNPACK:
-            av_log(log, lev, "%-20s: {%d %d %d %d} in %s\n",
+            av_log(log, lev, "%-20s: {%d %d %d %d}\n",
                    op->op == SWS_OP_PACK ? "SWS_OP_PACK"
                                          : "SWS_OP_UNPACK",
                    op->pack.pattern[0], op->pack.pattern[1],
-                   op->pack.pattern[2], op->pack.pattern[3],
-                   ff_sws_pixel_type_name(op->pack.type));
+                   op->pack.pattern[2], op->pack.pattern[3]);
             break;
         case SWS_OP_CLEAR:
             av_log(log, lev, "%-20s: {%s %s %s %s}\n", "SWS_OP_CLEAR",
