@@ -301,31 +301,32 @@ static void check_pack_unpack(void)
         SwsPixelType type;
         SwsPackOp op;
     } patterns[] = {
-        { U8, { U8, { 3,  3,  2 }}},
-        { U8, { U8, { 2,  3,  3 }}},
-        { U8, { U8, { 1,  2,  1 }}},
-        { U8, {U16, { 5,  6,  5 }}},
-        { U8, {U16, { 5,  5,  5 }}},
-        { U8, {U16, { 4,  4,  4 }}},
-        {U16, {U32, { 2, 10, 10, 10 }}},
-        {U16, {U32, {10, 10, 10,  2 }}},
+        { U8, {{ 3,  3,  2 }}},
+        { U8, {{ 2,  3,  3 }}},
+        { U8, {{ 1,  2,  1 }}},
+        {U16, {{ 5,  6,  5 }}},
+        {U16, {{ 5,  5,  5 }}},
+        {U16, {{ 4,  4,  4 }}},
+        {U32, {{ 2, 10, 10, 10 }}},
+        {U32, {{10, 10, 10,  2 }}},
     };
 
     for (int i = 0; i < FF_ARRAY_ELEMS(patterns); i++) {
+        const SwsPixelType type = patterns[i].type;
         const SwsPackOp pack = patterns[i].op;
         const int num = pack.pattern[3] ? 4 : 3;
         const char *pat = FMT("%d%d%d%d", pack.pattern[0], pack.pattern[1],
                                           pack.pattern[2], pack.pattern[3]);
 
-        CHECK(FMT("pack_%s", pat), num, 1, patterns[i].type, pack.type, {
+        CHECK(FMT("pack_%s", pat), num, 1, type, type, {
             .op   = SWS_OP_PACK,
-            .type = patterns[i].type,
+            .type = type,
             .pack = pack,
         });
 
-        CHECK(FMT("unpack_%s", pat), 1, num, pack.type, patterns[i].type, {
+        CHECK(FMT("unpack_%s", pat), 1, num, type, type, {
             .op   = SWS_OP_UNPACK,
-            .type = patterns[i].type,
+            .type = type,
             .pack = pack,
         });
     }
