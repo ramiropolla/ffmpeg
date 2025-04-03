@@ -296,60 +296,48 @@ DECL_ENTRY(expand32,
 );
 #endif
 
-#define WRAP_PACK_UNPACK(PACK_TYPE, PACK_PIXEL, X, Y, Z, W)                     \
+#define WRAP_PACK_UNPACK(X, Y, Z, W)                                            \
 inline DECL_IMPL(pack_##X##Y##Z##W)                                             \
 {                                                                               \
-    PACK_PIXEL xx[SWS_CHUNK_SIZE], yy[SWS_CHUNK_SIZE],                          \
-               zz[SWS_CHUNK_SIZE], ww[SWS_CHUNK_SIZE];                          \
-                                                                                \
     SWS_LOOP                                                                    \
     for (int i = 0; i < SWS_CHUNK_SIZE; i++) {                                  \
-        xx[i] = x[i] << (Y+Z+W);                                                \
+        x[i] = x[i] << (Y+Z+W);                                                 \
         if (Y)                                                                  \
-            xx[i] |= y[i] << (Z+W);                                             \
+            x[i] |= y[i] << (Z+W);                                              \
         if (Z)                                                                  \
-            xx[i] |= z[i] << W;                                                 \
+            x[i] |= z[i] << W;                                                  \
         if (W)                                                                  \
-            xx[i] |= w[i];                                                      \
+            x[i] |= w[i];                                                       \
     }                                                                           \
                                                                                 \
-    CONTINUE(PACK_PIXEL *, xx, yy, zz, ww);                                     \
+    CONTINUE(pixel_t *, x, y, z, w);                                            \
 }                                                                               \
                                                                                 \
 DECL_ENTRY(pack_##X##Y##Z##W,                                                   \
     .op = SWS_OP_PACK,                                                          \
-    .pack.type = PACK_TYPE,                                                     \
     .pack.pattern = { X, Y, Z, W },                                             \
     .comps.unused = { !X, !Y, !Z, !W },                                         \
 );                                                                              \
                                                                                 \
-inline static SWS_FUNC void                                                     \
-fn(unpack_##X##Y##Z##W)(const SwsOpExec *restrict exec,                         \
-                        const SwsOpImpl *restrict impl,                         \
-                        PACK_PIXEL *restrict x, PACK_PIXEL *restrict y,         \
-                        PACK_PIXEL *restrict z, PACK_PIXEL *restrict w)         \
+inline DECL_IMPL(unpack_##X##Y##Z##W)                                           \
 {                                                                               \
-    pixel_t xx[SWS_CHUNK_SIZE], yy[SWS_CHUNK_SIZE],                             \
-            zz[SWS_CHUNK_SIZE], ww[SWS_CHUNK_SIZE];                             \
-                                                                                \
     SWS_LOOP                                                                    \
     for (int i = 0; i < SWS_CHUNK_SIZE; i++) {                                  \
-        const unsigned val = x[i];                                              \
-        xx[i] = val >> (Y+Z+W);                                                 \
+        const pixel_t val = x[i];                                               \
+        x[i] = val >> (Y+Z+W);                                                  \
         if (Y)                                                                  \
-            yy[i] = (val >> (Z+W)) & ((1 << Y) - 1);                            \
+            y[i] = (val >> (Z+W)) & ((1 << Y) - 1);                             \
         if (Z)                                                                  \
-            zz[i] = (val >> W) & ((1 << Z) - 1);                                \
+            z[i] = (val >> W) & ((1 << Z) - 1);                                 \
         if (W)                                                                  \
-            ww[i] = val & ((1 << W) - 1);                                       \
+            w[i] = val & ((1 << W) - 1);                                        \
     }                                                                           \
                                                                                 \
-    CONTINUE(pixel_t *, xx, yy, zz, ww);                                        \
+    CONTINUE(pixel_t *, x, y, z, w);                                            \
 }                                                                               \
                                                                                 \
 DECL_ENTRY(unpack_##X##Y##Z##W,                                                 \
     .op = SWS_OP_UNPACK,                                                        \
-    .pack.type = PACK_TYPE,                                                     \
     .pack.pattern = { X, Y, Z, W },                                             \
     .comps.flags = {                                                            \
         X ? 0 : SWS_COMP_GARBAGE, Y ? 0 : SWS_COMP_GARBAGE,                     \
@@ -357,14 +345,14 @@ DECL_ENTRY(unpack_##X##Y##Z##W,                                                 
     },                                                                          \
 );
 
-WRAP_PACK_UNPACK(SWS_PIXEL_U8,  uint8_t,   3,  3,  2,  0)
-WRAP_PACK_UNPACK(SWS_PIXEL_U8,  uint8_t,   2,  3,  3,  0)
-WRAP_PACK_UNPACK(SWS_PIXEL_U8,  uint8_t,   1,  2,  1,  0)
-WRAP_PACK_UNPACK(SWS_PIXEL_U16, uint16_t,  5,  6,  5,  0)
-WRAP_PACK_UNPACK(SWS_PIXEL_U16, uint16_t,  5,  5,  5,  0)
-WRAP_PACK_UNPACK(SWS_PIXEL_U16, uint16_t,  4,  4,  4,  0)
-WRAP_PACK_UNPACK(SWS_PIXEL_U32, uint32_t,  2, 10, 10, 10)
-WRAP_PACK_UNPACK(SWS_PIXEL_U32, uint32_t, 10, 10, 10,  2)
+WRAP_PACK_UNPACK( 3,  3,  2,  0)
+WRAP_PACK_UNPACK( 2,  3,  3,  0)
+WRAP_PACK_UNPACK( 1,  2,  1,  0)
+WRAP_PACK_UNPACK( 5,  6,  5,  0)
+WRAP_PACK_UNPACK( 5,  5,  5,  0)
+WRAP_PACK_UNPACK( 4,  4,  4,  0)
+WRAP_PACK_UNPACK( 2, 10, 10, 10)
+WRAP_PACK_UNPACK(10, 10, 10,  2)
 
 #if BIT_DEPTH != 8
 DECL_FUNC(lshift, const int amount)
@@ -537,20 +525,22 @@ static const SwsOpTable fn(op_table_int) = {
         fn(op_pack_1210),
         fn(op_pack_2330),
         fn(op_pack_3320),
-        fn(op_pack_4440),
-        fn(op_pack_5550),
-        fn(op_pack_5650),
 
         fn(op_unpack_1210),
         fn(op_unpack_2330),
         fn(op_unpack_3320),
-        fn(op_unpack_4440),
-        fn(op_unpack_5550),
-        fn(op_unpack_5650),
+
 
         fn(op_expand16),
         fn(op_expand32),
 #elif BIT_DEPTH == 16
+        fn(op_pack_4440),
+        fn(op_pack_5550),
+        fn(op_pack_5650),
+        fn(op_unpack_4440),
+        fn(op_unpack_5550),
+        fn(op_unpack_5650),
+#elif BIT_DEPTH == 32
         fn(op_pack_2101010),
         fn(op_pack_1010102),
         fn(op_unpack_2101010),
