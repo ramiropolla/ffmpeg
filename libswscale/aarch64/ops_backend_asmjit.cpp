@@ -577,7 +577,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
     a64::Vec *vh = ctx->m_vh;
     std::vector<a64::Vec> &vimm = ctx->m_vimm;
 
-    SwsOp *prev = &ops->ops[-1];
     SwsOp &op = ops->ops[0];
     SwsOp *next = &ops->ops[1];
 
@@ -755,14 +754,14 @@ if (use_vh) {
                         vh[i] = orig_vh[0];
                 } else {
                     new_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                    cc.ushr    (vet(vl[i], *prev), vet(orig_vl[0], *prev), offsets[i]);
+                    cc.ushr    (vet(vl[i], op), vet(orig_vl[0], op), offsets[i]);
                     if (use_vh)
-                        cc.ushr(vet(vh[i], *prev), vet(orig_vh[0], *prev), offsets[i]);
+                        cc.ushr(vet(vh[i], op), vet(orig_vh[0], op), offsets[i]);
                 }
             }
             LOOP_ARRAY(i, op.pack.pattern) {
                 uint32_t mask = (1u << op.pack.pattern[i]) - 1;
-                size_t vidx = ctx->push_imm32_op(*prev, mask);
+                size_t vidx = ctx->push_imm32_op(op, mask);
                 refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
                 cc.and_    (vl[i].b16(), orig_vl[i].b16(), vimm[vidx].b16());
                 if (use_vh)
