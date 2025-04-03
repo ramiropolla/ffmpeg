@@ -54,8 +54,11 @@ struct AsmJitContext {
     a64::Vec m_vl[4];
     a64::Vec m_vh[4];
 
+    a64::Gp m_x;
+    a64::Gp m_y;
     a64::Gp m_exec_x;
     a64::Gp m_exec_x_end;
+    a64::Gp m_exec_y_end;
 
     /* const data */
     std::vector<uint32_t> m_data;
@@ -91,9 +94,13 @@ struct AsmJitContext {
         from_prologue();
 #endif
         m_exec = cc.newGpz();
-        m_exec_x = cc.newGpz();
-        m_exec_x_end = cc.newGpz();
         m_func->setArg(0, m_exec);
+
+        m_x          = cc.newGpz();
+        m_y          = cc.newGpz();
+        m_exec_x     = cc.newGpz();
+        m_exec_x_end = cc.newGpz();
+        m_exec_y_end = cc.newGpz();
     }
 
     void to_prologue(void)
@@ -307,23 +314,39 @@ struct AsmJitContext {
     {
 #ifdef EMIT_LOOP
         a64::Compiler &cc = *m_cc;
-        Label loop = cc.newLabel();
+        Label hloop = cc.newLabel();
+        Label vloop = cc.newLabel();
 
         to_prologue();
-        cc.comment("prologue (x, x_end)");
-        cc.ldr(m_exec_x.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
+        cc.comment("prologue (vertical)");
+        cc.ldr(m_y         .r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y)));
+        cc.ldr(m_exec_y_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y_end)));
+        cc.comment("prologue (horizontal)");
+        cc.ldr(m_exec_x    .r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
         cc.ldr(m_exec_x_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x_end)));
-        cc.comment("main loop");
-        cc.bind(loop);
+#if 1
+#endif
+        cc.comment("horizontal loop");
+        cc.bind(vloop);
+        cc.mov(m_x.r32(), m_exec_x.r32());
+        cc.bind(hloop);
         from_prologue();
 
-        cc.comment("loop back");
-        cc.add(m_exec_x.r32(), m_exec_x.r32(), chain->block_w);
-        cc.cmp(m_exec_x.r32(), m_exec_x_end.r32());
-        cc.b(a64::CondCode::kLO, loop);
+        cc.comment("horizontal loop back");
+        cc.add(m_x.r32(), m_x.r32(), chain->block_w);
+        cc.cmp(m_x.r32(), m_exec_x_end.r32());
+        cc.b(a64::CondCode::kLO, hloop);
+
+        // TODO add padding to in/out
+
+        cc.comment("vertical loop back");
+        cc.add(m_y.r32(), m_y.r32(), chain->block_h);
+        cc.cmp(m_y.r32(), m_exec_y_end.r32());
+        cc.b(a64::CondCode::kLO, vloop);
 
         cc.comment("epilogue");
-        cc.str(m_exec_x.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
+        cc.str(m_y.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y)));
+        cc.str(m_x.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
 #endif
     }
 };
@@ -904,11 +927,11 @@ if (use_vh) {
 
             cc.adr(rdatal, ldata);
 #ifndef EMIT_LOOP
-            cc.ldr(ctx->m_exec_x.r32(), a64::ptr(ctx->m_exec, offsetof(SwsOpExec, x)));
+            cc.ldr(ctx->m_x.r32(), a64::ptr(ctx->m_exec, offsetof(SwsOpExec, x)));
+            cc.ldr(ctx->m_y.r32(), a64::ptr(ctx->m_exec, offsetof(SwsOpExec, y)));
 #endif
-            cc.ldr(y.r32(), a64::ptr(exec, offsetof(SwsOpExec, y)));
             /* x = (x & ((1 << size_log2) - 1)) * sizeof(float32) */
-            cc.ubfiz(x, ctx->m_exec_x, 2, op.dither.size_log2);
+            cc.ubfiz(x, ctx->m_x, 2, op.dither.size_log2);
             cc.add(rdatah, rdatal, 16);
             cc.add(rdatal, rdatal, x);
             cc.add(rdatah, rdatah, x);
@@ -917,20 +940,19 @@ if (use_vh) {
             LOOP_OUT(i) {
                 // offset = ((((y + yoff[i]) & mask) << log2_size) + (x & mask)) * sizeof(float32);
 
-                a64::Gp ry_off = cc.newGpz();
                 a64::Gp ptrl = cc.newGpz();
                 a64::Gp ptrh = cc.newGpz();
                 a64::Vec dither_vl = cc.newVecQ();
                 a64::Vec dither_vh = cc.newVecQ();
 
                 if (y_off[i] == 0) {
-                    cc.ubfiz(ry_off, y, op.dither.size_log2 + 2, op.dither.size_log2);
+                    cc.ubfiz(y, ctx->m_y, op.dither.size_log2 + 2, op.dither.size_log2);
                 } else {
-                    cc.add(ry_off, y, y_off[i]);
-                    cc.ubfiz(ry_off, ry_off, op.dither.size_log2 + 2, op.dither.size_log2);
+                    cc.add  (y, ctx->m_y, y_off[i]);
+                    cc.ubfiz(y, y, op.dither.size_log2 + 2, op.dither.size_log2);
                 }
-                cc.add(ptrl, rdatal, ry_off);
-                cc.add(ptrh, rdatah, ry_off);
+                cc.add(ptrl, rdatal, y);
+                cc.add(ptrh, rdatah, y);
 
                 cc.ld1(dither_vl.s4(), a64::ptr(ptrl));
                 cc.ld1(dither_vh.s4(), a64::ptr(ptrh));
