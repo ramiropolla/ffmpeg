@@ -61,6 +61,13 @@ struct AsmJitContext {
     std::vector<uint32_t> m_data;
     std::vector<a64::Vec> m_vdata;
 
+    a64::Vec vdata(size_t vidx)
+    {
+        int vdata_i = vidx >> 2;
+        int vdata_j = vidx & 3;
+        return m_vdata[vdata_i].s(vdata_j);
+    }
+
     /* immediates */
     std::vector<std::pair<uint32_t, uint32_t>> m_imm;
     std::vector<a64::Vec> m_vimm;
@@ -545,7 +552,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
     a64::Vec *orig_vh = ctx->m_orig_vh;
     a64::Vec *vl = ctx->m_vl;
     a64::Vec *vh = ctx->m_vh;
-    std::vector<a64::Vec> &vdata = ctx->m_vdata;
     std::vector<a64::Vec> &vimm = ctx->m_vimm;
 
     SwsOp *prev = &ops->ops[-1];
@@ -797,12 +803,9 @@ if (use_vh) {
             cc.comment("clear (f32)");
             for (int i = 0; i < 4; i++) {
                 if (op.clear.value[i].den) {
-                    size_t vidx = vpos[i];
-                    int vdata_i = vidx >> 2;
-                    int vdata_j = vidx & 3;
                     new_vector(ctx, i);
-                    cc.dup(vl[i].s4(), vdata[vdata_i].s(vdata_j));
-                    cc.dup(vh[i].s4(), vdata[vdata_i].s(vdata_j));
+                    cc.dup(vl[i].s4(), ctx->vdata(vpos[i]));
+                    cc.dup(vh[i].s4(), ctx->vdata(vpos[i]));
                 }
             }
         }
@@ -1082,16 +1085,14 @@ normal_clamp:
                     int sj = fdata_swizzle[j];
                     int vidx = vpos[i][sj];
                     if (vidx != -1) {
-                        int vdata_i = vidx >> 2;
-                        int vdata_j = vidx & 3;
                         if (j == 0)
-                            cc.dup(vl[i].s4(), vdata[vdata_i].s(vdata_j));
+                            cc.dup(vl[i].s4(), ctx->vdata(vidx));
                         else if (vidx == -2)
                             cc.mov(vl[i].s4(), orig_vl[sj].s4());
                         else if (count == 0)
-                            cc.fmul(vl[i].s4(), orig_vl[sj].s4(), vdata[vdata_i].s(vdata_j));
+                            cc.fmul(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
                         else
-                            cc.fmla(vl[i].s4(), orig_vl[sj].s4(), vdata[vdata_i].s(vdata_j));
+                            cc.fmla(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
                         count++;
                     }
                 }
@@ -1100,16 +1101,14 @@ normal_clamp:
                     int sj = fdata_swizzle[j];
                     int vidx = vpos[i][sj];
                     if (vidx != -1) {
-                        int vdata_i = vidx >> 2;
-                        int vdata_j = vidx & 3;
                         if (j == 0)
-                            cc.dup(vh[i].s4(), vdata[vdata_i].s(vdata_j));
+                            cc.dup(vh[i].s4(), ctx->vdata(vidx));
                         else if (vidx == -2)
                             cc.mov(vh[i].s4(), orig_vh[sj].s4());
                         else if (count == 0)
-                            cc.fmul(vh[i].s4(), orig_vh[sj].s4(), vdata[vdata_i].s(vdata_j));
+                            cc.fmul(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
                         else
-                            cc.fmla(vh[i].s4(), orig_vh[sj].s4(), vdata[vdata_i].s(vdata_j));
+                            cc.fmla(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
                         count++;
                     }
                 }
@@ -1120,15 +1119,13 @@ normal_clamp:
         if (op.type == SWS_PIXEL_F32) {
             /* Add const data */
             size_t vidx = ctx->push_q(op.scale.factor);
-            int vdata_i = vidx >> 2;
-            int vdata_j = vidx & 3;
 
             /* Do the salmon dance */
             cc.comment("scale (f32)");
             LOOP_OUT(i) {
                 refresh_vector(ctx, i);
-                cc.fmul(vl[i].s4(), orig_vl[i].s4(), vdata[vdata_i].s(vdata_j));
-                cc.fmul(vh[i].s4(), orig_vh[i].s4(), vdata[vdata_i].s(vdata_j));
+                cc.fmul(vl[i].s4(), orig_vl[i].s4(), ctx->vdata(vidx));
+                cc.fmul(vh[i].s4(), orig_vh[i].s4(), ctx->vdata(vidx));
             }
         } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             /* Add immediate */
