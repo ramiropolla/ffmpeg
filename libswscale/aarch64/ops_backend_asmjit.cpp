@@ -895,6 +895,8 @@ if (use_vh) {
                 if (use_vh)
                     cc.shl(vet(vh[i], op), vet(orig_vh[i], op), op.shift.amount);
             }
+        } else {
+            return AVERROR(ENOTSUP);
         }
         break;
     case SWS_OP_RSHIFT:          /* right shift of raw pixel values */
@@ -906,6 +908,8 @@ if (use_vh) {
                 if (use_vh)
                     cc.ushr(vet(vh[i], op), vet(orig_vh[i], op), op.shift.amount);
             }
+        } else {
+            return AVERROR(ENOTSUP);
         }
         break;
     case SWS_OP_SWIZZLE:         /* rearrange channel order, or duplicate channels */
