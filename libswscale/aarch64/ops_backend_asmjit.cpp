@@ -19,6 +19,7 @@
  */
 
 // #define EMIT_BRK
+#define WRITE_PERF_MAP
 
 extern "C" {
 #include "libavutil/cpu.h"
@@ -29,6 +30,10 @@ extern "C" {
 
 #include <asmjit/core.h>
 #include <asmjit/a64.h>
+
+#ifdef WRITE_PERF_MAP
+#  include <unistd.h>
+#endif
 
 #include <iostream>
 #include <vector>
@@ -1359,6 +1364,22 @@ static av_cold int asmjit_compile(SwsOpList *ops, SwsOpChain *chain)
     ctx->m_rt.add(&chain->entry, &ctx->m_code);
     if (chain->entry == nullptr)
         goto error;
+
+#ifdef WRITE_PERF_MAP
+    {
+        char path[64];
+        snprintf(path, sizeof(path), "/tmp/perf-%d.map", getpid());
+
+        FILE *fp = fopen(path, "a");
+        if (fp) {
+            uintptr_t address = (uintptr_t) chain->entry;
+            size_t size = ctx->m_code.codeSize();
+            const char *name = ctx->m_func_name;
+            fprintf(fp, "%" PRIxPTR " %zx %s\n", address, size, name);
+            fclose(fp);
+        }
+    }
+#endif
 
     // At this point, logger already contains the output
     if (av_log_get_level() >= AV_LOG_DEBUG)
