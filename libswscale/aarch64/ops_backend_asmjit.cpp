@@ -19,7 +19,6 @@
  */
 
 // #define EMIT_BRK
-#define EMIT_LOOP
 
 extern "C" {
 #include "libavutil/cpu.h"
@@ -324,7 +323,6 @@ struct AsmJitContext {
 
     void emit_loop(const SwsOpChain *const chain)
     {
-#ifdef EMIT_LOOP
         a64::Compiler &cc = *m_cc;
         a64::Gp width = cc.newGpz();
         a64::Gp in_padding[4];
@@ -411,7 +409,6 @@ struct AsmJitContext {
             cc.str(m_y.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y)));
             cc.str(m_x.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
         }
-#endif
     }
 };
 
@@ -1056,10 +1053,6 @@ if (use_vh) {
             a64::Gp y = cc.newGpz();
 
             cc.adr(rdatal, ldata);
-#ifndef EMIT_LOOP
-            cc.ldr(ctx->m_x.r32(), a64::ptr(ctx->m_exec, offsetof(SwsOpExec, x)));
-            cc.ldr(ctx->m_y.r32(), a64::ptr(ctx->m_exec, offsetof(SwsOpExec, y)));
-#endif
             /* x = (x & ((1 << size_log2) - 1)) * sizeof(float32) */
             cc.ubfiz(x, ctx->m_x, 2, op.dither.size_log2);
             cc.add(rdatah, rdatal, 16);
