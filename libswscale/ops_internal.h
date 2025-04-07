@@ -111,6 +111,9 @@ typedef struct SwsOpChain {
     int block_w, block_h; /* Block size for this chain */
     SwsFunc entry; /* First function to call */
 
+    SwsFormat src;
+    SwsFormat dst;
+
     /* Chain of successive implementations */
 #define SWS_MAX_OPS 16
     SwsOpImpl impl[SWS_MAX_OPS];

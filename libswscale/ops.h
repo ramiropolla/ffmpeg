@@ -258,7 +258,8 @@ enum SwsOpCompileFlags {
  *
  * Note: `ops` may be modified by this function.
  */
-int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat dst,
+int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags,
+                        SwsFormat src, SwsFormat dst,
                         SwsPass *input, SwsPass **output);
 
 #endif

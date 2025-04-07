@@ -39,6 +39,9 @@ extern "C" {
 using namespace asmjit;
 
 struct AsmJitContext {
+    const SwsOpChain *m_chain;
+    char m_func_name[64];
+
     JitRuntime m_rt;
     CodeHolder m_code;
     StringLogger m_logger;
@@ -81,7 +84,8 @@ struct AsmJitContext {
     std::vector<std::pair<uint32_t, uint32_t>> m_imm;
     std::vector<a64::Vec> m_vimm;
 
-    AsmJitContext()
+    AsmJitContext(const SwsOpChain *chain)
+      : m_chain(chain)
     {
         m_code.init(m_rt.environment(), m_rt.cpuFeatures());
         if (av_log_get_level() >= AV_LOG_DEBUG)
@@ -90,6 +94,17 @@ struct AsmJitContext {
         a64::Compiler &cc = *m_cc;
         cc.addDiagnosticOptions(DiagnosticOptions::kRAAnnotate);
         m_func = cc.addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, uint8_t *, uint8_t *>());
+        /* HACK to set function name in asmjit */
+        {
+            LabelNode *func_label_node = static_cast<LabelNode *>(m_func);
+            uint32_t func_label_id = func_label_node->labelId();
+            LabelEntry *func_label_entry = m_code.labelEntry(func_label_id);
+            func_label_entry->_type = LabelType::kGlobal;
+            snprintf(m_func_name, sizeof(m_func_name), "asmjit_%s_to_%s_neon",
+                     av_get_pix_fmt_name(m_chain->src.format),
+                     av_get_pix_fmt_name(m_chain->dst.format));
+            func_label_entry->_name.setData(&m_code._zone, m_func_name, strlen(m_func_name));
+        }
         m_prologue = cc.firstNode()->next();
         m_tail = cc.cursor();
 #ifdef EMIT_BRK
@@ -1309,7 +1324,7 @@ static av_cold int asmjit_compile(SwsOpList *ops, SwsOpChain *chain)
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
-    AsmJitContext *ctx = new AsmJitContext;
+    AsmJitContext *ctx = new AsmJitContext(chain);
     a64::Compiler &cc = *ctx->m_cc;
     Error err;
     int ret;

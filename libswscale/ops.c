@@ -1684,6 +1684,8 @@ int ff_sws_ops_compile_backend(void *logctx, const SwsOpBackend *backend,
     /* Make an on-stack copy of `ops` to ensure we can still properly clean up
      * the copy afterwards */
     rest = *copy;
+    chain.src = out_chain->src;
+    chain.dst = out_chain->dst;
     do {
         ret = backend->compile(&rest, &chain);
     } while (ret == AVERROR(EAGAIN));
@@ -1727,7 +1729,8 @@ int ff_sws_ops_compile(SwsContext *logctx, const SwsOpList *ops, SwsOpChain *cha
     return AVERROR(ENOTSUP);
 }
 
-int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat dst,
+int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags,
+                        SwsFormat src, SwsFormat dst,
                         SwsPass *input, SwsPass **output)
 {
     SwsContext *ctx = graph->ctx;
@@ -1763,6 +1766,8 @@ int ff_sws_compile_pass(SwsGraph *graph, SwsOpList *ops, int flags, SwsFormat ds
         .w = dst.width,
         .h = dst.height,
     };
+    p->chain.src = src;
+    p->chain.dst = dst;
 
     ret = ff_sws_ops_compile(ctx, ops, &p->chain);
     if (ret < 0)
