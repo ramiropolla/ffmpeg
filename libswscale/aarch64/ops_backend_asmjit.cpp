@@ -342,6 +342,7 @@ struct AsmJitContext {
         cc.ldr(m_exec_x    .r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
         cc.ldr(m_exec_x_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x_end)));
         cc.sub(width.r32(), m_exec_x_end.r32(), m_exec_x.r32());
+        cc.comment("prologue (padding)");
         for (int i = 0; i < (m_read_op->rw.packed ? 1 : m_read_op->rw.elems); i++) {
             in_padding[i] = cc.newGpz();
             cc.ldr(in_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, in_padding) + (i * sizeof(ptrdiff_t))));
@@ -350,8 +351,8 @@ struct AsmJitContext {
             out_padding[i] = cc.newGpz();
             cc.ldr(out_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, out_padding) + (i * sizeof(ptrdiff_t))));
         }
-        cc.comment("horizontal loop");
         cc.bind(vloop);
+        cc.comment("horizontal loop");
         if (xy_unused) {
             cc.mov(m_x.r32(), width.r32());
         } else {
