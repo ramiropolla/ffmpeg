@@ -274,11 +274,11 @@ struct AsmJitContext {
         return push_u32(u.u32);
     }
 
-    Label emit_data(void *data, size_t size)
+    Label emit_data(void *data, size_t size, const char *name)
     {
         a64::Compiler &cc = *m_cc;
 
-        Label ldata = cc.newLabel();
+        Label ldata = cc.newNamedLabel(name);
         BaseNode *cursor = cc.cursor();
         cc.setCursor(m_func->endNode()->prev());
         cc.align(AlignMode::kData, 16);
@@ -295,7 +295,7 @@ struct AsmJitContext {
             return;
 
         /* Write const data after function */
-        Label ldata = emit_data(m_data.data(), m_data.size() * sizeof(uint32_t));
+        Label ldata = emit_data(m_data.data(), m_data.size() * sizeof(uint32_t), "const_data");
 
         /* Read matrix data into vectors */
         a64::Compiler &cc = *m_cc;
@@ -327,8 +327,8 @@ struct AsmJitContext {
         a64::Gp width = cc.newGpz();
         a64::Gp in_padding[4];
         a64::Gp out_padding[4];
-        Label hloop = cc.newLabel();
-        Label vloop = cc.newLabel();
+        Label hloop = cc.newNamedLabel("hloop");
+        Label vloop = cc.newNamedLabel("vloop");
         bool xy_unused = (m_dither_op == nullptr);
 
         to_prologue();
@@ -356,7 +356,6 @@ struct AsmJitContext {
             }
         }
         cc.bind(vloop);
-        cc.comment("horizontal loop");
         if (xy_unused) {
             cc.mov(m_x.r32(), width.r32());
         } else {
@@ -1045,7 +1044,7 @@ if (use_vh) {
             for (int i = 0; i < size * size; i++) {
                 fdata[i] = av_q2f(op.dither.matrix[i]);
             }
-            Label ldata = ctx->emit_data(fdata.data(), size * size * sizeof(float));
+            Label ldata = ctx->emit_data(fdata.data(), size * size * sizeof(float), "dither_matrix");
 
             a64::Gp rdatal = cc.newGpz();
             a64::Gp rdatah = cc.newGpz();
