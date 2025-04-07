@@ -444,6 +444,26 @@ struct VectorElementType {
         return vreg.b16();
     }
 
+    a64::Vec half(const a64::Vec &vreg, const SwsOp &op) const
+    {
+        if (op.type == SWS_PIXEL_U16 && m_chain->block_w == 8)
+            return vreg.h4(); /* half vector */
+        if (op.type == SWS_PIXEL_U32 && m_chain->block_w == 8)
+            return vreg.s2(); /* half vector (TRUNCATE) */
+        if (op.type == SWS_PIXEL_F32 && m_chain->block_w == 8)
+            return vreg.s2(); /* half vector (TRUNCATE) */
+        if (op.type == SWS_PIXEL_U8  && m_chain->block_w == 16)
+            return vreg.b8(); /* half vector */
+        if (op.type == SWS_PIXEL_U16 && m_chain->block_w == 16)
+            return vreg.h4(); /* half vector (TRUNCATE) */
+        if (op.type == SWS_PIXEL_U32 && m_chain->block_w == 16)
+            return vreg.s2(); /* half vector (TRUNCATE) */
+        if (op.type == SWS_PIXEL_F32 && m_chain->block_w == 16)
+            return vreg.s2(); /* half vector (TRUNCATE) */
+        printf("ERORROORORRORORO2 %d %d\n", op.type, m_chain->block_w);
+        return vreg.b8();
+    }
+
     int size(const SwsOp &op)
     {
         int elsize = (op.type == SWS_PIXEL_U8)  ? 1
@@ -663,6 +683,25 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
             cc.zip1    (vet(vl[i], op), vet(vimm[vidx], op), vet(orig_vl[i], op));
             if (use_vh)
                 cc.zip2(vet(vh[i], op), vet(vimm[vidx], op), vet(orig_vl[i], op));
+        }
+
+        ops->ops += 2;
+        ops->num_ops -= 2;
+        return ops->num_ops ? AVERROR(EAGAIN) : 0;
+    }
+
+    /* Optimize convert(u8->u16)+lshift(<8) using ushll */
+    if (op.op == SWS_OP_CONVERT && op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && !op.convert.expand &&
+        next->op == SWS_OP_LSHIFT && next->shift.amount < 8)
+    {
+        cc.comment("convert(u8->u16)+lshift(<8)");
+        use_vh = (chain->block_w == 16);
+        LOOP_OUT(i) {
+            save_vector(ctx, i, 0x0f);
+            new_vector(ctx, i, use_vh ? 0xff : 0x0f);
+            cc.ushll     (vet(vl[i], *next), vet.half(orig_vl[i], op), next->shift.amount);
+            if (use_vh)
+                cc.ushll2(vet(vh[i], *next), vet     (orig_vl[i], op), next->shift.amount);
         }
 
         ops->ops += 2;
