@@ -650,6 +650,26 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
                || ((op.type == SWS_PIXEL_U32) && chain->block_w == 8)
                || ((op.type == SWS_PIXEL_F32) && chain->block_w == 8);
 
+    /* Optimize convert(u8->u16)+lshift(8) using zip with zero */
+    if (op.op == SWS_OP_CONVERT && op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && !op.convert.expand &&
+        next->op == SWS_OP_LSHIFT && next->shift.amount == 8)
+    {
+        cc.comment("convert(u8->u16)+lshift(8)");
+        use_vh = (chain->block_w == 16);
+        size_t vidx = ctx->push_imm8(0);
+        LOOP_OUT(i) {
+            save_vector(ctx, i, 0x0f);
+            new_vector(ctx, i, use_vh ? 0xff : 0x0f);
+            cc.zip1    (vet(vl[i], op), vet(vimm[vidx], op), vet(orig_vl[i], op));
+            if (use_vh)
+                cc.zip2(vet(vh[i], op), vet(vimm[vidx], op), vet(orig_vl[i], op));
+        }
+
+        ops->ops += 2;
+        ops->num_ops -= 2;
+        return ops->num_ops ? AVERROR(EAGAIN) : 0;
+    }
+
     switch (op.op) {
     /* Input/output handling */
     case SWS_OP_READ:            /* gather raw pixels from planes */
