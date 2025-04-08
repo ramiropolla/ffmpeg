@@ -31,28 +31,26 @@
 #  define PIXEL_TYPE SWS_PIXEL_U32
 #  define PIXEL_MAX  0xFFFFFFFFu
 #  define SWAP_BYTES av_bswap32
-#  define CLIP_PIXEL av_clip64
 #  define pixel_t    uint32_t
 #  define px         u32
 #elif BIT_DEPTH == 16
 #  define PIXEL_TYPE SWS_PIXEL_U16
 #  define PIXEL_MAX  0xFFFFu
 #  define SWAP_BYTES av_bswap16
-#  define CLIP_PIXEL av_clip
 #  define pixel_t    uint16_t
 #  define px         u16
 #elif BIT_DEPTH == 8
 #  define PIXEL_TYPE SWS_PIXEL_U8
 #  define PIXEL_MAX  0xFFu
-#  define CLIP_PIXEL av_clip
 #  define pixel_t    uint8_t
 #  define px         u8
 #else
 #  error Invalid BIT_DEPTH
 #endif
 
-#define IS_FLOAT 0
-#define FMT_CHAR u
+#define IS_FLOAT  0
+#define FMT_CHAR  u
+#define PIXEL_MIN 0
 #include "ops_tmpl_common.c"
 
 DECL_READ(read_planar, const int elems)
@@ -393,13 +391,13 @@ DECL_IMPL(rshift_##N)                                                           
 }                                                                               \
                                                                                 \
 DECL_ENTRY(lshift_##N,                                                          \
-    .op = SWS_OP_LSHIFT,                                                        \
-    .shift.amount = N,                                                          \
+    .op  = SWS_OP_LSHIFT,                                                       \
+    .c.u = N,                                                                   \
 );                                                                              \
                                                                                 \
 DECL_ENTRY(rshift_##N,                                                          \
-    .op = SWS_OP_RSHIFT,                                                        \
-    .shift.amount = N,                                                          \
+    .op  = SWS_OP_RSHIFT,                                                       \
+    .c.u = N,                                                                   \
 );
 
 WRAP_SHIFT(1)
@@ -551,7 +549,8 @@ static const SwsOpTable fn(op_table_int) = {
         fn(op_swap_bytes),
 #endif
 
-        fn(op_clamp),
+        fn(op_min),
+        fn(op_max),
         fn(op_scale),
         fn(op_convert_float),
 
@@ -625,8 +624,8 @@ static const SwsOpTable fn(op_table_int) = {
 
 #undef PIXEL_TYPE
 #undef PIXEL_MAX
+#undef PIXEL_MIN
 #undef SWAP_BYTES
-#undef CLIP_PIXEL
 #undef pixel_t
 #undef px
 

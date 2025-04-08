@@ -119,7 +119,7 @@
 
 /* Helper macros for common op setup code */
 #define DECL_SETUP(NAME)                                                        \
-    static int fn(setup_##NAME)(const SwsOp *op, SwsOpPriv *out)
+    static int fn(NAME)(const SwsOp *op, SwsOpPriv *out)
 
 #define SETUP_MEMDUP(c) ff_setup_memdup(&(c), sizeof(c), out)
 static inline int ff_setup_memdup(const void *c, size_t size, SwsOpPriv *out)
@@ -141,7 +141,7 @@ static inline int ff_setup_memdup(const void *c, size_t size, SwsOpPriv *out)
 #define DECL_ENTRY_SETUP(NAME, SETUP, FREE, ...)                                \
     static const SwsOpEntry fn(op_##NAME) = {                                   \
         .func  = (SwsFunc) fn(NAME),                                            \
-        .setup = fn(setup_##SETUP),                                             \
+        .setup = SETUP,                                                         \
         .free  = FREE,                                                          \
         .op = {                                                                 \
             .type = PIXEL_TYPE,                                                 \

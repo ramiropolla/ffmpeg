@@ -29,7 +29,7 @@
 #if BIT_DEPTH == 32
 #  define PIXEL_TYPE SWS_PIXEL_F32
 #  define PIXEL_MAX  FLT_MAX
-#  define CLIP_PIXEL av_clipf
+#  define PIXEL_MIN  FLT_MIN
 #  define pixel_t    float
 #  define px         f32
 #else
@@ -51,7 +51,7 @@ typedef struct {
     pixel_t matrix[MAX_DITHER_SIZE][DITHER_ROW_SIZE];
 } fn(DitherCoeffs);
 
-DECL_SETUP(dither)
+DECL_SETUP(setup_dither)
 {
     fn(DitherCoeffs) c = {0};
     const int size = 1 << op->dither.size_log2;
@@ -101,7 +101,7 @@ DECL_IMPL(dither##N)                                                            
     CALL(dither, N);                                                            \
 }                                                                               \
                                                                                 \
-DECL_ENTRY_SETUP(dither##N, dither, av_free,                                    \
+DECL_ENTRY_SETUP(dither##N, fn(setup_dither), av_free,                          \
     .op = SWS_OP_DITHER,                                                        \
     .dither.size_log2 = N,                                                      \
 );
@@ -118,7 +118,7 @@ typedef struct {
     pixel_t k[4];
 } fn(LinCoeffs);
 
-DECL_SETUP(linear)
+DECL_SETUP(setup_linear)
 {
     fn(LinCoeffs) c;
 
@@ -182,7 +182,7 @@ DECL_IMPL(linear_##NAME)                                                        
     CALL(linear_mask, MASK);                                                    \
 }                                                                               \
                                                                                 \
-DECL_ENTRY_SETUP(linear_##NAME, linear, av_free,                                \
+DECL_ENTRY_SETUP(linear_##NAME, fn(setup_linear), av_free,                      \
     .op = SWS_OP_LINEAR,                                                        \
     .lin.mask = (MASK),                                                         \
     .comps.unused = {                                                           \
@@ -217,7 +217,8 @@ static const SwsOpTable fn(op_table_float) = {
         fn(op_convert_uint32),
 
         fn(op_clear_1110),
-        fn(op_clamp),
+        fn(op_min),
+        fn(op_max),
         fn(op_scale),
 
         fn(op_dither0),
@@ -247,7 +248,7 @@ static const SwsOpTable fn(op_table_float) = {
 
 #undef PIXEL_TYPE
 #undef PIXEL_MAX
-#undef CLIP_PIXEL
+#undef PIXEL_MIN
 #undef pixel_t
 #undef px
 

@@ -58,15 +58,6 @@ WRAP_CONVERT_UINT(16)
 WRAP_CONVERT_UINT(32)
 #endif
 
-static_assert(sizeof(pixel_t[4]) <= sizeof(SwsOpPriv), "clear coef too large");
-DECL_SETUP(clear)
-{
-    for (int i = 0; i < 4; i++)
-        out->px[i] = av_q2pixel(op->clear.value[i]);
-
-    return 0;
-}
-
 DECL_FUNC(clear, const bool X, const bool Y, const bool Z, const bool W)
 {
     SWS_LOOP
@@ -90,7 +81,7 @@ DECL_IMPL(clear##_##X##Y##Z##W)                                                 
     CALL(clear, X, Y, Z, W);                                                    \
 }                                                                               \
                                                                                 \
-DECL_ENTRY_SETUP(clear##_##X##Y##Z##W, clear, NULL,                             \
+DECL_ENTRY_SETUP(clear##_##X##Y##Z##W, ff_sws_setup_q4, NULL,                   \
     .op = SWS_OP_CLEAR,                                                         \
     .comps.unused = { !X, !Y, !Z, !W },                                         \
 );
@@ -108,40 +99,34 @@ WRAP_CLEAR(1, 0, 0, 0) /* gray -> yuva */
 WRAP_CLEAR(0, 1, 0, 0) /* gray -> ayuv */
 WRAP_CLEAR(0, 0, 1, 0) /* gray -> vuya */
 
-static_assert(sizeof(pixel_t[4]) <= sizeof(SwsOpPriv), "clamp coef too large");
-DECL_SETUP(clamp)
-{
-    for (int i = 0; i < 4; i++) {
-        if (op->clamp.max[i].den)
-            out->px[i] = av_q2pixel(op->clamp.max[i]);
-        else
-            out->px[i] = PIXEL_MAX;
-    }
-
-    return 0;
-}
-
-DECL_IMPL(clamp)
+DECL_IMPL(min)
 {
     SWS_LOOP
     for (int i = 0; i < SWS_CHUNK_SIZE; i++) {
-        x[i] = CLIP_PIXEL(x[i], 0, impl->priv.px[0]);
-        y[i] = CLIP_PIXEL(y[i], 0, impl->priv.px[1]);
-        z[i] = CLIP_PIXEL(z[i], 0, impl->priv.px[2]);
-        w[i] = CLIP_PIXEL(w[i], 0, impl->priv.px[3]);
+        x[i] = FFMIN(x[i], impl->priv.px[0]);
+        y[i] = FFMIN(y[i], impl->priv.px[1]);
+        z[i] = FFMIN(z[i], impl->priv.px[2]);
+        w[i] = FFMIN(w[i], impl->priv.px[3]);
     }
 
     CONTINUE(pixel_t *, x, y, z, w);
 }
 
-DECL_ENTRY_SETUP(clamp, clamp, NULL, .op = SWS_OP_CLAMP);
-
-static_assert(sizeof(pixel_t) <= sizeof(SwsOpPriv), "scale coef too large");
-DECL_SETUP(scale)
+DECL_IMPL(max)
 {
-    out->px[0] = av_q2pixel(op->scale.factor);
-    return 0;
+    SWS_LOOP
+    for (int i = 0; i < SWS_CHUNK_SIZE; i++) {
+        x[i] = FFMAX(x[i], impl->priv.px[0]);
+        y[i] = FFMAX(y[i], impl->priv.px[1]);
+        z[i] = FFMAX(z[i], impl->priv.px[2]);
+        w[i] = FFMAX(w[i], impl->priv.px[3]);
+    }
+
+    CONTINUE(pixel_t *, x, y, z, w);
 }
+
+DECL_ENTRY_SETUP(min, ff_sws_setup_q4, NULL, .op = SWS_OP_MIN);
+DECL_ENTRY_SETUP(max, ff_sws_setup_q4, NULL, .op = SWS_OP_MAX);
 
 DECL_IMPL(scale)
 {
@@ -158,4 +143,4 @@ DECL_IMPL(scale)
     CONTINUE(pixel_t *, x, y, z, w);
 }
 
-DECL_ENTRY_SETUP(scale, scale, NULL, .op = SWS_OP_SCALE );
+DECL_ENTRY_SETUP(scale, ff_sws_setup_q, NULL, .op = SWS_OP_SCALE );
