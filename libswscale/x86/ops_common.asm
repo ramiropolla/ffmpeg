@@ -145,3 +145,12 @@ endstruc
         %2
     %endif
 %endmacro
+
+; helper for loading per lane constant data
+%macro broadcasti128 2
+    %if avx_enabled
+        vbroadcasti128 %1, %2
+    %else
+        mova %1, %2
+    %endif
+%endmacro

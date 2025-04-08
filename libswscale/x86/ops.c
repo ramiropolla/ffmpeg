@@ -56,13 +56,15 @@
     );
 
 /* Don't use DECL_ASM because we want to re-use the same impl for all types */
+#define DEF_CLEAR_ALPHA(EXT, IDX)                                               \
+    void ff_clear_alpha##IDX##EXT(const SwsOpExec *, const SwsOpImpl *);
+
 #define DECL_CLEAR_ALPHA(EXT, TYPE, IDX, VALUE)                                 \
-    void ff_clear_alpha##IDX##EXT(const SwsOpExec *, const SwsOpImpl *);        \
     static const SwsOpEntry op_clear_alpha##IDX##_##TYPE##EXT = {               \
         .func = ff_clear_alpha##IDX##EXT,                                       \
         .op.type = SWS_PIXEL_##TYPE,                                            \
         .op.op = SWS_OP_CLEAR,                                                  \
-        .op.clear.value[IDX] = { .num = VALUE, .den = 1 },                      \
+        .op.c.q4[IDX] = { .num = VALUE, .den = 1 },                             \
         .op.comps.unused[IDX] = true,                                           \
     };
 
@@ -102,6 +104,9 @@
     DECL_SWIZZLE(EXT, 3, 0, 0, 0)                                               \
     DECL_SWIZZLE(EXT, 0, 0, 0, 1)                                               \
     DECL_SWIZZLE(EXT, 1, 0, 0, 0)                                               \
+    DEF_CLEAR_ALPHA(EXT, 0)                                                     \
+    DEF_CLEAR_ALPHA(EXT, 1)                                                     \
+    DEF_CLEAR_ALPHA(EXT, 3)                                                     \
     DECL_CLEAR_ALPHA(EXT, U8, 0, 0xFF)                                          \
     DECL_CLEAR_ALPHA(EXT, U8, 1, 0xFF)                                          \
     DECL_CLEAR_ALPHA(EXT, U8, 3, 0xFF)
@@ -121,7 +126,7 @@
 
 static int setup_shift(const SwsOp *op, SwsOpPriv *out)
 {
-    out->u16[0] = op->shift.amount;
+    out->u16[0] = op->c.u;
     return 0;
 }
 
@@ -145,6 +150,45 @@ static int setup_shift(const SwsOp *op, SwsOpPriv *out)
     DECL_CLEAR_ALPHA(EXT, U16, 1, 0xFFFF)                                       \
     DECL_CLEAR_ALPHA(EXT, U16, 3, 0xFFFF)
 
+static int setup_min(const SwsOp *op, SwsOpPriv *out)
+{
+    for (int i = 0; i < 4; i++) {
+        if (op->c.q4[i].den)
+            out->f32[i] = (float) op->c.q4[i].num / op->c.q4[i].den;
+        else
+            out->f32[i] = FLT_MAX;
+    }
+    return 0;
+}
+
+static int setup_max(const SwsOp *op, SwsOpPriv *out)
+{
+    for (int i = 0; i < 4; i++) {
+        if (op->c.q4[i].den)
+            out->f32[i] = (float) op->c.q4[i].num / op->c.q4[i].den;
+        else
+            out->f32[i] = FLT_MIN;
+    }
+    return 0;
+}
+
+#define DECL_MIN_MAX(EXT)                                                       \
+    DECL_COMMON_PATTERNS(F32, min##EXT,                                         \
+        .op.op = SWS_OP_MIN,                                                    \
+        .setup = setup_min,                                                     \
+    );                                                                          \
+                                                                                \
+    DECL_COMMON_PATTERNS(F32, max##EXT,                                         \
+        .op.op = SWS_OP_MAX,                                                    \
+        .setup = setup_max,                                                     \
+    );
+
+static int setup_scale(const SwsOp *op, SwsOpPriv *out)
+{
+    out->f32[0] = av_q2d(op->c.q);
+    return 0;
+}
+
 #define DECL_FUNCS_32(EXT)                                                      \
     DECL_CONVERT(EXT,  U8, U32)                                                 \
     DECL_CONVERT(EXT, U32,  U8)                                                 \
@@ -155,6 +199,7 @@ static int setup_shift(const SwsOp *op, SwsOpPriv *out)
     DECL_CONVERT(EXT, U16, F32)                                                 \
     DECL_CONVERT(EXT, F32, U16)                                                 \
     DECL_EXPAND(EXT,   U8, U32)                                                 \
+    DECL_MIN_MAX(EXT)
 
 #define REF_OPS_8(EXT)                          \
     op_read_planar1##EXT,                       \
@@ -194,7 +239,9 @@ static int setup_shift(const SwsOp *op, SwsOpPriv *out)
     REF_COMMON_PATTERNS(convert_F32_U8##EXT),   \
     REF_COMMON_PATTERNS(convert_U16_F32##EXT),  \
     REF_COMMON_PATTERNS(convert_F32_U16##EXT),  \
-    REF_COMMON_PATTERNS(expand_U8_U32##EXT),
+    REF_COMMON_PATTERNS(expand_U8_U32##EXT),    \
+    REF_COMMON_PATTERNS(min##EXT),              \
+    REF_COMMON_PATTERNS(max##EXT),
 
 DECL_FUNCS_8(_m1_ssse3)
 DECL_FUNCS_8(_m1_avx2)

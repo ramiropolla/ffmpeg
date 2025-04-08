@@ -80,14 +80,86 @@ IF W,   vcvtdq2ps mw2, mw2
 %macro conv32fto8 0
 op convert_F32_U8
         LOAD_CONT r2
-        ; TODO
+IF X,   cvttps2dq mx, mx
+IF Y,   cvttps2dq my, my
+IF Z,   cvttps2dq mz, mz
+IF W,   cvttps2dq mw, mw
+IF X,   cvttps2dq mx2, mx2
+IF Y,   cvttps2dq my2, my2
+IF Z,   cvttps2dq mz2, mz2
+IF W,   cvttps2dq mw2, mw2
+IF X,   packusdw mx, mx2
+IF Y,   packusdw my, my2
+IF Z,   packusdw mz, mz2
+IF W,   packusdw mw, mw2
+IF X,   vextracti128 xmx2, mx, 1
+IF Y,   vextracti128 xmy2, my, 1
+IF Z,   vextracti128 xmz2, mz, 1
+IF W,   vextracti128 xmw2, mw, 1
+IF X,   packuswb xmx, xmx2
+IF Y,   packuswb xmy, xmy2
+IF Z,   packuswb xmz, xmz2
+IF W,   packuswb xmw, xmw2
+IF X,   vpshufd xmx, xmx, q3120
+IF Y,   vpshufd xmy, xmy, q3120
+IF Z,   vpshufd xmz, xmz, q3120
+IF W,   vpshufd xmw, xmw, q3120
         CONTINUE r2
 %endmacro
 
 %macro conv32fto16 0
 op convert_F32_U16
         LOAD_CONT r2
-        ; TODO
+IF X,   cvttps2dq mx, mx
+IF Y,   cvttps2dq my, my
+IF Z,   cvttps2dq mz, mz
+IF W,   cvttps2dq mw, mw
+IF X,   cvttps2dq mx2, mx2
+IF Y,   cvttps2dq my2, my2
+IF Z,   cvttps2dq mz2, mz2
+IF W,   cvttps2dq mw2, mw2
+IF X,   packusdw mx, mx2
+IF Y,   packusdw my, my2
+IF Z,   packusdw mz, mz2
+IF W,   packusdw mw, mw2
+IF X,   vpermq mx, mx, q3120
+IF Y,   vpermq my, my, q3120
+IF Z,   vpermq mz, mz, q3120
+IF W,   vpermq mw, mw, q3120
+        CONTINUE r2
+%endmacro
+
+%macro min_max 0
+op min
+IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0]
+IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 4]
+IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 8]
+IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 12]
+        LOAD_CONT r2
+IF X,   minps mx, mx, m8
+IF Y,   minps my, my, m9
+IF Z,   minps mz, mz, m10
+IF W,   minps mw, mw, m11
+IF X,   minps mx2, m8
+IF Y,   minps my2, m9
+IF Z,   minps mz2, m10
+IF W,   minps mw2, m11
+        CONTINUE r2
+
+op max
+IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0]
+IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 4]
+IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 8]
+IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 12]
+        LOAD_CONT r2
+IF X,   maxps mx, m8
+IF Y,   maxps my, m9
+IF Z,   maxps mz, m10
+IF W,   maxps mw, m11
+IF X,   maxps mx2, m8
+IF Y,   maxps my2, m9
+IF Z,   maxps mz2, m10
+IF W,   maxps mw2, m11
         CONTINUE r2
 %endmacro
 
@@ -96,3 +168,4 @@ decl_common_patterns conv8to32f
 decl_common_patterns conv16to32f
 decl_common_patterns conv32fto8
 decl_common_patterns conv32fto16
+decl_common_patterns min_max

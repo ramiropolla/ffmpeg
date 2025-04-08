@@ -28,15 +28,6 @@ read8_unpack2: db  0,  2,  4,  6,  8, 10, 12, 14,  1,  3,  5,  7,  9, 11, 13, 15
 
 SECTION .text
 
-; Helper for loading shuffle masks
-%macro broadcasti128 2
-    %if avx_enabled
-        vbroadcasti128 %1, %2
-    %else
-        mova %1, %2
-    %endif
-%endmacro
-
 ;---------------------------------------------------------
 ; Planar reads / writes
 
@@ -212,15 +203,15 @@ IF W,   pmovzxbw mw, xmw
 %ifidn %1, expand
     broadcasti128 m8, [expand16_shuf]
     %if V2
-IF X,   pshufb mx2, mx2, m8
-IF Y,   pshufb my2, my2, m8
-IF Z,   pshufb mz2, mz2, m8
-IF W,   pshufb mw2, mw2, m8
+IF X,   pshufb mx2, m8
+IF Y,   pshufb my2, m8
+IF Z,   pshufb mz2, m8
+IF W,   pshufb mw2, m8
     %endif
-IF X,   pshufb mx, mx, m8
-IF Y,   pshufb my, my, m8
-IF Z,   pshufb mz, mz, m8
-IF W,   pshufb mw, mw, m8
+IF X,   pshufb mx, m8
+IF Y,   pshufb my, m8
+IF Z,   pshufb mz, m8
+IF W,   pshufb mw, m8
 %endif ; expand
         CONTINUE r2
 %endmacro
@@ -230,10 +221,10 @@ op convert_U16_U8
         LOAD_CONT r2
 %if V2
         ; this code technically works for the !V2 case as well, but slower
-IF X,   packuswb mx, mx, mx2
-IF Y,   packuswb my, my, my2
-IF Z,   packuswb mz, mz, mz2
-IF W,   packuswb mw, mw, mw2
+IF X,   packuswb mx, mx2
+IF Y,   packuswb my, my2
+IF Z,   packuswb mz, mz2
+IF W,   packuswb mw, mw2
 IF X,   vpermq mx, mx, q3120
 IF Y,   vpermq my, my, q3120
 IF Z,   vpermq mz, mz, q3120
@@ -243,10 +234,10 @@ IF X,   vextracti128  xm8, mx, 1
 IF Y,   vextracti128  xm9, my, 1
 IF Z,   vextracti128 xm10, mz, 1
 IF W,   vextracti128 xm11, mw, 1
-IF X,   packuswb xmx, xmx, xm8
-IF Y,   packuswb xmy, xmy, xm9
-IF Z,   packuswb xmz, xmz, xm10
-IF W,   packuswb xmw, xmw, xm11
+IF X,   packuswb xmx, xm8
+IF Y,   packuswb xmy, xm9
+IF Z,   packuswb xmz, xm10
+IF W,   packuswb xmw, xm11
 %endif
         CONTINUE r2
 %endmacro
@@ -268,14 +259,14 @@ IF Z,   pmovzxbd mz2, xmz2
 IF W,   pmovzxbd mw2, xmw2
 %ifidn %1, expand
         broadcasti128 m8, [expand32_shuf]
-IF X,   pshufb mx, mx, m8
-IF Y,   pshufb my, my, m8
-IF Z,   pshufb mz, mz, m8
-IF W,   pshufb mw, mw, m8
-IF X,   pshufb mx2, mx2, m8
-IF Y,   pshufb my2, my2, m8
-IF Z,   pshufb mz2, mz2, m8
-IF W,   pshufb mw2, mw2, m8
+IF X,   pshufb mx, m8
+IF Y,   pshufb my, m8
+IF Z,   pshufb mz, m8
+IF W,   pshufb mw, m8
+IF X,   pshufb mx2, m8
+IF Y,   pshufb my2, m8
+IF Z,   pshufb mz2, m8
+IF W,   pshufb mw2, m8
 %endif ; expand
         CONTINUE r2
 %endmacro
@@ -283,18 +274,18 @@ IF W,   pshufb mw2, mw2, m8
 %macro conv32to8 0
 op convert_U32_U8
         LOAD_CONT r2
-IF X,   packusdw mx, mx, mx2
-IF Y,   packusdw my, my, my2
-IF Z,   packusdw mz, mz, mz2
-IF W,   packusdw mw, mw, mw2
+IF X,   packusdw mx, mx2
+IF Y,   packusdw my, my2
+IF Z,   packusdw mz, mz2
+IF W,   packusdw mw, mw2
 IF X,   vextracti128 xmx2, mx, 1
 IF Y,   vextracti128 xmy2, my, 1
 IF Z,   vextracti128 xmz2, mz, 1
 IF W,   vextracti128 xmw2, mw, 1
-IF X,   packuswb xmx, xmx, xmx2
-IF Y,   packuswb xmy, xmy, xmy2
-IF Z,   packuswb xmz, xmz, xmz2
-IF W,   packuswb xmw, xmw, xmw2
+IF X,   packuswb xmx, xmx2
+IF Y,   packuswb xmy, xmy2
+IF Z,   packuswb xmz, xmz2
+IF W,   packuswb xmw, xmw2
 IF X,   vpshufd xmx, xmx, q3120
 IF Y,   vpshufd xmy, xmy, q3120
 IF Z,   vpshufd xmz, xmz, q3120
@@ -323,10 +314,10 @@ IF W,   pmovzxwd mw2, xmw2
 %macro conv32to16 0
 op convert_U32_U16
         LOAD_CONT r2
-IF X,   packusdw mx, mx, mx2
-IF Y,   packusdw my, my, my2
-IF Z,   packusdw mz, mz, mz2
-IF W,   packusdw mw, mw, mw2
+IF X,   packusdw mx, mx2
+IF Y,   packusdw my, my2
+IF Z,   packusdw mz, mz2
+IF W,   packusdw mw, mw2
 IF X,   vpermq mx, mx, q3120
 IF Y,   vpermq my, my, q3120
 IF Z,   vpermq mz, mz, q3120
@@ -341,15 +332,15 @@ IF W,   vpermq mw, mw, q3120
 op lshift16
         vmovq xm8, [implq + SwsOpImpl.priv]
         LOAD_CONT r2
-IF X,   psllw mx, mx, xm8
-IF Y,   psllw my, my, xm8
-IF Z,   psllw mz, mz, xm8
-IF W,   psllw mw, mw, xm8
+IF X,   psllw mx, xm8
+IF Y,   psllw my, xm8
+IF Z,   psllw mz, xm8
+IF W,   psllw mw, xm8
 %if V2
-IF X,   psllw mx2, mx2, xm8
-IF Y,   psllw my2, my2, xm8
-IF Z,   psllw mz2, mz2, xm8
-IF W,   psllw mw2, mw2, xm8
+IF X,   psllw mx2, xm8
+IF Y,   psllw my2, xm8
+IF Z,   psllw mz2, xm8
+IF W,   psllw mw2, xm8
 %endif
         CONTINUE r2
 %endmacro
@@ -358,15 +349,15 @@ IF W,   psllw mw2, mw2, xm8
 op rshift16
         vmovq xm8, [implq + SwsOpImpl.priv]
         LOAD_CONT r2
-IF X,   psrlw mx, mx, xm8
-IF Y,   psrlw my, my, xm8
-IF Z,   psrlw mz, mz, xm8
-IF W,   psrlw mw, mw, xm8
+IF X,   psrlw mx, xm8
+IF Y,   psrlw my, xm8
+IF Z,   psrlw mz, xm8
+IF W,   psrlw mw, xm8
 %if V2
-IF X,   psrlw mx2, mx2, xm8
-IF Y,   psrlw my2, my2, xm8
-IF Z,   psrlw mz2, mz2, xm8
-IF W,   psrlw mw2, mw2, xm8
+IF X,   psrlw mx2, xm8
+IF Y,   psrlw my2, xm8
+IF Z,   psrlw mz2, xm8
+IF W,   psrlw mw2, xm8
 %endif
         CONTINUE r2
 %endmacro
