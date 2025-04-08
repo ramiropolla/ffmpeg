@@ -60,7 +60,49 @@ static int rw_pixel_bits(const SwsOp *op)
     return elems * size * bits;
 }
 
-static void check_ops(const char *report, const uint32_t mask, const SwsOp *ops)
+static float rndf(void)
+{
+    union { uint32_t u; float f; } x;
+    do {
+        x.u = rnd();
+    } while (!isnormal(x.f));
+    return x.f;
+}
+
+static void fill32f(float *line, int num, unsigned range)
+{
+    const float scale = (float) range / UINT32_MAX;
+    for (int i = 0; i < num; i++)
+        line[i] = range ? scale * rnd() : rndf();
+}
+
+static void fill32(uint32_t *line, int num, unsigned range)
+{
+    for (int i = 0; i < num; i++)
+        line[i] = range ? rnd() % (range + 1) : rnd();
+}
+
+static void fill16(uint16_t *line, int num, unsigned range)
+{
+    if (!range) {
+        fill32((uint32_t *) line, AV_CEIL_RSHIFT(num, 1), 0);
+    } else {
+        for (int i = 0; i < num; i++)
+            line[i] = rnd() % (range + 1);
+    }
+}
+
+static void fill8(uint8_t *line, int num, unsigned range)
+{
+    if (!range) {
+        fill32((uint32_t *) line, AV_CEIL_RSHIFT(num, 2), 0);
+    } else {
+        for (int i = 0; i < num; i++)
+            line[i] = rnd() % (range + 1);
+    }
+}
+
+static void check_ops(const char *report, unsigned range, const SwsOp *ops)
 {
     SwsOpChain chain0 = {0}, chain1 = {0};
     SwsOpExec exec0 = {0}, exec1 = {0};
@@ -70,27 +112,32 @@ static void check_ops(const char *report, const uint32_t mask, const SwsOp *ops)
 
     declare_func(void, const SwsOpExec *exec, const SwsOpImpl *impl);
 
-    DECLARE_ALIGNED_64(uint32_t, src0)[4][MAX_BLOCK_H][4 * MAX_BLOCK_W];
-    DECLARE_ALIGNED_64(uint32_t, src1)[4][MAX_BLOCK_H][4 * MAX_BLOCK_W];
-    DECLARE_ALIGNED_64(uint32_t, dst0)[4][MAX_BLOCK_H][4 * MAX_BLOCK_W];
-    DECLARE_ALIGNED_64(uint32_t, dst1)[4][MAX_BLOCK_H][4 * MAX_BLOCK_W];
-
-    for (int p = 0; p < 4; p++) {
-        for (int y = 0; y < MAX_BLOCK_H; y++) {
-            for (int x = 0; x < 4 * MAX_BLOCK_W; x++)
-                src0[p][y][x] = rnd() & mask;
-        }
-    }
-
-    memcpy(src1, src0, sizeof(src0));
-    memset(dst0, 0, sizeof(dst0));
-    memset(dst1, 0, sizeof(dst1));
+    DECLARE_ALIGNED_64(char, src0)[4][MAX_BLOCK_H][4 * MAX_BLOCK_W * sizeof(uint32_t)];
+    DECLARE_ALIGNED_64(char, src1)[4][MAX_BLOCK_H][4 * MAX_BLOCK_W * sizeof(uint32_t)];
+    DECLARE_ALIGNED_64(char, dst0)[4][MAX_BLOCK_H][4 * MAX_BLOCK_W * sizeof(uint32_t)];
+    DECLARE_ALIGNED_64(char, dst1)[4][MAX_BLOCK_H][4 * MAX_BLOCK_W * sizeof(uint32_t)];
 
     read_op = &ops[0];
     for (oplist.num_ops = 0; ops[oplist.num_ops].op; oplist.num_ops++)
         write_op = &ops[oplist.num_ops];
     pixel_bits_in  = rw_pixel_bits(read_op);
     pixel_bits_out = rw_pixel_bits(write_op);
+
+    for (int p = 0; p < 4; p++) {
+        for (int y = 0; y < MAX_BLOCK_H; y++) {
+            void *line = src0[p][y];
+            switch (read_op->type) {
+            case U8:    fill8(line, sizeof(src0[p][y]) /  sizeof(uint8_t), range); break;
+            case U16:  fill16(line, sizeof(src0[p][y]) / sizeof(uint16_t), range); break;
+            case U32:  fill32(line, sizeof(src0[p][y]) / sizeof(uint32_t), range); break;
+            case F32: fill32f(line, sizeof(src0[p][y]) / sizeof(uint32_t), range); break;
+            }
+        }
+    }
+
+    memcpy(src1, src0, sizeof(src0));
+    memset(dst0, 0, sizeof(dst0));
+    memset(dst1, 0, sizeof(dst1));
 
     /* Compile `ops` using both the asm and c backends */
     for (int n = 0; ff_sws_op_backends[n]; n++) {
@@ -166,10 +213,13 @@ static void check_ops(const char *report, const uint32_t mask, const SwsOp *ops)
                                          exec1.w, exec1.h, name);
                 break;
             case U32:
-            case F32:
                 checkasm_check(uint32_t, (void *) dst0[i], exec0.out_stride[i],
                                          (void *) dst1[i], exec1.out_stride[i],
                                          exec1.w, exec1.h, name);
+            case F32:
+                checkasm_check(float, (void *) dst0[i], exec0.out_stride[i],
+                                      (void *) dst1[i], exec1.out_stride[i],
+                                      exec1.w, exec1.h, name);
                 break;
             }
         }
@@ -177,11 +227,11 @@ static void check_ops(const char *report, const uint32_t mask, const SwsOp *ops)
         /* Check for over-write */
         for (int y = 0; y < exec1.block_h; y++) {
             for (int p = 0; p < 4; p++) {
-                const int base = exec1.w * pixel_bits_out >> 5; /* as uint32_t */
+                const int base = exec1.w * pixel_bits_out >> 3;
                 for (int i = base; i < FF_ARRAY_ELEMS(dst1[p][y]); i++) {
                     if (dst1[p][y][i] != 0) {
-                        fprintf(stderr, "Overwrite detected at dst[%d][%d][%d] = 0x%08x\n",
-                                p, y, i * 4, dst1[p][y][i]);
+                        fprintf(stderr, "Overwrite detected at dst[%d][%d][%d] = 0x%02x\n",
+                                p, y, i, dst1[p][y][i]);
                         fail();
                     }
                 }
@@ -196,9 +246,9 @@ static void check_ops(const char *report, const uint32_t mask, const SwsOp *ops)
     ff_sws_op_chain_uninit(&chain0);
 }
 
-#define CHECK_MASK(NAME, MASK, N_IN, N_OUT, IN, OUT, ...)                       \
+#define CHECK_RANGE(NAME, RANGE, N_IN, N_OUT, IN, OUT, ...)                     \
   do {                                                                          \
-    check_ops(NAME, MASK, (SwsOp[]) {                                           \
+    check_ops(NAME, RANGE, (SwsOp[]) {                                          \
         {                                                                       \
             .op = SWS_OP_READ,                                                  \
             .type = IN,                                                         \
@@ -213,21 +263,21 @@ static void check_ops(const char *report, const uint32_t mask, const SwsOp *ops)
     });                                                                         \
   } while (0)
 
-#define CHECK_COMMON_MASK(NAME, MASK, IN, OUT, ...)                             \
-    CHECK_MASK(FMT("%s_p1000", NAME), MASK, 1, 1, IN, OUT, __VA_ARGS__);        \
-    CHECK_MASK(FMT("%s_p1110", NAME), MASK, 3, 3, IN, OUT, __VA_ARGS__);        \
-    CHECK_MASK(FMT("%s_p1111", NAME), MASK, 4, 4, IN, OUT, __VA_ARGS__);        \
-    CHECK_MASK(FMT("%s_p1001", NAME), MASK, 4, 2, IN, OUT, __VA_ARGS__, {       \
+#define CHECK_COMMON_RANGE(NAME, RANGE, IN, OUT, ...)                           \
+    CHECK_RANGE(FMT("%s_p1000", NAME), RANGE, 1, 1, IN, OUT, __VA_ARGS__);      \
+    CHECK_RANGE(FMT("%s_p1110", NAME), RANGE, 3, 3, IN, OUT, __VA_ARGS__);      \
+    CHECK_RANGE(FMT("%s_p1111", NAME), RANGE, 4, 4, IN, OUT, __VA_ARGS__);      \
+    CHECK_RANGE(FMT("%s_p1001", NAME), RANGE, 4, 2, IN, OUT, __VA_ARGS__, {     \
         .op = SWS_OP_SWIZZLE,                                                   \
         .type = OUT,                                                            \
         .swizzle = SWS_SWIZZLE(0, 3, 1, 2),                                     \
     })
 
 #define CHECK(NAME, N_IN, N_OUT, IN, OUT, ...) \
-    CHECK_MASK(NAME, 0xFFFFFFFF, N_IN, N_OUT, IN, OUT, __VA_ARGS__)
+    CHECK_RANGE(NAME, 0, N_IN, N_OUT, IN, OUT, __VA_ARGS__)
 
 #define CHECK_COMMON(NAME, IN, OUT, ...) \
-    CHECK_COMMON_MASK(NAME, 0xFFFFFFFF, IN, OUT, __VA_ARGS__)
+    CHECK_COMMON_RANGE(NAME, 0, IN, OUT, __VA_ARGS__)
 
 static void check_read_write(void)
 {
@@ -236,7 +286,7 @@ static void check_read_write(void)
         for (int i = 1; i <= 4; i++) {
             /* Test N->N planar read/write */
             for (int o = 1; o <= i; o++) {
-                check_ops(FMT("rw_%d_%d_%s", i, o, type), 0xFFFFFFFF, (SwsOp[]) {
+                check_ops(FMT("rw_%d_%d_%s", i, o, type), 0, (SwsOp[]) {
                     {
                         .op = SWS_OP_READ,
                         .type = t,
@@ -253,7 +303,7 @@ static void check_read_write(void)
             if (i == 1)
                 continue;
 
-            check_ops(FMT("read_packed%d_%s", i, type), 0xFFFFFFFF, (SwsOp[]) {
+            check_ops(FMT("read_packed%d_%s", i, type), 0, (SwsOp[]) {
                 {
                     .op = SWS_OP_READ,
                     .type = t,
@@ -266,7 +316,7 @@ static void check_read_write(void)
                 }, {0}
             });
 
-            check_ops(FMT("write_packed%d_%s", i, type), 0xFFFFFFFF, (SwsOp[]) {
+            check_ops(FMT("write_packed%d_%s", i, type), 0, (SwsOp[]) {
                 {
                     .op = SWS_OP_READ,
                     .type = t,
@@ -356,42 +406,42 @@ static void check_clear(void)
             const AVRational alpha  = (AVRational) { (1 << bits) - 1, 1};
             const AVRational none = {0};
 
-            const SwsClearOp patterns[] = {
+            const SwsConst patterns[] = {
                 /* Alpha only */
-                {{   none,   none,   none,  alpha }},
-                {{  alpha,   none,   none,   none }},
+                {.q4 = {   none,   none,   none,  alpha }},
+                {.q4 = {  alpha,   none,   none,   none }},
                 /* Chroma only */
-                {{ chroma, chroma,   none,   none }},
-                {{   none, chroma, chroma,   none }},
-                {{   none,   none, chroma, chroma }},
-                {{ chroma,   none, chroma,   none }},
-                {{   none, chroma,   none, chroma }},
+                {.q4 = { chroma, chroma,   none,   none }},
+                {.q4 = {   none, chroma, chroma,   none }},
+                {.q4 = {   none,   none, chroma, chroma }},
+                {.q4 = { chroma,   none, chroma,   none }},
+                {.q4 = {   none, chroma,   none, chroma }},
                 /* Alpha+chroma */
-                {{ chroma, chroma,   none,  alpha }},
-                {{   none, chroma, chroma,  alpha }},
-                {{  alpha,   none, chroma, chroma }},
-                {{ chroma,   none, chroma,  alpha }},
-                {{  alpha, chroma,   none, chroma }},
+                {.q4 = { chroma, chroma,   none,  alpha }},
+                {.q4 = {   none, chroma, chroma,  alpha }},
+                {.q4 = {  alpha,   none, chroma, chroma }},
+                {.q4 = { chroma,   none, chroma,  alpha }},
+                {.q4 = {  alpha, chroma,   none, chroma }},
                 /* Random values */
-                {{ none, rndq(t), rndq(t), rndq(t) }},
-                {{ none, rndq(t), rndq(t), rndq(t) }},
-                {{ none, rndq(t), rndq(t), rndq(t) }},
-                {{ none, rndq(t), rndq(t), rndq(t) }},
+                {.q4 = { none, rndq(t), rndq(t), rndq(t) }},
+                {.q4 = { none, rndq(t), rndq(t), rndq(t) }},
+                {.q4 = { none, rndq(t), rndq(t), rndq(t) }},
+                {.q4 = { none, rndq(t), rndq(t), rndq(t) }},
             };
 
             for (int i = 0; i < FF_ARRAY_ELEMS(patterns); i++) {
                 CHECK(FMT("clear_pattern_%s[%d]", type, i), 4, 4, t, t, {
-                    .op = SWS_OP_CLEAR,
+                    .op   = SWS_OP_CLEAR,
                     .type = t,
-                    .clear = patterns[i],
+                    .c    = patterns[i],
                 });
             }
         } else if (!ff_sws_pixel_type_is_int(t)) {
             /* Floating point YUV doesn't exist, only alpha needs to be cleared */
             CHECK(FMT("clear_alpha_%s", type), 4, 4, t, t, {
-                .op = SWS_OP_CLEAR,
-                .type = t,
-                .clear.value[3] = { 0, 1 },
+                .op      = SWS_OP_CLEAR,
+                .type    = t,
+                .c.q4[3] = { 0, 1 },
             });
         }
     }
@@ -406,15 +456,15 @@ static void check_shift(void)
 
         for (int shift = 1; shift <= 8; shift++) {
             CHECK_COMMON(FMT("lshift%d_%s", shift, type), t, t, {
-                .op = SWS_OP_LSHIFT,
+                .op   = SWS_OP_LSHIFT,
                 .type = t,
-                .shift.amount = shift,
+                .c.u  = shift,
             });
 
             CHECK_COMMON(FMT("rshift%d_%s", shift, type), t, t, {
-                .op = SWS_OP_RSHIFT,
+                .op   = SWS_OP_RSHIFT,
                 .type = t,
-                .shift.amount = shift,
+                .c.u  = shift,
             });
         }
     }
@@ -481,23 +531,9 @@ static void check_convert(void)
                     .type = i,
                     .convert.to = o,
                 });
-            } else if (!ff_sws_pixel_type_is_int(i)) {
-                const AVRational max = { (1 << osize * 8) - 1, 1 };
-                CHECK_COMMON(name, i, o, {
-                    .op = SWS_OP_CLAMP,
-                    .type = i,
-                    .clamp.max = { max, max, max, max },
-                }, {
-                    .op = SWS_OP_CONVERT,
-                    .type = i,
-                    .convert.to = o,
-                });
-            } else if (isize > osize) {
-                uint32_t mask = (1 << osize * 8) - 1;
-                if (isize == 2)
-                    mask |= mask << 16;
-
-                CHECK_COMMON_MASK(name, mask, i, o, {
+            } else if (isize > osize || !ff_sws_pixel_type_is_int(i)) {
+                uint32_t range = (1 << osize * 8) - 1;
+                CHECK_COMMON_RANGE(name, range, i, o, {
                     .op = SWS_OP_CONVERT,
                     .type = i,
                     .convert.to = o,
@@ -555,14 +591,20 @@ static void check_dither(void)
     }
 }
 
-static void check_clamp(void)
+static void check_min_max(void)
 {
     for (SwsPixelType t = U8; t < SWS_PIXEL_TYPE_NB; t++) {
         const char *type = ff_sws_pixel_type_name(t);
-        CHECK_COMMON(FMT("clamp_%s", type), t, t, {
-            .op = SWS_OP_CLAMP,
+        CHECK_COMMON(FMT("min_%s", type), t, t, {
+            .op = SWS_OP_MIN,
             .type = t,
-            .clamp.max = { rndq(t), rndq(t), rndq(t), rndq(t) },
+            .c.q4 = { rndq(t), rndq(t), rndq(t), rndq(t) },
+        });
+
+        CHECK_COMMON(FMT("max_%s", type), t, t, {
+            .op = SWS_OP_MAX,
+            .type = t,
+            .c.q4 = { rndq(t), rndq(t), rndq(t), rndq(t) },
         });
     }
 }
@@ -633,21 +675,17 @@ static void check_scale(void)
             /* Ensure the result won't exceed the value range */
             const unsigned max = (1 << bits) - 1;
             const unsigned scale = rnd() & max;
-            const AVRational maxq = { max / (scale ? scale : 1), 1 };
-            CHECK_COMMON(FMT("scale_%s", type), t, t, {
-                .op = SWS_OP_CLAMP,
+            const unsigned range = max / (scale ? scale : 1);
+            CHECK_COMMON_RANGE(FMT("scale_%s", type), range, t, t, {
+                .op   = SWS_OP_SCALE,
                 .type = t,
-                .clamp.max = { maxq, maxq, maxq, maxq },
-            }, {
-                .op = SWS_OP_SCALE,
-                .type = t,
-                .scale.factor = { scale, 1 },
+                .c.q  = { scale, 1 },
             });
         } else {
             CHECK_COMMON(FMT("scale_%s", type), t, t, {
-                .op = SWS_OP_SCALE,
+                .op   = SWS_OP_SCALE,
                 .type = t,
-                .scale.factor = rndq(t),
+                .c.q  = rndq(t),
             });
         }
     }
@@ -671,8 +709,8 @@ void checkasm_check_sw_ops(void)
     report("convert");
     check_dither();
     report("dither");
-    check_clamp();
-    report("clamp");
+    check_min_max();
+    report("min_max");
     check_linear();
     report("linear");
     check_scale();
