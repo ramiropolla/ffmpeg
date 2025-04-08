@@ -54,16 +54,17 @@ typedef enum SwsOpType {
 
     /* Pixel manipulation */
     SWS_OP_CLEAR,           /* clear pixel values */
-    SWS_OP_LSHIFT,          /* logical left shift of raw pixel values */
-    SWS_OP_RSHIFT,          /* right shift of raw pixel values */
+    SWS_OP_LSHIFT,          /* logical left shift of raw pixel values by (u8) */
+    SWS_OP_RSHIFT,          /* right shift of raw pixel values by (u8) */
     SWS_OP_SWIZZLE,         /* rearrange channel order, or duplicate channels */
     SWS_OP_CONVERT,         /* convert (cast) between formats */
     SWS_OP_DITHER,          /* add dithering noise */
-    SWS_OP_CLAMP,           /* clamp pixel values to value range */
 
     /* Arithmetic operations */
     SWS_OP_LINEAR,          /* generalized linear affine transform */
-    SWS_OP_SCALE,           /* multiplication by scalar */
+    SWS_OP_SCALE,           /* multiplication by scalar (q) */
+    SWS_OP_MIN,             /* numeric minimum (q4) */
+    SWS_OP_MAX,             /* numeric maximum (q4) */
 
     SWS_OP_TYPE_NB,
 } SwsOpType;
@@ -73,6 +74,13 @@ enum SwsCompFlags {
     SWS_COMP_EXACT   = 1 << 1, /* value is an in-range, exact, integer */
     SWS_COMP_ZERO    = 1 << 2, /* known to be a constant zero */
 };
+
+typedef union SwsConst {
+    /* Generic constant value */
+    AVRational q;
+    AVRational q4[4];
+    unsigned u;
+} SwsConst;
 
 typedef struct SwsComps {
     unsigned flags[4]; /* knowledge about (output) component contents */
@@ -103,15 +111,6 @@ typedef struct SwsPackOp {
     int pattern[4]; /* bit depth pattern, from MSB to LSB */
 } SwsPackOp;
 
-typedef struct SwsClearOp {
-    /* Value to set each affected component to, or {0, 0} to ignore */
-    AVRational value[4];
-} SwsClearOp;
-
-typedef struct SwsShiftOp {
-    uint8_t amount; /* shift amount, applied to all components */
-} SwsShiftOp;
-
 typedef struct SwsSwizzleOp {
     /**
      * Input component for each output component:
@@ -136,11 +135,6 @@ typedef struct SwsDitherOp {
     int size_log2; /* size (in bits) of the dither matrix */
 } SwsDitherOp;
 
-typedef struct SwsClampOp {
-    /* The minimum value range is always hard-coded as 0 */
-    AVRational max[4]; /* upper value range, or {0, 0} for no upper bound */
-} SwsClampOp;
-
 typedef struct SwsLinearOp {
     /**
      * Generalized 5x5 affine transformation:
@@ -157,10 +151,6 @@ typedef struct SwsLinearOp {
     AVRational m[4][5];
     uint32_t mask; /* m[i][j] <-> 1 << (5 * i + j) */
 } SwsLinearOp;
-
-typedef struct SwsScaleOp {
-    AVRational factor; /* scalar to multiply by */
-} SwsScaleOp;
 
 #define SWS_MASK(I, J)  (1 << (5 * (I) + (J)))
 #define SWS_MASK_OFF(I) SWS_MASK(I, 4)
@@ -192,14 +182,11 @@ typedef struct SwsOp {
     union {
         SwsReadWriteOp  rw;
         SwsPackOp       pack;
-        SwsClearOp      clear;
-        SwsShiftOp      shift;
         SwsSwizzleOp    swizzle;
         SwsConvertOp    convert;
         SwsDitherOp     dither;
-        SwsClampOp      clamp;
         SwsLinearOp     lin;
-        SwsScaleOp      scale;
+        SwsConst        c;
     };
 
     /* For use internal use inside ff_sws_*() functions */
