@@ -748,17 +748,17 @@ static int fmt_shift(enum AVPixelFormat fmt)
  * it will end up getting pushed towards the output or optimized away entirely
  * by the optimization pass.
  */
-static SwsClearOp fmt_clear(enum AVPixelFormat fmt)
+static SwsConst fmt_clear(enum AVPixelFormat fmt)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
     const bool has_chroma = desc->nb_components >= 3;
     const bool has_alpha  = desc->flags & AV_PIX_FMT_FLAG_ALPHA;
 
-    SwsClearOp c = {0};
+    SwsConst c = {0};
     if (!has_chroma)
-        c.value[1] = c.value[2] = Q0;
+        c.q4[1] = c.q4[2] = Q0;
     if (!has_alpha)
-        c.value[3] = Q0;
+        c.q4[3] = Q0;
 
     return c;
 }
@@ -1035,15 +1035,15 @@ int ff_sws_decode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
     }));
 
     RET(ff_sws_op_list_append(ops, &(SwsOp) {
-        .op           = SWS_OP_RSHIFT,
-        .type         = pixel_type,
-        .shift.amount = fmt_shift(fmt),
+        .op   = SWS_OP_RSHIFT,
+        .type = pixel_type,
+        .c.u  = fmt_shift(fmt),
     }));
 
     RET(ff_sws_op_list_append(ops, &(SwsOp) {
-        .op    = SWS_OP_CLEAR,
-        .type  = pixel_type,
-        .clear = fmt_clear(fmt),
+        .op   = SWS_OP_CLEAR,
+        .type = pixel_type,
+        .c    = fmt_clear(fmt),
     }));
 
     return 0;
@@ -1062,9 +1062,9 @@ int ff_sws_encode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
         raw_type = get_packed_type(pack);
 
     RET(ff_sws_op_list_append(ops, &(SwsOp) {
-        .op           = SWS_OP_LSHIFT,
-        .type         = pixel_type,
-        .shift.amount = fmt_shift(fmt),
+        .op   = SWS_OP_LSHIFT,
+        .type = pixel_type,
+        .c.u  = fmt_shift(fmt),
     }));
 
     if (rw_op.elems > desc->nb_components) {
@@ -1073,7 +1073,7 @@ int ff_sws_encode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
         RET(ff_sws_op_list_append(ops, &(SwsOp) {
             .op   = SWS_OP_CLEAR,
             .type = pixel_type,
-            .clear.value[3] = Q0,
+            .c.q4[3] = Q0,
         }));
     }
 
@@ -1478,20 +1478,26 @@ int ff_sws_encode_colors(SwsContext *ctx, SwsPixelType type,
     }));
 
     if (!(fmt.desc->flags & AV_PIX_FMT_FLAG_FLOAT)) {
-        SwsClampOp clamp = {0};
+        SwsConst range = {0};
 
         const bool is_ya = fmt.desc->nb_components == 2;
         for (int i = 0; i < fmt.desc->nb_components; i++) {
             /* Clamp to legal pixel range */
             const int idx = i * (is_ya ? 3 : 1);
-            clamp.max[idx] = Q((1 << fmt.desc->comp[i].depth) - 1);
+            range.q4[idx] = Q((1 << fmt.desc->comp[i].depth) - 1);
         }
 
         RET(fmt_dither(ctx, ops, type, fmt));
         RET(ff_sws_op_list_append(ops, &(SwsOp) {
-            .op     = SWS_OP_CLAMP,
-            .type   = type,
-            .clamp  = clamp,
+            .op   = SWS_OP_MAX,
+            .type = type,
+            .c.q4 = { Q0, Q0, Q0, Q0 },
+        }));
+
+        RET(ff_sws_op_list_append(ops, &(SwsOp) {
+            .op   = SWS_OP_MIN,
+            .type = type,
+            .c    = range,
         }));
     }
 
