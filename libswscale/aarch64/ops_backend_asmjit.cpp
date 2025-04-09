@@ -688,7 +688,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
 
     /* Optimize convert(u8->u16)+lshift(8) using zip with zero */
     if (op.op == SWS_OP_CONVERT && op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && !op.convert.expand &&
-        next->op == SWS_OP_LSHIFT && next->shift.amount == 8)
+        next->op == SWS_OP_LSHIFT && next->c.u == 8)
     {
         cc.comment("convert(u8->u16)+lshift(8)");
         use_vh = (chain->block_w == 16);
@@ -708,16 +708,16 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops, SwsOpChain *cha
 
     /* Optimize convert(u8->u16)+lshift(<8) using ushll */
     if (op.op == SWS_OP_CONVERT && op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && !op.convert.expand &&
-        next->op == SWS_OP_LSHIFT && next->shift.amount < 8)
+        next->op == SWS_OP_LSHIFT && next->c.u < 8)
     {
         cc.comment("convert(u8->u16)+lshift(<8)");
         use_vh = (chain->block_w == 16);
         LOOP_OUT(i) {
             save_vector(ctx, i, 0x0f);
             new_vector(ctx, i, use_vh ? 0xff : 0x0f);
-            cc.ushll     (vet(vl[i], *next), vet.half(orig_vl[i], op), next->shift.amount);
+            cc.ushll     (vet(vl[i], *next), vet.half(orig_vl[i], op), next->c.u);
             if (use_vh)
-                cc.ushll2(vet(vh[i], *next), vet     (orig_vl[i], op), next->shift.amount);
+                cc.ushll2(vet(vh[i], *next), vet     (orig_vl[i], op), next->c.u);
         }
 
         ops->ops += 2;
@@ -941,8 +941,8 @@ if (use_vh) {
         if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             cc.comment("clear (integer)");
             for (int i = 0; i < 4; i++) {
-                if (op.clear.value[i].den) {
-                    size_t vidx = ctx->push_imm32_op(op, av_q2i(op.clear.value[i]));
+                if (op.c.q4[i].den) {
+                    size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
                     if (next->op == SWS_OP_WRITE) {
                         /* TODO astmjit's register allocator sometimes fails, so we relieve some pressure */
                         new_vector(ctx, i, 0x0f);
@@ -958,13 +958,13 @@ if (use_vh) {
             /* Add const data */
             size_t vpos[4];
             for (int i = 0; i < 4; i++)
-                if (op.clear.value[i].den)
-                    vpos[i] = ctx->push_q(op.clear.value[i]);
+                if (op.c.q4[i].den)
+                    vpos[i] = ctx->push_q(op.c.q4[i]);
 
             /* Do the salmon dance */
             cc.comment("clear (f32)");
             for (int i = 0; i < 4; i++) {
-                if (op.clear.value[i].den) {
+                if (op.c.q4[i].den) {
                     new_vector(ctx, i);
                     cc.dup(vl[i].s4(), ctx->vdata(vpos[i]));
                     cc.dup(vh[i].s4(), ctx->vdata(vpos[i]));
@@ -972,27 +972,27 @@ if (use_vh) {
             }
         }
         break;
-    case SWS_OP_LSHIFT:          /* logical left shift of raw pixel values */
+    case SWS_OP_LSHIFT:          /* logical left shift of raw pixel values by (u8) */
         if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             cc.comment("lshift");
             LOOP_OUT(i) {
                 refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                cc.shl    (vet(vl[i], op), vet(orig_vl[i], op), op.shift.amount);
+                cc.shl    (vet(vl[i], op), vet(orig_vl[i], op), op.c.u);
                 if (use_vh)
-                    cc.shl(vet(vh[i], op), vet(orig_vh[i], op), op.shift.amount);
+                    cc.shl(vet(vh[i], op), vet(orig_vh[i], op), op.c.u);
             }
         } else {
             return AVERROR(ENOTSUP);
         }
         break;
-    case SWS_OP_RSHIFT:          /* right shift of raw pixel values */
+    case SWS_OP_RSHIFT:          /* right shift of raw pixel values by (u8) */
         if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             cc.comment("rshift");
             LOOP_OUT(i) {
                 refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                cc.ushr    (vet(vl[i], op), vet(orig_vl[i], op), op.shift.amount);
+                cc.ushr    (vet(vl[i], op), vet(orig_vl[i], op), op.c.u);
                 if (use_vh)
-                    cc.ushr(vet(vh[i], op), vet(orig_vh[i], op), op.shift.amount);
+                    cc.ushr(vet(vh[i], op), vet(orig_vh[i], op), op.c.u);
             }
         } else {
             return AVERROR(ENOTSUP);
@@ -1121,6 +1121,7 @@ if (use_vh) {
             }
         }
         break;
+#if 0
     case SWS_OP_CLAMP:           /* clamp pixel values to value range */
         if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U8) {
             LOOP_OUT(i) {
@@ -1201,6 +1202,7 @@ normal_clamp:
             }
         }
         break;
+#endif
     /* Arithmetic operations */
     case SWS_OP_LINEAR:          /* generalized linear affine transform */
         {
@@ -1295,10 +1297,10 @@ normal_clamp:
             }
         }
         break;
-    case SWS_OP_SCALE:           /* multiplication by scalar */
+    case SWS_OP_SCALE:           /* multiplication by scalar (q) */
         if (op.type == SWS_PIXEL_F32) {
             /* Add const data */
-            size_t vidx = ctx->push_q(op.scale.factor);
+            size_t vidx = ctx->push_q(op.c.q);
 
             /* Do the salmon dance */
             cc.comment("scale (f32)");
@@ -1309,7 +1311,7 @@ normal_clamp:
             }
         } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             /* Add immediate */
-            size_t vidx = ctx->push_imm32_op(op, av_q2i(op.scale.factor));
+            size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q));
 
             /* Do the salmon dance */
             cc.comment("scale (integer)");
@@ -1319,6 +1321,60 @@ normal_clamp:
                 if (use_vh)
                     cc.mul(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx], op));
             }
+        }
+        break;
+    case SWS_OP_MIN:             /* numeric minimum (q4) */
+        if (op.type == SWS_PIXEL_F32) {
+            cc.comment("min (f32)");
+            LOOP_OUT(i) {
+                if (op.c.q4[i].den) {
+                    size_t vidx_max = ctx->push_immq(op.c.q4[i]);
+                    refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                    cc.fmin    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx_max].s4());
+                    if (use_vh)
+                        cc.fmin(vh[i].s4(), orig_vh[i].s4(), vimm[vidx_max].s4());
+                }
+            }
+        } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+            cc.comment("min (integer)");
+            LOOP_OUT(i) {
+                if (op.c.q4[i].den) {
+                    size_t vidx_max = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
+                    refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                    cc.umin    (vet(vl[i], op), vet(orig_vl[i], op), vet(vimm[vidx_max], op));
+                    if (use_vh)
+                        cc.umin(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx_max], op));
+                }
+            }
+        }
+        break;
+    case SWS_OP_MAX:             /* numeric maximum (q4) */
+        if (op.type == SWS_PIXEL_F32) {
+            /* Check whether a conversion will implicitly clamp negative values */
+            bool implicit_max = false;
+            for (int i = 0; i < ops->num_ops; i++) {
+                if (ops->ops[i].op == SWS_OP_CONVERT && ops->ops[i].convert.to != SWS_PIXEL_F32) {
+                    implicit_max = true;
+                    break;
+                }
+            }
+            if (implicit_max) {
+                cc.comment("max (implicit with conversion)");
+                break;
+            }
+
+            cc.comment("max");
+            size_t vidx_min = ctx->push_imm32(0);
+            LOOP_OUT(i) {
+                if (op.c.q4[i].den) {
+                    refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                    cc.fmax    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx_min].s4());
+                    if (use_vh)
+                        cc.fmax(vh[i].s4(), orig_vh[i].s4(), vimm[vidx_min].s4());
+                }
+            }
+        } else {
+            return AVERROR(ENOTSUP);
         }
         break;
 

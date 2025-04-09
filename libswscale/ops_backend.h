@@ -139,7 +139,7 @@ static inline int ff_setup_memdup(const void *c, size_t size, SwsOpPriv *out)
     }
 
 #define DECL_ENTRY_SETUP(NAME, SETUP, FREE, ...)                                \
-    static const SwsOpEntry fn(op_##NAME) = {                                   \
+    static const SwsOpEntry bfn(op_##NAME) = {                                   \
         .func  = (SwsFunc) bfn(NAME),                                            \
         .setup = SETUP,                                                         \
         .free  = FREE,                                                          \

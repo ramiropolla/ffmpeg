@@ -101,7 +101,7 @@ DECL_IMPL(dither##N)                                                            
     CALL(dither, N);                                                            \
 }                                                                               \
                                                                                 \
-DECL_ENTRY_SETUP(dither##N, fn(setup_dither), av_free,                          \
+DECL_ENTRY_SETUP(dither##N, bfn(setup_dither), av_free,                          \
     .op = SWS_OP_DITHER,                                                        \
     .dither.size_log2 = N,                                                      \
 );
@@ -182,7 +182,7 @@ DECL_IMPL(linear_##NAME)                                                        
     CALL(linear_mask, MASK);                                                    \
 }                                                                               \
                                                                                 \
-DECL_ENTRY_SETUP(linear_##NAME, fn(setup_linear), av_free,                      \
+DECL_ENTRY_SETUP(linear_##NAME, bfn(setup_linear), av_free,                      \
     .op = SWS_OP_LINEAR,                                                        \
     .lin.mask = (MASK),                                                         \
     .comps.unused = {                                                           \
