@@ -567,31 +567,22 @@ static int emit_convert(AsmJitContext *ctx, const SwsOpChain *chain, const SwsOp
     if (expand) {
         snprintf(buf, sizeof(buf), "expand(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), chain->block_w);
         cc.comment(buf);
-        if        (from_size == 1 && to_size == 2 && chain->block_w == 8) {
+        if (from_size == 1) {
             LOOP_OUT(i) {
-                refresh_vector(ctx, i, 0x0f);
-                cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                save_vector(ctx, i, 0x0f);
+                new_vector(ctx, i, (chain->block_w == 16) ? 0xff : 0x0f);
+                cc.zip1    (vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                if (chain->block_w == 16)
+                    cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
             }
-        } else if (from_size == 1 && to_size == 2 && chain->block_w == 16) {
+        }
+        if (to_size == 4) {
             LOOP_OUT(i) {
                 save_vector(ctx, i, 0x0f);
                 new_vector(ctx, i);
                 cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                 cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
             }
-        } else if (from_size == 1 && to_size == 4 && chain->block_w == 8) {
-            LOOP_OUT(i) {
-                refresh_vector(ctx, i, 0x0f);
-                cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-            }
-            LOOP_OUT(i) {
-                save_vector(ctx, i, 0x0f);
-                new_vector(ctx, i);
-                cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-                cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-            }
-        } else {
-            return AVERROR(ENOTSUP);
         }
     } else {
         snprintf(buf, sizeof(buf), "convert(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), chain->block_w);
