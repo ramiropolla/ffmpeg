@@ -1206,9 +1206,9 @@ normal_clamp:
                 used[i] = 1;
             }
             for (int i = 0; i < 4; i++) {
-                bool is_identity = true;
                 if (!used[i])
                     continue;
+                bool is_identity = true;
                 for (int j = 0; j < 5; j++) {
                     if (i == j) {
                         if (op.lin.m[i][j].num != 1 || op.lin.m[i][j].den != 1) {
@@ -1228,18 +1228,11 @@ normal_clamp:
 
             /* Write const data after function */
             int vpos[4][5];
-            for (int i = 0; i < 4; i++) {
-                int count = 0;
+            LOOP_ARRAY(i, used) {
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
                     if (op.lin.m[i][sj].num) {
-                        if (count == 0 && i == sj && (op.lin.m[i][sj].num == 1 && op.lin.m[i][sj].den == 1)) {
-                            /* Don't emit identify coefficient where a mov will be used */
-                            vpos[i][sj] = -2;
-                        } else {
-                            vpos[i][sj] = ctx->push_q(op.lin.m[i][sj]);
-                        }
-                        count++;
+                        vpos[i][sj] = ctx->push_q(op.lin.m[i][sj]);
                     } else {
                         vpos[i][sj] = -1;
                     }
@@ -1260,8 +1253,6 @@ normal_clamp:
                     if (vidx != -1) {
                         if (j == 0)
                             cc.dup(vl[i].s4(), ctx->vdata(vidx));
-                        else if (vidx == -2)
-                            cc.mov(vl[i].s4(), orig_vl[sj].s4());
                         else if (count == 0)
                             cc.fmul(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
                         else
@@ -1276,8 +1267,6 @@ normal_clamp:
                     if (vidx != -1) {
                         if (j == 0)
                             cc.dup(vh[i].s4(), ctx->vdata(vidx));
-                        else if (vidx == -2)
-                            cc.mov(vh[i].s4(), orig_vh[sj].s4());
                         else if (count == 0)
                             cc.fmul(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
                         else
