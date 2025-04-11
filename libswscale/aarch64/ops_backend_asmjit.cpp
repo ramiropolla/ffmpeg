@@ -1239,8 +1239,20 @@ normal_clamp:
                 }
             }
 
+#define IN_ORDER_CORE_DUP
+#define IN_ORDER_CORE_FMUL
+
             /* Do the salmon dance */
             cc.comment("linear");
+#ifdef IN_ORDER_CORE_DUP
+            cc.comment("dup");
+            BaseNode *cursor_dup = cc.cursor();
+#endif
+#ifdef IN_ORDER_CORE_FMUL
+            cc.comment("fmul");
+            BaseNode *cursor_fmul = cc.cursor();
+#endif
+            cc.comment("fmla");
             LOOP_IN(i) {
                 save_vector(ctx, i);
             }
@@ -1251,12 +1263,25 @@ normal_clamp:
                     int sj = fdata_swizzle[j];
                     int vidx = vpos[i][sj];
                     if (vidx != -1) {
-                        if (j == 0)
+                        if (j == 0) {
+#ifdef IN_ORDER_CORE_DUP
+                            BaseNode *cursor = cc.setCursor(cursor_dup);
+#endif
                             cc.dup(vl[i].s4(), ctx->vdata(vidx));
-                        else if (count == 0)
+#ifdef IN_ORDER_CORE_DUP
+                            cursor_dup = cc.setCursor(cursor);
+#endif
+                        } else if (count == 0) {
+#ifdef IN_ORDER_CORE_FMUL
+                            BaseNode *cursor = cc.setCursor(cursor_fmul);
+#endif
                             cc.fmul(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
-                        else
+#ifdef IN_ORDER_CORE_FMUL
+                            cursor_fmul = cc.setCursor(cursor);
+#endif
+                        } else {
                             cc.fmla(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
+                        }
                         count++;
                     }
                 }
@@ -1265,12 +1290,25 @@ normal_clamp:
                     int sj = fdata_swizzle[j];
                     int vidx = vpos[i][sj];
                     if (vidx != -1) {
-                        if (j == 0)
+                        if (j == 0) {
+#ifdef IN_ORDER_CORE_DUP
+                            BaseNode *cursor = cc.setCursor(cursor_dup);
+#endif
                             cc.dup(vh[i].s4(), ctx->vdata(vidx));
-                        else if (count == 0)
+#ifdef IN_ORDER_CORE_DUP
+                            cursor_dup = cc.setCursor(cursor);
+#endif
+                        } else if (count == 0) {
+#ifdef IN_ORDER_CORE_FMUL
+                            BaseNode *cursor = cc.setCursor(cursor_fmul);
+#endif
                             cc.fmul(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
-                        else
+#ifdef IN_ORDER_CORE_FMUL
+                            cursor_fmul = cc.setCursor(cursor);
+#endif
+                        } else {
                             cc.fmla(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
+                        }
                         count++;
                     }
                 }
