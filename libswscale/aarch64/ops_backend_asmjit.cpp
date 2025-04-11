@@ -1051,21 +1051,26 @@ if (use_vh) {
             /* Used by emit_loop to optimize away the use of x and y */
             ctx->m_dither_op = &op;
 
+            static const int y_off[4] = { 0, 3, 5, 7 };
+            int largest_y_off = 0;
+            LOOP_OUT(i) {
+                largest_y_off = FFMAX(largest_y_off, y_off[i]);
+            }
+
             /* Write const data after function */
             int size = 1 << op.dither.size_log2;
             std::vector<float> fdata;
-            fdata.resize((size + 7) * size);
-            for (int i = 0; i < (size + 7) * size; i++) {
+            fdata.resize((size + largest_y_off) * size);
+            for (int i = 0; i < (size + largest_y_off) * size; i++) {
                 fdata[i] = av_q2f(op.dither.matrix[i & ((size * size) - 1)]);
             }
-            Label ldata = ctx->emit_data(fdata.data(), (size + 7) * size * sizeof(float), "dither_matrix");
+            Label ldata = ctx->emit_data(fdata.data(), (size + largest_y_off) * size * sizeof(float), "dither_matrix");
 
             /* Pointer to dither_matrix */
             a64::Gp ptr = cc.newGpz();
 
             BaseNode *last_use_of_ptr = nullptr;
 
-            static const int y_off[4] = { 0, 3, 5, 7 };
             int last_y_off = -1;
             LOOP_OUT(i) {
                 // offset = ((((y + yoff[i]) & mask) << log2_size) + (x & mask)) * sizeof(float32);
