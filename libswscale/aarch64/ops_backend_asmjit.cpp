@@ -18,6 +18,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+/* Enable this #define for better performance on in-order cores. */
+// #define IN_ORDER_CORE
+
 // #define EMIT_BRK
 #define WRITE_PERF_MAP
 
@@ -1239,80 +1242,70 @@ normal_clamp:
                 }
             }
 
-#define IN_ORDER_CORE_DUP
-#define IN_ORDER_CORE_FMUL
-
             /* Do the salmon dance */
             cc.comment("linear");
-#ifdef IN_ORDER_CORE_DUP
-            cc.comment("dup");
-            BaseNode *cursor_dup = cc.cursor();
-#endif
-#ifdef IN_ORDER_CORE_FMUL
-            cc.comment("fmul");
-            BaseNode *cursor_fmul = cc.cursor();
-#endif
-            cc.comment("fmla");
             LOOP_IN(i) {
                 save_vector(ctx, i);
             }
             LOOP_ARRAY(i, used) {
                 new_vector(ctx, i);
-                int count = 0;
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
                     int vidx = vpos[i][sj];
                     if (vidx != -1) {
                         if (j == 0) {
-#ifdef IN_ORDER_CORE_DUP
-                            BaseNode *cursor = cc.setCursor(cursor_dup);
-#endif
+                            /* offset */
                             cc.dup(vl[i].s4(), ctx->vdata(vidx));
-#ifdef IN_ORDER_CORE_DUP
-                            cursor_dup = cc.setCursor(cursor);
-#endif
-                        } else if (count == 0) {
-#ifdef IN_ORDER_CORE_FMUL
-                            BaseNode *cursor = cc.setCursor(cursor_fmul);
-#endif
-                            cc.fmul(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
-#ifdef IN_ORDER_CORE_FMUL
-                            cursor_fmul = cc.setCursor(cursor);
-#endif
+                            cc.dup(vh[i].s4(), ctx->vdata(vidx));
                         } else {
-                            cc.fmla(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
+                            cc.fmul(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
+                            cc.fmul(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
                         }
-                        count++;
+                        break;
+                    }
+                }
+            }
+#ifdef IN_ORDER_CORE
+            /* Interleave all fmla instructions for better performance
+             * on in-order cores.
+             */
+            for (int k = 0; k < 4; k++) {
+                LOOP_ARRAY(i, used) {
+                    int count = 0;
+                    for (int j = 0; j < 5; j++) {
+                        int sj = fdata_swizzle[j];
+                        int vidx = vpos[i][sj];
+                        if (vidx != -1 && count++ > k) {
+                            cc.fmla(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
+                            cc.fmla(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
+                            break;
+                        }
+                    }
+                }
+            }
+#else
+            /* Group fmla by dst vector for better performance on
+             * out-of-order cores (which have an fmla faspath).
+             */
+            LOOP_ARRAY(i, used) {
+                int count = 0;
+                for (int j = 0; j < 5; j++) {
+                    int sj = fdata_swizzle[j];
+                    int vidx = vpos[i][sj];
+                    if (vidx != -1 && count++ != 0) {
+                        cc.fmla(vl[i].s4(), orig_vl[sj].s4(), ctx->vdata(vidx));
                     }
                 }
                 count = 0;
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
                     int vidx = vpos[i][sj];
-                    if (vidx != -1) {
-                        if (j == 0) {
-#ifdef IN_ORDER_CORE_DUP
-                            BaseNode *cursor = cc.setCursor(cursor_dup);
-#endif
-                            cc.dup(vh[i].s4(), ctx->vdata(vidx));
-#ifdef IN_ORDER_CORE_DUP
-                            cursor_dup = cc.setCursor(cursor);
-#endif
-                        } else if (count == 0) {
-#ifdef IN_ORDER_CORE_FMUL
-                            BaseNode *cursor = cc.setCursor(cursor_fmul);
-#endif
-                            cc.fmul(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
-#ifdef IN_ORDER_CORE_FMUL
-                            cursor_fmul = cc.setCursor(cursor);
-#endif
-                        } else {
-                            cc.fmla(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
-                        }
-                        count++;
+                    if (vidx != -1 && count++ != 0) {
+                        cc.fmla(vh[i].s4(), orig_vh[sj].s4(), ctx->vdata(vidx));
                     }
                 }
             }
+#endif
         }
         break;
     case SWS_OP_SCALE:           /* multiplication by scalar (q) */
