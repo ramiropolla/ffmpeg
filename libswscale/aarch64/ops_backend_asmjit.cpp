@@ -1085,10 +1085,6 @@ if (use_vh) {
                     a64::Gp rdata = cc.newGpz();
                     cc.adr(rdata, ldata);
 
-                    /* x = (x & ((1 << size_log2) - 1)) * sizeof(float32) */
-                    a64::Gp x = cc.newGpz();
-                    cc.ubfiz(x, ctx->m_x, 2, op.dither.size_log2);
-
                     /* y = ((y + y_off[i]) & ((1 << size_log2) - 1)) * (1 << size_log2) * sizeof(float32) */
                     a64::Gp y = cc.newGpz();
                     if (y_off[i] == 0) {
@@ -1097,6 +1093,10 @@ if (use_vh) {
                         cc.add  (y, ctx->m_y, y_off[i]);
                         cc.ubfiz(y, y, op.dither.size_log2 + 2, op.dither.size_log2);
                     }
+
+                    /* x = (x & ((1 << size_log2) - 1)) * sizeof(float32) */
+                    a64::Gp x = cc.newGpz();
+                    cc.ubfiz(x, ctx->m_x, 2, op.dither.size_log2);
 
                     /* ptr = rdata + y + x */
                     cc.add(ptr, rdata, y);
