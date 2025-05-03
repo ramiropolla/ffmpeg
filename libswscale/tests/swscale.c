@@ -173,6 +173,44 @@ static void print_md5(const AVFrame *out, int comps)
 }
 #endif
 
+static void dump_diff(const AVFrame *out, const AVFrame *ref, int comps)
+{
+#if 0
+    av_assert1(out->format == AV_PIX_FMT_YUVA444P);
+    av_assert1(ref->format == out->format);
+    av_assert1(ref->width == out->width && ref->height == out->height);
+
+    for (int p = 0; p < 4; p++) {
+        const int stride_a = out->linesize[p];
+        const int stride_b = ref->linesize[p];
+        const int w = out->width;
+        const int h = out->height;
+
+        const int is_chroma = p == 1 || p == 2;
+        const uint8_t def = is_chroma ? 128 : 0xFF;
+        const int has_ref = comps & (1 << p);
+        if (!has_ref)
+            continue;
+
+        printf("plane %d\n", p);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int int_a = out->data[p][y * stride_a + x];
+                int int_b = ref->data[p][y * stride_b + x];
+                int diff = int_a - int_b;
+                printf(" [%3d - %3d = ", int_a, int_b);
+                if (!diff)
+                    printf("____");
+                else
+                    printf("% 4d", diff);
+                printf("]");
+            }
+            printf("\n");
+        }
+    }
+#endif
+}
+
 static void get_ssim(float ssim[4], const AVFrame *out, const AVFrame *ref, int comps)
 {
     av_assert1(out->format == AV_PIX_FMT_YUVA444P);
@@ -332,6 +370,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         goto error;
     }
 
+    dump_diff(out, ref, comps);
     get_ssim(ssim, out, ref, comps);
     printf("[%-6s] %-12s %dx%d -> %-12s %3dx%3d, flags=0x%x dither=%u, "
            "SSIM {Y=%f U=%f V=%f A=%f}",
@@ -367,6 +406,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         if (sws_scale_frame(sws[2], out, dst) < 0)
             goto error;
 
+        dump_diff(out, ref, comps);
         get_ssim(ssim_sws, out, ref, comps);
 
         /* Legacy swscale does not perform bit accurate upconversions of low
@@ -430,6 +470,46 @@ static inline int fmt_is_subsampled(enum AVPixelFormat fmt)
            av_pix_fmt_desc_get(fmt)->log2_chroma_h != 0;
 }
 
+static int my_ignored(int fmt)
+{
+#if 0
+    switch (fmt) {
+    case AV_PIX_FMT_NV24:
+    case AV_PIX_FMT_NV42:
+    case AV_PIX_FMT_P410BE:
+    case AV_PIX_FMT_P410LE:
+    case AV_PIX_FMT_P412BE:
+    case AV_PIX_FMT_P412LE:
+    case AV_PIX_FMT_P416BE:
+    case AV_PIX_FMT_P416LE:
+    case AV_PIX_FMT_XYZ12BE:
+    case AV_PIX_FMT_XYZ12LE:
+    case AV_PIX_FMT_MONOWHITE:
+    case AV_PIX_FMT_MONOBLACK:
+    case AV_PIX_FMT_BGR8:
+    case AV_PIX_FMT_BGR4_BYTE:
+    case AV_PIX_FMT_RGB8:
+    case AV_PIX_FMT_RGB4_BYTE:
+    case AV_PIX_FMT_RGB555LE:
+    case AV_PIX_FMT_RGB555BE:
+    case AV_PIX_FMT_RGB565LE:
+    case AV_PIX_FMT_RGB565BE:
+    case AV_PIX_FMT_BGR555LE:
+    case AV_PIX_FMT_BGR555BE:
+    case AV_PIX_FMT_BGR565LE:
+    case AV_PIX_FMT_BGR565BE:
+    case AV_PIX_FMT_RGB444LE:
+    case AV_PIX_FMT_RGB444BE:
+    case AV_PIX_FMT_BGR444LE:
+    case AV_PIX_FMT_BGR444BE:
+    case AV_PIX_FMT_GRAYF32BE:
+    case AV_PIX_FMT_GRAYF32LE:
+        return 1;
+    }
+#endif
+    return 0;
+}
+
 static int run_self_tests(const AVFrame *ref, struct options opts)
 {
     const int dst_w[] = { opts.w, opts.w - opts.w / 3, opts.w + opts.w / 3 };
@@ -449,12 +529,12 @@ static int run_self_tests(const AVFrame *ref, struct options opts)
     for (src_fmt = src_fmt_min; src_fmt <= src_fmt_max; src_fmt++) {
         if (opts.unscaled && fmt_is_subsampled(src_fmt))
             continue;
-        if (!sws_test_format(src_fmt, 0) || !sws_test_format(src_fmt, 1))
+        if (!sws_test_format(src_fmt, 0) || !sws_test_format(src_fmt, 1) || my_ignored(src_fmt))
             continue;
         for (dst_fmt = dst_fmt_min; dst_fmt <= dst_fmt_max; dst_fmt++) {
             if (opts.unscaled && fmt_is_subsampled(dst_fmt))
                 continue;
-            if (!sws_test_format(dst_fmt, 0) || !sws_test_format(dst_fmt, 1))
+            if (!sws_test_format(dst_fmt, 0) || !sws_test_format(dst_fmt, 1) || my_ignored(dst_fmt))
                 continue;
             for (int h = 0; h < FF_ARRAY_ELEMS(dst_h); h++) {
                 for (int w = 0; w < FF_ARRAY_ELEMS(dst_w); w++) {
