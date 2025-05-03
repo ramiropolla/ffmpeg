@@ -20,6 +20,7 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/bswap.h"
+#include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/rational.h"
 #include "libavutil/refstruct.h"
@@ -27,10 +28,14 @@
 #include "ops.h"
 #include "ops_internal.h"
 
+extern SwsOpBackend backend_asmjit;
 extern SwsOpBackend backend_x86;
 extern SwsOpBackend backend_c;
 
 const SwsOpBackend * const ff_sws_op_backends[] = {
+#if CONFIG_ASMJIT
+    &backend_asmjit,
+#endif
 #if ARCH_X86
     &backend_x86,
 #endif
@@ -660,7 +665,8 @@ handle_tail(const SwsOpPass *p, SwsOpExec *exec,
             }
         }
 
-        comp->func(exec, comp->priv, 1);
+        /* TODO fix exec->[xy]{,_end} for this call */
+        comp->func(exec, comp->priv);
 
         if (copy_out) {
             for (int i = 0; i < 4 && out.data[i]; i++) {
@@ -684,6 +690,7 @@ static void op_pass_run(const SwsImg *out_base, const SwsImg *in_base,
 {
     const SwsOpPass *p = pass->priv;
     const SwsCompiledOp *comp = &p->comp;
+    const int block_size = comp->block_size;
 
     /* Fill exec metadata for this slice */
     const SwsImg in  = ff_sws_img_shift(*in_base,  y);
@@ -694,6 +701,8 @@ static void op_pass_run(const SwsImg *out_base, const SwsImg *in_base,
     for (int i = 0; i < 4; i++) {
         exec.in[i]  = in.data[i];
         exec.out[i] = out.data[i];
+        exec.in_stride[i]  = in.linesize[i];
+        exec.out_stride[i] = out.linesize[i];
     }
 
     /**
@@ -721,16 +730,17 @@ static void op_pass_run(const SwsImg *out_base, const SwsImg *in_base,
     const int y_end       = y + h - memcpy_in;
 
     /* Handle main section */
-    for (exec.y = y; exec.y < y_end; exec.y++) {
-        comp->func(&exec, comp->priv, blocks_main);
-        for (int i = 0; i < 4; i++) {
-            exec.in[i]  += exec.in_stride[i];
-            exec.out[i] += exec.out_stride[i];
-        }
-    }
+    exec.x_end = blocks_main * block_size;
+    exec.y = y;
+    exec.y_end = y_end;
+    comp->func(&exec, comp->priv);
 
-    if (memcpy_in)
-        comp->func(&exec, comp->priv, num_blocks - 1); /* safe part of last row */
+    if (memcpy_in) {
+        exec.x_end = (num_blocks - 1) * block_size;
+        exec.y_end = y + h;
+        printf("num_blocks %d\n", num_blocks);
+        comp->func(&exec, comp->priv); /* safe part of last row */
+    }
 
     /* Handle last column via memcpy, takes over `exec` so call these last */
     if (memcpy_out)
@@ -788,6 +798,7 @@ int ff_sws_ops_compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out
         av_log(ctx, AV_LOG_VERBOSE, "Compiled using backend '%s': "
                "block size = %d, over-read = %d, over-write = %d\n",
                backend->name, out->block_size, out->over_read, out->over_write);
+        ctx->backend_name = backend->name;
         return 0;
     }
 

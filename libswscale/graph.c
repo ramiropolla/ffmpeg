@@ -681,6 +681,8 @@ int ff_sws_graph_create(SwsContext *ctx, const SwsFormat *dst, const SwsFormat *
     if (!graph)
         return AVERROR(ENOMEM);
 
+    ctx->src_format = src->format;
+    ctx->dst_format = dst->format;
     graph->ctx = ctx;
     graph->src = *src;
     graph->dst = *dst;

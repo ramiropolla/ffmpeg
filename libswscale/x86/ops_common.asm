@@ -37,8 +37,18 @@ struc SwsOpExec
     .out_stride1 resq 1
     .out_stride2 resq 1
     .out_stride3 resq 1
+    .in_padding0 resq 1
+    .in_padding1 resq 1
+    .in_padding2 resq 1
+    .in_padding3 resq 1
+    .out_padding0 resq 1
+    .out_padding1 resq 1
+    .out_padding2 resq 1
+    .out_padding3 resq 1
     .x resd 1
     .y resd 1
+    .x_end resd 1
+    .y_end resd 1
     .width resd 1
     .height resd 1
     .slice_y resd 1
