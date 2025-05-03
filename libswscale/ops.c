@@ -30,11 +30,15 @@
 
 extern const SwsOpBackend backend_c;
 extern const SwsOpBackend backend_murder;
+extern const SwsOpBackend backend_asmjit;
 extern const SwsOpBackend backend_x86;
 extern const SwsOpBackend backend_vulkan;
 
 const SwsOpBackend * const ff_sws_op_backends[] = {
     &backend_murder,
+#if CONFIG_ASMJIT
+    &backend_asmjit,
+#endif
 #if ARCH_X86_64 && HAVE_X86ASM
     &backend_x86,
 #endif
