@@ -2126,9 +2126,10 @@ static int packedCopyWrapper(SwsInternal *c, const uint8_t *const src[],
                              const int srcStride[], int srcSliceY, int srcSliceH,
                              uint8_t *const dst[], const int dstStride[])
 {
-    if (dstStride[0] == srcStride[0] && srcStride[0] > 0)
-        memcpy(dst[0] + dstStride[0] * srcSliceY, src[0], srcSliceH * dstStride[0]);
-    else {
+    if (dstStride[0] == srcStride[0] && srcStride[0] > 0) {
+        if (dst[0] + dstStride[0] * srcSliceY != src[0])
+            memcpy(dst[0] + dstStride[0] * srcSliceY, src[0], srcSliceH * dstStride[0]);
+    } else {
         int i;
         const uint8_t *srcPtr = src[0];
         uint8_t *dstPtr = dst[0] + dstStride[0] * srcSliceY;
