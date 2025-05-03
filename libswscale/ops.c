@@ -30,11 +30,15 @@
 
 extern const SwsOpBackend backend_c;
 extern const SwsOpBackend backend_murder;
+extern const SwsOpBackend backend_asmjit;
 extern const SwsOpBackend backend_x86;
 extern const SwsOpBackend backend_vulkan;
 
 const SwsOpBackend * const ff_sws_op_backends[] = {
     &backend_murder,
+#if CONFIG_ASMJIT
+    &backend_asmjit,
+#endif
 #if ARCH_X86_64 && HAVE_X86ASM
     &backend_x86,
 #endif
@@ -897,6 +901,7 @@ int ff_sws_ops_compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out
                "block size = %d, over-read = %d, over-write = %d, cpu flags = 0x%x\n",
                backend->name, out->block_size, out->over_read, out->over_write,
                out->cpu_flags);
+        ctx->backend_name = backend->name;
         return 0;
     }
 
