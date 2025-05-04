@@ -707,6 +707,18 @@ retry:
             }
             break;
 
+        case SWS_OP_MAX:
+            /* Check whether a conversion will implicitly clamp negative values */
+            if (op->type == SWS_PIXEL_F32) {
+                for (int i = n; i < ops->num_ops; i++) {
+                    if (ops->ops[i].op == SWS_OP_CONVERT && ops->ops[i].convert.to != SWS_PIXEL_F32) {
+                        ff_sws_op_list_remove_at(ops, n, 1);
+                        goto retry;
+                    }
+                }
+            }
+            break;
+
         case SWS_OP_CONVERT:
             /* Simplify widen+lshift by zip with zero or ushll */
             if (op->type == SWS_PIXEL_U8 && op->convert.to == SWS_PIXEL_U16 && !op->convert.expand &&
@@ -1314,19 +1326,6 @@ if (use_vh) {
         break;
     case SWS_OP_MAX:             /* numeric maximum (q4) */
         if (op.type == SWS_PIXEL_F32) {
-            /* Check whether a conversion will implicitly clamp negative values */
-            bool implicit_max = false;
-            for (int i = 0; i < ops->num_ops; i++) {
-                if (ops->ops[i].op == SWS_OP_CONVERT && ops->ops[i].convert.to != SWS_PIXEL_F32) {
-                    implicit_max = true;
-                    break;
-                }
-            }
-            if (implicit_max) {
-                cc.comment("max (implicit with conversion)");
-                break;
-            }
-
             cc.comment("max");
             size_t vidx = ctx->push_imm32(0);
             LOOP_OUT(i) {
