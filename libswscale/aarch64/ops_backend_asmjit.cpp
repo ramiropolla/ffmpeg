@@ -664,6 +664,7 @@ static int emit_convert(AsmJitContext *ctx, int block_size, const SwsOp *next, S
 typedef enum SwsOpTypeAarch64 {
     SWS_OP_AARCH64_INVALID = SWS_OP_TYPE_NB,
     SWS_OP_AARCH64_WIDEN_LSHIFT,
+    SWS_OP_AARCH64_SATURATING_CONVERT,
 } SwsOpTypeAarch64;
 
 typedef struct SwsWidenLshiftOp {
@@ -681,7 +682,33 @@ retry:
         SwsOp *next = n + 1 < ops->num_ops ? &ops->ops[n + 1] : &dummy;
 
         switch (op->op) {
+        case SWS_OP_MIN:
+            /* Saturating convert */
+            if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to < SWS_PIXEL_U32) {
+                bool to_u16 = (next->convert.to == SWS_PIXEL_U16);
+                int u = to_u16 ? 65535 : 255;
+                AVRational q = av_make_q(u, 1);
+                bool enable = true;
+                LOOP_OUT(i) {
+                    enable &= (av_cmp_q(op->c.q4[i], q) == 0);
+                }
+                if (enable) {
+                    op->op = SWS_OP_CONVERT;
+                    op->type = SWS_PIXEL_F32;
+                    op->convert.to = to_u16 ? SWS_PIXEL_U32 : SWS_PIXEL_U16;
+                    op->convert.expand = false;
+
+                    next->op = (SwsOpType) SWS_OP_AARCH64_SATURATING_CONVERT;
+                    next->type = op->convert.to;
+                    next->convert.to = to_u16 ? SWS_PIXEL_U16 : SWS_PIXEL_U8; /* unnecessary, setting to itself */
+
+                    goto retry;
+                }
+            }
+            break;
+
         case SWS_OP_CONVERT:
+            /* Simplify widen+lshift by zip with zero or ushll */
             if (op->type == SWS_PIXEL_U8 && op->convert.to == SWS_PIXEL_U16 && !op->convert.expand &&
                 next->op == SWS_OP_LSHIFT)
             {
@@ -1123,88 +1150,6 @@ if (use_vh) {
             }
         }
         break;
-#if 0
-    case SWS_OP_CLAMP:           /* clamp pixel values to value range */
-        if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U8) {
-            LOOP_OUT(i) {
-                if (av_cmp_q(op.clamp.max[i], (AVRational) {255, 1}) != 0)
-                    goto normal_clamp;
-            }
-
-            cc.comment("convert+clamp");
-            if (emit_convert(ctx, block_size, next, op.type, SWS_PIXEL_U16, false) < 0)
-                return AVERROR(ENOTSUP);
-            /* Saturating convert from u16 to u8 */
-            LOOP_OUT(i) {
-                refresh_vector(ctx, i, 0x0f);
-                cc.uqxtn(vl[i].b8(), orig_vl[i].h8());
-            }
-            ops->ops++;
-            ops->num_ops--;
-        } else if (next->op == SWS_OP_CONVERT && next->type == SWS_PIXEL_F32 && next->convert.to == SWS_PIXEL_U16) {
-            LOOP_OUT(i) {
-                if (av_cmp_q(op.clamp.max[i], (AVRational) {65535, 1}) != 0)
-                    goto normal_clamp;
-            }
-
-            cc.comment("convert+clamp");
-            if (emit_convert(ctx, block_size, next, op.type, SWS_PIXEL_U32, false) < 0)
-                return AVERROR(ENOTSUP);
-            /* Saturating convert from u32 to u16 */
-            LOOP_OUT(i) {
-                refresh_vector(ctx, i);
-                cc.uqxtn(vl[i].h4(), orig_vl[i].s4());
-                cc.uqxtn(vh[i].h4(), orig_vh[i].s4());
-            }
-            LOOP_OUT(i) {
-                cc.ins(vl[i].d(1), vh[i].d(0));
-            }
-            ops->ops++;
-            ops->num_ops--;
-        } else {
-normal_clamp:
-            if (op.type == SWS_PIXEL_F32) {
-                /* Check whether we need to clamp negative values */
-                bool clamp_negative_values = true;
-                for (int i = 0; i < ops->num_ops; i++) {
-                    if (ops->ops[i].op == SWS_OP_CONVERT && ops->ops[i].convert.to != SWS_PIXEL_F32) {
-                        clamp_negative_values = false;
-                        break;
-                    }
-                }
-
-                cc.comment("clamp");
-                size_t vidx_min = ctx->push_imm32(0);
-                LOOP_OUT(i) {
-                    if (op.clamp.max[i].den) {
-                        if (clamp_negative_values) {
-                            refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                            cc.fmax    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx_min].s4());
-                            if (use_vh)
-                                cc.fmax(vh[i].s4(), orig_vh[i].s4(), vimm[vidx_min].s4());
-                        }
-                        size_t vidx_max = ctx->push_immq(op.clamp.max[i]);
-                        refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                        cc.fmin    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx_max].s4());
-                        if (use_vh)
-                            cc.fmin(vh[i].s4(), orig_vh[i].s4(), vimm[vidx_max].s4());
-                    }
-                }
-            } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
-                cc.comment("clamp");
-                LOOP_OUT(i) {
-                    if (op.clamp.max[i].den) {
-                        size_t vidx_max = ctx->push_imm32_op(op, av_q2i(op.clamp.max[i]));
-                        refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                        cc.umin    (vet(vl[i], op), vet(orig_vl[i], op), vet(vimm[vidx_max], op));
-                        if (use_vh)
-                            cc.umin(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx_max], op));
-                    }
-                }
-            }
-        }
-        break;
-#endif
     /* Arithmetic operations */
     case SWS_OP_LINEAR:          /* generalized linear affine transform */
         {
@@ -1422,6 +1367,27 @@ normal_clamp:
                     cc.ushll     (vet(vl[i], *next), vet.half(orig_vl[i], op), priv->lshift);
                     if (use_vh)
                         cc.ushll2(vet(vh[i], *next), vet     (orig_vl[i], op), priv->lshift);
+                }
+            }
+        }
+        break;
+    case SWS_OP_AARCH64_SATURATING_CONVERT:
+        {
+            snprintf(cbuf, sizeof(cbuf), "saturating_convert(%s -> %s)", ff_sws_pixel_type_name(op.type), ff_sws_pixel_type_name(op.convert.to));
+            cc.comment(cbuf);
+            if (op.convert.to == SWS_PIXEL_U16) {
+                LOOP_OUT(i) {
+                    refresh_vector(ctx, i);
+                    cc.uqxtn(vl[i].h4(), orig_vl[i].s4());
+                    cc.uqxtn(vh[i].h4(), orig_vh[i].s4());
+                }
+                LOOP_OUT(i) {
+                    cc.ins(vl[i].d(1), vh[i].d(0));
+                }
+            } else /* if (op.convert.to == SWS_PIXEL_U8) */ {
+                LOOP_OUT(i) {
+                    refresh_vector(ctx, i, 0x0f);
+                    cc.uqxtn(vl[i].b8(), orig_vl[i].h8());
                 }
             }
         }
