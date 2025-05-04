@@ -1347,22 +1347,22 @@ normal_clamp:
             cc.comment("min (f32)");
             LOOP_OUT(i) {
                 if (op.c.q4[i].den) {
-                    size_t vidx_max = ctx->push_immq(op.c.q4[i]);
+                    size_t vidx = ctx->push_immq(op.c.q4[i]);
                     refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                    cc.fmin    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx_max].s4());
+                    cc.fmin    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx].s4());
                     if (use_vh)
-                        cc.fmin(vh[i].s4(), orig_vh[i].s4(), vimm[vidx_max].s4());
+                        cc.fmin(vh[i].s4(), orig_vh[i].s4(), vimm[vidx].s4());
                 }
             }
         } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             cc.comment("min (integer)");
             LOOP_OUT(i) {
                 if (op.c.q4[i].den) {
-                    size_t vidx_max = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
+                    size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
                     refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                    cc.umin    (vet(vl[i], op), vet(orig_vl[i], op), vet(vimm[vidx_max], op));
+                    cc.umin    (vet(vl[i], op), vet(orig_vl[i], op), vet(vimm[vidx], op));
                     if (use_vh)
-                        cc.umin(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx_max], op));
+                        cc.umin(vet(vh[i], op), vet(orig_vh[i], op), vet(vimm[vidx], op));
                 }
             }
         }
@@ -1383,13 +1383,13 @@ normal_clamp:
             }
 
             cc.comment("max");
-            size_t vidx_min = ctx->push_imm32(0);
+            size_t vidx = ctx->push_imm32(0);
             LOOP_OUT(i) {
                 if (op.c.q4[i].den) {
                     refresh_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                    cc.fmax    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx_min].s4());
+                    cc.fmax    (vl[i].s4(), orig_vl[i].s4(), vimm[vidx].s4());
                     if (use_vh)
-                        cc.fmax(vh[i].s4(), orig_vh[i].s4(), vimm[vidx_min].s4());
+                        cc.fmax(vh[i].s4(), orig_vh[i].s4(), vimm[vidx].s4());
                 }
             }
         } else {
