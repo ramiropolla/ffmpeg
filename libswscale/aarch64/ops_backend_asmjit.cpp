@@ -419,18 +419,6 @@ struct AsmJitContext {
             cc.cmp(m_y.r32(), m_exec_y_end.r32());
             cc.b(a64::CondCode::kLO, vloop);
         }
-
-        cc.comment("epilogue");
-        /* Write exec.[xy]_end to exec.[xy] to signal we have converted the entire image */
-        if (xy_unused) {
-            cc.ldr(m_exec_y_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y_end)));
-            cc.ldr(m_exec_x_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x_end)));
-            cc.str(m_exec_y_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y)));
-            cc.str(m_exec_x_end.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
-        } else {
-            cc.str(m_y.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, y)));
-            cc.str(m_x.r32(), a64::ptr(m_exec, offsetof(SwsOpExec, x)));
-        }
     }
 };
 
