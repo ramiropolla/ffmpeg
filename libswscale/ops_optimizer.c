@@ -254,12 +254,8 @@ void ff_sws_op_list_update_comps(SwsOpList *ops)
                 op->comps.unused[i] = i > 0;
             break;
         case SWS_OP_PACK:
-            for (int i = 0; i < 4; i++) {
-                if (op->pack.pattern[i])
-                    op->comps.unused[i] = next.unused[0];
-                else
-                    op->comps.unused[i] = true;
-            }
+            for (int i = 0; i < 4; i++)
+                op->comps.unused[i] = !op->pack.pattern[i];
             break;
         case SWS_OP_CLEAR:
             for (int i = 0; i < 4; i++) {
