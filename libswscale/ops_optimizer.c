@@ -158,7 +158,7 @@ void ff_sws_op_list_update_comps(SwsOpList *ops)
                 if (op->c.q4[i].den) {
                     if (op->c.q4[i].num == 0)
                         op->comps.flags[i] = SWS_COMP_ZERO | SWS_COMP_EXACT;
-                    if (op->c.q4[i].den == 1)
+                    else if (op->c.q4[i].den == 1)
                         op->comps.flags[i] = SWS_COMP_EXACT;
                 } else {
                     op->comps.flags[i] = prev.flags[i];
