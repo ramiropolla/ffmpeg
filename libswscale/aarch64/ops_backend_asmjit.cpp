@@ -590,10 +590,6 @@ static int emit_convert(AsmJitContext *ctx, int block_size, const SwsOp *next, S
     } else {
         snprintf(buf, sizeof(buf), "convert(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), block_size);
         cc.comment(buf);
-        LOOP_OUT(i) {
-            snprintf(buf, sizeof(buf), "[%d]", i);
-            cc.comment(buf);
-        }
         if (from == SWS_PIXEL_F32) {
             LOOP_OUT(i) {
                 refresh_vector(ctx, i);
@@ -1014,11 +1010,8 @@ if (use_vh) {
                 save_vector(ctx, i);
             }
             if (reorder) {
-                char buf[128];
                 cc.comment("swizzle (reorder)");
                 LOOP_OUT(i) {
-                    snprintf(buf, sizeof(buf), "v[%d] = orig[%d]", i, op.swizzle.in[i]);
-                    cc.comment(buf);
                     vl[i] = orig_vl[op.swizzle.in[i]];
                     vh[i] = orig_vh[op.swizzle.in[i]];
                 }
