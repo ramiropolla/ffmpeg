@@ -556,111 +556,6 @@ static inline void refresh_vector(AsmJitContext *ctx, int i, int mask = 0xff)
     new_vectors_mask(ctx, mask);
 }
 
-static int emit_convert(AsmJitContext *ctx, int block_size, const SwsOp *next, SwsPixelType from, SwsPixelType to, bool expand)
-{
-    a64::Compiler &cc = *ctx->m_cc;
-    a64::Vec *orig_vl = ctx->m_orig_vl;
-    a64::Vec *orig_vh = ctx->m_orig_vh;
-    a64::Vec *vl = ctx->m_vl;
-    a64::Vec *vh = ctx->m_vh;
-    int from_size = ff_sws_pixel_type_size(from);
-    int to_size   = ff_sws_pixel_type_size(to);
-    char buf[128];
-
-    if (expand) {
-        snprintf(buf, sizeof(buf), "expand(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), block_size);
-        cc.comment(buf);
-        if (from_size == 1) {
-            LOOP_OUT(i) {
-                save_vector(ctx, i, 0x0f);
-                new_vector(ctx, i, (block_size == 16) ? 0xff : 0x0f);
-                cc.zip1    (vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-                if (block_size == 16)
-                    cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-            }
-        }
-        if (to_size == 4) {
-            LOOP_OUT(i) {
-                save_vector(ctx, i, 0x0f);
-                new_vector(ctx, i);
-                cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-                cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
-            }
-        }
-    } else {
-        snprintf(buf, sizeof(buf), "convert(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), block_size);
-        cc.comment(buf);
-        if (from == SWS_PIXEL_F32) {
-            LOOP_OUT(i) {
-                refresh_vector(ctx, i);
-                cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
-                cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
-            }
-        }
-        if (block_size == 8) {
-            if        (from_size == 1 && to_size > from_size) {
-                LOOP_OUT(i) {
-                    refresh_vector(ctx, i, 0x0f);
-                    cc.uxtl(vl[i].h8(), orig_vl[i].b8());
-                }
-                from_size = 2;
-            } else if (from_size == 4 && to_size < from_size) {
-                LOOP_OUT(i) {
-                    refresh_vector(ctx, i);
-                    cc.xtn(vl[i].h4(), orig_vl[i].s4());
-                    cc.xtn(vh[i].h4(), orig_vh[i].s4());
-                }
-                LOOP_OUT(i) {
-                    cc.ins(vl[i].d(1), vh[i].d(0));
-                }
-                from_size = 2;
-            }
-            if        (from_size == 2 && to_size == 4) {
-                LOOP_OUT(i) {
-                    save_vector(ctx, i, 0x0f);
-                    new_vector(ctx, i);
-                    cc.uxtl (vl[i].s4(), orig_vl[i].h4());
-                    cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
-                }
-                from_size = 4;
-            } else if (from_size == 2 && to_size == 1) {
-                LOOP_OUT(i) {
-                    refresh_vector(ctx, i, 0x0f);
-                    cc.xtn(vl[i].b8(), orig_vl[i].h8());
-                }
-                from_size = 1;
-            }
-        } else /* if (block_size == 16) */ {
-            if        (from_size == 1 && to_size == 2) {
-                LOOP_OUT(i) {
-                    save_vector(ctx, i, 0x0f);
-                    new_vector(ctx, i);
-                    cc.uxtl (vl[i].h8(), orig_vl[i].b8());
-                    cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
-                }
-            } else if (from_size == 2 && to_size == 1) {
-                LOOP_OUT(i) {
-                    refresh_vector(ctx, i);
-                    cc.xtn(vl[i].b8(), orig_vl[i].h8());
-                    cc.xtn(vh[i].b8(), orig_vh[i].h8());
-                }
-                LOOP_OUT(i) {
-                    cc.ins(vl[i].d(1), vh[i].d(0));
-                }
-            }
-        }
-        if (to == SWS_PIXEL_F32) {
-            LOOP_OUT(i) {
-                refresh_vector(ctx, i);
-                cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
-                cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
-            }
-        }
-    }
-
-    return 0;
-}
-
 typedef enum SwsOpTypeAarch64 {
     SWS_OP_AARCH64_INVALID = SWS_OP_TYPE_NB,
     SWS_OP_AARCH64_WIDEN_LSHIFT,
@@ -1073,8 +968,103 @@ if (use_vh) {
         }
         break;
     case SWS_OP_CONVERT:         /* convert (cast) between formats */
-        if (op.type != op.convert.to && emit_convert(ctx, block_size, next, op.type, op.convert.to, op.convert.expand) < 0)
-            return AVERROR(ENOTSUP);
+        {
+            SwsPixelType from = op.type;
+            SwsPixelType to = op.convert.to;
+            int from_size = ff_sws_pixel_type_size(from);
+            int to_size   = ff_sws_pixel_type_size(to);
+
+            if (op.convert.expand) {
+                snprintf(cbuf, sizeof(cbuf), "expand(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), block_size);
+                cc.comment(cbuf);
+                if (from_size == 1) {
+                    LOOP_OUT(i) {
+                        save_vector(ctx, i, 0x0f);
+                        new_vector(ctx, i, (block_size == 16) ? 0xff : 0x0f);
+                        cc.zip1    (vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                        if (block_size == 16)
+                            cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                    }
+                }
+                if (to_size == 4) {
+                    LOOP_OUT(i) {
+                        save_vector(ctx, i, 0x0f);
+                        new_vector(ctx, i);
+                        cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                        cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
+                    }
+                }
+            } else {
+                snprintf(cbuf, sizeof(cbuf), "convert(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), block_size);
+                cc.comment(cbuf);
+                if (from == SWS_PIXEL_F32) {
+                    LOOP_OUT(i) {
+                        refresh_vector(ctx, i);
+                        cc.fcvtzu(vl[i].s4(), orig_vl[i].s4());
+                        cc.fcvtzu(vh[i].s4(), orig_vh[i].s4());
+                    }
+                }
+                if (block_size == 8) {
+                    if        (from_size == 1 && to_size > from_size) {
+                        LOOP_OUT(i) {
+                            refresh_vector(ctx, i, 0x0f);
+                            cc.uxtl(vl[i].h8(), orig_vl[i].b8());
+                        }
+                        from_size = 2;
+                    } else if (from_size == 4 && to_size < from_size) {
+                        LOOP_OUT(i) {
+                            refresh_vector(ctx, i);
+                            cc.xtn(vl[i].h4(), orig_vl[i].s4());
+                            cc.xtn(vh[i].h4(), orig_vh[i].s4());
+                        }
+                        LOOP_OUT(i) {
+                            cc.ins(vl[i].d(1), vh[i].d(0));
+                        }
+                        from_size = 2;
+                    }
+                    if        (from_size == 2 && to_size == 4) {
+                        LOOP_OUT(i) {
+                            save_vector(ctx, i, 0x0f);
+                            new_vector(ctx, i);
+                            cc.uxtl (vl[i].s4(), orig_vl[i].h4());
+                            cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
+                        }
+                        from_size = 4;
+                    } else if (from_size == 2 && to_size == 1) {
+                        LOOP_OUT(i) {
+                            refresh_vector(ctx, i, 0x0f);
+                            cc.xtn(vl[i].b8(), orig_vl[i].h8());
+                        }
+                        from_size = 1;
+                    }
+                } else /* if (block_size == 16) */ {
+                    if        (from_size == 1 && to_size == 2) {
+                        LOOP_OUT(i) {
+                            save_vector(ctx, i, 0x0f);
+                            new_vector(ctx, i);
+                            cc.uxtl (vl[i].h8(), orig_vl[i].b8());
+                            cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
+                        }
+                    } else if (from_size == 2 && to_size == 1) {
+                        LOOP_OUT(i) {
+                            refresh_vector(ctx, i);
+                            cc.xtn(vl[i].b8(), orig_vl[i].h8());
+                            cc.xtn(vh[i].b8(), orig_vh[i].h8());
+                        }
+                        LOOP_OUT(i) {
+                            cc.ins(vl[i].d(1), vh[i].d(0));
+                        }
+                    }
+                }
+                if (to == SWS_PIXEL_F32) {
+                    LOOP_OUT(i) {
+                        refresh_vector(ctx, i);
+                        cc.ucvtf(vl[i].s4(), orig_vl[i].s4());
+                        cc.ucvtf(vh[i].s4(), orig_vh[i].s4());
+                    }
+                }
+            }
+        }
         break;
     case SWS_OP_DITHER:          /* add dithering noise */
         if (op.dither.size_log2 == 0) {
