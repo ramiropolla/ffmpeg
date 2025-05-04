@@ -231,6 +231,9 @@ void ff_sws_op_list_update_comps(SwsOpList *ops)
 
         switch (op->op) {
         case SWS_OP_READ:
+            for (int i = 0; i < 4; i++)
+                op->comps.unused[i] = true;
+            break;
         case SWS_OP_WRITE:
             for (int i = 0; i < op->rw.elems; i++)
                 op->comps.unused[i] = op->op == SWS_OP_READ;
