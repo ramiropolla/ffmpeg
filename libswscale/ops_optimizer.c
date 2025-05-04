@@ -474,9 +474,11 @@ retry:
                 goto retry;
             }
 
+#if 0
             /* Skip unpacking components that are not used */
             for (int i = 3; i > 0 && next->comps.unused[i]; i--)
                 op->pack.pattern[i] = 0;
+#endif
             break;
 
         case SWS_OP_PACK:
