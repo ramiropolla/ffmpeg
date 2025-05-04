@@ -661,6 +661,44 @@ static int emit_convert(AsmJitContext *ctx, int block_size, const SwsOp *next, S
     return 0;
 }
 
+typedef enum SwsOpTypeAarch64 {
+    SWS_OP_AARCH64_INVALID = SWS_OP_TYPE_NB,
+    SWS_OP_AARCH64_WIDEN_LSHIFT,
+} SwsOpTypeAarch64;
+
+typedef struct SwsWidenLshiftOp {
+    SwsConvertOp convert;
+    unsigned lshift;
+} SwsWidenLshiftOp;
+
+static void asmjit_optimize(SwsOpList *ops)
+{
+retry:
+    for (int n = 0; n < ops->num_ops;) {
+        SwsOp dummy = { SWS_OP_INVALID };
+        SwsOp *op = &ops->ops[n];
+        SwsOp *prev = n ? &ops->ops[n - 1] : &dummy;
+        SwsOp *next = n + 1 < ops->num_ops ? &ops->ops[n + 1] : &dummy;
+
+        switch (op->op) {
+        case SWS_OP_CONVERT:
+            if (op->type == SWS_PIXEL_U8 && op->convert.to == SWS_PIXEL_U16 && !op->convert.expand &&
+                next->op == SWS_OP_LSHIFT)
+            {
+                SwsWidenLshiftOp *priv = (SwsWidenLshiftOp *) &op->convert;
+                priv->lshift = next->c.u;
+                op->op = (SwsOpType) SWS_OP_AARCH64_WIDEN_LSHIFT;
+                ff_sws_op_list_remove_at(ops, n + 1, 1);
+                goto retry;
+            }
+            break;
+        }
+
+        /* No optimization triggered, move on to next operation */
+        n++;
+    }
+}
+
 static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops)
 {
     int block_size = ctx->m_block_size;
@@ -682,44 +720,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, SwsOpList *ops)
                || ((op.type == SWS_PIXEL_U32) && block_size == 8)
                || ((op.type == SWS_PIXEL_F32) && block_size == 8);
 
-    /* Optimize convert(u8->u16)+lshift(8) using zip with zero */
-    if (op.op == SWS_OP_CONVERT && op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && !op.convert.expand &&
-        next->op == SWS_OP_LSHIFT && next->c.u == 8)
-    {
-        cc.comment("convert(u8->u16)+lshift(8)");
-        use_vh = (block_size == 16);
-        size_t vidx = ctx->push_imm8(0);
-        LOOP_OUT(i) {
-            save_vector(ctx, i, 0x0f);
-            new_vector(ctx, i, use_vh ? 0xff : 0x0f);
-            cc.zip1    (vet(vl[i], op), vet(vimm[vidx], op), vet(orig_vl[i], op));
-            if (use_vh)
-                cc.zip2(vet(vh[i], op), vet(vimm[vidx], op), vet(orig_vl[i], op));
-        }
-
-        ops->ops += 2;
-        ops->num_ops -= 2;
-        return ops->num_ops ? AVERROR(EAGAIN) : 0;
-    }
-
-    /* Optimize convert(u8->u16)+lshift(<8) using ushll */
-    if (op.op == SWS_OP_CONVERT && op.type == SWS_PIXEL_U8 && op.convert.to == SWS_PIXEL_U16 && !op.convert.expand &&
-        next->op == SWS_OP_LSHIFT && next->c.u < 8)
-    {
-        cc.comment("convert(u8->u16)+lshift(<8)");
-        use_vh = (block_size == 16);
-        LOOP_OUT(i) {
-            save_vector(ctx, i, 0x0f);
-            new_vector(ctx, i, use_vh ? 0xff : 0x0f);
-            cc.ushll     (vet(vl[i], *next), vet.half(orig_vl[i], op), next->c.u);
-            if (use_vh)
-                cc.ushll2(vet(vh[i], *next), vet     (orig_vl[i], op), next->c.u);
-        }
-
-        ops->ops += 2;
-        ops->num_ops -= 2;
-        return ops->num_ops ? AVERROR(EAGAIN) : 0;
-    }
+    char cbuf[64];
 
     switch (op.op) {
     /* Input/output handling */
@@ -1396,6 +1397,36 @@ normal_clamp:
         }
         break;
 
+    case SWS_OP_AARCH64_WIDEN_LSHIFT:
+        {
+            SwsWidenLshiftOp *priv = (SwsWidenLshiftOp *) &op.convert;
+
+            use_vh = (block_size == 16);
+
+            snprintf(cbuf, sizeof(cbuf), "widen_lshift(%s -> %s, lshift %d)", ff_sws_pixel_type_name(op.type), ff_sws_pixel_type_name(priv->convert.to), priv->lshift);
+            cc.comment(cbuf);
+
+            if (priv->lshift == 8) {
+                size_t vidx = ctx->push_imm8(0);
+                LOOP_OUT(i) {
+                    save_vector(ctx, i, 0x0f);
+                    new_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                    cc.zip1    (vet(vl[i], op), vet(vimm[vidx], op), vet(orig_vl[i], op));
+                    if (use_vh)
+                        cc.zip2(vet(vh[i], op), vet(vimm[vidx], op), vet(orig_vl[i], op));
+                }
+            } else /* if (widen_lshift->lshift < 8) */ {
+                LOOP_OUT(i) {
+                    save_vector(ctx, i, 0x0f);
+                    new_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                    cc.ushll     (vet(vl[i], *next), vet.half(orig_vl[i], op), priv->lshift);
+                    if (use_vh)
+                        cc.ushll2(vet(vh[i], *next), vet     (orig_vl[i], op), priv->lshift);
+                }
+            }
+        }
+        break;
+
     default:
         return AVERROR(ENOTSUP);
     }
@@ -1426,6 +1457,8 @@ static av_cold int asmjit_compile(SwsContext *swsctx, SwsOpList *ops, SwsCompile
     a64::Compiler &cc = *ctx->m_cc;
     Error err;
     int ret;
+
+    asmjit_optimize(ops);
 
     do {
         ret = asmjit_compile_op(ctx, ops);
