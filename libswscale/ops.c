@@ -650,7 +650,7 @@ handle_tail(const SwsOpPass *p, SwsOpExec *exec,
             for (int i = 0; i < 4 && in.data[i]; i++) {
                 av_assert2(tmp[0][i] + tail_size_in < (uint8_t *) tmp[1]);
                 memcpy(tmp[0][i], in.data[i], tail_size_in);
-                in.data[i] += in.linesize[i];
+                in.data[i] += exec->in_stride[i];
             }
         }
 
@@ -660,15 +660,15 @@ handle_tail(const SwsOpPass *p, SwsOpExec *exec,
             for (int i = 0; i < 4 && out.data[i]; i++) {
                 av_assert2(tmp[1][i] + tail_size_out < (uint8_t *) tmp[2]);
                 memcpy(out.data[i], tmp[1][i], tail_size_out);
-                out.data[i] += out.linesize[i];
+                out.data[i] += exec->out_stride[i];
             }
         }
 
         for (int i = 0; i < 4; i++) {
             if (!copy_in)
-                exec->in[i] += in.linesize[i];
+                exec->in[i] += exec->in_stride[i];
             if (!copy_out)
-                exec->out[i] += out.linesize[i];
+                exec->out[i] += exec->out_stride[i];
         }
     }
 }
@@ -718,8 +718,8 @@ static void op_pass_run(const SwsImg *out_base, const SwsImg *in_base,
     for (exec.y = y; exec.y < y_end; exec.y++) {
         comp->func(&exec, comp->priv, blocks_main);
         for (int i = 0; i < 4; i++) {
-            exec.in[i]  += in.linesize[i];
-            exec.out[i] += out.linesize[i];
+            exec.in[i]  += exec.in_stride[i];
+            exec.out[i] += exec.out_stride[i];
         }
     }
 
