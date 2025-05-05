@@ -1071,7 +1071,7 @@ if (use_vh) {
             /* Used by emit_loop to optimize away the use of x and y */
             ctx->m_dither_op = &op;
 
-            static const int y_off[4] = { 0, 3, 5, 7 };
+            static const int y_off[4] = { 0, 3, 2, 5 };
             int largest_y_off = 0;
             LOOP_OUT(i) {
                 largest_y_off = FFMAX(largest_y_off, y_off[i]);
@@ -1126,7 +1126,11 @@ if (use_vh) {
                      * The matrix repeats itself at the end, so we don't risk overreading.
                      */
                     last_use_of_ptr = cc.setCursor(last_use_of_ptr);
-                    cc.add(ptr, ptr, (y_off[i] - last_y_off) * size * sizeof(float));
+                    int offset = (y_off[i] - last_y_off) * size * sizeof(float);
+                    if (offset < 0)
+                        cc.sub(ptr, ptr, -offset);
+                    else
+                        cc.add(ptr, ptr, offset);
                     cc.setCursor(last_use_of_ptr);
                 }
                 last_y_off = y_off[i];
