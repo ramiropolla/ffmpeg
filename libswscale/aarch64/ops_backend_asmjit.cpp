@@ -644,7 +644,7 @@ typedef struct SwsWidenLshiftOp {
     unsigned lshift;
 } SwsWidenLshiftOp;
 
-static void asmjit_optimize(SwsOpList *ops)
+static int asmjit_optimize(SwsOpList *ops, int block_size)
 {
 retry:
     for (int n = 0; n < ops->num_ops;) {
@@ -708,6 +708,8 @@ retry:
         /* No optimization triggered, move on to next operation */
         n++;
     }
+
+    return block_size;
 }
 
 static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
@@ -778,7 +780,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Read vectors from input pointer */
             if (op.op == SWS_OP_AARCH64_READ_BYTES) {
                 for (int i = 0; i < ctx->m_read_bytes; i += 16) {
-                    snprintf(cbuf, sizeof(cbuf), "vin%d", i, ctx->m_vec_idx);
+                    snprintf(cbuf, sizeof(cbuf), "vin%d", i);
                     vl[i] = cc.newVecQ(cbuf);
                 }
                 switch (ctx->m_read_bytes) {
@@ -1050,6 +1052,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             for (int i = 0; i < 4; i++) {
                 if (op.c.q4[i].den) {
                     size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
+#if 1
                     if (next->op == SWS_OP_WRITE) {
                         /* TODO astmjit's register allocator sometimes fails, so we relieve some pressure */
                         new_vector(ctx, i, 0x0f);
@@ -1057,6 +1060,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     } else {
                         vl[i] = vimm[vidx];
                     }
+#else
+                    vl[i] = vimm[vidx];
+#endif
                     if (use_vh)
                         vh[i] = vimm[vidx];
                 }
@@ -1647,11 +1653,11 @@ static av_cold int asmjit_compile(SwsContext *swsctx, SwsOpList *ops, SwsCompile
     /* Use at most two full vregs during the widest precision section */
     int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
 
+    block_size = asmjit_optimize(ops, block_size);
+
     AsmJitContext *ctx = new AsmJitContext(ops, block_size);
     a64::Compiler &cc = *ctx->m_cc;
     Error err;
-
-    asmjit_optimize(ops);
 
     for (int n = 0; n < ops->num_ops; n++) {
         if (asmjit_compile_op(ctx, ops, n) < 0)
