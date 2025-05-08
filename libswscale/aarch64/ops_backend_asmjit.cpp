@@ -93,7 +93,7 @@ struct AsmJitContext {
     a64::Vec m_orig_vl[4];
     a64::Vec m_orig_vh[4];
     a64::Vec m_vl[4];
-    a64::Vec m_vh[4];
+    a64::Vec m_vh[6];
     int m_vec_idx;
 
     a64::Gp m_x;
@@ -634,6 +634,9 @@ typedef enum SwsOpTypeAarch64 {
     SWS_OP_AARCH64_INVALID = SWS_OP_TYPE_NB,
     SWS_OP_AARCH64_WIDEN_LSHIFT,
     SWS_OP_AARCH64_SATURATING_CONVERT,
+    SWS_OP_AARCH64_READ_BYTES,
+    SWS_OP_AARCH64_WRITE_BYTES,
+    SWS_OP_AARCH64_SHUFFLE_BYTES,
 } SwsOpTypeAarch64;
 
 typedef struct SwsWidenLshiftOp {
@@ -732,10 +735,12 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 
     switch (op.op) {
     /* Input/output handling */
+    case SWS_OP_AARCH64_READ_BYTES:
     case SWS_OP_READ:            /* gather raw pixels from planes */
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
-        ctx->m_read_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
+        if (op.op == SWS_OP_READ)
+            ctx->m_read_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
         cc.comment("read");
         if (!op.rw.packed) {
             /* Load input pointers in prologue */
@@ -771,38 +776,60 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_read_used[0] = true;
             ctx->from_prologue();
             /* Read vectors from input pointer */
-            for (int i = 0; i < op.rw.elems; i++) {
-                new_vector(ctx, i, use_vh ? 0xff : 0x0f);
-            }
-            switch (op.rw.elems) {
-            case 1:
-                if (use_vh)
-                    cc.ld1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
-                else
-                    cc.ld1(vet(vl[0], op),                                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 1));
-                break;
-            case 2:
-                cc.ld2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
-                if (use_vh)
-                    cc.ld2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
-                break;
-            case 3:
-                cc.ld3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
-                if (use_vh)
-                    cc.ld3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
-                break;
-            case 4:
-                cc.ld4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
-                if (use_vh)
-                    cc.ld4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
-                break;
+            if (op.op == SWS_OP_AARCH64_READ_BYTES) {
+                for (int i = 0; i < ctx->m_read_bytes; i += 16) {
+                    snprintf(cbuf, sizeof(cbuf), "vin%d", i, ctx->m_vec_idx);
+                    vl[i] = cc.newVecQ(cbuf);
+                }
+                switch (ctx->m_read_bytes) {
+                case 16:
+                    cc.ld1(vl[0].b16(),                                        a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
+                    break;
+                case 32:
+                    cc.ld1(vl[0].b16(), vl[1].b16(),                           a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
+                    break;
+                case 48:
+                    cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(),              a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
+                    break;
+                case 64:
+                    cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(), vl[3].b16(), a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
+                    break;
+                }
+            } else {
+                for (int i = 0; i < op.rw.elems; i++) {
+                    new_vector(ctx, i, use_vh ? 0xff : 0x0f);
+                }
+                switch (op.rw.elems) {
+                case 1:
+                    if (use_vh)
+                        cc.ld1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
+                    else
+                        cc.ld1(vet(vl[0], op),                                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 1));
+                    break;
+                case 2:
+                    cc.ld2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
+                    if (use_vh)
+                        cc.ld2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
+                    break;
+                case 3:
+                    cc.ld3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
+                    if (use_vh)
+                        cc.ld3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
+                    break;
+                case 4:
+                    cc.ld4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
+                    if (use_vh)
+                        cc.ld4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
+                    break;
+                }
             }
         }
         break;
     case SWS_OP_WRITE:           /* write raw pixels to planes */
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
-        ctx->m_write_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
+        if (op.op == SWS_OP_WRITE)
+            ctx->m_write_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
         cc.comment("write");
         if (!op.rw.packed) {
             /* Load output pointers in prologue */
@@ -842,53 +869,62 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
             ctx->m_write_used[0] = true;
             ctx->from_prologue();
-#if 1
-            switch (op.rw.elems) {
-            case 4:
-                /* fallthrough */
-                cc.virtRegByReg    (vl[3])->setHomeIdHint(REGID_VSTX + 3);
-                if (use_vh)
-                    cc.virtRegByReg(vh[3])->setHomeIdHint(REGID_VSTX + 7);
-            case 3:
-                /* fallthrough */
-                cc.virtRegByReg    (vl[2])->setHomeIdHint(REGID_VSTX + 2);
-                if (use_vh)
-                    cc.virtRegByReg(vh[2])->setHomeIdHint(REGID_VSTX + 6);
-            case 2:
-                /* fallthrough */
-                cc.virtRegByReg    (vl[1])->setHomeIdHint(REGID_VSTX + 1);
-                if (use_vh)
-                    cc.virtRegByReg(vh[1])->setHomeIdHint(REGID_VSTX + 5);
-            case 1:
-                cc.virtRegByReg    (vl[0])->setHomeIdHint(REGID_VSTX + 0);
-                if (use_vh)
-                    cc.virtRegByReg(vh[0])->setHomeIdHint(REGID_VSTX + 4);
-                break;
-            }
-#endif
             /* Write vectors to output pointer */
-            switch (op.rw.elems) {
-            case 1:
-                if (use_vh)
-                    cc.st1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
-                else
-                    cc.st1(vet(vl[0], op),                                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 1));
-                break;
-            case 2:
-                cc.st2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
-                if (use_vh)
-                    cc.st2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
-                break;
-            case 3:
-                cc.st3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
-                if (use_vh)
-                    cc.st3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
-                break;
-            case 4:
-                cc.st4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
-                if (use_vh)
-                    cc.st4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
-                break;
+            if (op.op == SWS_OP_AARCH64_WRITE_BYTES) {
+#if 1
+                for (int i = 0; i < ctx->m_read_bytes; i += 16) {
+                    cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i);
+                }
+#endif
+                switch (ctx->m_read_bytes) {
+                case 16:
+                    cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
+                    break;
+                case 32:
+                    cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
+                    break;
+                case 48:
+                    cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
+                    break;
+                case 64:
+                    cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
+                    break;
+                case 96:
+                    cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
+                    cc.st1(vh[3].b16(), vh[4].b16(), vh[5].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
+                    break;
+                }
+            } else {
+#if 1
+                for (int i = 0; i < op.rw.elems; i++) {
+                    cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + i);
+                    if (use_vh)
+                        cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i + 4);
+                }
+#endif
+                switch (op.rw.elems) {
+                case 1:
+                    if (use_vh)
+                        cc.st1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
+                    else
+                        cc.st1(vet(vl[0], op),                                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 1));
+                    break;
+                case 2:
+                    cc.st2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
+                    if (use_vh)
+                        cc.st2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
+                    break;
+                case 3:
+                    cc.st3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
+                    if (use_vh)
+                        cc.st3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
+                    break;
+                case 4:
+                    cc.st4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
+                    if (use_vh)
+                        cc.st4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
+                    break;
+                }
             }
         }
         break;
