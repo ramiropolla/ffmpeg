@@ -856,8 +856,10 @@ int ff_sws_solve_shuffle(const SwsOpList *const ops, uint8_t shuffle[],
                 const int base_out = n * write_chunk;
                 for (int i = 0; i < op->rw.elems; i++) {
                     const int offset = base_out + i * write_size;
-                    for (int b = 0; b < write_size; b++)
-                        shuffle[offset + b] = base_in + (mask[i] >> (b * 8));
+                    for (int b = 0; b < write_size; b++) {
+                        uint8_t val = mask[i] >> (b * 8);
+                        shuffle[offset + b] = (val == clear_val) ? clear_val : base_in + val;
+                    }
                 }
             }
 
