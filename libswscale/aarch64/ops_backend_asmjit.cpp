@@ -1122,13 +1122,15 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
     case SWS_OP_SWIZZLE:         /* rearrange channel order, or duplicate channels */
         {
             bool reorder = true;
-            bool used[4] = { false, false, false, false };
-            LOOP_OUT(i) {
-                if (used[op.swizzle.in[i]]) {
-                    reorder = false;
-                    break;
+            if (next->op != SWS_OP_WRITE || next->rw.packed) {
+                bool used[4] = { false, false, false, false };
+                LOOP_OUT(i) {
+                    if (used[op.swizzle.in[i]]) {
+                        reorder = false;
+                        break;
+                    }
+                    used[op.swizzle.in[i]] = true;
                 }
-                used[op.swizzle.in[i]] = true;
             }
 
             LOOP_IN(i) {
