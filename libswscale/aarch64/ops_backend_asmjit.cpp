@@ -1607,6 +1607,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 
     case SWS_OP_AARCH64_SHUFFLE_BYTES:
         {
+            /* Read */
             const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
             ctx->m_read_bytes = priv->read_bytes / block_size;
             cc.comment("read_bytes");
@@ -1640,9 +1641,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(), vl[3].b16(), a64::ptr(ctx->m_in[0]).post(64));
                 break;
             }
-        }
-        {
-            const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
+
+            /* Shuffle */
             const uint8_t *shuffle = priv->data;
             int shuffle_size = priv->size;
             int vector_size = 16;
@@ -1690,7 +1690,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
             /* Create output vectors */
             int vout_count = shuffle_size / vector_size;
-// printf("vout_count %d\n", vout_count);
             for (int i = 0; i < vout_count; i++) {
                 snprintf(cbuf, sizeof(cbuf), "vout%d", i);
                 vh[i] = cc.newVecQ(cbuf);
@@ -1745,38 +1744,24 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->from_prologue();
             /* Emit tbl instructions */
             cc.comment("shuffle");
-#if 0
-            size_t tbl_data_i = 0;
-#endif
             for (int i = 0; i < tbl_insn_count; i++) {
                 int vsrc = (tbl_insn[i] & 0x07);
                 int vdst = tbl_insn[i] >> 4;
                 if (vdst & 0x08) {
                     vdst &= 7;
                     cc.tbl(vtmp[vdst].b16(), vl[vsrc].b16(), vshuffle[i].b16());
-//                    printf("tbl [vtmp %d][vin %d][vshuffle %d]", vdst, vsrc, i);
                 } else {
                     cc.tbl(vh  [vdst].b16(), vl[vsrc].b16(), vshuffle[i].b16());
-//                    printf("tbl [vout %d][vin %d][vshuffle %d]", vdst, vsrc, i);
                 }
-#if 0
-                for (int j = 0; j < vector_size; j++)
-                    printf(" %02x", tbl_data[tbl_data_i++]);
-                printf("\n");
-#endif
             }
             /* Emit orr instructions */
             for (int i = 0; i < orr_insn_count; i++) {
                 int vsrc = (orr_insn[i] & 0x07);
                 int vdst = orr_insn[i] >> 4;
                 cc.orr(vh[vdst].b16(), vh[vdst].b16(), vtmp[vsrc].b16());
-#if 0
-                printf("orr [vout %d][vout %d][vtmp %d]\n", vdst, vdst, vsrc);
-#endif
             }
-        }
-        {
-            const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
+
+            /* Write */
             ctx->m_write_bytes = priv->write_bytes / block_size;
             cc.comment("write_bytes");
             /* Load output pointer in prologue */
