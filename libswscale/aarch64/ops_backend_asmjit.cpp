@@ -850,11 +850,10 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->from_prologue();
             /* Write vectors to output pointers */
             LOOP_IN(i) {
-#if 0
-                /* TODO reenable after the shuffle solver is done */
-                cc.virtRegByReg    (vl[0])->setHomeIdHint(REGID_VSTX + (i * 2) + 0);
+#if 1
+                cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + (i * 2) + 0);
                 if (use_vh)
-                    cc.virtRegByReg(vh[0])->setHomeIdHint(REGID_VSTX + (i * 2) + 1);
+                    cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + (i * 2) + 1);
 #endif
                 if (use_vh)
                     cc.st1(vet(vl[i], op), vet(vh[i], op), a64::ptr(ctx->m_out[i]).post(vet.size(op) * 2));
