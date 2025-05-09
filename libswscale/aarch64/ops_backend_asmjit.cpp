@@ -330,7 +330,7 @@ struct AsmJitContext {
             char cbuf[64];
             snprintf(cbuf, sizeof(cbuf), "vdata%d", (int) vidx);
             a64::Vec vdata = m_cc->newVecQ(cbuf);
-#if 0
+#if 1
             m_cc->virtRegByReg(vdata)->setHomeIdHint(REGID_VDATA + vidx);
 #endif
             m_vdata.push_back(vdata);
