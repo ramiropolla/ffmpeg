@@ -644,8 +644,149 @@ typedef struct SwsWidenLshiftOp {
     unsigned lshift;
 } SwsWidenLshiftOp;
 
+typedef struct SwsReadWriteBytesOp {
+    SwsReadWriteOp rw;
+    int num_bytes;
+} SwsReadWriteBytesOp;
+
+typedef struct SwsShuffleOp {
+    uint8_t data[128];
+    int size;
+} SwsShuffleOp;
+
 static int asmjit_optimize(SwsOpList *ops, int block_size)
 {
+    /* First try the shuffle solver */
+{
+const int vector_size = 16;
+uint8_t shuffle[96];
+int read_bytes;
+int write_bytes;
+int tmp_block_size = ff_sws_solve_shuffle(ops, shuffle, sizeof(shuffle), vector_size, 0x80, &read_bytes, &write_bytes);
+if (tmp_block_size >= 0) {
+#if 1
+    int count_tbl = 0;
+    int count_orr = 0;
+    for (int i = 0; i < write_bytes; i += vector_size) {
+        int mask = 0;
+        for (int j = 0; j < vector_size; j++) {
+            int val = shuffle[i + j];
+            if (val != 0x80) {
+                int invec = (val >> 4);
+                mask |= (1 << invec);
+            }
+        }
+        int count = av_popcount(mask);
+        count_tbl += count;
+        if (count > 1)
+            count_orr++;
+    }
+#endif
+#if 1
+    uint8_t tbl_data[256];
+    int     tbl_data_size = 0;
+    uint8_t tbl_insn[16];
+    int     tbl_insn_count = 0;
+    uint8_t orr_insn[16];
+    int     orr_insn_count = 0;
+    int     vtmp_count = 0;
+    for (int i = 0; i < write_bytes; i += vector_size) {
+        /* Calculate input vectors mask */
+        int vin_mask = 0;
+        for (int j = 0; j < vector_size; j++) {
+            int val = shuffle[i + j];
+            if (val != 0x80) {
+                int vin = (val >> 4);
+                vin_mask |= (1 << vin);
+            }
+        }
+        /* Populate tbl_data, tbl_insn, and orr_insn */
+        int tbl_count = 0;
+        int vout = (i >> 4);
+        for (int vin = 0; vin < 4; vin++) {
+            if (vin_mask & (1 << vin)) {
+                for (int j = 0; j < vector_size; j++) {
+                    int val = shuffle[i + j];
+                    if ((val >> 4) == vin) {
+                        val &= 0x0f;
+                    } else {
+                        val = 0x80;
+                    }
+                    tbl_data[tbl_data_size++] = val;
+                }
+                if (tbl_count++ == 0) {
+                    tbl_insn[tbl_insn_count++] = (vout << 4) | vin;
+                } else {
+                    size_t vtmp = vtmp_count++;
+                    tbl_insn[tbl_insn_count++] = 0x80 | (vtmp << 4) | vin;
+                    orr_insn[orr_insn_count++] = (vout << 4) | vtmp;
+                }
+            }
+        }
+    }
+    /* Emit tbl instructions */
+    size_t tbl_data_i = 0;
+    for (int i = 0; i < tbl_insn_count; i++) {
+        int vsrc = (tbl_insn[i] & 0x07);
+        int vdst = tbl_insn[i] >> 4;
+        if (vdst & 0x08) {
+            printf("tbl [vtmp %d][vin %d][vshuffle %d]", (vdst & 0x07), vsrc, i);
+        } else {
+            printf("tbl [vout %d][vin %d][vshuffle %d]", vdst, vsrc, i);
+        }
+        for (int j = 0; j < vector_size; j++)\
+            printf(" %02x", tbl_data[tbl_data_i++]);
+        printf("\n");
+    }
+    /* Emit orr instructions */
+    for (int i = 0; i < orr_insn_count; i++) {
+        int vsrc = (orr_insn[i] & 0x07);
+        int vdst = orr_insn[i] >> 4;
+        printf("orr [vout %d][vout %d][vtmp %d]\n", vdst, vdst, vsrc);
+    }
+#endif
+#if 1
+    int tbl_vec_count = tbl_insn_count / vector_size;
+    printf("block_size[%2d] tbl %2d orr %d read_bytes %d write_bytes %d tbl_vec_count %2d { ",
+           tmp_block_size,
+           count_tbl, count_orr,
+           read_bytes, write_bytes, tbl_vec_count);
+    for (int i = 0; i < write_bytes; i++) {
+        if (i > 0 && (i & 0x0f) == 0x00)
+            printf("|");
+        printf("%02x", shuffle[i]);
+    }
+    printf(" }\n");
+#endif
+#if 0
+    if (count_orr == 0) {
+        /* Reduce number of ops to 3, leaving read/xxx/write */
+        if (ops->num_ops > 3)
+            ff_sws_op_list_remove_at(ops, 1, ops->num_ops - 3);
+        /* Read */
+        SwsOp *read_op = &ops->ops[0];
+        read_op->op = (SwsOpType) SWS_OP_AARCH64_READ_BYTES;
+        read_op->rw.packed = false;
+        SwsReadWriteBytesOp *read_priv = (SwsReadWriteBytesOp *) &read_op->rw;
+        read_priv->num_bytes = read_bytes;
+        /* Shuffle */
+        SwsOp *shuffle_op = &ops->ops[1];
+        shuffle_op->op = (SwsOpType) SWS_OP_AARCH64_SHUFFLE_BYTES;
+        SwsShuffleOp *shuffle_priv = (SwsShuffleOp *) &shuffle_op->rw;
+        memcpy(shuffle_priv->data, shuffle, write_bytes);
+        shuffle_priv->size = write_bytes;
+        /* Write */
+        SwsOp *write_op = &ops->ops[2];
+        write_op->op = (SwsOpType) SWS_OP_AARCH64_WRITE_BYTES;
+        write_op->rw.packed = false;
+        SwsReadWriteBytesOp *write_priv = (SwsReadWriteBytesOp *) &write_op->rw;
+        write_priv->num_bytes = write_bytes;
+        return tmp_block_size;
+    }
+#endif
+}
+}
+
 retry:
     for (int n = 0; n < ops->num_ops;) {
         SwsOp dummy = { SWS_OP_INVALID };
@@ -737,12 +878,10 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 
     switch (op.op) {
     /* Input/output handling */
-    case SWS_OP_AARCH64_READ_BYTES:
     case SWS_OP_READ:            /* gather raw pixels from planes */
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
-        if (op.op == SWS_OP_READ)
-            ctx->m_read_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
+        ctx->m_read_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
         cc.comment("read");
         if (!op.rw.packed) {
             /* Load input pointers in prologue */
@@ -778,60 +917,38 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_read_used[0] = true;
             ctx->from_prologue();
             /* Read vectors from input pointer */
-            if (op.op == SWS_OP_AARCH64_READ_BYTES) {
-                for (int i = 0; i < ctx->m_read_bytes; i += 16) {
-                    snprintf(cbuf, sizeof(cbuf), "vin%d", i);
-                    vl[i] = cc.newVecQ(cbuf);
-                }
-                switch (ctx->m_read_bytes) {
-                case 16:
-                    cc.ld1(vl[0].b16(),                                        a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
-                    break;
-                case 32:
-                    cc.ld1(vl[0].b16(), vl[1].b16(),                           a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
-                    break;
-                case 48:
-                    cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(),              a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
-                    break;
-                case 64:
-                    cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(), vl[3].b16(), a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
-                    break;
-                }
-            } else {
-                for (int i = 0; i < op.rw.elems; i++) {
-                    new_vector(ctx, i, use_vh ? 0xff : 0x0f);
-                }
-                switch (op.rw.elems) {
-                case 1:
-                    if (use_vh)
-                        cc.ld1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
-                    else
-                        cc.ld1(vet(vl[0], op),                                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 1));
-                    break;
-                case 2:
-                    cc.ld2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
-                    if (use_vh)
-                        cc.ld2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
-                    break;
-                case 3:
-                    cc.ld3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
-                    if (use_vh)
-                        cc.ld3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
-                    break;
-                case 4:
-                    cc.ld4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
-                    if (use_vh)
-                        cc.ld4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
-                    break;
-                }
+            for (int i = 0; i < op.rw.elems; i++) {
+                new_vector(ctx, i, use_vh ? 0xff : 0x0f);
+            }
+            switch (op.rw.elems) {
+            case 1:
+                if (use_vh)
+                    cc.ld1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
+                else
+                    cc.ld1(vet(vl[0], op),                                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 1));
+                break;
+            case 2:
+                cc.ld2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
+                if (use_vh)
+                    cc.ld2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 2));
+                break;
+            case 3:
+                cc.ld3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
+                if (use_vh)
+                    cc.ld3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_in[0]).post(vet.size(op) * 3));
+                break;
+            case 4:
+                cc.ld4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
+                if (use_vh)
+                    cc.ld4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_in[0]).post(vet.size(op) * 4));
+                break;
             }
         }
         break;
     case SWS_OP_WRITE:           /* write raw pixels to planes */
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
-        if (op.op == SWS_OP_WRITE)
-            ctx->m_write_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
+        ctx->m_write_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
         cc.comment("write");
         if (!op.rw.packed) {
             /* Load output pointers in prologue */
@@ -872,61 +989,35 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_write_used[0] = true;
             ctx->from_prologue();
             /* Write vectors to output pointer */
-            if (op.op == SWS_OP_AARCH64_WRITE_BYTES) {
 #if 1
-                for (int i = 0; i < ctx->m_read_bytes; i += 16) {
-                    cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i);
-                }
+            for (int i = 0; i < op.rw.elems; i++) {
+                cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + i);
+                if (use_vh)
+                    cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i + 4);
+            }
 #endif
-                switch (ctx->m_read_bytes) {
-                case 16:
-                    cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
-                    break;
-                case 32:
-                    cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
-                    break;
-                case 48:
-                    cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
-                    break;
-                case 64:
-                    cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
-                    break;
-                case 96:
-                    cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
-                    cc.st1(vh[3].b16(), vh[4].b16(), vh[5].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_read_bytes));
-                    break;
-                }
-            } else {
-#if 1
-                for (int i = 0; i < op.rw.elems; i++) {
-                    cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + i);
-                    if (use_vh)
-                        cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i + 4);
-                }
-#endif
-                switch (op.rw.elems) {
-                case 1:
-                    if (use_vh)
-                        cc.st1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
-                    else
-                        cc.st1(vet(vl[0], op),                                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 1));
-                    break;
-                case 2:
-                    cc.st2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
-                    if (use_vh)
-                        cc.st2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
-                    break;
-                case 3:
-                    cc.st3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
-                    if (use_vh)
-                        cc.st3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
-                    break;
-                case 4:
-                    cc.st4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
-                    if (use_vh)
-                        cc.st4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
-                    break;
-                }
+            switch (op.rw.elems) {
+            case 1:
+                if (use_vh)
+                    cc.st1(vet(vl[0], op), vet(vh[0], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
+                else
+                    cc.st1(vet(vl[0], op),                                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 1));
+                break;
+            case 2:
+                cc.st2    (vet(vl[0], op), vet(vl[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
+                if (use_vh)
+                    cc.st2(vet(vh[0], op), vet(vh[1], op),                                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 2));
+                break;
+            case 3:
+                cc.st3    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
+                if (use_vh)
+                    cc.st3(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op),                 a64::ptr(ctx->m_out[0]).post(vet.size(op) * 3));
+                break;
+            case 4:
+                cc.st4    (vet(vl[0], op), vet(vl[1], op), vet(vl[2], op), vet(vl[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
+                if (use_vh)
+                    cc.st4(vet(vh[0], op), vet(vh[1], op), vet(vh[2], op), vet(vh[3], op), a64::ptr(ctx->m_out[0]).post(vet.size(op) * 4));
+                break;
             }
         }
         break;
@@ -1578,7 +1669,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 
     case SWS_OP_AARCH64_WIDEN_LSHIFT:
         {
-            SwsWidenLshiftOp *priv = (SwsWidenLshiftOp *) &op.convert;
+            const SwsWidenLshiftOp *priv = (const SwsWidenLshiftOp *) &op.convert;
 
             use_vh = (block_size == 16);
 
@@ -1607,6 +1698,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
         }
         break;
+
     case SWS_OP_AARCH64_SATURATING_CONVERT:
         {
             snprintf(cbuf, sizeof(cbuf), "saturating_convert(%s -> %s)", ff_sws_pixel_type_name(op.type), ff_sws_pixel_type_name(op.convert.to));
@@ -1628,6 +1720,125 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     cc.uqxtn(vl[i].b8(), orig_vl[i].h8());
                 }
             }
+        }
+        break;
+
+    case SWS_OP_AARCH64_READ_BYTES:
+        ctx->m_read_bytes = ((const SwsReadWriteBytesOp *)&op.rw)->num_bytes;
+        cc.comment("read_bytes");
+        /* Load input pointer in prologue */
+        ctx->to_prologue();
+        cc.comment("prologue (read_bytes)");
+        ctx->m_in[0] = cc.newGpz("in0");
+#if 1
+        cc.virtRegByReg(ctx->m_in[0])->setHomeIdHint(REGID_IN);
+#endif
+        cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
+        ctx->m_read_used[0] = true;
+        ctx->from_prologue();
+        /* Read vectors from input pointer */
+        for (int i = 0; i < ctx->m_read_bytes; i += 16) {
+            snprintf(cbuf, sizeof(cbuf), "vin%d", i);
+            vl[i] = cc.newVecQ(cbuf);
+        }
+        switch (ctx->m_read_bytes) {
+        case 16:
+            cc.ld1(vl[0].b16(),                                        a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
+            break;
+        case 32:
+            cc.ld1(vl[0].b16(), vl[1].b16(),                           a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
+            break;
+        case 48:
+            cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(),              a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
+            break;
+        case 64:
+            cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(), vl[3].b16(), a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
+            break;
+        }
+        break;
+
+    case SWS_OP_AARCH64_WRITE_BYTES:
+        ctx->m_write_bytes = ((const SwsReadWriteBytesOp *)&op.rw)->num_bytes;
+        cc.comment("write_bytes");
+        /* Load output pointer in prologue */
+        ctx->to_prologue();
+        cc.comment("prologue (write_bytes)");
+        ctx->m_out[0] = cc.newGpz("out0");
+#if 1
+        cc.virtRegByReg(ctx->m_out[0])->setHomeIdHint(REGID_OUT);
+#endif
+        cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
+        ctx->m_write_used[0] = true;
+        ctx->from_prologue();
+        /* Write vectors to output pointer */
+#if 1
+        for (int i = 0; i < ctx->m_write_bytes; i += 16) {
+            cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i);
+        }
+#endif
+        switch (ctx->m_write_bytes) {
+        case 16:
+            cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
+            break;
+        case 32:
+            cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
+            break;
+        case 48:
+            cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
+            break;
+        case 64:
+            cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
+            break;
+        case 96:
+            cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
+            cc.st1(vh[3].b16(), vh[4].b16(), vh[5].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
+            break;
+        }
+        break;
+
+    case SWS_OP_AARCH64_SHUFFLE_BYTES:
+        {
+            const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
+            const uint8_t *shuffle = priv->data;
+            int size = priv->size;
+#if 0
+            /* Write const data after function */
+            std::vector<uint8_t> inout;
+            std::vector<uint8_t> data;
+            inout.resize(size >> 4);
+            data.resize(size);
+            Label ldata = ctx->emit_data(data.data(), data.size(), "tbl_array");
+            for (int i = 0; i < size; i += 16) {
+                int invec = 0;
+                for (int j = 0; j < 16; j++) {
+                    int val = shuffle[i + j];
+                    if (val == 0x80) {
+                        data[i + j] = 0x80;
+                    } else {
+                        invec |= (val >> 4);
+                        data[i + j] &= (val & 0x0f);
+                    }
+                }
+            }
+#endif
+#if 0
+    int count_tbl = 0;
+    int count_orr = 0;
+    for (int i = 0; i < write_bytes; i += 16) {
+        int mask = 0;
+        for (int j = 0; j < 16; j++) {
+            int val = shuffle[i + j];
+            if (val != 0x80) {
+                int invec = (val >> 4);
+                mask |= (1 << invec);
+            }
+        }
+        int count = av_popcount(mask);
+        count_tbl += count;
+        if (count > 1)
+            count_orr++;
+    }
+#endif
         }
         break;
 
