@@ -634,8 +634,6 @@ typedef enum SwsOpTypeAarch64 {
     SWS_OP_AARCH64_INVALID = SWS_OP_TYPE_NB,
     SWS_OP_AARCH64_WIDEN_LSHIFT,
     SWS_OP_AARCH64_SATURATING_CONVERT,
-    SWS_OP_AARCH64_READ_BYTES,
-    SWS_OP_AARCH64_WRITE_BYTES,
     SWS_OP_AARCH64_SHUFFLE_BYTES,
 } SwsOpTypeAarch64;
 
@@ -644,14 +642,11 @@ typedef struct SwsWidenLshiftOp {
     unsigned lshift;
 } SwsWidenLshiftOp;
 
-typedef struct SwsReadWriteBytesOp {
-    SwsReadWriteOp rw;
-    int num_bytes;
-} SwsReadWriteBytesOp;
-
 typedef struct SwsShuffleOp {
     uint8_t data[128];
     int size;
+    int read_bytes;
+    int write_bytes;
 } SwsShuffleOp;
 
 static int asmjit_optimize(SwsOpList *ops, int block_size)
@@ -698,38 +693,13 @@ if (tmp_block_size >= 0) {
 #else
     {
 #endif
-        /* Reduce number of ops to 3, leaving read/xxx/write */
-        switch (ops->num_ops) {
-        case 2:
-            {
-                SwsOp dummy = { SWS_OP_INVALID };
-printf("ff_sws_op_list_insert_at\n");
-                ff_sws_op_list_insert_at(ops, 1, &dummy);
-            }
-            break;
-        case 3:
-            break;
-        default:
-            ff_sws_op_list_remove_at(ops, 1, ops->num_ops - 3);
-            break;
-        }
-        /* Read */
-        SwsOp *read_op = &ops->ops[0];
-        read_op->op = (SwsOpType) SWS_OP_AARCH64_READ_BYTES;
-        SwsReadWriteBytesOp *read_priv = (SwsReadWriteBytesOp *) &read_op->rw;
-        read_priv->num_bytes = read_bytes;
-        /* Shuffle */
-        SwsOp *shuffle_op = &ops->ops[1];
-        shuffle_op->op = (SwsOpType) SWS_OP_AARCH64_SHUFFLE_BYTES;
-        SwsShuffleOp *shuffle_priv = (SwsShuffleOp *) &shuffle_op->rw;
-        memcpy(shuffle_priv->data, shuffle, write_bytes);
-        shuffle_priv->size = write_bytes;
-        /* Write */
-        SwsOp *write_op = &ops->ops[2];
-        write_op->op = (SwsOpType) SWS_OP_AARCH64_WRITE_BYTES;
-        SwsReadWriteBytesOp *write_priv = (SwsReadWriteBytesOp *) &write_op->rw;
-        write_priv->num_bytes = write_bytes;
-printf("return tmp_block_size\n");
+        SwsShuffleOp *priv = (SwsShuffleOp *) &ops->ops[0].rw;
+        ops->ops[0].op = (SwsOpType) SWS_OP_AARCH64_SHUFFLE_BYTES;
+        memcpy(priv->data, shuffle, write_bytes);
+        priv->size = write_bytes;
+        priv->read_bytes = read_bytes;
+        priv->write_bytes = write_bytes;
+        ops->num_ops = 1;
         return tmp_block_size;
     }
 }
@@ -1671,10 +1641,10 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         }
         break;
 
-    case SWS_OP_AARCH64_READ_BYTES:
+    case SWS_OP_AARCH64_SHUFFLE_BYTES:
         {
-            const SwsReadWriteBytesOp *priv = (const SwsReadWriteBytesOp *) &op.rw;
-            ctx->m_read_bytes = priv->num_bytes / block_size;
+            const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
+            ctx->m_read_bytes = priv->read_bytes / block_size;
             cc.comment("read_bytes");
             /* Load input pointer in prologue */
             ctx->to_prologue();
@@ -1687,12 +1657,12 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_read_used[0] = true;
             ctx->from_prologue();
             /* Read vectors from input pointer */
-            for (int i = 0; i < priv->num_bytes; i += 16) {
+            for (int i = 0; i < priv->read_bytes; i += 16) {
                 int j = (i >> 4);
                 snprintf(cbuf, sizeof(cbuf), "vin%d", j);
                 vl[j] = cc.newVecQ(cbuf);
             }
-            switch (priv->num_bytes) {
+            switch (priv->read_bytes) {
             case 16:
                 cc.ld1(vl[0].b16(),                                        a64::ptr(ctx->m_in[0]).post(16));
                 break;
@@ -1707,52 +1677,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 break;
             }
         }
-        break;
-
-    case SWS_OP_AARCH64_WRITE_BYTES:
-        {
-            const SwsReadWriteBytesOp *priv = (const SwsReadWriteBytesOp *) &op.rw;
-            ctx->m_write_bytes = priv->num_bytes / block_size;
-            cc.comment("write_bytes");
-            /* Load output pointer in prologue */
-            ctx->to_prologue();
-            cc.comment("prologue (write)");
-            ctx->m_out[0] = cc.newGpz("out0");
-#if 1
-            cc.virtRegByReg(ctx->m_out[0])->setHomeIdHint(REGID_OUT);
-#endif
-            cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
-            ctx->m_write_used[0] = true;
-            ctx->from_prologue();
-            /* Write vectors to output pointer */
-#if 1
-            for (int i = 0; i < priv->num_bytes; i += 16) {
-                int j = (i >> 4);
-                cc.virtRegByReg(vh[j])->setHomeIdHint(REGID_VSTX + j);
-            }
-#endif
-            switch (priv->num_bytes) {
-            case 16:
-                cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(16));
-                break;
-            case 32:
-                cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(32));
-                break;
-            case 48:
-                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(48));
-                break;
-            case 64:
-                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
-                break;
-            case 96:
-                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
-                cc.st1(vh[4].b16(), vh[5].b16(),                           a64::ptr(ctx->m_out[0]).post(32));
-                break;
-            }
-        }
-        break;
-
-    case SWS_OP_AARCH64_SHUFFLE_BYTES:
         {
             const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
             const uint8_t *shuffle = priv->data;
@@ -1885,6 +1809,46 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 #if 0
                 printf("orr [vout %d][vout %d][vtmp %d]\n", vdst, vdst, vsrc);
 #endif
+            }
+        }
+        {
+            const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
+            ctx->m_write_bytes = priv->write_bytes / block_size;
+            cc.comment("write_bytes");
+            /* Load output pointer in prologue */
+            ctx->to_prologue();
+            cc.comment("prologue (write)");
+            ctx->m_out[0] = cc.newGpz("out0");
+#if 1
+            cc.virtRegByReg(ctx->m_out[0])->setHomeIdHint(REGID_OUT);
+#endif
+            cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
+            ctx->m_write_used[0] = true;
+            ctx->from_prologue();
+            /* Write vectors to output pointer */
+#if 1
+            for (int i = 0; i < priv->write_bytes; i += 16) {
+                int j = (i >> 4);
+                cc.virtRegByReg(vh[j])->setHomeIdHint(REGID_VSTX + j);
+            }
+#endif
+            switch (priv->write_bytes) {
+            case 16:
+                cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(16));
+                break;
+            case 32:
+                cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(32));
+                break;
+            case 48:
+                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(48));
+                break;
+            case 64:
+                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
+                break;
+            case 96:
+                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
+                cc.st1(vh[4].b16(), vh[5].b16(),                           a64::ptr(ctx->m_out[0]).post(32));
+                break;
             }
         }
         break;
