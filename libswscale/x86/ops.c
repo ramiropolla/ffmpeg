@@ -544,7 +544,7 @@ static int solve_shuffle(const SwsOpList *ops, int mmsize, SwsCompiledOp *out)
     int pixels;
 
     /* Solve the shuffle mask for one 128-bit lane only */
-    pixels = ff_sws_solve_shuffle(ops, shuffle, 16, 0x80, &read_bytes, &write_bytes);
+    pixels = ff_sws_solve_shuffle(ops, shuffle, 16, 0x80, 0, &read_bytes, &write_bytes);
     if (pixels < 0)
         return pixels;
 
