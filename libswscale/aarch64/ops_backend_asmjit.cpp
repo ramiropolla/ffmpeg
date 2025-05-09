@@ -676,7 +676,6 @@ retry:
     for (int n = 0; n < ops->num_ops;) {
         SwsOp dummy = { SWS_OP_INVALID };
         SwsOp *op = &ops->ops[n];
-        SwsOp *prev = n ? &ops->ops[n - 1] : &dummy;
         SwsOp *next = n + 1 < ops->num_ops ? &ops->ops[n + 1] : &dummy;
 
         switch (op->op) {
