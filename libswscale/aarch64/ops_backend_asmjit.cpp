@@ -652,47 +652,12 @@ typedef struct SwsShuffleOp {
 static int asmjit_optimize(SwsOpList *ops, int block_size)
 {
     /* First try the shuffle solver */
-{
-const int vector_size = 16;
-uint8_t shuffle[96];
-int read_bytes;
-int write_bytes;
-int tmp_block_size = ff_sws_solve_shuffle(ops, shuffle, sizeof(shuffle), vector_size, 0x80, &read_bytes, &write_bytes);
-if (tmp_block_size >= 0) {
-    int count_tbl = 0;
-    int count_orr = 0;
-    for (int i = 0; i < write_bytes; i += vector_size) {
-        int mask = 0;
-        for (int j = 0; j < vector_size; j++) {
-            int val = shuffle[i + j];
-            if (val != 0x80) {
-                int invec = (val >> 4);
-                mask |= (1 << invec);
-            }
-        }
-        int count = av_popcount(mask);
-        count_tbl += count;
-        if (count > 1)
-            count_orr++;
-    }
-#if 0
-    int tbl_vec_count = tbl_insn_count / vector_size;
-    printf("block_size[%2d] tbl %2d orr %d read_bytes %d write_bytes %d tbl_vec_count %2d { ",
-           tmp_block_size,
-           count_tbl, count_orr,
-           read_bytes, write_bytes, tbl_vec_count);
-    for (int i = 0; i < write_bytes; i++) {
-        if (i > 0 && (i & 0x0f) == 0x00)
-            printf("|");
-        printf("%02x", shuffle[i]);
-    }
-    printf(" }\n");
-#endif
-#if 0
-    if (count_orr == 0) {
-#else
-    {
-#endif
+    uint8_t shuffle[128];
+    int read_bytes;
+    int write_bytes;
+    int tmp_block_size = ff_sws_solve_shuffle(ops, shuffle, sizeof(shuffle), 16, 0x80, &read_bytes, &write_bytes);
+    if (tmp_block_size >= 0) {
+        /* Overwrite ops->ops[0] with the shuffle data */
         SwsShuffleOp *priv = (SwsShuffleOp *) &ops->ops[0].rw;
         ops->ops[0].op = (SwsOpType) SWS_OP_AARCH64_SHUFFLE_BYTES;
         memcpy(priv->data, shuffle, write_bytes);
@@ -702,9 +667,8 @@ if (tmp_block_size >= 0) {
         ops->num_ops = 1;
         return tmp_block_size;
     }
-}
-}
 
+    /* Continue with other optimizations */
 retry:
     for (int n = 0; n < ops->num_ops;) {
         SwsOp dummy = { SWS_OP_INVALID };
