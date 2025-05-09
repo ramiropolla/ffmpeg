@@ -44,6 +44,7 @@ extern "C" {
 #define av_q2f(q) ((q).den ? (float) (q).num / (q).den : 0)
 #define av_q2i(q) ((q).den ? (int32_t) (q).num / (q).den : 0)
 
+/* General Purpose Registers */
 #define REGID_TMP_PTR 1
 /* in: 4, 5, 6, 7 */
 #define REGID_IN      4
@@ -52,7 +53,12 @@ extern "C" {
 #define REGID_X      14
 #define REGID_Y      15
 
+/* Vector Registers */
+/* vimm: 16, 17, 18, 19 */
+#define REGID_VIMM   16
+/* stx: 20, 21, 22, 23, 24, 25, 26, 27 */
 #define REGID_VSTX   20
+/* vdata: 28, 29, 30, 31 */
 #define REGID_VDATA  28
 
 /* returns log2(x) only if x is a power of two, or 0 otherwise */
@@ -222,6 +228,9 @@ struct AsmJitContext {
         char cbuf[64];
         snprintf(cbuf, sizeof(cbuf), "vimm%d", (int) ret);
         a64::Vec vimm = m_cc->newVecQ(cbuf);
+#if 1
+        m_cc->virtRegByReg(vimm)->setHomeIdHint(REGID_VIMM + ret);
+#endif
         m_vimm.push_back(vimm);
         return ret;
     }
