@@ -542,7 +542,7 @@ static int solve_shuffle(const SwsOpList *ops, int mmsize, SwsCompiledOp *out)
     int read_bytes, write_bytes;
     int pixels;
 
-    pixels = ff_sws_solve_shuffle(ops, shuffle, 16, 0x80, &read_bytes, &write_bytes);
+    pixels = ff_sws_solve_shuffle(ops, shuffle, 16, mmsize, 0x80, &read_bytes, &write_bytes);
     if (pixels < 0)
         return pixels;
 
