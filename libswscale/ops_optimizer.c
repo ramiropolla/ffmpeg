@@ -784,8 +784,9 @@ retry:
     return 0;
 }
 
-int ff_sws_solve_shuffle(const SwsOpList *const ops, uint8_t shuffle[],
-                         int shuffle_size, uint8_t clear_val,
+int ff_sws_solve_shuffle(const SwsOpList *const ops,
+                         uint8_t shuffle[], int shuffle_size,
+                         int vector_size, uint8_t clear_val,
                          int *out_read_bytes, int *out_write_bytes)
 {
     const SwsOp read = ops->ops[0];
@@ -851,7 +852,12 @@ int ff_sws_solve_shuffle(const SwsOpList *const ops, uint8_t shuffle[],
             const int write_size  = ff_sws_pixel_type_size(op->type);
             const int read_chunk  = read.rw.elems * read_size;
             const int write_chunk = op->rw.elems * write_size;
+#if 0
             const int num_groups  = shuffle_size / FFMAX(read_chunk, write_chunk);
+#else
+            /* minimal block_size to always use full vectors */
+            const int num_groups  = vector_size >> FFMIN(ff_ctz(read_chunk), ff_ctz(write_chunk));
+#endif
             for (int n = 0; n < num_groups; n++) {
                 const int base_in  = n * read_chunk;
                 const int base_out = n * write_chunk;
@@ -859,8 +865,7 @@ int ff_sws_solve_shuffle(const SwsOpList *const ops, uint8_t shuffle[],
                     const int offset = base_out + i * write_size;
                     for (int b = 0; b < write_size; b++) {
                         const uint8_t idx = mask[i] >> (b * 8);
-                        if (idx != clear_val)
-                            shuffle[offset + b] = base_in + idx;
+                        shuffle[offset + b] = idx + ((idx == clear_val) ? 0 : base_in);
                     }
                 }
             }
