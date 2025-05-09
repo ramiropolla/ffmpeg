@@ -664,7 +664,6 @@ int read_bytes;
 int write_bytes;
 int tmp_block_size = ff_sws_solve_shuffle(ops, shuffle, sizeof(shuffle), vector_size, 0x80, &read_bytes, &write_bytes);
 if (tmp_block_size >= 0) {
-#if 1
     int count_tbl = 0;
     int count_orr = 0;
     for (int i = 0; i < write_bytes; i += vector_size) {
@@ -681,71 +680,7 @@ if (tmp_block_size >= 0) {
         if (count > 1)
             count_orr++;
     }
-#endif
-#if 1
-    uint8_t tbl_data[256];
-    int     tbl_data_size = 0;
-    uint8_t tbl_insn[16];
-    int     tbl_insn_count = 0;
-    uint8_t orr_insn[16];
-    int     orr_insn_count = 0;
-    int     vtmp_count = 0;
-    for (int i = 0; i < write_bytes; i += vector_size) {
-        /* Calculate input vectors mask */
-        int vin_mask = 0;
-        for (int j = 0; j < vector_size; j++) {
-            int val = shuffle[i + j];
-            if (val != 0x80) {
-                int vin = (val >> 4);
-                vin_mask |= (1 << vin);
-            }
-        }
-        /* Populate tbl_data, tbl_insn, and orr_insn */
-        int tbl_count = 0;
-        int vout = (i >> 4);
-        for (int vin = 0; vin < 4; vin++) {
-            if (vin_mask & (1 << vin)) {
-                for (int j = 0; j < vector_size; j++) {
-                    int val = shuffle[i + j];
-                    if ((val >> 4) == vin) {
-                        val &= 0x0f;
-                    } else {
-                        val = 0x80;
-                    }
-                    tbl_data[tbl_data_size++] = val;
-                }
-                if (tbl_count++ == 0) {
-                    tbl_insn[tbl_insn_count++] = (vout << 4) | vin;
-                } else {
-                    size_t vtmp = vtmp_count++;
-                    tbl_insn[tbl_insn_count++] = 0x80 | (vtmp << 4) | vin;
-                    orr_insn[orr_insn_count++] = (vout << 4) | vtmp;
-                }
-            }
-        }
-    }
-    /* Emit tbl instructions */
-    size_t tbl_data_i = 0;
-    for (int i = 0; i < tbl_insn_count; i++) {
-        int vsrc = (tbl_insn[i] & 0x07);
-        int vdst = tbl_insn[i] >> 4;
-        if (vdst & 0x08) {
-            printf("tbl [vtmp %d][vin %d][vshuffle %d]", (vdst & 0x07), vsrc, i);
-        } else {
-            printf("tbl [vout %d][vin %d][vshuffle %d]", vdst, vsrc, i);
-        }
-        for (int j = 0; j < vector_size; j++)\
-            printf(" %02x", tbl_data[tbl_data_i++]);
-        printf("\n");
-    }
-    /* Emit orr instructions */
-    for (int i = 0; i < orr_insn_count; i++) {
-        int vsrc = (orr_insn[i] & 0x07);
-        int vdst = orr_insn[i] >> 4;
-        printf("orr [vout %d][vout %d][vtmp %d]\n", vdst, vdst, vsrc);
-    }
-#endif
-#if 1
+#if 0
     int tbl_vec_count = tbl_insn_count / vector_size;
     printf("block_size[%2d] tbl %2d orr %d read_bytes %d write_bytes %d tbl_vec_count %2d { ",
            tmp_block_size,
@@ -760,13 +695,27 @@ if (tmp_block_size >= 0) {
 #endif
 #if 0
     if (count_orr == 0) {
+#else
+    {
+#endif
         /* Reduce number of ops to 3, leaving read/xxx/write */
-        if (ops->num_ops > 3)
+        switch (ops->num_ops) {
+        case 2:
+            {
+                SwsOp dummy = { SWS_OP_INVALID };
+printf("ff_sws_op_list_insert_at\n");
+                ff_sws_op_list_insert_at(ops, 1, &dummy);
+            }
+            break;
+        case 3:
+            break;
+        default:
             ff_sws_op_list_remove_at(ops, 1, ops->num_ops - 3);
+            break;
+        }
         /* Read */
         SwsOp *read_op = &ops->ops[0];
         read_op->op = (SwsOpType) SWS_OP_AARCH64_READ_BYTES;
-        read_op->rw.packed = false;
         SwsReadWriteBytesOp *read_priv = (SwsReadWriteBytesOp *) &read_op->rw;
         read_priv->num_bytes = read_bytes;
         /* Shuffle */
@@ -778,12 +727,11 @@ if (tmp_block_size >= 0) {
         /* Write */
         SwsOp *write_op = &ops->ops[2];
         write_op->op = (SwsOpType) SWS_OP_AARCH64_WRITE_BYTES;
-        write_op->rw.packed = false;
         SwsReadWriteBytesOp *write_priv = (SwsReadWriteBytesOp *) &write_op->rw;
         write_priv->num_bytes = write_bytes;
+printf("return tmp_block_size\n");
         return tmp_block_size;
     }
-#endif
 }
 }
 
@@ -1724,75 +1672,83 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         break;
 
     case SWS_OP_AARCH64_READ_BYTES:
-        ctx->m_read_bytes = ((const SwsReadWriteBytesOp *)&op.rw)->num_bytes;
-        cc.comment("read_bytes");
-        /* Load input pointer in prologue */
-        ctx->to_prologue();
-        cc.comment("prologue (read_bytes)");
-        ctx->m_in[0] = cc.newGpz("in0");
+        {
+            const SwsReadWriteBytesOp *priv = (const SwsReadWriteBytesOp *) &op.rw;
+            ctx->m_read_bytes = priv->num_bytes / block_size;
+            cc.comment("read_bytes");
+            /* Load input pointer in prologue */
+            ctx->to_prologue();
+            cc.comment("prologue (read)");
+            ctx->m_in[0] = cc.newGpz("in0");
 #if 1
-        cc.virtRegByReg(ctx->m_in[0])->setHomeIdHint(REGID_IN);
+            cc.virtRegByReg(ctx->m_in[0])->setHomeIdHint(REGID_IN);
 #endif
-        cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
-        ctx->m_read_used[0] = true;
-        ctx->from_prologue();
-        /* Read vectors from input pointer */
-        for (int i = 0; i < ctx->m_read_bytes; i += 16) {
-            snprintf(cbuf, sizeof(cbuf), "vin%d", i);
-            vl[i] = cc.newVecQ(cbuf);
-        }
-        switch (ctx->m_read_bytes) {
-        case 16:
-            cc.ld1(vl[0].b16(),                                        a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
-            break;
-        case 32:
-            cc.ld1(vl[0].b16(), vl[1].b16(),                           a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
-            break;
-        case 48:
-            cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(),              a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
-            break;
-        case 64:
-            cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(), vl[3].b16(), a64::ptr(ctx->m_in[0]).post(ctx->m_read_bytes));
-            break;
+            cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
+            ctx->m_read_used[0] = true;
+            ctx->from_prologue();
+            /* Read vectors from input pointer */
+            for (int i = 0; i < priv->num_bytes; i += 16) {
+                int j = (i >> 4);
+                snprintf(cbuf, sizeof(cbuf), "vin%d", j);
+                vl[j] = cc.newVecQ(cbuf);
+            }
+            switch (priv->num_bytes) {
+            case 16:
+                cc.ld1(vl[0].b16(),                                        a64::ptr(ctx->m_in[0]).post(16));
+                break;
+            case 32:
+                cc.ld1(vl[0].b16(), vl[1].b16(),                           a64::ptr(ctx->m_in[0]).post(32));
+                break;
+            case 48:
+                cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(),              a64::ptr(ctx->m_in[0]).post(48));
+                break;
+            case 64:
+                cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(), vl[3].b16(), a64::ptr(ctx->m_in[0]).post(64));
+                break;
+            }
         }
         break;
 
     case SWS_OP_AARCH64_WRITE_BYTES:
-        ctx->m_write_bytes = ((const SwsReadWriteBytesOp *)&op.rw)->num_bytes;
-        cc.comment("write_bytes");
-        /* Load output pointer in prologue */
-        ctx->to_prologue();
-        cc.comment("prologue (write_bytes)");
-        ctx->m_out[0] = cc.newGpz("out0");
+        {
+            const SwsReadWriteBytesOp *priv = (const SwsReadWriteBytesOp *) &op.rw;
+            ctx->m_write_bytes = priv->num_bytes / block_size;
+            cc.comment("write_bytes");
+            /* Load output pointer in prologue */
+            ctx->to_prologue();
+            cc.comment("prologue (write)");
+            ctx->m_out[0] = cc.newGpz("out0");
 #if 1
-        cc.virtRegByReg(ctx->m_out[0])->setHomeIdHint(REGID_OUT);
+            cc.virtRegByReg(ctx->m_out[0])->setHomeIdHint(REGID_OUT);
 #endif
-        cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
-        ctx->m_write_used[0] = true;
-        ctx->from_prologue();
-        /* Write vectors to output pointer */
+            cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
+            ctx->m_write_used[0] = true;
+            ctx->from_prologue();
+            /* Write vectors to output pointer */
 #if 1
-        for (int i = 0; i < ctx->m_write_bytes; i += 16) {
-            cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i);
-        }
+            for (int i = 0; i < priv->num_bytes; i += 16) {
+                int j = (i >> 4);
+                cc.virtRegByReg(vh[j])->setHomeIdHint(REGID_VSTX + j);
+            }
 #endif
-        switch (ctx->m_write_bytes) {
-        case 16:
-            cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
-            break;
-        case 32:
-            cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
-            break;
-        case 48:
-            cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
-            break;
-        case 64:
-            cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
-            break;
-        case 96:
-            cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
-            cc.st1(vh[3].b16(), vh[4].b16(), vh[5].b16(),              a64::ptr(ctx->m_out[0]).post(ctx->m_write_bytes));
-            break;
+            switch (priv->num_bytes) {
+            case 16:
+                cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(16));
+                break;
+            case 32:
+                cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(32));
+                break;
+            case 48:
+                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(48));
+                break;
+            case 64:
+                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
+                break;
+            case 96:
+                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
+                cc.st1(vh[4].b16(), vh[5].b16(),                           a64::ptr(ctx->m_out[0]).post(32));
+                break;
+            }
         }
         break;
 
@@ -1800,45 +1756,136 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         {
             const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
             const uint8_t *shuffle = priv->data;
-            int size = priv->size;
-#if 0
-            /* Write const data after function */
-            std::vector<uint8_t> inout;
-            std::vector<uint8_t> data;
-            inout.resize(size >> 4);
-            data.resize(size);
-            Label ldata = ctx->emit_data(data.data(), data.size(), "tbl_array");
-            for (int i = 0; i < size; i += 16) {
-                int invec = 0;
-                for (int j = 0; j < 16; j++) {
+            int shuffle_size = priv->size;
+            int vector_size = 16;
+
+            uint8_t tbl_data[256];
+            int     tbl_data_size = 0;
+            uint8_t tbl_insn[16];
+            int     tbl_insn_count = 0;
+            uint8_t orr_insn[16];
+            int     orr_insn_count = 0;
+            int     vtmp_count = 0;
+            for (int i = 0; i < shuffle_size; i += vector_size) {
+                /* Calculate input vectors mask */
+                int vin_mask = 0;
+                for (int j = 0; j < vector_size; j++) {
                     int val = shuffle[i + j];
-                    if (val == 0x80) {
-                        data[i + j] = 0x80;
-                    } else {
-                        invec |= (val >> 4);
-                        data[i + j] &= (val & 0x0f);
+                    if (val != 0x80) {
+                        int vin = (val >> 4);
+                        vin_mask |= (1 << vin);
+                    }
+                }
+                /* Populate tbl_data, tbl_insn, and orr_insn */
+                int tbl_count = 0;
+                int vout = (i >> 4);
+                for (int vin = 0; vin < 4; vin++) {
+                    if (vin_mask & (1 << vin)) {
+                        for (int j = 0; j < vector_size; j++) {
+                            int val = shuffle[i + j];
+                            if ((val >> 4) == vin) {
+                                val &= 0x0f;
+                            } else {
+                                val = 0x80;
+                            }
+                            tbl_data[tbl_data_size++] = val;
+                        }
+                        if (tbl_count++ == 0) {
+                            tbl_insn[tbl_insn_count++] = (vout << 4) | vin;
+                        } else {
+                            size_t vtmp = vtmp_count++;
+                            tbl_insn[tbl_insn_count++] = 0x80 | (vtmp << 4) | vin;
+                            orr_insn[orr_insn_count++] = (vout << 4) | vtmp;
+                        }
                     }
                 }
             }
-#endif
-#if 0
-    int count_tbl = 0;
-    int count_orr = 0;
-    for (int i = 0; i < write_bytes; i += 16) {
-        int mask = 0;
-        for (int j = 0; j < 16; j++) {
-            int val = shuffle[i + j];
-            if (val != 0x80) {
-                int invec = (val >> 4);
-                mask |= (1 << invec);
+            /* Create output vectors */
+            int vout_count = shuffle_size / vector_size;
+// printf("vout_count %d\n", vout_count);
+            for (int i = 0; i < vout_count; i++) {
+                snprintf(cbuf, sizeof(cbuf), "vout%d", i);
+                vh[i] = cc.newVecQ(cbuf);
             }
-        }
-        int count = av_popcount(mask);
-        count_tbl += count;
-        if (count > 1)
-            count_orr++;
-    }
+            /* Create tbl data vectors */
+            std::vector<a64::Vec> vshuffle;
+            for (int i = 0; i < tbl_insn_count; i++) {
+                snprintf(cbuf, sizeof(cbuf), "vshuffle%d", i);
+                a64::Vec vreg = cc.newVecQ(cbuf);
+                vshuffle.push_back(vreg);
+            }
+            /* Create temporary vectors */
+            std::vector<a64::Vec> vtmp;
+            for (int i = 0; i < vtmp_count; i++) {
+                snprintf(cbuf, sizeof(cbuf), "vtmp%d", i);
+                a64::Vec vreg = cc.newVecQ(cbuf);
+                vtmp.push_back(vreg);
+            }
+            /* Write tbl data after function */
+            Label ldata = ctx->emit_data(tbl_data, tbl_data_size, "tbl_data_array");
+            /* Read tbl data into vectors (prologue) */
+            ctx->to_prologue();
+            a64::Gp ptr = cc.newGpz("tbl_data_ptr");
+            cc.comment("prologue (shuffle)");
+            cc.adr(ptr, ldata);
+            if (tbl_insn_count > 4) {
+                cc.ld1(vshuffle[0].b16(), vshuffle[1].b16(), vshuffle[2].b16(), vshuffle[3].b16(), a64::ptr(ptr).post(64));
+            } else {
+                switch (tbl_insn_count) {
+                case 1: cc.ld1(vshuffle[0].b16(),                                                          a64::ptr(ptr)); break;
+                case 2: cc.ld1(vshuffle[0].b16(), vshuffle[1].b16(),                                       a64::ptr(ptr)); break;
+                case 3: cc.ld1(vshuffle[0].b16(), vshuffle[1].b16(), vshuffle[2].b16(),                    a64::ptr(ptr)); break;
+                case 4: cc.ld1(vshuffle[0].b16(), vshuffle[1].b16(), vshuffle[2].b16(), vshuffle[3].b16(), a64::ptr(ptr)); break;
+                }
+            }
+            if (tbl_insn_count > 8) {
+                cc.ld1(vshuffle[4].b16(), vshuffle[5].b16(), vshuffle[6].b16(), vshuffle[7].b16(), a64::ptr(ptr).post(64));
+            } else {
+                switch (tbl_insn_count) {
+                case 5: cc.ld1(vshuffle[4].b16(),                                                          a64::ptr(ptr)); break;
+                case 6: cc.ld1(vshuffle[4].b16(), vshuffle[5].b16(),                                       a64::ptr(ptr)); break;
+                case 7: cc.ld1(vshuffle[4].b16(), vshuffle[5].b16(), vshuffle[6].b16(),                    a64::ptr(ptr)); break;
+                case 8: cc.ld1(vshuffle[4].b16(), vshuffle[5].b16(), vshuffle[6].b16(), vshuffle[7].b16(), a64::ptr(ptr)); break;
+                }
+            }
+            switch (tbl_insn_count) {
+            case  9: cc.ld1(vshuffle[8].b16(),                                                            a64::ptr(ptr)); break;
+            case 10: cc.ld1(vshuffle[8].b16(), vshuffle[9].b16(),                                         a64::ptr(ptr)); break;
+            case 11: cc.ld1(vshuffle[8].b16(), vshuffle[9].b16(), vshuffle[10].b16(),                     a64::ptr(ptr)); break;
+            case 12: cc.ld1(vshuffle[8].b16(), vshuffle[9].b16(), vshuffle[10].b16(), vshuffle[11].b16(), a64::ptr(ptr)); break;
+            }
+            ctx->from_prologue();
+            /* Emit tbl instructions */
+            cc.comment("shuffle");
+#if 0
+            size_t tbl_data_i = 0;
 #endif
+            for (int i = 0; i < tbl_insn_count; i++) {
+                int vsrc = (tbl_insn[i] & 0x07);
+                int vdst = tbl_insn[i] >> 4;
+                if (vdst & 0x08) {
+                    vdst &= 7;
+                    cc.tbl(vtmp[vdst].b16(), vl[vsrc].b16(), vshuffle[i].b16());
+//                    printf("tbl [vtmp %d][vin %d][vshuffle %d]", vdst, vsrc, i);
+                } else {
+                    cc.tbl(vh  [vdst].b16(), vl[vsrc].b16(), vshuffle[i].b16());
+//                    printf("tbl [vout %d][vin %d][vshuffle %d]", vdst, vsrc, i);
+                }
+#if 0
+                for (int j = 0; j < vector_size; j++)
+                    printf(" %02x", tbl_data[tbl_data_i++]);
+                printf("\n");
+#endif
+            }
+            /* Emit orr instructions */
+            for (int i = 0; i < orr_insn_count; i++) {
+                int vsrc = (orr_insn[i] & 0x07);
+                int vdst = orr_insn[i] >> 4;
+                cc.orr(vh[vdst].b16(), vh[vdst].b16(), vtmp[vsrc].b16());
+#if 0
+                printf("orr [vout %d][vout %d][vtmp %d]\n", vdst, vdst, vsrc);
+#endif
+            }
         }
         break;
 
