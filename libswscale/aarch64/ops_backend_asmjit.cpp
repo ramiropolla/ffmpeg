@@ -142,9 +142,9 @@ struct AsmJitContext {
             func_label_entry->_name.setData(&m_code._zone, m_func_name, strlen(m_func_name));
         }
         m_prologue = cc.firstNode()->next();
+        cc.comment("inner loop");
         m_tail = cc.cursor();
 #ifdef EMIT_BRK
-        cc.comment("make asmjit happy");
         to_prologue();
         cc.comment("breakpoint");
         cc.brk(0x0f00);
@@ -282,7 +282,7 @@ struct AsmJitContext {
                 case 2: cc.mov(tmp[i], m_imm[i].first & 0xffff); break;
                 case 4: cc.mov(tmp[i], m_imm[i].first         ); break;
                 }
-           }
+            }
         }
         /* Then load small immediates directly into vectors */
         for (size_t i = 0; i < size; i++) {
@@ -766,7 +766,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
         ctx->m_read_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
-        cc.comment("read");
         if (!op.rw.packed) {
             /* Load input pointers in prologue */
             ctx->to_prologue();
@@ -782,6 +781,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
             ctx->from_prologue();
             /* Read vectors from input pointers */
+            cc.comment("read");
             LOOP_OUT(i) {
                 new_vector(ctx, i, use_vh ? 0xff : 0x0f);
                 if (use_vh)
@@ -801,6 +801,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_read_used[0] = true;
             ctx->from_prologue();
             /* Read vectors from input pointer */
+            cc.comment("read");
             for (int i = 0; i < op.rw.elems; i++) {
                 new_vector(ctx, i, use_vh ? 0xff : 0x0f);
             }
@@ -833,7 +834,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         if (op.rw.frac)
             return AVERROR(ENOTSUP);
         ctx->m_write_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
-        cc.comment("write");
         if (!op.rw.packed) {
             /* Load output pointers in prologue */
             ctx->to_prologue();
@@ -848,6 +848,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 ctx->m_write_used[i] = true;
             }
             ctx->from_prologue();
+            cc.comment("write");
             /* Write vectors to output pointers */
             LOOP_IN(i) {
 #if 1
@@ -872,6 +873,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_write_used[0] = true;
             ctx->from_prologue();
             /* Write vectors to output pointer */
+            cc.comment("write");
 #if 1
             for (int i = 0; i < op.rw.elems; i++) {
                 cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + i);
@@ -1611,7 +1613,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Read */
             const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
             ctx->m_read_bytes = priv->read_bytes / block_size;
-            cc.comment("read_bytes");
             /* Load input pointer in prologue */
             ctx->to_prologue();
             cc.comment("prologue (read)");
@@ -1623,24 +1624,17 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_read_used[0] = true;
             ctx->from_prologue();
             /* Read vectors from input pointer */
+            cc.comment("read_bytes");
             for (int i = 0; i < priv->read_bytes; i += 16) {
                 int j = (i >> 4);
                 snprintf(cbuf, sizeof(cbuf), "vin%d", j);
                 vl[j] = cc.newVecQ(cbuf);
             }
             switch (priv->read_bytes) {
-            case 16:
-                cc.ld1(vl[0].b16(),                                        a64::ptr(ctx->m_in[0]).post(16));
-                break;
-            case 32:
-                cc.ld1(vl[0].b16(), vl[1].b16(),                           a64::ptr(ctx->m_in[0]).post(32));
-                break;
-            case 48:
-                cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(),              a64::ptr(ctx->m_in[0]).post(48));
-                break;
-            case 64:
-                cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(), vl[3].b16(), a64::ptr(ctx->m_in[0]).post(64));
-                break;
+            case 16: cc.ld1(vl[0].b16(),                                        a64::ptr(ctx->m_in[0]).post(16)); break;
+            case 32: cc.ld1(vl[0].b16(), vl[1].b16(),                           a64::ptr(ctx->m_in[0]).post(32)); break;
+            case 48: cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(),              a64::ptr(ctx->m_in[0]).post(48)); break;
+            case 64: cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(), vl[3].b16(), a64::ptr(ctx->m_in[0]).post(64)); break;
             }
 
             /* Shuffle */
@@ -1764,7 +1758,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 
             /* Write */
             ctx->m_write_bytes = priv->write_bytes / block_size;
-            cc.comment("write_bytes");
             /* Load output pointer in prologue */
             ctx->to_prologue();
             cc.comment("prologue (write)");
@@ -1776,6 +1769,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_write_used[0] = true;
             ctx->from_prologue();
             /* Write vectors to output pointer */
+            cc.comment("write_bytes");
 #if 1
             for (int i = 0; i < priv->write_bytes; i += 16) {
                 int j = (i >> 4);
@@ -1783,22 +1777,12 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
 #endif
             switch (priv->write_bytes) {
-            case 16:
-                cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(16));
-                break;
-            case 32:
-                cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(32));
-                break;
-            case 48:
-                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(48));
-                break;
-            case 64:
-                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
-                break;
-            case 96:
-                cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
-                cc.st1(vh[4].b16(), vh[5].b16(),                           a64::ptr(ctx->m_out[0]).post(32));
-                break;
+            case 16: cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(16)); break;
+            case 32: cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(32)); break;
+            case 48: cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(48)); break;
+            case 64: cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64)); break;
+            case 96: cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
+                     cc.st1(vh[4].b16(), vh[5].b16(),                           a64::ptr(ctx->m_out[0]).post(32)); break;
             }
         }
         break;
