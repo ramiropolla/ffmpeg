@@ -551,7 +551,7 @@ typedef struct VectorElementType {
         size = FFMIN(full_size, 16);
     }
 
-    a64::Vec operator()(const a64::Vec &vreg) const
+    a64::Vec type(const a64::Vec &vreg) const
     {
         switch ((m_fmt_size << 8) | size) {
         case 0x0110: return vreg.b16();
@@ -561,6 +561,11 @@ typedef struct VectorElementType {
         }
         printf("ERORROORORRORORO %d %d\n", m_fmt_size, size);
         return vreg.b16();
+    }
+
+    a64::Vec operator()(const a64::Vec &vreg) const
+    {
+        return type(vreg);
     }
 
     uint8_t m_fmt_size;
@@ -591,7 +596,7 @@ static inline void save_vectors_mask(AsmJitContext *ctx, uint32_t mask)
 static inline a64::Vec new_vector_vet(AsmJitContext *ctx, VectorElementType *vet, const char *name)
 {
     a64::Vec ret = ctx->m_cc->newVecQ(name);
-    return ret.b16();
+    return vet->type(ret);
 }
 
 static inline void new_vectors_mask(AsmJitContext *ctx, VectorElementType *vet, uint32_t mask)
@@ -782,9 +787,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             LOOP_OUT(i) {
                 new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
                 if (use_vh)
-                    cc.ld1(vet(vl[i]), vet(vh[i]), a64::ptr(ctx->m_in[i]).post(vet.size * 2));
+                    cc.ld1(vl[i], vh[i], a64::ptr(ctx->m_in[i]).post(vet.size * 2));
                 else
-                    cc.ld1(vet(vl[i]),             a64::ptr(ctx->m_in[i]).post(vet.size * 1));
+                    cc.ld1(vl[i],        a64::ptr(ctx->m_in[i]).post(vet.size * 1));
             }
         } else {
             /* Load input pointer in prologue */
@@ -805,24 +810,24 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             switch (op.rw.elems) {
             case 1:
                 if (use_vh)
-                    cc.ld1(vet(vl[0]), vet(vh[0]),                         a64::ptr(ctx->m_in[0]).post(vet.size * 2));
+                    cc.ld1(vl[0], vh[0],               a64::ptr(ctx->m_in[0]).post(vet.size * 2));
                 else
-                    cc.ld1(vet(vl[0]),                                     a64::ptr(ctx->m_in[0]).post(vet.size * 1));
+                    cc.ld1(vl[0],                      a64::ptr(ctx->m_in[0]).post(vet.size * 1));
                 break;
             case 2:
-                cc.ld2    (vet(vl[0]), vet(vl[1]),                         a64::ptr(ctx->m_in[0]).post(vet.size * 2));
+                cc.ld2    (vl[0], vl[1],               a64::ptr(ctx->m_in[0]).post(vet.size * 2));
                 if (use_vh)
-                    cc.ld2(vet(vh[0]), vet(vh[1]),                         a64::ptr(ctx->m_in[0]).post(vet.size * 2));
+                    cc.ld2(vh[0], vh[1],               a64::ptr(ctx->m_in[0]).post(vet.size * 2));
                 break;
             case 3:
-                cc.ld3    (vet(vl[0]), vet(vl[1]), vet(vl[2]),             a64::ptr(ctx->m_in[0]).post(vet.size * 3));
+                cc.ld3    (vl[0], vl[1], vl[2],        a64::ptr(ctx->m_in[0]).post(vet.size * 3));
                 if (use_vh)
-                    cc.ld3(vet(vh[0]), vet(vh[1]), vet(vh[2]),             a64::ptr(ctx->m_in[0]).post(vet.size * 3));
+                    cc.ld3(vh[0], vh[1], vh[2],        a64::ptr(ctx->m_in[0]).post(vet.size * 3));
                 break;
             case 4:
-                cc.ld4    (vet(vl[0]), vet(vl[1]), vet(vl[2]), vet(vl[3]), a64::ptr(ctx->m_in[0]).post(vet.size * 4));
+                cc.ld4    (vl[0], vl[1], vl[2], vl[3], a64::ptr(ctx->m_in[0]).post(vet.size * 4));
                 if (use_vh)
-                    cc.ld4(vet(vh[0]), vet(vh[1]), vet(vh[2]), vet(vh[3]), a64::ptr(ctx->m_in[0]).post(vet.size * 4));
+                    cc.ld4(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_in[0]).post(vet.size * 4));
                 break;
             }
         }
@@ -1003,7 +1008,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     if (next->op == SWS_OP_WRITE) {
                         /* TODO astmjit's register allocator sometimes fails, so we relieve some pressure */
                         new_vector(ctx, &vet, i, 0x0f);
-                        cc.mov(vet(vl[i]), vet(vimm[vidx]));
+                        cc.mov(vl[i], vet(vimm[vidx]));
                     } else {
                         vl[i] = vimm[vidx];
                     }
@@ -1040,9 +1045,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->new_step();
             LOOP_OUT(i) {
                 refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                cc.shl    (vet(vl[i]), vet(orig_vl[i]), op.c.u);
+                cc.shl    (vl[i], vet(orig_vl[i]), op.c.u);
                 if (use_vh)
-                    cc.shl(vet(vh[i]), vet(orig_vh[i]), op.c.u);
+                    cc.shl(vh[i], vet(orig_vh[i]), op.c.u);
             }
         } else {
             return AVERROR(ENOTSUP);
@@ -1054,9 +1059,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->new_step();
             LOOP_OUT(i) {
                 refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                cc.ushr    (vet(vl[i]), vet(orig_vl[i]), op.c.u);
+                cc.ushr    (vl[i], vet(orig_vl[i]), op.c.u);
                 if (use_vh)
-                    cc.ushr(vet(vh[i]), vet(orig_vh[i]), op.c.u);
+                    cc.ushr(vh[i], vet(orig_vh[i]), op.c.u);
             }
         } else {
             return AVERROR(ENOTSUP);
@@ -1440,9 +1445,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->new_step();
             LOOP_OUT(i) {
                 refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                cc.mul    (vet(vl[i]), vet(orig_vl[i]), vet(vimm[vidx]));
+                cc.mul    (vl[i], vet(orig_vl[i]), vet(vimm[vidx]));
                 if (use_vh)
-                    cc.mul(vet(vh[i]), vet(orig_vh[i]), vet(vimm[vidx]));
+                    cc.mul(vh[i], vet(orig_vh[i]), vet(vimm[vidx]));
             }
         }
         break;
@@ -1466,9 +1471,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 if (op.c.q4[i].den) {
                     size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
                     refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                    cc.umin    (vet(vl[i]), vet(orig_vl[i]), vet(vimm[vidx]));
+                    cc.umin    (vl[i], vet(orig_vl[i]), vet(vimm[vidx]));
                     if (use_vh)
-                        cc.umin(vet(vh[i]), vet(orig_vh[i]), vet(vimm[vidx]));
+                        cc.umin(vh[i], vet(orig_vh[i]), vet(vimm[vidx]));
                 }
             }
         }
