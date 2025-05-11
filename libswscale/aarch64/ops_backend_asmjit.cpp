@@ -1018,24 +1018,30 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
     case SWS_OP_CLEAR:           /* clear pixel values */
         /* Set vectors to constant value */
         if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
-            cc.comment("clear (integer)");
-            ctx->new_step();
-            for (int i = 0; i < 4; i++) {
-                if (op.c.q4[i].den) {
-                    size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
-#if 1
-                    if (next->op == SWS_OP_WRITE) {
-                        /* TODO astmjit's register allocator sometimes fails, so we relieve some pressure */
-                        new_vector(ctx, &vet, i, 0x0f);
-                        cc.mov(vl[i], vet.type(vimm[vidx]));
-                    } else {
-                        vl[i] = vimm[vidx];
+            if (next->op == SWS_OP_WRITE) {
+                ctx->to_setup();
+                cc.comment("clear (integer)");
+                ctx->new_step();
+                for (int i = 0; i < 4; i++) {
+                    if (op.c.q4[i].den) {
+                        size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
+                        new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
+                        cc.mov    (vl[i], vet.type(vimm[vidx]));
+                        if (use_vh)
+                            cc.mov(vh[i], vet.type(vimm[vidx]));
                     }
-#else
-                    vl[i] = vimm[vidx];
-#endif
-                    if (use_vh)
-                        vh[i] = vimm[vidx];
+                }
+                ctx->from_setup();
+            } else {
+                cc.comment("clear (integer)");
+                ctx->new_step();
+                for (int i = 0; i < 4; i++) {
+                    if (op.c.q4[i].den) {
+                        size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
+                        vl[i] = vimm[vidx];
+                        if (use_vh)
+                            vh[i] = vimm[vidx];
+                    }
                 }
             }
         } else if (op.type == SWS_PIXEL_F32) {
