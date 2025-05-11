@@ -100,7 +100,7 @@ struct AsmJitContext {
     a64::Vec m_src_vl[4];
     a64::Vec m_src_vh[4];
     a64::Vec m_vl[4];
-    a64::Vec m_vh[6];
+    a64::Vec m_vh[8];
     int m_vec_idx;
 
     a64::Gp m_x;
@@ -674,7 +674,7 @@ static int asmjit_optimize(SwsOpList *ops, int block_size)
     uint8_t shuffle[128];
     int read_bytes;
     int write_bytes;
-    int tmp_block_size = ff_sws_solve_shuffle(ops, shuffle, sizeof(shuffle), 16, 0x80, &read_bytes, &write_bytes);
+    int tmp_block_size = ff_sws_solve_shuffle(ops, shuffle, sizeof(shuffle), 16, 0x80, 0xff, &read_bytes, &write_bytes);
     if (tmp_block_size >= 0) {
         /* Overwrite ops->ops[0] with the shuffle data */
         SwsShuffleOp *priv = (SwsShuffleOp *) &ops->ops[0].rw;
@@ -1611,19 +1611,26 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             int shuffle_size = priv->size;
             int vector_size = 16;
 
-            uint8_t tbl_data[256];
-            int     tbl_data_size = 0;
-            uint8_t tbl_insn[16];
-            int     tbl_insn_count = 0;
-            uint8_t orr_insn[16];
-            int     orr_insn_count = 0;
-            int     vtmp_count = 0;
+            uint8_t  tbl_data[256];
+            int      tbl_data_size = 0;
+            uint16_t tbl_insn[16];
+            int      tbl_insn_count = 0;
+            uint16_t orr_insn[16];
+            int      orr_insn_count = 0;
+            uint8_t  const_data[128];
+            int      const_data_size = 0;
+            uint16_t const_insn[16];
+            int      const_insn_count = 0;
+            int      vtmp_count = 0;
             for (int i = 0; i < shuffle_size; i += vector_size) {
                 /* Calculate input vectors mask */
                 int vin_mask = 0;
+                bool const_used = false;
                 for (int j = 0; j < vector_size; j++) {
                     int val = shuffle[i + j];
-                    if (val != 0x80) {
+                    if (val == 0xff) {
+                        const_used = true;
+                    } else if (val != 0x80) {
                         int vin = (val >> 4);
                         vin_mask |= (1 << vin);
                     }
@@ -1635,10 +1642,10 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     if (vin_mask & (1 << vin)) {
                         for (int j = 0; j < vector_size; j++) {
                             int val = shuffle[i + j];
-                            if ((val >> 4) == vin) {
-                                val &= 0x0f;
-                            } else {
+                            if (val == 0x80 || val == 0xff || ((val >> 4) != vin)) {
                                 val = 0x80;
+                            } else {
+                                val &= 0x0f;
                             }
                             tbl_data[tbl_data_size++] = val;
                         }
@@ -1650,6 +1657,24 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                             orr_insn[orr_insn_count++] = (vout << 4) | vtmp;
                         }
                     }
+                }
+                /* Populate const_data and const_insn */
+                if (const_used) {
+                    int vsrc = (const_data_size >> 4);
+                    for (int j = 0; j < vector_size; j++) {
+                        int val = shuffle[i + j];
+                        if (val != 0xff)
+                            val = 0x00;
+                        const_data[const_data_size++] = val;
+                    }
+                    for (int j = 0; j < vsrc; j++) {
+                        if (memcmp(&const_data[j * vector_size], &const_data[vsrc * vector_size], vector_size) == 0) {
+                            const_data_size -= vector_size;
+                            vsrc = j;
+                            break;
+                        }
+                    }
+                    const_insn[const_insn_count++] = (vout << 4) | vsrc;
                 }
             }
             /* Create output vectors */
@@ -1665,6 +1690,13 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 a64::Vec vreg = cc.newVecQ(cbuf).b16();
                 vshuffle.push_back(vreg);
             }
+            /* Create const data vectors */
+            std::vector<a64::Vec> vconst;
+            for (int i = 0; i < const_insn_count; i++) {
+                snprintf(cbuf, sizeof(cbuf), "vconst%d", i);
+                a64::Vec vreg = cc.newVecQ(cbuf).b16();
+                vconst.push_back(vreg);
+            }
             /* Create temporary vectors */
             std::vector<a64::Vec> vtmp;
             for (int i = 0; i < vtmp_count; i++) {
@@ -1677,7 +1709,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Read tbl data into vectors (setup) */
             ctx->to_setup();
             a64::Gp ptr = cc.newGpz("tbl_data_ptr");
-            cc.comment("shuffle");
+            cc.comment("shuffle (tbl)");
             cc.adr(ptr, ldata);
             if (tbl_insn_count > 4) {
                 cc.ld1(vshuffle[0], vshuffle[1], vshuffle[2], vshuffle[3], a64::ptr(ptr).post(64));
@@ -1706,6 +1738,23 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             case 12: cc.ld1(vshuffle[8], vshuffle[9], vshuffle[10], vshuffle[11], a64::ptr(ptr)); break;
             }
             ctx->from_setup();
+            if (const_data_size) {
+                int vconst_count = (const_data_size >> 4);
+                /* Write const data after function */
+                Label ldata = ctx->emit_data(const_data, const_data_size, "const_data_array");
+                /* Read const data into vectors (setup) */
+                ctx->to_setup();
+                a64::Gp ptr = cc.newGpz("const_data_ptr");
+                cc.comment("shuffle (const)");
+                cc.adr(ptr, ldata);
+                switch (vconst_count) {
+                case 1: cc.ld1(vconst[0],                                  a64::ptr(ptr)); break;
+                case 2: cc.ld1(vconst[0], vconst[1],                       a64::ptr(ptr)); break;
+                case 3: cc.ld1(vconst[0], vconst[1], vconst[2],            a64::ptr(ptr)); break;
+                case 4: cc.ld1(vconst[0], vconst[1], vconst[2], vconst[3], a64::ptr(ptr)); break;
+                }
+                ctx->from_setup();
+            }
             /* Emit tbl instructions */
             cc.comment("shuffle");
             for (int i = 0; i < tbl_insn_count; i++) {
@@ -1723,6 +1772,12 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 int vsrc = (orr_insn[i] & 0x07);
                 int vdst = orr_insn[i] >> 4;
                 cc.orr(vh[vdst], vh[vdst], vtmp[vsrc]);
+            }
+            /* Emit orr instructions (const) */
+            for (int i = 0; i < const_insn_count; i++) {
+                int vsrc = (const_insn[i] & 0x07);
+                int vdst = const_insn[i] >> 4;
+                cc.orr(vh[vdst], vh[vdst], vconst[vsrc]);
             }
 
             /* Write */
@@ -1746,12 +1801,14 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
 #endif
             switch (priv->write_bytes) {
-            case 16: cc.st1(vh[0],                      a64::ptr(ctx->m_out[0]).post(16)); break;
-            case 32: cc.st1(vh[0], vh[1],               a64::ptr(ctx->m_out[0]).post(32)); break;
-            case 48: cc.st1(vh[0], vh[1], vh[2],        a64::ptr(ctx->m_out[0]).post(48)); break;
-            case 64: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64)); break;
-            case 96: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64));
-                     cc.st1(vh[4], vh[5],               a64::ptr(ctx->m_out[0]).post(32)); break;
+            case  16: cc.st1(vh[0],                      a64::ptr(ctx->m_out[0]).post(16)); break;
+            case  32: cc.st1(vh[0], vh[1],               a64::ptr(ctx->m_out[0]).post(32)); break;
+            case  48: cc.st1(vh[0], vh[1], vh[2],        a64::ptr(ctx->m_out[0]).post(48)); break;
+            case  64: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64)); break;
+            case  96: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64));
+                      cc.st1(vh[4], vh[5],               a64::ptr(ctx->m_out[0]).post(32)); break;
+            case 128: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64));
+                      cc.st1(vh[4], vh[5], vh[6], vh[7], a64::ptr(ctx->m_out[0]).post(64)); break;
             }
         }
         break;
