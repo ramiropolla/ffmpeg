@@ -1262,8 +1262,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_vec_idx++;
             LOOP_OUT(i) {
                 refresh_vector(ctx, i);
-                cc.fadd(vl[i].s4(), orig_vl[i].s4(), vet(vimm[vidx], op));
-                cc.fadd(vh[i].s4(), orig_vh[i].s4(), vet(vimm[vidx], op));
+                cc.fadd(vl[i].s4(), orig_vl[i].s4(), vimm[vidx].s4());
+                cc.fadd(vh[i].s4(), orig_vh[i].s4(), vimm[vidx].s4());
             }
         } else {
             cc.comment("dither");
