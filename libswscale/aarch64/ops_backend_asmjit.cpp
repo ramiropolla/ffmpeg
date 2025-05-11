@@ -563,11 +563,6 @@ typedef struct VectorElementType {
         return vreg.b16();
     }
 
-    a64::Vec operator()(const a64::Vec &vreg) const
-    {
-        return type(vreg);
-    }
-
     uint8_t m_fmt_size;
     uint8_t size;
 } VectorElementType;
@@ -577,7 +572,7 @@ static inline uint32_t mask_from_i(int i)
     return (1 << i) | (1 << (i + 4));
 }
 
-static inline void save_vectors_mask(AsmJitContext *ctx, uint32_t mask)
+static inline void save_vectors_mask(AsmJitContext *ctx, VectorElementType *vet, uint32_t mask)
 {
     a64::Vec *orig_vl = ctx->m_orig_vl;
     a64::Vec *orig_vh = ctx->m_orig_vh;
@@ -585,10 +580,10 @@ static inline void save_vectors_mask(AsmJitContext *ctx, uint32_t mask)
     a64::Vec *vh = ctx->m_vh;
     for (int i = 0; i < 4; i++) {
         if (mask & (1 << i)) {
-            orig_vl[i] = vl[i];
+            orig_vl[i] = vet->type(vl[i]);
         }
         if (mask & (1 << (i + 4))) {
-            orig_vh[i] = vh[i];
+            orig_vh[i] = vet->type(vh[i]);
         }
     }
 }
@@ -622,16 +617,16 @@ static inline void new_vector(AsmJitContext *ctx, VectorElementType *vet, int i,
     new_vectors_mask(ctx, vet, mask);
 }
 
-static inline void save_vector(AsmJitContext *ctx, int i, int mask = 0xff)
+static inline void save_vector(AsmJitContext *ctx, VectorElementType *vet, int i, int mask = 0xff)
 {
     mask &= mask_from_i(i);
-    save_vectors_mask(ctx, mask);
+    save_vectors_mask(ctx, vet, mask);
 }
 
 static inline void refresh_vector(AsmJitContext *ctx, VectorElementType *vet, int i, int mask = 0xff)
 {
     mask &= mask_from_i(i);
-    save_vectors_mask(ctx, mask);
+    save_vectors_mask(ctx, vet, mask);
     new_vectors_mask(ctx, vet, mask);
 }
 
@@ -858,10 +853,11 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 if (use_vh)
                     cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + (i * 2) + 1);
 #endif
+                save_vector(ctx, &vet, i);
                 if (use_vh)
-                    cc.st1(vet(vl[i]), vet(vh[i]), a64::ptr(ctx->m_out[i]).post(vet.size * 2));
+                    cc.st1(orig_vl[i], orig_vh[i], a64::ptr(ctx->m_out[i]).post(vet.size * 2));
                 else
-                    cc.st1(vet(vl[i]),             a64::ptr(ctx->m_out[i]).post(vet.size * 1));
+                    cc.st1(orig_vl[i],             a64::ptr(ctx->m_out[i]).post(vet.size * 1));
             }
         } else {
             /* Load output pointer in prologue */
@@ -883,27 +879,30 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i + 4);
             }
 #endif
+            for (int i = 0; i < op.rw.elems; i++) {
+                save_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
+            }
             switch (op.rw.elems) {
             case 1:
                 if (use_vh)
-                    cc.st1(vet(vl[0]), vet(vh[0]),                         a64::ptr(ctx->m_out[0]).post(vet.size * 2));
+                    cc.st1(orig_vl[0], orig_vh[0],                         a64::ptr(ctx->m_out[0]).post(vet.size * 2));
                 else
-                    cc.st1(vet(vl[0]),                                     a64::ptr(ctx->m_out[0]).post(vet.size * 1));
+                    cc.st1(orig_vl[0],                                     a64::ptr(ctx->m_out[0]).post(vet.size * 1));
                 break;
             case 2:
-                cc.st2    (vet(vl[0]), vet(vl[1]),                         a64::ptr(ctx->m_out[0]).post(vet.size * 2));
+                cc.st2    (orig_vl[0], orig_vl[1],                         a64::ptr(ctx->m_out[0]).post(vet.size * 2));
                 if (use_vh)
-                    cc.st2(vet(vh[0]), vet(vh[1]),                         a64::ptr(ctx->m_out[0]).post(vet.size * 2));
+                    cc.st2(orig_vh[0], orig_vh[1],                         a64::ptr(ctx->m_out[0]).post(vet.size * 2));
                 break;
             case 3:
-                cc.st3    (vet(vl[0]), vet(vl[1]), vet(vl[2]),             a64::ptr(ctx->m_out[0]).post(vet.size * 3));
+                cc.st3    (orig_vl[0], orig_vl[1], orig_vl[2],             a64::ptr(ctx->m_out[0]).post(vet.size * 3));
                 if (use_vh)
-                    cc.st3(vet(vh[0]), vet(vh[1]), vet(vh[2]),             a64::ptr(ctx->m_out[0]).post(vet.size * 3));
+                    cc.st3(orig_vh[0], orig_vh[1], orig_vh[2],             a64::ptr(ctx->m_out[0]).post(vet.size * 3));
                 break;
             case 4:
-                cc.st4    (vet(vl[0]), vet(vl[1]), vet(vl[2]), vet(vl[3]), a64::ptr(ctx->m_out[0]).post(vet.size * 4));
+                cc.st4    (orig_vl[0], orig_vl[1], orig_vl[2], orig_vl[3], a64::ptr(ctx->m_out[0]).post(vet.size * 4));
                 if (use_vh)
-                    cc.st4(vet(vh[0]), vet(vh[1]), vet(vh[2]), vet(vh[3]), a64::ptr(ctx->m_out[0]).post(vet.size * 4));
+                    cc.st4(orig_vh[0], orig_vh[1], orig_vh[2], orig_vh[3], a64::ptr(ctx->m_out[0]).post(vet.size * 4));
                 break;
             }
         }
@@ -939,7 +938,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             };
 
             cc.comment("unpack");
-            save_vector(ctx, 0);
+            save_vector(ctx, &vet, 0);
             ctx->new_step();
             LOOP_OUT(i) {
                 if (!offsets[i]) {
@@ -949,9 +948,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                         vh[i] = orig_vh[0];
                 } else {
                     new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                    cc.ushr    (vet(vl[i]), vet(orig_vl[0]), offsets[i]);
+                    cc.ushr    (vl[i], orig_vl[0], offsets[i]);
                     if (use_vh)
-                        cc.ushr(vet(vh[i]), vet(orig_vh[0]), offsets[i]);
+                        cc.ushr(vh[i], orig_vh[0], offsets[i]);
                 }
             }
             ctx->new_step();
@@ -979,9 +978,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             LOOP_IN(i) {
                 if (offsets[i]) {
                     refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                    cc.shl    (vet(vl[i]), vet(orig_vl[i]), offsets[i]);
+                    cc.shl    (vl[i], orig_vl[i], offsets[i]);
                     if (use_vh)
-                        cc.shl(vet(vh[i]), vet(orig_vh[i]), offsets[i]);
+                        cc.shl(vh[i], orig_vh[i], offsets[i]);
                 }
             }
             ctx->new_step();
@@ -1008,7 +1007,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     if (next->op == SWS_OP_WRITE) {
                         /* TODO astmjit's register allocator sometimes fails, so we relieve some pressure */
                         new_vector(ctx, &vet, i, 0x0f);
-                        cc.mov(vl[i], vet(vimm[vidx]));
+                        cc.mov(vl[i], vet.type(vimm[vidx]));
                     } else {
                         vl[i] = vimm[vidx];
                     }
@@ -1045,9 +1044,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->new_step();
             LOOP_OUT(i) {
                 refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                cc.shl    (vl[i], vet(orig_vl[i]), op.c.u);
+                cc.shl    (vl[i], orig_vl[i], op.c.u);
                 if (use_vh)
-                    cc.shl(vh[i], vet(orig_vh[i]), op.c.u);
+                    cc.shl(vh[i], orig_vh[i], op.c.u);
             }
         } else {
             return AVERROR(ENOTSUP);
@@ -1059,9 +1058,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->new_step();
             LOOP_OUT(i) {
                 refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                cc.ushr    (vl[i], vet(orig_vl[i]), op.c.u);
+                cc.ushr    (vl[i], orig_vl[i], op.c.u);
                 if (use_vh)
-                    cc.ushr(vh[i], vet(orig_vh[i]), op.c.u);
+                    cc.ushr(vh[i], orig_vh[i], op.c.u);
             }
         } else {
             return AVERROR(ENOTSUP);
@@ -1082,7 +1081,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
 
             LOOP_IN(i) {
-                save_vector(ctx, i);
+                save_vector(ctx, &vet, i);
             }
             if (reorder) {
                 cc.comment("swizzle (reorder)");
@@ -1121,7 +1120,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 if (from_size == 1) {
                     ctx->new_step();
                     LOOP_OUT(i) {
-                        save_vector(ctx, i, 0x0f);
+                        save_vector(ctx, &vet, i, 0x0f);
                         new_vector(ctx, &vet, i, (block_size == 16) ? 0xff : 0x0f);
                         cc.zip1    (vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                         if (block_size == 16)
@@ -1131,7 +1130,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 if (to_size == 4) {
                     ctx->new_step();
                     LOOP_OUT(i) {
-                        save_vector(ctx, i, 0x0f);
+                        save_vector(ctx, &vet, i, 0x0f);
                         new_vector(ctx, &vet, i);
                         cc.zip1(vl[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
                         cc.zip2(vh[i].b16(), orig_vl[i].b16(), orig_vl[i].b16());
@@ -1171,7 +1170,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     if        (from_size == 2 && to_size == 4) {
                         ctx->new_step();
                         LOOP_OUT(i) {
-                            save_vector(ctx, i, 0x0f);
+                            save_vector(ctx, &vet, i, 0x0f);
                             new_vector(ctx, &vet, i);
                             cc.uxtl (vl[i].s4(), orig_vl[i].h4());
                             cc.uxtl2(vh[i].s4(), orig_vl[i].h8());
@@ -1189,7 +1188,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     if        (from_size == 1 && to_size == 2) {
                         ctx->new_step();
                         LOOP_OUT(i) {
-                            save_vector(ctx, i, 0x0f);
+                            save_vector(ctx, &vet, i, 0x0f);
                             new_vector(ctx, &vet, i);
                             cc.uxtl (vl[i].h8(), orig_vl[i].b8());
                             cc.uxtl2(vh[i].h8(), orig_vl[i].b16());
@@ -1359,7 +1358,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Do the salmon dance */
             cc.comment("linear");
             LOOP_IN(i) {
-                save_vector(ctx, i);
+                save_vector(ctx, &vet, i);
             }
             ctx->new_step();
             LOOP_ARRAY(i, used) {
@@ -1445,9 +1444,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->new_step();
             LOOP_OUT(i) {
                 refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                cc.mul    (vl[i], vet(orig_vl[i]), vet(vimm[vidx]));
+                cc.mul    (vl[i], orig_vl[i], vet.type(vimm[vidx]));
                 if (use_vh)
-                    cc.mul(vh[i], vet(orig_vh[i]), vet(vimm[vidx]));
+                    cc.mul(vh[i], orig_vh[i], vet.type(vimm[vidx]));
             }
         }
         break;
@@ -1471,9 +1470,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 if (op.c.q4[i].den) {
                     size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
                     refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                    cc.umin    (vl[i], vet(orig_vl[i]), vet(vimm[vidx]));
+                    cc.umin    (vl[i], orig_vl[i], vet.type(vimm[vidx]));
                     if (use_vh)
-                        cc.umin(vh[i], vet(orig_vh[i]), vet(vimm[vidx]));
+                        cc.umin(vh[i], orig_vh[i], vet.type(vimm[vidx]));
                 }
             }
         }
@@ -1509,7 +1508,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 size_t vidx = ctx->push_imm8(0);
                 ctx->new_step();
                 LOOP_OUT(i) {
-                    save_vector(ctx, i, 0x0f);
+                    save_vector(ctx, &vet, i, 0x0f);
                     new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
                     cc.zip1    (vl[i].b16(), vimm[vidx].b16(), orig_vl[i].b16());
                     if (use_vh)
@@ -1518,7 +1517,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             } else /* if (priv->lshift < 8) */ {
                 ctx->new_step();
                 LOOP_OUT(i) {
-                    save_vector(ctx, i, 0x0f);
+                    save_vector(ctx, &vet, i, 0x0f);
                     new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
                     cc.ushll     (vl[i].h8(), orig_vl[i].b8(),  priv->lshift);
                     if (use_vh)
