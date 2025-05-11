@@ -1032,8 +1032,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             for (int i = 0; i < 4; i++) {
                 if (op.c.q4[i].den) {
                     new_vector(ctx, &vet, i);
-                    cc.dup(vl[i].s4(), ctx->vdata(vpos[i]));
-                    cc.dup(vh[i].s4(), ctx->vdata(vpos[i]));
+                    cc.dup(vl[i], ctx->vdata(vpos[i]));
+                    cc.dup(vh[i], ctx->vdata(vpos[i]));
                 }
             }
         }
@@ -1225,8 +1225,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->new_step();
             LOOP_OUT(i) {
                 refresh_vector(ctx, &vet, i);
-                cc.fadd(vl[i].s4(), src_vl[i].s4(), vimm[vidx].s4());
-                cc.fadd(vh[i].s4(), src_vh[i].s4(), vimm[vidx].s4());
+                cc.fadd(vl[i], src_vl[i], vet.type(vimm[vidx]));
+                cc.fadd(vh[i], src_vh[i], vet.type(vimm[vidx]));
             }
         } else {
             cc.comment("dither");
@@ -1262,8 +1262,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             LOOP_OUT(i) {
                 // offset = ((((y + yoff[i]) & mask) << log2_size) + (x & mask)) * sizeof(float32);
 
-                a64::Vec dither_vl = cc.newVecQ("vditherl");
-                a64::Vec dither_vh = cc.newVecQ("vditherh");
+                a64::Vec dither_vl = vet.type(cc.newVecQ("vditherl"));
+                a64::Vec dither_vh = vet.type(cc.newVecQ("vditherh"));
 
                 if (last_y_off < 0) {
                     /* On the first run, calculate pointer inside dither_matrix */
@@ -1301,12 +1301,12 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 }
                 last_y_off = y_off[i];
 
-                cc.ld1(dither_vl.s4(), dither_vh.s4(), a64::ptr(ptr));
+                cc.ld1(dither_vl, dither_vh, a64::ptr(ptr));
                 last_use_of_ptr = cc.cursor();
 
                 refresh_vector(ctx, &vet, i);
-                cc.fadd(vl[i].s4(), src_vl[i].s4(), dither_vl.s4());
-                cc.fadd(vh[i].s4(), src_vh[i].s4(), dither_vh.s4());
+                cc.fadd(vl[i], src_vl[i], dither_vl);
+                cc.fadd(vh[i], src_vh[i], dither_vh);
             }
         }
         break;
@@ -1369,11 +1369,11 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     if (vidx != -1) {
                         if (j == 0) {
                             /* offset */
-                            cc.dup(vl[i].s4(), ctx->vdata(vidx));
-                            cc.dup(vh[i].s4(), ctx->vdata(vidx));
+                            cc.dup(vl[i], ctx->vdata(vidx));
+                            cc.dup(vh[i], ctx->vdata(vidx));
                         } else {
-                            cc.fmul(vl[i].s4(), src_vl[sj].s4(), ctx->vdata(vidx));
-                            cc.fmul(vh[i].s4(), src_vh[sj].s4(), ctx->vdata(vidx));
+                            cc.fmul(vl[i], src_vl[sj], ctx->vdata(vidx));
+                            cc.fmul(vh[i], src_vh[sj], ctx->vdata(vidx));
                         }
                         break;
                     }
@@ -1390,8 +1390,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                         int sj = fdata_swizzle[j];
                         int vidx = vpos[i][sj];
                         if (vidx != -1 && count++ > k) {
-                            cc.fmla(vl[i].s4(), src_vl[sj].s4(), ctx->vdata(vidx));
-                            cc.fmla(vh[i].s4(), src_vh[sj].s4(), ctx->vdata(vidx));
+                            cc.fmla(vl[i], src_vl[sj], ctx->vdata(vidx));
+                            cc.fmla(vh[i], src_vh[sj], ctx->vdata(vidx));
                             break;
                         }
                     }
@@ -1407,7 +1407,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     int sj = fdata_swizzle[j];
                     int vidx = vpos[i][sj];
                     if (vidx != -1 && count++ != 0) {
-                        cc.fmla(vl[i].s4(), src_vl[sj].s4(), ctx->vdata(vidx));
+                        cc.fmla(vl[i], src_vl[sj], ctx->vdata(vidx));
                     }
                 }
                 count = 0;
@@ -1415,7 +1415,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     int sj = fdata_swizzle[j];
                     int vidx = vpos[i][sj];
                     if (vidx != -1 && count++ != 0) {
-                        cc.fmla(vh[i].s4(), src_vh[sj].s4(), ctx->vdata(vidx));
+                        cc.fmla(vh[i], src_vh[sj], ctx->vdata(vidx));
                     }
                 }
             }
@@ -1432,8 +1432,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->new_step();
             LOOP_OUT(i) {
                 refresh_vector(ctx, &vet, i);
-                cc.fmul(vl[i].s4(), src_vl[i].s4(), ctx->vdata(vidx));
-                cc.fmul(vh[i].s4(), src_vh[i].s4(), ctx->vdata(vidx));
+                cc.fmul(vl[i], src_vl[i], ctx->vdata(vidx));
+                cc.fmul(vh[i], src_vh[i], ctx->vdata(vidx));
             }
         } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
             /* Add immediate */
@@ -1458,9 +1458,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 if (op.c.q4[i].den) {
                     size_t vidx = ctx->push_immq(op.c.q4[i]);
                     refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                    cc.fmin    (vl[i].s4(), src_vl[i].s4(), vimm[vidx].s4());
+                    cc.fmin    (vl[i], src_vl[i], vet.type(vimm[vidx]));
                     if (use_vh)
-                        cc.fmin(vh[i].s4(), src_vh[i].s4(), vimm[vidx].s4());
+                        cc.fmin(vh[i], src_vh[i], vet.type(vimm[vidx]));
                 }
             }
         } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
@@ -1485,9 +1485,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             LOOP_OUT(i) {
                 if (op.c.q4[i].den) {
                     refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                    cc.fmax    (vl[i].s4(), src_vl[i].s4(), vimm[vidx].s4());
+                    cc.fmax    (vl[i], src_vl[i], vet.type(vimm[vidx]));
                     if (use_vh)
-                        cc.fmax(vh[i].s4(), src_vh[i].s4(), vimm[vidx].s4());
+                        cc.fmax(vh[i], src_vh[i], vet.type(vimm[vidx]));
                 }
             }
         } else {
