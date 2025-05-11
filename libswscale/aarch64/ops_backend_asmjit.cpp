@@ -61,6 +61,18 @@ extern "C" {
 /* vdata: 28, 29, 30, 31 */
 #define REGID_VDATA  28
 
+/* Vector registers (shuffle) */
+/* vout: 0, 1, 2, 3, 4, 5, 6, 7 */
+#define REGID_VSHUFFLE_OUT    0
+/* vtmp: 8, 9, 10, 11 */
+#define REGID_VSHUFFLE_TMP    8
+/* vin: 16, 17, 18, 19 */
+#define REGID_VSHUFFLE_IN    16
+/* vshuffle: 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30 */
+#define REGID_VSHUFFLE_TBL   20
+/* vconst: 31 */
+#define REGID_VSHUFFLE_CONST 31
+
 /* returns log2(x) only if x is a power of two, or 0 otherwise */
 static int exact_log2(const int x)
 {
@@ -751,6 +763,24 @@ retry:
     }
 
     return block_size;
+}
+
+static int vreg_free(uint32_t *ptr, int n)
+{
+    uint32_t vreg_available = *ptr;
+    uint32_t mask = 0;
+    for (int i = 0; i < n; i++) {
+        mask |= (1 << i);
+    }
+    for (int i = 0; i < 32; i++) {
+        if ((mask & vreg_available) == mask) {
+            vreg_available &= ~mask;
+            *ptr = vreg_available;
+            return i;
+        }
+        mask <<= 1;
+    }
+    return -1;
 }
 
 static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
@@ -1579,38 +1609,12 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 
     case SWS_OP_AARCH64_SHUFFLE_BYTES:
         {
-            /* Read */
             const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
-            ctx->m_read_bytes = priv->read_bytes / block_size;
-            /* Load input pointer in setup */
-            ctx->to_setup();
-            cc.comment("read");
-            ctx->m_in[0] = cc.newGpz("in0");
-#if 1
-            cc.virtRegByReg(ctx->m_in[0])->setHomeIdHint(REGID_IN);
-#endif
-            cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
-            ctx->m_read_used[0] = true;
-            ctx->from_setup();
-            /* Read vectors from input pointer */
-            cc.comment("read_bytes");
-            for (int i = 0; i < priv->read_bytes; i += 16) {
-                int j = (i >> 4);
-                snprintf(cbuf, sizeof(cbuf), "vin%d", j);
-                vl[j] = cc.newVecQ(cbuf).b16();
-            }
-            switch (priv->read_bytes) {
-            case 16: cc.ld1(vl[0],                      a64::ptr(ctx->m_in[0]).post(16)); break;
-            case 32: cc.ld1(vl[0], vl[1],               a64::ptr(ctx->m_in[0]).post(32)); break;
-            case 48: cc.ld1(vl[0], vl[1], vl[2],        a64::ptr(ctx->m_in[0]).post(48)); break;
-            case 64: cc.ld1(vl[0], vl[1], vl[2], vl[3], a64::ptr(ctx->m_in[0]).post(64)); break;
-            }
-
-            /* Shuffle */
             const uint8_t *shuffle = priv->data;
             int shuffle_size = priv->size;
             int vector_size = 16;
 
+            /* Prepare instructions */
             uint8_t  tbl_data[256];
             int      tbl_data_size = 0;
             uint16_t tbl_insn[16];
@@ -1677,33 +1681,105 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     const_insn[const_insn_count++] = (vout << 4) | vsrc;
                 }
             }
-            /* Create output vectors */
+
+            /* Create input vectors */
+            int vin_count = (priv->read_bytes >> 4);
             int vout_count = shuffle_size / vector_size;
+            int vconst_count = (const_data_size >> 4);
+#if 1
+            uint32_t vreg_available = 0xffff00ff;
+            int regid_vshuffle_tbl   = vreg_free(&vreg_available, tbl_insn_count);
+            int regid_vshuffle_out   = vreg_free(&vreg_available, vout_count);
+            int regid_vshuffle_in    = vreg_free(&vreg_available, vin_count);
+            int regid_vshuffle_const = vreg_free(&vreg_available, vconst_count);
+#endif
+            for (int i = 0; i < vin_count; i++) {
+#if 0
+                snprintf(cbuf, sizeof(cbuf), "vin%d", i);
+                vl[i] = cc.newVecQ(cbuf).b16();
+#if 1
+                cc.virtRegByReg(vl[i])->setHomeIdHint(regid_vshuffle_in + i);
+#endif
+#endif
+                vl[i] = a64::VecV(regid_vshuffle_in + i).b16();
+            }
+            /* Create output vectors */
             for (int i = 0; i < vout_count; i++) {
+#if 0
                 snprintf(cbuf, sizeof(cbuf), "vout%d", i);
                 vh[i] = cc.newVecQ(cbuf).b16();
+#if 1
+                cc.virtRegByReg(vh[i])->setHomeIdHint(regid_vshuffle_out + i);
+#endif
+#endif
+                vh[i] = a64::VecV(regid_vshuffle_out + i).b16();
             }
             /* Create tbl data vectors */
             std::vector<a64::Vec> vshuffle;
             for (int i = 0; i < tbl_insn_count; i++) {
+#if 0
                 snprintf(cbuf, sizeof(cbuf), "vshuffle%d", i);
                 a64::Vec vreg = cc.newVecQ(cbuf).b16();
+                vshuffle.push_back(vreg);
+#if 1
+                cc.virtRegByReg(vreg)->setHomeIdHint(regid_vshuffle_tbl + i);
+#endif
+#else
+#endif
+                a64::Vec vreg = a64::VecV(regid_vshuffle_tbl + i).b16();
                 vshuffle.push_back(vreg);
             }
             /* Create const data vectors */
             std::vector<a64::Vec> vconst;
-            for (int i = 0; i < const_insn_count; i++) {
+            for (int i = 0; i < vconst_count; i++) {
+#if 0
                 snprintf(cbuf, sizeof(cbuf), "vconst%d", i);
                 a64::Vec vreg = cc.newVecQ(cbuf).b16();
+                vconst.push_back(vreg);
+#if 1
+                cc.virtRegByReg(vreg)->setHomeIdHint(regid_vshuffle_const + i);
+#endif
+#endif
+                a64::Vec vreg = a64::VecV(regid_vshuffle_const + i).b16();
                 vconst.push_back(vreg);
             }
             /* Create temporary vectors */
             std::vector<a64::Vec> vtmp;
             for (int i = 0; i < vtmp_count; i++) {
+#if 0
                 snprintf(cbuf, sizeof(cbuf), "vtmp%d", i);
                 a64::Vec vreg = cc.newVecQ(cbuf).b16();
                 vtmp.push_back(vreg);
+#if 1
+                cc.virtRegByReg(vreg)->setHomeIdHint(vreg_free(&vreg_available, 1));
+#endif
+#endif
+                a64::Vec vreg = a64::VecV(vreg_free(&vreg_available, 1)).b16();
+                vtmp.push_back(vreg);
             }
+
+            /* Read */
+            ctx->m_read_bytes = priv->read_bytes / block_size;
+            /* Load input pointer in setup */
+            ctx->to_setup();
+            cc.comment("read");
+            ctx->m_in[0] = cc.newGpz("in0");
+#if 1
+            cc.virtRegByReg(ctx->m_in[0])->setHomeIdHint(REGID_IN);
+#endif
+            cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
+            ctx->m_read_used[0] = true;
+            ctx->from_setup();
+            /* Read vectors from input pointer */
+            cc.comment("read_bytes");
+            switch (priv->read_bytes) {
+            case 16: cc.ld1(vl[0],                      a64::ptr(ctx->m_in[0]).post(16)); break;
+            case 32: cc.ld1(vl[0], vl[1],               a64::ptr(ctx->m_in[0]).post(32)); break;
+            case 48: cc.ld1(vl[0], vl[1], vl[2],        a64::ptr(ctx->m_in[0]).post(48)); break;
+            case 64: cc.ld1(vl[0], vl[1], vl[2], vl[3], a64::ptr(ctx->m_in[0]).post(64)); break;
+            }
+
+            /* Shuffle */
             /* Write tbl data after function */
             Label ldata = ctx->emit_data(tbl_data, tbl_data_size, "tbl_data_array");
             /* Read tbl data into vectors (setup) */
@@ -1734,12 +1810,13 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             switch (tbl_insn_count) {
             case  9: cc.ld1(vshuffle[8],                                          a64::ptr(ptr)); break;
             case 10: cc.ld1(vshuffle[8], vshuffle[9],                             a64::ptr(ptr)); break;
+#if 0
             case 11: cc.ld1(vshuffle[8], vshuffle[9], vshuffle[10],               a64::ptr(ptr)); break;
             case 12: cc.ld1(vshuffle[8], vshuffle[9], vshuffle[10], vshuffle[11], a64::ptr(ptr)); break;
+#endif
             }
             ctx->from_setup();
-            if (const_data_size) {
-                int vconst_count = (const_data_size >> 4);
+            if (vconst_count) {
                 /* Write const data after function */
                 Label ldata = ctx->emit_data(const_data, const_data_size, "const_data_array");
                 /* Read const data into vectors (setup) */
@@ -1749,9 +1826,11 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 cc.adr(ptr, ldata);
                 switch (vconst_count) {
                 case 1: cc.ld1(vconst[0],                                  a64::ptr(ptr)); break;
+#if 0
                 case 2: cc.ld1(vconst[0], vconst[1],                       a64::ptr(ptr)); break;
                 case 3: cc.ld1(vconst[0], vconst[1], vconst[2],            a64::ptr(ptr)); break;
                 case 4: cc.ld1(vconst[0], vconst[1], vconst[2], vconst[3], a64::ptr(ptr)); break;
+#endif
                 }
                 ctx->from_setup();
             }
@@ -1794,12 +1873,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->from_setup();
             /* Write vectors to output pointer */
             cc.comment("write_bytes");
-#if 1
-            for (int i = 0; i < priv->write_bytes; i += 16) {
-                int j = (i >> 4);
-                cc.virtRegByReg(vh[j])->setHomeIdHint(REGID_VSTX + j);
-            }
-#endif
             switch (priv->write_bytes) {
             case  16: cc.st1(vh[0],                      a64::ptr(ctx->m_out[0]).post(16)); break;
             case  32: cc.st1(vh[0], vh[1],               a64::ptr(ctx->m_out[0]).post(32)); break;
