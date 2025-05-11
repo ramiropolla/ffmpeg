@@ -90,6 +90,7 @@ struct AsmJitContext {
 
     FuncNode *m_func;
     BaseNode *m_prologue;
+    BaseNode *m_setup;
     BaseNode *m_tail;
     a64::Gp m_exec;
     a64::Gp m_num_blocks;
@@ -147,8 +148,11 @@ struct AsmJitContext {
                      av_get_pix_fmt_name(ops->dst.format));
             func_label_entry->_name.setData(&m_code._zone, m_func_name, strlen(m_func_name));
         }
-        m_prologue = cc.firstNode()->next();
-        cc.comment("inner loop");
+        cc.comment("=> prologue");
+        m_prologue = cc.cursor();
+        cc.comment("=> setup");
+        m_setup = cc.cursor();
+        cc.comment("=> inner loop");
         m_tail = cc.cursor();
 #ifdef EMIT_BRK
         to_prologue();
@@ -197,6 +201,18 @@ struct AsmJitContext {
     {
         a64::Compiler &cc = *m_cc;
         m_prologue = cc.setCursor(m_tail);
+    }
+
+    void to_setup(void)
+    {
+        a64::Compiler &cc = *m_cc;
+        m_tail = cc.setCursor(m_setup);
+    }
+
+    void from_setup(void)
+    {
+        a64::Compiler &cc = *m_cc;
+        m_setup = cc.setCursor(m_tail);
     }
 
     /* immediates */
@@ -282,7 +298,7 @@ struct AsmJitContext {
         a64::Compiler &cc = *m_cc;
         char cbuf[64];
         to_prologue();
-        cc.comment("prologue (immediates)");
+        cc.comment("immediates");
         std::vector<a64::Gp> tmp(size);
         /* First load immediates larger than 0xff into temporary registers */
         for (size_t i = 0; i < size; i++) {
@@ -396,7 +412,7 @@ struct AsmJitContext {
 #endif
 
         to_prologue();
-        cc.comment("prologue (const data)");
+        cc.comment("const data");
         cc.adr(ptr, ldata);
         switch (m_vdata.size()) {
         case 1: cc.ld1(m_vdata[0],                                     a64::ptr(ptr)); break;
@@ -420,7 +436,7 @@ struct AsmJitContext {
 
         to_prologue();
         if (xy_used) {
-            cc.comment("prologue (x/y)");
+            cc.comment("x/y");
             orig_x = cc.newGpw("orig_x");
             x_end = cc.newGpw("x_end");
             y_end = cc.newGpw("y_end");
@@ -429,7 +445,7 @@ struct AsmJitContext {
             cc.add(y_end, m_y, m_num_lines);
             cc.add(x_end, orig_x, m_num_blocks, a64::lsl(av_log2(m_block_size)));
         }
-        cc.comment("prologue (padding)");
+        cc.comment("padding");
         int read_increment = m_read_bytes * m_block_size;
         int write_increment = m_write_bytes * m_block_size;
         int read_increment_log2 = exact_log2(read_increment);
@@ -500,7 +516,10 @@ struct AsmJitContext {
             cc.csel(m_num_blocks, tmp_num_blocks, m_num_blocks, a64::CondCode::kEQ);
             cc.csel(m_num_lines, tmp_num_lines, m_num_lines, a64::CondCode::kEQ);
         }
+        from_prologue();
 
+        to_setup();
+        cc.comment("=> outer loop");
         cc.bind(vloop);
         if (xy_used) {
             cc.mov(m_x, orig_x);
@@ -508,7 +527,7 @@ struct AsmJitContext {
             cc.mov(m_x, m_num_blocks);
         }
         cc.bind(hloop);
-        from_prologue();
+        from_setup();
 
         cc.comment("horizontal loop back");
         if (xy_used) {
@@ -765,9 +784,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             return AVERROR(ENOTSUP);
         ctx->m_read_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
         if (!op.rw.packed) {
-            /* Load input pointers in prologue */
-            ctx->to_prologue();
-            cc.comment("prologue (read)");
+            /* Load input pointers in setup */
+            ctx->to_setup();
+            cc.comment("read");
             LOOP_OUT(i) {
                 snprintf(cbuf, sizeof(cbuf), "in%d", i);
                 ctx->m_in[i] = cc.newGpz(cbuf);
@@ -777,7 +796,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 cc.ldr(ctx->m_in[i], a64::ptr(exec, offsetof(SwsOpExec, in) + sizeof(uint8_t *) * i));
                 ctx->m_read_used[i] = true;
             }
-            ctx->from_prologue();
+            ctx->from_setup();
             /* Read vectors from input pointers */
             cc.comment("read");
             LOOP_OUT(i) {
@@ -788,16 +807,16 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     cc.ld1(vl[i],        a64::ptr(ctx->m_in[i]).post(vet_size * 1));
             }
         } else {
-            /* Load input pointer in prologue */
-            ctx->to_prologue();
-            cc.comment("prologue (read)");
+            /* Load input pointer in setup */
+            ctx->to_setup();
+            cc.comment("read");
             ctx->m_in[0] = cc.newGpz("in0");
 #if 1
             cc.virtRegByReg(ctx->m_in[0])->setHomeIdHint(REGID_IN);
 #endif
             cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
             ctx->m_read_used[0] = true;
-            ctx->from_prologue();
+            ctx->from_setup();
             /* Read vectors from input pointer */
             cc.comment("read");
             for (int i = 0; i < op.rw.elems; i++) {
@@ -833,9 +852,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             return AVERROR(ENOTSUP);
         ctx->m_write_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
         if (!op.rw.packed) {
-            /* Load output pointers in prologue */
-            ctx->to_prologue();
-            cc.comment("prologue (write)");
+            /* Load output pointers in setup */
+            ctx->to_setup();
+            cc.comment("write");
             LOOP_IN(i) {
                 snprintf(cbuf, sizeof(cbuf), "out%d", i);
                 ctx->m_out[i] = cc.newGpz(cbuf);
@@ -845,7 +864,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 cc.ldr(ctx->m_out[i], a64::ptr(exec, offsetof(SwsOpExec, out) + sizeof(uint8_t *) * i));
                 ctx->m_write_used[i] = true;
             }
-            ctx->from_prologue();
+            ctx->from_setup();
             cc.comment("write");
             /* Write vectors to output pointers */
             LOOP_IN(i) {
@@ -861,16 +880,16 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     cc.st1(src_vl[i],            a64::ptr(ctx->m_out[i]).post(vet_size * 1));
             }
         } else {
-            /* Load output pointer in prologue */
-            ctx->to_prologue();
-            cc.comment("prologue (write)");
+            /* Load output pointer in setup */
+            ctx->to_setup();
+            cc.comment("write");
             ctx->m_out[0] = cc.newGpz("out0");
 #if 1
             cc.virtRegByReg(ctx->m_out[0])->setHomeIdHint(REGID_OUT);
 #endif
             cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
             ctx->m_write_used[0] = true;
-            ctx->from_prologue();
+            ctx->from_setup();
             /* Write vectors to output pointer */
             cc.comment("write");
 #if 1
@@ -1557,16 +1576,16 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Read */
             const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
             ctx->m_read_bytes = priv->read_bytes / block_size;
-            /* Load input pointer in prologue */
-            ctx->to_prologue();
-            cc.comment("prologue (read)");
+            /* Load input pointer in setup */
+            ctx->to_setup();
+            cc.comment("read");
             ctx->m_in[0] = cc.newGpz("in0");
 #if 1
             cc.virtRegByReg(ctx->m_in[0])->setHomeIdHint(REGID_IN);
 #endif
             cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
             ctx->m_read_used[0] = true;
-            ctx->from_prologue();
+            ctx->from_setup();
             /* Read vectors from input pointer */
             cc.comment("read_bytes");
             for (int i = 0; i < priv->read_bytes; i += 16) {
@@ -1649,10 +1668,10 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
             /* Write tbl data after function */
             Label ldata = ctx->emit_data(tbl_data, tbl_data_size, "tbl_data_array");
-            /* Read tbl data into vectors (prologue) */
-            ctx->to_prologue();
+            /* Read tbl data into vectors (setup) */
+            ctx->to_setup();
             a64::Gp ptr = cc.newGpz("tbl_data_ptr");
-            cc.comment("prologue (shuffle)");
+            cc.comment("shuffle");
             cc.adr(ptr, ldata);
             if (tbl_insn_count > 4) {
                 cc.ld1(vshuffle[0], vshuffle[1], vshuffle[2], vshuffle[3], a64::ptr(ptr).post(64));
@@ -1680,7 +1699,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             case 11: cc.ld1(vshuffle[8], vshuffle[9], vshuffle[10],               a64::ptr(ptr)); break;
             case 12: cc.ld1(vshuffle[8], vshuffle[9], vshuffle[10], vshuffle[11], a64::ptr(ptr)); break;
             }
-            ctx->from_prologue();
+            ctx->from_setup();
             /* Emit tbl instructions */
             cc.comment("shuffle");
             for (int i = 0; i < tbl_insn_count; i++) {
@@ -1702,16 +1721,16 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 
             /* Write */
             ctx->m_write_bytes = priv->write_bytes / block_size;
-            /* Load output pointer in prologue */
-            ctx->to_prologue();
-            cc.comment("prologue (write)");
+            /* Load output pointer in setup */
+            ctx->to_setup();
+            cc.comment("write");
             ctx->m_out[0] = cc.newGpz("out0");
 #if 1
             cc.virtRegByReg(ctx->m_out[0])->setHomeIdHint(REGID_OUT);
 #endif
             cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
             ctx->m_write_used[0] = true;
-            ctx->from_prologue();
+            ctx->from_setup();
             /* Write vectors to output pointer */
             cc.comment("write_bytes");
 #if 1
