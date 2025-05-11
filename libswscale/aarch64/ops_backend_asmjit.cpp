@@ -765,24 +765,6 @@ retry:
     return block_size;
 }
 
-static int vreg_free(uint32_t *ptr, int n)
-{
-    uint32_t vreg_available = *ptr;
-    uint32_t mask = 0;
-    for (int i = 0; i < n; i++) {
-        mask |= (1 << i);
-    }
-    for (int i = 0; i < 32; i++) {
-        if ((mask & vreg_available) == mask) {
-            vreg_available &= ~mask;
-            *ptr = vreg_available;
-            return i;
-        }
-        mask <<= 1;
-    }
-    return -1;
-}
-
 static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 {
     int block_size = ctx->m_block_size;
@@ -1686,75 +1668,46 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             int vin_count = (priv->read_bytes >> 4);
             int vout_count = shuffle_size / vector_size;
             int vconst_count = (const_data_size >> 4);
-#if 1
-            uint32_t vreg_available = 0xffff00ff;
-            int regid_vshuffle_tbl   = vreg_free(&vreg_available, tbl_insn_count);
-            int regid_vshuffle_out   = vreg_free(&vreg_available, vout_count);
-            int regid_vshuffle_in    = vreg_free(&vreg_available, vin_count);
-            int regid_vshuffle_const = vreg_free(&vreg_available, vconst_count);
-#endif
             for (int i = 0; i < vin_count; i++) {
-#if 0
                 snprintf(cbuf, sizeof(cbuf), "vin%d", i);
                 vl[i] = cc.newVecQ(cbuf).b16();
 #if 1
-                cc.virtRegByReg(vl[i])->setHomeIdHint(regid_vshuffle_in + i);
+                cc.virtRegByReg(vl[i])->setHomeIdHint(REGID_VSHUFFLE_IN + i);
 #endif
-#endif
-                vl[i] = a64::VecV(regid_vshuffle_in + i).b16();
             }
             /* Create output vectors */
             for (int i = 0; i < vout_count; i++) {
-#if 0
                 snprintf(cbuf, sizeof(cbuf), "vout%d", i);
                 vh[i] = cc.newVecQ(cbuf).b16();
 #if 1
-                cc.virtRegByReg(vh[i])->setHomeIdHint(regid_vshuffle_out + i);
+                cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSHUFFLE_OUT + i);
 #endif
-#endif
-                vh[i] = a64::VecV(regid_vshuffle_out + i).b16();
             }
             /* Create tbl data vectors */
             std::vector<a64::Vec> vshuffle;
             for (int i = 0; i < tbl_insn_count; i++) {
-#if 0
                 snprintf(cbuf, sizeof(cbuf), "vshuffle%d", i);
                 a64::Vec vreg = cc.newVecQ(cbuf).b16();
                 vshuffle.push_back(vreg);
 #if 1
-                cc.virtRegByReg(vreg)->setHomeIdHint(regid_vshuffle_tbl + i);
+                cc.virtRegByReg(vreg)->setHomeIdHint(REGID_VSHUFFLE_TBL + i);
 #endif
-#else
-#endif
-                a64::Vec vreg = a64::VecV(regid_vshuffle_tbl + i).b16();
-                vshuffle.push_back(vreg);
             }
             /* Create const data vectors */
             std::vector<a64::Vec> vconst;
             for (int i = 0; i < vconst_count; i++) {
-#if 0
                 snprintf(cbuf, sizeof(cbuf), "vconst%d", i);
                 a64::Vec vreg = cc.newVecQ(cbuf).b16();
                 vconst.push_back(vreg);
 #if 1
-                cc.virtRegByReg(vreg)->setHomeIdHint(regid_vshuffle_const + i);
+                cc.virtRegByReg(vreg)->setHomeIdHint(REGID_VSHUFFLE_CONST + i);
 #endif
-#endif
-                a64::Vec vreg = a64::VecV(regid_vshuffle_const + i).b16();
-                vconst.push_back(vreg);
             }
             /* Create temporary vectors */
             std::vector<a64::Vec> vtmp;
             for (int i = 0; i < vtmp_count; i++) {
-#if 0
                 snprintf(cbuf, sizeof(cbuf), "vtmp%d", i);
                 a64::Vec vreg = cc.newVecQ(cbuf).b16();
-                vtmp.push_back(vreg);
-#if 1
-                cc.virtRegByReg(vreg)->setHomeIdHint(vreg_free(&vreg_available, 1));
-#endif
-#endif
-                a64::Vec vreg = a64::VecV(vreg_free(&vreg_available, 1)).b16();
                 vtmp.push_back(vreg);
             }
 
