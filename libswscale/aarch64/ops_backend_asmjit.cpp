@@ -343,7 +343,7 @@ struct AsmJitContext {
             size_t vidx = (ret >> 2);
             char cbuf[64];
             snprintf(cbuf, sizeof(cbuf), "vdata%d", (int) vidx);
-            a64::Vec vdata = m_cc->newVecQ(cbuf);
+            a64::Vec vdata = m_cc->newVecQ(cbuf).b16();
 #if 1
             m_cc->virtRegByReg(vdata)->setHomeIdHint(REGID_VDATA + vidx);
 #endif
@@ -399,10 +399,10 @@ struct AsmJitContext {
         cc.comment("prologue (const data)");
         cc.adr(ptr, ldata);
         switch (m_vdata.size()) {
-        case 1: cc.ld1(m_vdata[0].b16(),                                                       a64::ptr(ptr)); break;
-        case 2: cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(),                                     a64::ptr(ptr)); break;
-        case 3: cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(), m_vdata[2].b16(),                   a64::ptr(ptr)); break;
-        case 4: cc.ld1(m_vdata[0].b16(), m_vdata[1].b16(), m_vdata[2].b16(), m_vdata[3].b16(), a64::ptr(ptr)); break;
+        case 1: cc.ld1(m_vdata[0],                                     a64::ptr(ptr)); break;
+        case 2: cc.ld1(m_vdata[0], m_vdata[1],                         a64::ptr(ptr)); break;
+        case 3: cc.ld1(m_vdata[0], m_vdata[1], m_vdata[2],             a64::ptr(ptr)); break;
+        case 4: cc.ld1(m_vdata[0], m_vdata[1], m_vdata[2], m_vdata[3], a64::ptr(ptr)); break;
         }
         from_prologue();
     }
