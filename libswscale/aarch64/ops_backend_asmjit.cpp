@@ -1123,9 +1123,9 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     LOOP_OUT(i) {
                         save_vector(ctx, &vet, i, 0x0f);
                         new_vector(ctx, &vet, i, (block_size == 16) ? 0xff : 0x0f);
-                        cc.zip1    (vl[i].b16(), src_vl[i].b16(), src_vl[i].b16());
+                        cc.zip1    (vl[i], src_vl[i], src_vl[i]);
                         if (block_size == 16)
-                            cc.zip2(vh[i].b16(), src_vl[i].b16(), src_vl[i].b16());
+                            cc.zip2(vh[i], src_vl[i], src_vl[i]);
                     }
                 }
                 if (to_size == 4) {
@@ -1133,8 +1133,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     LOOP_OUT(i) {
                         save_vector(ctx, &vet, i, 0x0f);
                         new_vector(ctx, &vet, i);
-                        cc.zip1(vl[i].b16(), src_vl[i].b16(), src_vl[i].b16());
-                        cc.zip2(vh[i].b16(), src_vl[i].b16(), src_vl[i].b16());
+                        cc.zip1(vl[i], src_vl[i], src_vl[i]);
+                        cc.zip2(vh[i], src_vl[i], src_vl[i]);
                     }
                 }
             } else {
@@ -1572,13 +1572,13 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             for (int i = 0; i < priv->read_bytes; i += 16) {
                 int j = (i >> 4);
                 snprintf(cbuf, sizeof(cbuf), "vin%d", j);
-                vl[j] = cc.newVecQ(cbuf);
+                vl[j] = cc.newVecQ(cbuf).b16();
             }
             switch (priv->read_bytes) {
-            case 16: cc.ld1(vl[0].b16(),                                        a64::ptr(ctx->m_in[0]).post(16)); break;
-            case 32: cc.ld1(vl[0].b16(), vl[1].b16(),                           a64::ptr(ctx->m_in[0]).post(32)); break;
-            case 48: cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(),              a64::ptr(ctx->m_in[0]).post(48)); break;
-            case 64: cc.ld1(vl[0].b16(), vl[1].b16(), vl[2].b16(), vl[3].b16(), a64::ptr(ctx->m_in[0]).post(64)); break;
+            case 16: cc.ld1(vl[0],                      a64::ptr(ctx->m_in[0]).post(16)); break;
+            case 32: cc.ld1(vl[0], vl[1],               a64::ptr(ctx->m_in[0]).post(32)); break;
+            case 48: cc.ld1(vl[0], vl[1], vl[2],        a64::ptr(ctx->m_in[0]).post(48)); break;
+            case 64: cc.ld1(vl[0], vl[1], vl[2], vl[3], a64::ptr(ctx->m_in[0]).post(64)); break;
             }
 
             /* Shuffle */
@@ -1631,20 +1631,20 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             int vout_count = shuffle_size / vector_size;
             for (int i = 0; i < vout_count; i++) {
                 snprintf(cbuf, sizeof(cbuf), "vout%d", i);
-                vh[i] = cc.newVecQ(cbuf);
+                vh[i] = cc.newVecQ(cbuf).b16();
             }
             /* Create tbl data vectors */
             std::vector<a64::Vec> vshuffle;
             for (int i = 0; i < tbl_insn_count; i++) {
                 snprintf(cbuf, sizeof(cbuf), "vshuffle%d", i);
-                a64::Vec vreg = cc.newVecQ(cbuf);
+                a64::Vec vreg = cc.newVecQ(cbuf).b16();
                 vshuffle.push_back(vreg);
             }
             /* Create temporary vectors */
             std::vector<a64::Vec> vtmp;
             for (int i = 0; i < vtmp_count; i++) {
                 snprintf(cbuf, sizeof(cbuf), "vtmp%d", i);
-                a64::Vec vreg = cc.newVecQ(cbuf);
+                a64::Vec vreg = cc.newVecQ(cbuf).b16();
                 vtmp.push_back(vreg);
             }
             /* Write tbl data after function */
@@ -1655,30 +1655,30 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             cc.comment("prologue (shuffle)");
             cc.adr(ptr, ldata);
             if (tbl_insn_count > 4) {
-                cc.ld1(vshuffle[0].b16(), vshuffle[1].b16(), vshuffle[2].b16(), vshuffle[3].b16(), a64::ptr(ptr).post(64));
+                cc.ld1(vshuffle[0], vshuffle[1], vshuffle[2], vshuffle[3], a64::ptr(ptr).post(64));
             } else {
                 switch (tbl_insn_count) {
-                case 1: cc.ld1(vshuffle[0].b16(),                                                          a64::ptr(ptr)); break;
-                case 2: cc.ld1(vshuffle[0].b16(), vshuffle[1].b16(),                                       a64::ptr(ptr)); break;
-                case 3: cc.ld1(vshuffle[0].b16(), vshuffle[1].b16(), vshuffle[2].b16(),                    a64::ptr(ptr)); break;
-                case 4: cc.ld1(vshuffle[0].b16(), vshuffle[1].b16(), vshuffle[2].b16(), vshuffle[3].b16(), a64::ptr(ptr)); break;
+                case 1: cc.ld1(vshuffle[0],                                        a64::ptr(ptr)); break;
+                case 2: cc.ld1(vshuffle[0], vshuffle[1],                           a64::ptr(ptr)); break;
+                case 3: cc.ld1(vshuffle[0], vshuffle[1], vshuffle[2],              a64::ptr(ptr)); break;
+                case 4: cc.ld1(vshuffle[0], vshuffle[1], vshuffle[2], vshuffle[3], a64::ptr(ptr)); break;
                 }
             }
             if (tbl_insn_count > 8) {
-                cc.ld1(vshuffle[4].b16(), vshuffle[5].b16(), vshuffle[6].b16(), vshuffle[7].b16(), a64::ptr(ptr).post(64));
+                cc.ld1(vshuffle[4], vshuffle[5], vshuffle[6], vshuffle[7], a64::ptr(ptr).post(64));
             } else {
                 switch (tbl_insn_count) {
-                case 5: cc.ld1(vshuffle[4].b16(),                                                          a64::ptr(ptr)); break;
-                case 6: cc.ld1(vshuffle[4].b16(), vshuffle[5].b16(),                                       a64::ptr(ptr)); break;
-                case 7: cc.ld1(vshuffle[4].b16(), vshuffle[5].b16(), vshuffle[6].b16(),                    a64::ptr(ptr)); break;
-                case 8: cc.ld1(vshuffle[4].b16(), vshuffle[5].b16(), vshuffle[6].b16(), vshuffle[7].b16(), a64::ptr(ptr)); break;
+                case 5: cc.ld1(vshuffle[4],                                        a64::ptr(ptr)); break;
+                case 6: cc.ld1(vshuffle[4], vshuffle[5],                           a64::ptr(ptr)); break;
+                case 7: cc.ld1(vshuffle[4], vshuffle[5], vshuffle[6],              a64::ptr(ptr)); break;
+                case 8: cc.ld1(vshuffle[4], vshuffle[5], vshuffle[6], vshuffle[7], a64::ptr(ptr)); break;
                 }
             }
             switch (tbl_insn_count) {
-            case  9: cc.ld1(vshuffle[8].b16(),                                                            a64::ptr(ptr)); break;
-            case 10: cc.ld1(vshuffle[8].b16(), vshuffle[9].b16(),                                         a64::ptr(ptr)); break;
-            case 11: cc.ld1(vshuffle[8].b16(), vshuffle[9].b16(), vshuffle[10].b16(),                     a64::ptr(ptr)); break;
-            case 12: cc.ld1(vshuffle[8].b16(), vshuffle[9].b16(), vshuffle[10].b16(), vshuffle[11].b16(), a64::ptr(ptr)); break;
+            case  9: cc.ld1(vshuffle[8],                                          a64::ptr(ptr)); break;
+            case 10: cc.ld1(vshuffle[8], vshuffle[9],                             a64::ptr(ptr)); break;
+            case 11: cc.ld1(vshuffle[8], vshuffle[9], vshuffle[10],               a64::ptr(ptr)); break;
+            case 12: cc.ld1(vshuffle[8], vshuffle[9], vshuffle[10], vshuffle[11], a64::ptr(ptr)); break;
             }
             ctx->from_prologue();
             /* Emit tbl instructions */
@@ -1688,16 +1688,16 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 int vdst = tbl_insn[i] >> 4;
                 if (vdst & 0x08) {
                     vdst &= 7;
-                    cc.tbl(vtmp[vdst].b16(), vl[vsrc].b16(), vshuffle[i].b16());
+                    cc.tbl(vtmp[vdst], vl[vsrc], vshuffle[i]);
                 } else {
-                    cc.tbl(vh  [vdst].b16(), vl[vsrc].b16(), vshuffle[i].b16());
+                    cc.tbl(vh  [vdst], vl[vsrc], vshuffle[i]);
                 }
             }
             /* Emit orr instructions */
             for (int i = 0; i < orr_insn_count; i++) {
                 int vsrc = (orr_insn[i] & 0x07);
                 int vdst = orr_insn[i] >> 4;
-                cc.orr(vh[vdst].b16(), vh[vdst].b16(), vtmp[vsrc].b16());
+                cc.orr(vh[vdst], vh[vdst], vtmp[vsrc]);
             }
 
             /* Write */
@@ -1721,12 +1721,12 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
 #endif
             switch (priv->write_bytes) {
-            case 16: cc.st1(vh[0].b16(),                                        a64::ptr(ctx->m_out[0]).post(16)); break;
-            case 32: cc.st1(vh[0].b16(), vh[1].b16(),                           a64::ptr(ctx->m_out[0]).post(32)); break;
-            case 48: cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(),              a64::ptr(ctx->m_out[0]).post(48)); break;
-            case 64: cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64)); break;
-            case 96: cc.st1(vh[0].b16(), vh[1].b16(), vh[2].b16(), vh[3].b16(), a64::ptr(ctx->m_out[0]).post(64));
-                     cc.st1(vh[4].b16(), vh[5].b16(),                           a64::ptr(ctx->m_out[0]).post(32)); break;
+            case 16: cc.st1(vh[0],                      a64::ptr(ctx->m_out[0]).post(16)); break;
+            case 32: cc.st1(vh[0], vh[1],               a64::ptr(ctx->m_out[0]).post(32)); break;
+            case 48: cc.st1(vh[0], vh[1], vh[2],        a64::ptr(ctx->m_out[0]).post(48)); break;
+            case 64: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64)); break;
+            case 96: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64));
+                     cc.st1(vh[4], vh[5],               a64::ptr(ctx->m_out[0]).post(32)); break;
             }
         }
         break;
