@@ -30,6 +30,8 @@ typedef struct MemcpyPriv {
 
 /* Memcpy backend for trivial cases */
 
+#define av_q2f(q) ((q).den ? (float) (q).num / (q).den : 0)
+
 static av_noinline void memset16(uint16_t *dst, uint16_t val, size_t count)
 {
     for (size_t i = 0; i < count; i++)
@@ -103,21 +105,28 @@ static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
             for (int i = 0; i < 4; i++) {
                 if (!op->c.q4[i].den)
                     continue;
-                if (op->c.q4[i].den != 1)
-                    return AVERROR(ENOTSUP);
 
-                /* Ensure all bytes to be cleared are the same, because we
-                 * can't memset on multi-byte sequences */
-                uint32_t val = op->c.q4[i].num;
-                uint32_t ref = val & 0xFF;
                 int fmt_size = ff_sws_pixel_type_size(op->type);
-                switch (fmt_size) {
-                case 2: ref *= 0x101; break;
-                case 4: ref *= 0x1010101; break;
+                if (op->type == SWS_PIXEL_F32) {
+                    union {
+                        float f;
+                        uint32_t u;
+                    } tmp;
+                    tmp.f = av_q2f(op->c.q4[i]);
+                    p.clear_value[i] = tmp.u;
+                } else {
+                    if (op->c.q4[i].den != 1)
+                        return AVERROR(ENOTSUP);
+                    uint32_t val = op->c.q4[i].num;
+                    uint32_t ref = val & 0xFF;
+                    switch (fmt_size) {
+                    case 2: ref *= 0x0101; break;
+                    case 4: ref *= 0x01010101; break;
+                    }
+                    if (ref == val)
+                        fmt_size = 1;
+                    p.clear_value[i] = val;
                 }
-                p.clear_value[i] = val;
-                if (ref == op->c.q4[i].num)
-                    fmt_size = 1;
                 p.index[i] = -fmt_size;
             }
             break;
