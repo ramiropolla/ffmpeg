@@ -586,6 +586,14 @@ retry:
                 FFSWAP(SwsOp, *op, *next);
                 goto retry;
             }
+
+            /* Move swizzle out of the way between two converts so that
+             * they may be merged */
+            if (prev->op == SWS_OP_CONVERT && next->op == SWS_OP_CONVERT) {
+                FFSWAP(SwsPixelType, op->type, next->type);
+                FFSWAP(SwsOp, *op, *next);
+                goto retry;
+            }
             break;
         }
 
