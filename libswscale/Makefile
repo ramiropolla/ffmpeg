@@ -15,6 +15,7 @@ OBJS = alphablend.o                                     \
        graph.o                                          \
        input.o                                          \
        lut3d.o                                          \
+       memops.o                                         \
        ops.o                                            \
        ops_backend.o                                    \
        ops_chain.o                                      \
