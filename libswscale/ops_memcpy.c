@@ -124,6 +124,9 @@ static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
         .priv = av_memdup(&p, sizeof(p)),
         .free = av_free,
     };
+    if (out->priv) {
+        printf("memcpy ");
+    }
     return out->priv ? 0 : AVERROR(ENOMEM);
 }
 

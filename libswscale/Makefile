@@ -28,6 +28,7 @@ OBJS = alphablend.o                                     \
        vscale.o                                         \
 
 OBJS-$(CONFIG_UNSTABLE) +=                              \
+       memops.o                                         \
        ops.o                                            \
        ops_backend.o                                    \
        ops_chain.o                                      \
