@@ -24,11 +24,23 @@
 
 typedef struct MemcpyPriv {
     int num_planes;
-    int index[4]; /* or -1 to clear plane */
-    uint8_t clear_value[4];
+    int index[4]; /* or -fmt_size to clear plane */
+    uint32_t clear_value[4];
 } MemcpyPriv;
 
 /* Memcpy backend for trivial cases */
+
+static av_noinline void memset16(uint16_t *dst, uint16_t val, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+        dst[i] = val;
+}
+
+static av_noinline void memset32(uint32_t *dst, uint32_t val, size_t count)
+{
+    for (size_t i = 0; i < count; i++)
+        dst[i] = val;
+}
 
 static void process(const SwsOpExec *exec, const void *priv, int num_blocks,
                     int num_lines)
@@ -39,8 +51,12 @@ static void process(const SwsOpExec *exec, const void *priv, int num_blocks,
     for (int i = 0; i < p->num_planes; i++) {
         uint8_t *out = exec->out[i];
         const int idx = p->index[i];
-        if (idx < 0) {
+        if (idx == -1) {
             memset(out, p->clear_value[i], exec->out_stride[i] * num_lines);
+        } else if (idx == -2) {
+            memset16((uint16_t *) out, p->clear_value[i], (exec->out_stride[i] * num_lines) / 2);
+        } else if (idx == -4) {
+            memset32((uint32_t *) out, p->clear_value[i], (exec->out_stride[i] * num_lines) / 4);
         } else if (exec->out_stride[i] == exec->in_stride[idx]) {
             memcpy(out, exec->in[idx], exec->out_stride[i] * num_lines);
         } else {
@@ -92,16 +108,17 @@ static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
 
                 /* Ensure all bytes to be cleared are the same, because we
                  * can't memset on multi-byte sequences */
-                uint8_t val = op->c.q4[i].num & 0xFF;
-                uint32_t ref = val;
-                switch (ff_sws_pixel_type_size(op->type)) {
+                uint32_t val = op->c.q4[i].num;
+                uint32_t ref = val & 0xFF;
+                int fmt_size = ff_sws_pixel_type_size(op->type);
+                switch (fmt_size) {
                 case 2: ref *= 0x101; break;
                 case 4: ref *= 0x1010101; break;
                 }
-                if (ref != op->c.q4[i].num)
-                    return AVERROR(ENOTSUP);
                 p.clear_value[i] = val;
-                p.index[i] = -1;
+                if (ref == op->c.q4[i].num)
+                    fmt_size = 1;
+                p.index[i] = -fmt_size;
             }
             break;
 
