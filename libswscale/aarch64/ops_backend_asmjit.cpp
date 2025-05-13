@@ -889,13 +889,9 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
     /* x0 */
     ctx->m_exec       = cc.newGpz("exec");
     ctx->m_func->setArg(0, ctx->m_exec);
-#if 0
     /* x1 priv in process(), unused, set to scratch0 */
     ctx->m_scratch[0] = cc.newGpz("scratch0");
-#ifdef SET_HOME_GPR
     cc.virtRegByReg(ctx->m_scratch[0])->setHomeIdHint(1);
-#endif
-#endif
     /* x2 */
     ctx->m_num_blocks = cc.newGpw("num_blocks");
     ctx->m_func->setArg(2, ctx->m_num_blocks);
@@ -906,26 +902,16 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
     /* x5 skip for now */
     /* x6 x */
     ctx->m_x = cc.newGpw("x");
-#ifdef SET_HOME_GPR
     cc.virtRegByReg(ctx->m_x)->setHomeIdHint(6);
-#endif
     /* x7 y */
     ctx->m_y = cc.newGpw("y");
-#ifdef SET_HOME_GPR
     cc.virtRegByReg(ctx->m_y)->setHomeIdHint(7);
-#endif
-#if 0
     /* x8 scratch1 */
     ctx->m_scratch[1] = cc.newGpz("scratch1");
-#ifdef SET_HOME_GPR
     cc.virtRegByReg(ctx->m_scratch[1])->setHomeIdHint(8);
-#endif
     /* x9 scratch2 */
     ctx->m_scratch[2] = cc.newGpz("scratch2");
-#ifdef SET_HOME_GPR
     cc.virtRegByReg(ctx->m_scratch[2])->setHomeIdHint(9);
-#endif
-#endif
 
     char cbuf[64];
     LOOP_ARRAY(i, ctx->m_read_used) {
@@ -973,43 +959,6 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
         cc.virtRegByReg(ctx->m_orig_x)->setHomeIdHint(gpr_idx0);
         cc.virtRegByReg(ctx->m_x_end)->setHomeIdHint(gpr_idx1);
         cc.virtRegByReg(ctx->m_y_end)->setHomeIdHint(gpr_idx2);
-#endif
-    }
-    for (int i = 0; i < ctx->m_scratch_used; i++) {
-#ifdef SET_HOME_GPR
-        int gpr_idx = ctx->new_gpr();
-#endif
-        snprintf(cbuf, sizeof(cbuf), "scratch%d", i);
-        ctx->m_scratch[i] = cc.newGpz(cbuf);
-#ifdef SET_HOME_GPR
-        cc.virtRegByReg(ctx->m_scratch[i])->setHomeIdHint(gpr_idx);
-#endif
-    }
-}
-
-static void asmjit_allocate_scratch(AsmJitContext *ctx)
-{
-    /* TODO immediates are loaded before other important stuff, so I could just reuse their registers */
-    /* Calculate scratch registers needed for loading immediates */
-    int scratch_used = 0;
-    for (size_t i = 0; i < ctx->m_imm.size(); i++) {
-        int small_value = ctx->m_imm[i].second >> 16;
-        uint8_t repeat_len = ctx->m_imm[i].second >> 8;
-        if (!small_value && repeat_len != 1) {
-            scratch_used++;
-        }
-    }
-
-    a64::Compiler &cc = *ctx->m_cc;
-    char cbuf[64];
-    for (int i = ctx->m_scratch_used; i < scratch_used; i++) {
-#ifdef SET_HOME_GPR
-        int gpr_idx = ctx->new_gpr();
-#endif
-        snprintf(cbuf, sizeof(cbuf), "scratch%d", i);
-        ctx->m_scratch[i] = cc.newGpz(cbuf);
-#ifdef SET_HOME_GPR
-        cc.virtRegByReg(ctx->m_scratch[i])->setHomeIdHint(gpr_idx);
 #endif
     }
 }
@@ -2071,9 +2020,6 @@ static av_cold int asmjit_compile(SwsContext *swsctx, SwsOpList *ops, SwsCompile
     /* Compile all operations */
     for (int n = 0; n < ops->num_ops; n++)
         asmjit_compile_op(ctx, ops, n);
-
-    /* Allocate remaining scratch registers */
-    asmjit_allocate_scratch(ctx);
 
     ctx->emit_const();
     ctx->load_immediates();
