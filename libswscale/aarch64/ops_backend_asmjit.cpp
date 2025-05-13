@@ -45,9 +45,13 @@ extern "C" {
 #define av_q2i(q) ((q).den ? (int32_t) (q).num / (q).den : 0)
 
 /* General Purpose Registers */
+/* x0: exec */
 #define REGID_TMP_PTR 1
+/* x2: num_blocks */
+/* x3: num_lines */
 /* in: 4, 5, 6, 7 */
 #define REGID_IN      4
+/* x9: FREE */
 /* out: 10, 11, 12, 13 */
 #define REGID_OUT    10
 #define REGID_X      14
@@ -682,6 +686,7 @@ typedef struct SwsShuffleOp {
 
 static int asmjit_optimize(SwsOpList *ops, int block_size)
 {
+    /* TODO figure out when it is slower on in-order cores and disable shuffle */
     /* First try the shuffle solver */
     uint8_t shuffle[128];
     int read_bytes;
@@ -745,6 +750,31 @@ retry:
             break;
 
         case SWS_OP_CONVERT:
+#if 0
+            /* Saturating convert */
+            if (next->op == SWS_OP_MIN && op->type == SWS_PIXEL_F32 && op->convert.to < SWS_PIXEL_U32) {
+                bool to_u16 = (op->convert.to == SWS_PIXEL_U16);
+                int u = to_u16 ? 65535 : 255;
+                AVRational q = av_make_q(u, 1);
+                bool enable = true;
+                LOOP_OUT(i) {
+                    enable &= (av_cmp_q(next->c.q4[i], q) == 0);
+                }
+                if (enable) {
+                    op->op = SWS_OP_CONVERT; /* unnecessary */
+                    op->type = SWS_PIXEL_F32; /* unnecessary */
+                    op->convert.to = to_u16 ? SWS_PIXEL_U32 : SWS_PIXEL_U16;
+                    op->convert.expand = false;
+
+                    next->op = (SwsOpType) SWS_OP_AARCH64_SATURATING_CONVERT;
+                    next->type = op->convert.to;
+                    next->convert.to = to_u16 ? SWS_PIXEL_U16 : SWS_PIXEL_U8;
+
+                    goto retry;
+                }
+            }
+#endif
+
             /* Simplify widen+lshift by zip with zero or ushll */
             if (op->type == SWS_PIXEL_U8 && op->convert.to == SWS_PIXEL_U16 && !op->convert.expand &&
                 next->op == SWS_OP_LSHIFT)

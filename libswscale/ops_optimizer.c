@@ -421,8 +421,10 @@ static bool extract_swizzle(SwsLinearOp *op, SwsComps prev, SwsSwizzleOp *out_sw
 
 static void op_copy_flags(SwsOp *op, const SwsOp *op2)
 {
+#if 0
     for (int i = 0; i < 4; i++)
         op->comps.flags[i] = op2->comps.flags[i];
+#endif
 }
 
 int ff_sws_op_list_optimize(SwsOpList *ops)
@@ -631,6 +633,30 @@ retry:
                 ff_sws_op_list_remove_at(ops, n + 1, 1);
                 goto retry;
             }
+
+            /* Try to merge distant converts */
+            {
+                int type = op->convert.to;
+                bool enable = true;
+                for (int m = n + 1; m < ops->num_ops && enable; m++) {
+                    SwsOp *cur_op = &ops->ops[m];
+                    switch (cur_op->op) {
+                    case SWS_OP_CLEAR:
+                    case SWS_OP_LSHIFT:
+                    case SWS_OP_RSHIFT:
+                    case SWS_OP_SWIZZLE:
+                    case SWS_OP_CONVERT:
+                    case SWS_OP_SCALE:
+                    case SWS_OP_MIN:
+                    case SWS_OP_MAX:
+                    default:
+                        enable = false;
+                        break;
+                    }
+                }
+                if (enable) {
+                }
+            }
             break;
 
         case SWS_OP_MIN:
@@ -645,6 +671,36 @@ retry:
                 ff_sws_op_list_remove_at(ops, n, 1);
                 goto retry;
             }
+
+#if 0
+            /* Move min after downconverting to work on fewer vectors */
+            if (next->op == SWS_OP_CONVERT && next->type > next->convert.to) {
+                int bits = 8 * ff_sws_pixel_type_size(op->type);
+                AVRational maxval = Q((1 << bits) - 1);
+                bool it_fits = true;
+                for (int i = 0; i < 4; i++) {
+                    if (next->comps.unused[i] || !op->c.q4[i].den)
+                        continue;
+                    if (av_cmp_q(maxval, prev->comps.max[i]) > 0)
+                        it_fits = false;
+                }
+                if (it_fits) {
+                    op->type = next->convert.to;
+                    FFSWAP(SwsOp, *op, *next);
+                    goto retry;
+                }
+            }
+#endif
+
+#if 0
+            if (prev->op == SWS_OP_CONVERT && next->op == SWS_OP_CONVERT &&
+                prev->convert.to < next->convert.to)
+            {
+                op->type = next->convert.to;
+                FFSWAP(SwsOp, *op, *next);
+                goto retry;
+            }
+#endif
             break;
 
         case SWS_OP_MAX:
