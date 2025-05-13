@@ -47,26 +47,23 @@ extern "C" {
 // #define SET_HOME_GPR
 /* Free GPRs in the order they should be allocated */
 static const uint8_t free_gprs[] = {
-#if 0
 //  0, /* exec */
-    1,
+//  1, /* scratch0 */
 //  2, /* num_blocks */
 //  3, /* num_lines */
 //  4, /* will be used */
 //  5, /* will be used */
 //  6, /* x */
 //  7, /* y */
-    8,
-    9, 10, 11, 12, 13, 14, 15,
-    16, 17,
+//  8, /* scratch1 */
+//  9, /* scratch2 */
+    10, 11, 12, 13, 14, 15, 16, 17,
 //  18, /* platform register */
-    19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+    19, 20, 21, 22, 23, 24, 25, 26,
+    27, 28,
 //  29, /* frame pointer */
 //  30, /* link regisers */
 //  31, /* stack pointer */
-#else
-    10, 11, 12, 13, 14, 15, 16, 17,
-#endif
 };
 #define SCRATCH_COUNT 4
 
@@ -938,11 +935,9 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
         ctx->m_orig_x = cc.newGpw("orig_x");
         ctx->m_x_end = cc.newGpw("x_end");
         ctx->m_y_end = cc.newGpw("y_end");
-#ifdef SET_HOME_GPR
         cc.virtRegByReg(ctx->m_orig_x)->setHomeIdHint(ctx->new_gpr());
         cc.virtRegByReg(ctx->m_x_end)->setHomeIdHint(ctx->new_gpr());
         cc.virtRegByReg(ctx->m_y_end)->setHomeIdHint(ctx->new_gpr());
-#endif
     }
 }
 
