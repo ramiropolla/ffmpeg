@@ -915,50 +915,33 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
 
     char cbuf[64];
     LOOP_ARRAY(i, ctx->m_read_used) {
-        int gpr_idx = ctx->new_gpr();
         snprintf(cbuf, sizeof(cbuf), "in_padding%d", i);
         ctx->m_in_padding[i] = cc.newGpz(cbuf);
-        cc.virtRegByReg(ctx->m_in_padding[i])->setHomeIdHint(gpr_idx);
-    }
-    LOOP_ARRAY(i, ctx->m_write_used) {
-        int gpr_idx = ctx->new_gpr();
-        snprintf(cbuf, sizeof(cbuf), "out_padding%d", i);
-        ctx->m_out_padding[i] = cc.newGpz(cbuf);
-        cc.virtRegByReg(ctx->m_out_padding[i])->setHomeIdHint(gpr_idx);
-    }
-    LOOP_ARRAY(i, ctx->m_read_used) {
-#ifdef SET_HOME_GPR
-        int gpr_idx = ctx->new_gpr();
-#endif
+        cc.virtRegByReg(ctx->m_in_padding[i])->setHomeIdHint(ctx->new_gpr());
         snprintf(cbuf, sizeof(cbuf), "in%d", i);
         ctx->m_in[i] = cc.newGpz(cbuf);
 #ifdef SET_HOME_GPR
-        cc.virtRegByReg(ctx->m_in[i])->setHomeIdHint(gpr_idx);
+        cc.virtRegByReg(ctx->m_in[i])->setHomeIdHint(ctx->new_gpr());
 #endif
     }
     LOOP_ARRAY(i, ctx->m_write_used) {
-#ifdef SET_HOME_GPR
-        int gpr_idx = ctx->new_gpr();
-#endif
+        snprintf(cbuf, sizeof(cbuf), "out_padding%d", i);
+        ctx->m_out_padding[i] = cc.newGpz(cbuf);
+        cc.virtRegByReg(ctx->m_out_padding[i])->setHomeIdHint(ctx->new_gpr());
         snprintf(cbuf, sizeof(cbuf), "out%d", i);
         ctx->m_out[i] = cc.newGpz(cbuf);
 #ifdef SET_HOME_GPR
-        cc.virtRegByReg(ctx->m_out[i])->setHomeIdHint(gpr_idx);
+        cc.virtRegByReg(ctx->m_out[i])->setHomeIdHint(ctx->new_gpr());
 #endif
     }
     if (ctx->m_xy_used) {
-#ifdef SET_HOME_GPR
-        int gpr_idx0 = ctx->new_gpr();
-        int gpr_idx1 = ctx->new_gpr();
-        int gpr_idx2 = ctx->new_gpr();
-#endif
         ctx->m_orig_x = cc.newGpw("orig_x");
         ctx->m_x_end = cc.newGpw("x_end");
         ctx->m_y_end = cc.newGpw("y_end");
 #ifdef SET_HOME_GPR
-        cc.virtRegByReg(ctx->m_orig_x)->setHomeIdHint(gpr_idx0);
-        cc.virtRegByReg(ctx->m_x_end)->setHomeIdHint(gpr_idx1);
-        cc.virtRegByReg(ctx->m_y_end)->setHomeIdHint(gpr_idx2);
+        cc.virtRegByReg(ctx->m_orig_x)->setHomeIdHint(ctx->new_gpr());
+        cc.virtRegByReg(ctx->m_x_end)->setHomeIdHint(ctx->new_gpr());
+        cc.virtRegByReg(ctx->m_y_end)->setHomeIdHint(ctx->new_gpr());
 #endif
     }
 }
