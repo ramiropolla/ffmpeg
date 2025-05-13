@@ -795,7 +795,43 @@ retry:
     return block_size;
 }
 
-static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
+static int asmjit_check_op(const SwsOpList *ops, int n)
+{
+    const SwsOp &op = ops->ops[n];
+    switch (op.op) {
+    case SWS_OP_READ:
+    case SWS_OP_WRITE:
+        if (op.rw.frac)
+            return AVERROR(ENOTSUP);
+        break;
+    case SWS_OP_SWAP_BYTES:
+    case SWS_OP_UNPACK:
+    case SWS_OP_PACK:
+    case SWS_OP_CLEAR:
+        break;
+    case SWS_OP_LSHIFT:
+    case SWS_OP_RSHIFT:
+        if (op.type == SWS_PIXEL_F32)
+            return AVERROR(ENOTSUP);
+        break;
+    case SWS_OP_SWIZZLE:
+    case SWS_OP_CONVERT:
+    case SWS_OP_DITHER:
+    case SWS_OP_LINEAR:
+    case SWS_OP_SCALE:
+    case SWS_OP_MIN:
+        break;
+    case SWS_OP_MAX:
+        if (op.type != SWS_PIXEL_F32)
+            return AVERROR(ENOTSUP);
+        break;
+    default:
+        return AVERROR(ENOTSUP);
+    }
+    return 0;
+}
+
+static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 {
     int block_size = ctx->m_block_size;
 
@@ -822,8 +858,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
     switch (op.op) {
     /* Input/output handling */
     case SWS_OP_READ:            /* gather raw pixels from planes */
-        if (op.rw.frac)
-            return AVERROR(ENOTSUP);
         ctx->m_read_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
         if (!op.rw.packed) {
             /* Load input pointers in setup */
@@ -890,8 +924,6 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         }
         break;
     case SWS_OP_WRITE:           /* write raw pixels to planes */
-        if (op.rw.frac)
-            return AVERROR(ENOTSUP);
         ctx->m_write_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
         if (!op.rw.packed) {
             /* Load output pointers in setup */
@@ -979,7 +1011,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 if (use_vh)
                     cc.rev16(vh[i].b16(), src_vh[i].b16());
             }
-        } else if (op.type == SWS_PIXEL_U32 || op.type == SWS_PIXEL_F32) {
+        } else /* if (op.type == SWS_PIXEL_U32 || op.type == SWS_PIXEL_F32) */ {
             cc.comment("swap_bytes (u32)");
             ctx->new_step();
             LOOP_OUT(i) {
@@ -1086,7 +1118,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     }
                 }
             }
-        } else if (op.type == SWS_PIXEL_F32) {
+        } else /* if (op.type == SWS_PIXEL_F32) */ {
             /* Add const data */
             size_t vpos[4];
             for (int i = 0; i < 4; i++) {
@@ -1107,31 +1139,23 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         }
         break;
     case SWS_OP_LSHIFT:          /* logical left shift of raw pixel values by (u8) */
-        if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
-            cc.comment("lshift");
-            ctx->new_step();
-            LOOP_OUT(i) {
-                refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                cc.shl    (vl[i], src_vl[i], op.c.u);
-                if (use_vh)
-                    cc.shl(vh[i], src_vh[i], op.c.u);
-            }
-        } else {
-            return AVERROR(ENOTSUP);
+        cc.comment("lshift");
+        ctx->new_step();
+        LOOP_OUT(i) {
+            refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
+            cc.shl    (vl[i], src_vl[i], op.c.u);
+            if (use_vh)
+                cc.shl(vh[i], src_vh[i], op.c.u);
         }
         break;
     case SWS_OP_RSHIFT:          /* right shift of raw pixel values by (u8) */
-        if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
-            cc.comment("rshift");
-            ctx->new_step();
-            LOOP_OUT(i) {
-                refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                cc.ushr    (vl[i], src_vl[i], op.c.u);
-                if (use_vh)
-                    cc.ushr(vh[i], src_vh[i], op.c.u);
-            }
-        } else {
-            return AVERROR(ENOTSUP);
+        cc.comment("rshift");
+        ctx->new_step();
+        LOOP_OUT(i) {
+            refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
+            cc.ushr    (vl[i], src_vl[i], op.c.u);
+            if (use_vh)
+                cc.ushr(vh[i], src_vh[i], op.c.u);
         }
         break;
     case SWS_OP_SWIZZLE:         /* rearrange channel order, or duplicate channels */
@@ -1503,7 +1527,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 cc.fmul(vl[i], src_vl[i], ctx->vdata(vidx));
                 cc.fmul(vh[i], src_vh[i], ctx->vdata(vidx));
             }
-        } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+        } else /* if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) */ {
             /* Add immediate */
             size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q));
 
@@ -1531,7 +1555,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                         cc.fmin(vh[i], src_vh[i], vet.type(vimm[vidx]));
                 }
             }
-        } else if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+        } else /* if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) */ {
             cc.comment("min (integer)");
             ctx->new_step();
             LOOP_OUT(i) {
@@ -1558,8 +1582,8 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                         cc.fmax(vh[i], src_vh[i], vet.type(vimm[vidx]));
                 }
             }
-        } else {
-            return AVERROR(ENOTSUP);
+        } else /* if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) */ {
+            /* Not implemented */
         }
         break;
 
@@ -1868,12 +1892,7 @@ static int asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
         }
         break;
-
-    default:
-        return AVERROR(ENOTSUP);
     }
-
-    return 0;
 }
 
 static av_cold void free_context(void *_ctx)
@@ -1890,6 +1909,12 @@ static av_cold int asmjit_compile(SwsContext *swsctx, SwsOpList *ops, SwsCompile
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
+    /* Check that all operations are supported */
+    for (int n = 0; n < ops->num_ops; n++) {
+        if (asmjit_check_op(ops, n) < 0)
+            return AVERROR(ENOTSUP);
+    }
+
     /* Use at most two full vregs during the widest precision section */
     int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
 
@@ -1899,10 +1924,8 @@ static av_cold int asmjit_compile(SwsContext *swsctx, SwsOpList *ops, SwsCompile
     a64::Compiler &cc = *ctx->m_cc;
     Error err;
 
-    for (int n = 0; n < ops->num_ops; n++) {
-        if (asmjit_compile_op(ctx, ops, n) < 0)
-            goto error;
-    }
+    for (int n = 0; n < ops->num_ops; n++)
+        asmjit_compile_op(ctx, ops, n);
 
     ctx->emit_const();
     ctx->load_immediates();
