@@ -129,6 +129,7 @@ int ff_sws_ops_compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out
  * @param size        The size (in bytes) of the output shuffle mask.
  * @param vector_size The vector size.
  * @param clear_val   If nonzero, this index will be used to clear the output.
+ * @param const_val   If nonzero, this index will be used to assign 0xff.
  * @param read_bytes  Returns the number of bytes read per shuffle iteration.
  * @param write_bytes Returns the number of bytes written per shuffle iteration.
  *
@@ -137,7 +138,7 @@ int ff_sws_ops_compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out
  */
 int ff_sws_solve_shuffle(const SwsOpList *const ops,
                          uint8_t shuffle[], int shuffle_size,
-                         int vector_size, uint8_t clear_val,
+                         int vector_size, uint8_t clear_val, uint8_t const_val,
                          int *out_read_bytes, int *out_write_bytes);
 
 #endif

@@ -786,7 +786,7 @@ retry:
 
 int ff_sws_solve_shuffle(const SwsOpList *const ops,
                          uint8_t shuffle[], int shuffle_size,
-                         int vector_size, uint8_t clear_val,
+                         int vector_size, uint8_t clear_val, uint8_t const_val,
                          int *out_read_bytes, int *out_write_bytes)
 {
     const SwsOp read = ops->ops[0];
@@ -824,9 +824,21 @@ int ff_sws_solve_shuffle(const SwsOpList *const ops,
             for (int i = 0; i < 4; i++) {
                 if (!op->c.q4[i].den)
                     continue;
-                if (op->c.q4[i].num != 0 || !clear_val)
+                if (op->c.q4[i].num == 0 && clear_val != 0) {
+                    mask[i] = 0x1010101ul * clear_val;
+                } else if (op->c.q4[i].den == 1 && const_val != 0) {
+                    bool ok = false;
+                    switch (ff_sws_pixel_type_size(op->type)) {
+                    case 1: ok = (op->c.q4[i].num == 0xFF);       break;
+                    case 2: ok = (op->c.q4[i].num == 0xFFFF);     break;
+                    case 4: ok = (op->c.q4[i].num == 0xFFFFFFFF); break;
+                    }
+                    if (!ok)
+                        return AVERROR(ENOTSUP);
+                    mask[i] = 0x1010101ul * const_val;
+                } else {
                     return AVERROR(ENOTSUP);
-                mask[i] = 0x1010101ul * clear_val;
+                }
             }
             break;
 
@@ -864,8 +876,11 @@ int ff_sws_solve_shuffle(const SwsOpList *const ops,
                 for (int i = 0; i < op->rw.elems; i++) {
                     const int offset = base_out + i * write_size;
                     for (int b = 0; b < write_size; b++) {
-                        const uint8_t idx = mask[i] >> (b * 8);
-                        shuffle[offset + b] = idx + ((idx == clear_val) ? 0 : base_in);
+                        uint8_t idx = mask[i] >> (b * 8);
+                        if ((!clear_val || idx != clear_val) && (!const_val || idx != const_val)) {
+                            idx += base_in;
+                        }
+                        shuffle[offset + b] = idx;
                     }
                 }
             }
