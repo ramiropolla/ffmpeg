@@ -44,18 +44,28 @@ extern "C" {
 #define av_q2f(q) ((q).den ? (float) (q).num / (q).den : 0)
 #define av_q2i(q) ((q).den ? (int32_t) (q).num / (q).den : 0)
 
-/* General Purpose Registers */
-/* x0: exec */
-#define REGID_TMP_PTR 1
-/* x2: num_blocks */
-/* x3: num_lines */
-/* in: 4, 5, 6, 7 */
-#define REGID_IN      4
-/* x9: FREE */
-/* out: 10, 11, 12, 13 */
-#define REGID_OUT    10
-#define REGID_X      14
-#define REGID_Y      15
+// #define SET_HOME_GPR
+/* Free GPRs in the order they should be allocated */
+static const uint8_t free_gprs[] = {
+//  0, /* exec */
+    1,
+//  2, /* num_blocks */
+//  3, /* num_lines */
+//  4, /* will be used */
+//  5, /* will be used */
+//  6, /* x */
+//  7, /* y */
+    8,
+    9, 10, 11, 12, 13, 14, 15,
+    16, 17,
+//  18, /* platform register */
+    19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+//  29, /* frame pointer */
+//  30, /* link regisers */
+//  31, /* stack pointer */
+};
+/* TODO check how many are actually needed */
+#define SCRATCH_COUNT 8
 
 /* Vector Registers */
 /* vimm: 16, 17, 18, 19 */
@@ -91,7 +101,7 @@ static int exact_log2(const int x)
     for (int idx = 0; idx < 4; idx++) \
         if (arr[idx])
 #define LOOP_OUT(idx) LOOP_ARRAY(idx, !next->comps.unused)
-#define LOOP_IN(idx)  LOOP_ARRAY(idx, !op.comps.unused)
+#define LOOP_IN(idx)  LOOP_ARRAY(idx, !op->comps.unused)
 
 using namespace asmjit;
 
@@ -111,22 +121,36 @@ struct AsmJitContext {
     a64::Gp m_exec;
     a64::Gp m_num_blocks;
     a64::Gp m_num_lines;
-    a64::Gp m_in[4];
-    a64::Gp m_out[4];
     a64::Vec m_src_vl[4];
     a64::Vec m_src_vh[4];
     a64::Vec m_vl[4];
     a64::Vec m_vh[8];
     int m_vec_idx;
+    int m_gpr_idx;
 
     a64::Gp m_x;
     a64::Gp m_y;
 
-    bool m_read_used[4];
-    bool m_write_used[4];
     int m_read_bytes;
     int m_write_bytes;
-    const SwsOp *m_dither_op;
+    int m_read_increment;
+    int m_write_increment;
+    int m_read_increment_log2;
+    int m_write_increment_log2;
+
+    /* GPRs */
+    bool m_read_used[4];
+    bool m_write_used[4];
+    bool m_xy_used;
+    int  m_scratch_used;
+    a64::Gp m_in[4];
+    a64::Gp m_out[4];
+    a64::Gp m_in_padding[4];
+    a64::Gp m_out_padding[4];
+    a64::Gp m_orig_x;
+    a64::Gp m_x_end;
+    a64::Gp m_y_end;
+    a64::Gp m_scratch[SCRATCH_COUNT];
 
     /* const data */
     std::vector<uint32_t> m_data;
@@ -176,30 +200,24 @@ struct AsmJitContext {
         cc.brk(0x0f00);
         from_prologue();
 #endif
-        m_exec       = cc.newGpz("exec");
-        m_num_blocks = cc.newGpw("num_blocks");
-        m_num_lines  = cc.newGpw("num_lines");
-        m_func->setArg(0, m_exec);
-        m_func->setArg(2, m_num_blocks);
-        m_func->setArg(3, m_num_lines);
-
-        m_x = cc.newGpw("x");
-        m_y = cc.newGpw("y");
-#if 1
-        cc.virtRegByReg(m_x)->setHomeIdHint(REGID_X);
-        cc.virtRegByReg(m_y)->setHomeIdHint(REGID_Y);
-#endif
 
         for (int i = 0; i < 4; i++) {
             m_read_used[i] = false;
             m_write_used[i] = false;
         }
+        m_xy_used = false;
+        m_scratch_used = 3;
+
         m_read_bytes = 0;
         m_write_bytes = 0;
 
-        m_dither_op = nullptr;
-
         m_vec_idx = 0;
+        m_gpr_idx = 0;
+    }
+
+    int new_gpr(void)
+    {
+        return free_gprs[m_gpr_idx++];
     }
 
     void new_step(void)
@@ -286,11 +304,11 @@ struct AsmJitContext {
         return push_imm16(val, len);
     }
 
-    size_t push_imm32_op(const SwsOp &op, uint32_t val)
+    size_t push_imm32_op(const SwsOp *op, uint32_t val)
     {
-        if (op.type == SWS_PIXEL_U8)
+        if (op->type == SWS_PIXEL_U8)
             return push_imm8(val);
-        if (op.type == SWS_PIXEL_U16)
+        if (op->type == SWS_PIXEL_U16)
             return push_imm16(val);
         return push_imm32(val);
     }
@@ -312,18 +330,17 @@ struct AsmJitContext {
             return;
 
         a64::Compiler &cc = *m_cc;
-        char cbuf[64];
         to_prologue();
         cc.comment("immediates");
-        std::vector<a64::Gp> tmp(size);
+        a64::Gp tmp[SCRATCH_COUNT];
+        int scratch_idx = 0;
         /* First load immediates larger than 0xff into temporary registers */
         for (size_t i = 0; i < size; i++) {
             int small_value = m_imm[i].second >> 16;
             uint8_t repeat_len = m_imm[i].second >> 8;
             if (!small_value && repeat_len != 1)
             {
-                snprintf(cbuf, sizeof(cbuf), "imm_tmp%d", (int) i);
-                tmp[i] = cc.newGpz(cbuf);
+                tmp[i] = m_scratch[scratch_idx++];
                 switch (repeat_len) {
                 case 2: cc.mov(tmp[i], m_imm[i].first & 0xffff); break;
                 case 4: cc.mov(tmp[i], m_imm[i].first         ); break;
@@ -422,11 +439,7 @@ struct AsmJitContext {
 
         /* Read matrix data into vectors */
         a64::Compiler &cc = *m_cc;
-        a64::Gp ptr = cc.newGpz("const_data_ptr");
-#if 1
-        cc.virtRegByReg(ptr)->setHomeIdHint(REGID_TMP_PTR);
-#endif
-
+        a64::Gp ptr = m_scratch[0];
         to_prologue();
         cc.comment("const data");
         cc.adr(ptr, ldata);
@@ -442,89 +455,71 @@ struct AsmJitContext {
     void emit_loop()
     {
         a64::Compiler &cc = *m_cc;
-        a64::Gp orig_x;
-        a64::Gp x_end;
-        a64::Gp y_end;
         Label hloop = cc.newNamedLabel("hloop");
         Label vloop = cc.newNamedLabel("vloop");
-        bool xy_used = (m_dither_op != nullptr);
-        char cbuf[64];
 
         to_prologue();
-        if (xy_used) {
+        if (m_xy_used) {
             cc.comment("x/y");
-            orig_x = cc.newGpw("orig_x");
-            x_end = cc.newGpw("x_end");
-            y_end = cc.newGpw("y_end");
             cc.ldr(m_y, a64::ptr(m_exec, offsetof(SwsOpExec, y)));
-            cc.ldr(orig_x, a64::ptr(m_exec, offsetof(SwsOpExec, x)));
-            cc.add(y_end, m_y, m_num_lines);
-            cc.add(x_end, orig_x, m_num_blocks, a64::lsl(av_log2(m_block_size)));
+            cc.ldr(m_orig_x, a64::ptr(m_exec, offsetof(SwsOpExec, x)));
+            cc.add(m_y_end, m_y, m_num_lines);
+            cc.add(m_x_end, m_orig_x, m_num_blocks, a64::lsl(av_log2(m_block_size)));
         }
         cc.comment("padding");
-        int read_increment = m_read_bytes * m_block_size;
-        int write_increment = m_write_bytes * m_block_size;
-        int read_increment_log2 = exact_log2(read_increment);
-        int write_increment_log2 = exact_log2(write_increment);
         a64::Gp read_linesize;
         a64::Gp write_linesize;
-        if (read_increment == write_increment) {
-            read_linesize = cc.newGpw("rw_linesize");
-            if (read_increment_log2 == 0)
-                cc.mov(read_linesize, read_increment);
+        if (m_read_increment == m_write_increment) {
+            read_linesize = m_scratch[0].r32();
+            if (m_read_increment_log2 == 0)
+                cc.mov(read_linesize, m_read_increment);
             write_linesize = read_linesize;
         } else {
-            read_linesize = cc.newGpw("read_linesize");
-            write_linesize = cc.newGpw("write_linesize");
-            if (read_increment_log2 == 0)
-                cc.mov(read_linesize, read_increment);
-            if (write_increment_log2 == 0)
-                cc.mov(write_linesize, write_increment);
+            read_linesize = m_scratch[0].r32();
+            write_linesize = m_scratch[1].r32();
+            if (m_read_increment_log2 == 0)
+                cc.mov(read_linesize, m_read_increment);
+            if (m_write_increment_log2 == 0)
+                cc.mov(write_linesize, m_write_increment);
         }
-        a64::Gp in_padding[4];
-        a64::Gp out_padding[4];
         LOOP_ARRAY(i, m_read_used) {
-            snprintf(cbuf, sizeof(cbuf), "in_padding%d", i);
-            in_padding[i] = cc.newGpz(cbuf);
-            cc.ldr(in_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, in_stride) + (i * sizeof(ptrdiff_t))));
+            cc.ldr(m_in_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, in_stride) + (i * sizeof(ptrdiff_t))));
         }
-        if (read_increment_log2 == 0) {
+        if (m_read_increment_log2 == 0) {
             cc.mul(read_linesize, read_linesize, m_num_blocks);
         } else {
-            cc.lsl(read_linesize, m_num_blocks, read_increment_log2);
+            cc.lsl(read_linesize, m_num_blocks, m_read_increment_log2);
         }
-        if (read_increment != write_increment) {
-            if (write_increment_log2 == 0) {
+        if (m_read_increment != m_write_increment) {
+            if (m_write_increment_log2 == 0) {
                 cc.mul(write_linesize, write_linesize, m_num_blocks);
             } else {
-                cc.lsl(write_linesize, m_num_blocks, write_increment_log2);
+                cc.lsl(write_linesize, m_num_blocks, m_write_increment_log2);
             }
         }
         LOOP_ARRAY(i, m_write_used) {
-            snprintf(cbuf, sizeof(cbuf), "out_padding%d", i);
-            out_padding[i] = cc.newGpz(cbuf);
-            cc.ldr(out_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, out_stride) + (i * sizeof(ptrdiff_t))));
+            cc.ldr(m_out_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, out_stride) + (i * sizeof(ptrdiff_t))));
         }
         LOOP_ARRAY(i, m_read_used) {
-            cc.sub(in_padding[i], in_padding[i], read_linesize.r64());
+            cc.sub(m_in_padding[i], m_in_padding[i], read_linesize.r64());
         }
         LOOP_ARRAY(i, m_write_used) {
-            cc.sub(out_padding[i], out_padding[i], write_linesize.r64());
+            cc.sub(m_out_padding[i], m_out_padding[i], write_linesize.r64());
         }
 
-        if (!xy_used) {
+        if (!m_xy_used) {
             cc.comment("line fusing optimization");
-            a64::Gp tmp_padding = cc.newGpz("tmp_padding");
-            a64::Gp tmp_num_blocks = cc.newGpw("tmp_num_blocks");
-            a64::Gp tmp_num_lines = cc.newGpw("tmp_num_lines");
-            cc.orr(tmp_padding, in_padding[0], out_padding[0]);
+            a64::Gp tmp_padding    = m_scratch[0];
+            a64::Gp tmp_num_blocks = m_scratch[1].r32();
+            a64::Gp tmp_num_lines  = m_scratch[2].r32();
+            cc.orr(tmp_padding, m_in_padding[0], m_out_padding[0]);
             LOOP_ARRAY(i, m_read_used) {
                 if (i != 0)
-                    cc.orr(tmp_padding, tmp_padding, in_padding[i]);
+                    cc.orr(tmp_padding, tmp_padding, m_in_padding[i]);
             }
             LOOP_ARRAY(i, m_write_used) {
                 if (i != 0)
-                    cc.orr(tmp_padding, tmp_padding, out_padding[i]);
+                    cc.orr(tmp_padding, tmp_padding, m_out_padding[i]);
             }
             cc.cmp(tmp_padding, 0);
             cc.mul(tmp_num_blocks, m_num_blocks, m_num_lines);
@@ -537,8 +532,8 @@ struct AsmJitContext {
         to_setup();
         cc.comment("=> outer loop");
         cc.bind(vloop);
-        if (xy_used) {
-            cc.mov(m_x, orig_x);
+        if (m_xy_used) {
+            cc.mov(m_x, m_orig_x);
         } else {
             cc.mov(m_x, m_num_blocks);
         }
@@ -546,9 +541,9 @@ struct AsmJitContext {
         from_setup();
 
         cc.comment("horizontal loop back");
-        if (xy_used) {
+        if (m_xy_used) {
             cc.add(m_x, m_x, m_block_size);
-            cc.cmp(m_x, x_end);
+            cc.cmp(m_x, m_x_end);
             cc.b(a64::CondCode::kLO, hloop);
         } else {
             cc.subs(m_x, m_x, 1);
@@ -557,16 +552,16 @@ struct AsmJitContext {
 
         cc.comment("padding");
         LOOP_ARRAY(i, m_read_used) {
-            cc.add(m_in[i], m_in[i], in_padding[i]);
+            cc.add(m_in[i], m_in[i], m_in_padding[i]);
         }
         LOOP_ARRAY(i, m_write_used) {
-            cc.add(m_out[i], m_out[i], out_padding[i]);
+            cc.add(m_out[i], m_out[i], m_out_padding[i]);
         }
 
         cc.comment("vertical loop back");
-        if (xy_used) {
+        if (m_xy_used) {
             cc.add(m_y, m_y, 1);
-            cc.cmp(m_y, y_end);
+            cc.cmp(m_y, m_y_end);
             cc.b(a64::CondCode::kLO, vloop);
         } else {
             cc.subs(m_num_lines, m_num_lines, 1);
@@ -577,10 +572,10 @@ struct AsmJitContext {
 
 /* Vector element type for given SwsOp */
 typedef struct VectorElementType {
-    VectorElementType(const SwsOp &op, int block_size)
+    VectorElementType(const SwsOp *op, int block_size)
     {
-        m_fmt_size = (op.type == SWS_PIXEL_U8)  ? 1
-                   : (op.type == SWS_PIXEL_U16) ? 2
+        m_fmt_size = (op->type == SWS_PIXEL_U8)  ? 1
+                   : (op->type == SWS_PIXEL_U16) ? 2
                    :                              4;
         int full_size = m_fmt_size * block_size;
         size = FFMIN(full_size, 16);
@@ -797,11 +792,11 @@ retry:
 
 static int asmjit_check_op(const SwsOpList *ops, int n)
 {
-    const SwsOp &op = ops->ops[n];
-    switch (op.op) {
+    const SwsOp *op = &ops->ops[n];
+    switch (op->op) {
     case SWS_OP_READ:
     case SWS_OP_WRITE:
-        if (op.rw.frac)
+        if (op->rw.frac)
             return AVERROR(ENOTSUP);
         break;
     case SWS_OP_SWAP_BYTES:
@@ -811,7 +806,7 @@ static int asmjit_check_op(const SwsOpList *ops, int n)
         break;
     case SWS_OP_LSHIFT:
     case SWS_OP_RSHIFT:
-        if (op.type == SWS_PIXEL_F32)
+        if (op->type == SWS_PIXEL_F32)
             return AVERROR(ENOTSUP);
         break;
     case SWS_OP_SWIZZLE:
@@ -822,13 +817,198 @@ static int asmjit_check_op(const SwsOpList *ops, int n)
     case SWS_OP_MIN:
         break;
     case SWS_OP_MAX:
-        if (op.type != SWS_PIXEL_F32)
+        if (op->type != SWS_PIXEL_F32)
             return AVERROR(ENOTSUP);
         break;
     default:
         return AVERROR(ENOTSUP);
     }
     return 0;
+}
+
+static void asmjit_mark_gprs(AsmJitContext *ctx, const SwsOp *op, const SwsOp *next)
+{
+    switch (op->op) {
+    case SWS_OP_READ:
+        ctx->m_read_bytes = ff_sws_pixel_type_size(op->type) * (op->rw.packed ? op->rw.elems : 1);
+        ctx->m_read_increment = ctx->m_read_bytes * ctx->m_block_size;
+        ctx->m_read_increment_log2 = exact_log2(ctx->m_read_increment);
+        if (!op->rw.packed) {
+            LOOP_OUT(i) {
+                ctx->m_read_used[i] = true;
+            }
+        } else {
+            ctx->m_read_used[0] = true;
+        }
+        break;
+    case SWS_OP_WRITE:
+        ctx->m_write_bytes = ff_sws_pixel_type_size(op->type) * (op->rw.packed ? op->rw.elems : 1);
+        ctx->m_write_increment = ctx->m_write_bytes * ctx->m_block_size;
+        ctx->m_write_increment_log2 = exact_log2(ctx->m_write_increment);
+        if (!op->rw.packed) {
+            LOOP_IN(i) {
+                ctx->m_write_used[i] = true;
+            }
+        } else {
+            ctx->m_write_used[0] = true;
+        }
+        break;
+    case SWS_OP_DITHER:
+        if (op->dither.size_log2 != 0) {
+            ctx->m_xy_used = true;
+            ctx->m_scratch_used = FFMAX(ctx->m_scratch_used, 3);
+        }
+        break;
+    case SWS_OP_AARCH64_SHUFFLE_BYTES:
+        {
+            const SwsShuffleOp *priv = (SwsShuffleOp *) &op->rw;
+            ctx->m_read_increment = priv->read_bytes;
+            ctx->m_read_increment_log2 = exact_log2(ctx->m_read_increment);
+            ctx->m_write_increment = priv->write_bytes;
+            ctx->m_write_increment_log2 = exact_log2(ctx->m_write_increment);
+            ctx->m_read_bytes = priv->read_bytes / ctx->m_block_size;
+            ctx->m_write_bytes = priv->write_bytes / ctx->m_block_size;
+            ctx->m_read_used[0] = true;
+            ctx->m_write_used[0] = true;
+        }
+        break;
+    }
+}
+
+static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
+{
+    for (int n = 0; n < ops->num_ops; n++) {
+        asmjit_mark_gprs(ctx, &ops->ops[n], &ops->ops[n + 1]);
+    }
+
+    /* Allocate all GPRs in a deterministic order */
+    a64::Compiler &cc = *ctx->m_cc;
+    /* x0 */
+    ctx->m_exec       = cc.newGpz("exec");
+    ctx->m_func->setArg(0, ctx->m_exec);
+#if 0
+    /* x1 priv in process(), unused, set to scratch0 */
+    ctx->m_scratch[0] = cc.newGpz("scratch0");
+#ifdef SET_HOME_GPR
+    cc.virtRegByReg(ctx->m_scratch[0])->setHomeIdHint(1);
+#endif
+#endif
+    /* x2 */
+    ctx->m_num_blocks = cc.newGpw("num_blocks");
+    ctx->m_func->setArg(2, ctx->m_num_blocks);
+    /* x3 */
+    ctx->m_num_lines  = cc.newGpw("num_lines");
+    ctx->m_func->setArg(3, ctx->m_num_lines);
+    /* x4 skip for now */
+    /* x5 skip for now */
+    /* x6 x */
+    ctx->m_x = cc.newGpw("x");
+#ifdef SET_HOME_GPR
+    cc.virtRegByReg(ctx->m_x)->setHomeIdHint(6);
+#endif
+    /* x7 y */
+    ctx->m_y = cc.newGpw("y");
+#ifdef SET_HOME_GPR
+    cc.virtRegByReg(ctx->m_y)->setHomeIdHint(7);
+#endif
+#if 0
+    /* x8 scratch1 */
+    ctx->m_scratch[1] = cc.newGpz("scratch1");
+#ifdef SET_HOME_GPR
+    cc.virtRegByReg(ctx->m_scratch[1])->setHomeIdHint(8);
+#endif
+    /* x9 scratch2 */
+    ctx->m_scratch[2] = cc.newGpz("scratch2");
+#ifdef SET_HOME_GPR
+    cc.virtRegByReg(ctx->m_scratch[2])->setHomeIdHint(9);
+#endif
+#endif
+
+    char cbuf[64];
+    LOOP_ARRAY(i, ctx->m_read_used) {
+        int gpr_idx = ctx->new_gpr();
+// printf("[%s][%d] %s() in %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
+        snprintf(cbuf, sizeof(cbuf), "in%d", i);
+        ctx->m_in[i] = cc.newGpz(cbuf);
+#ifdef SET_HOME_GPR
+        cc.virtRegByReg(ctx->m_in[i])->setHomeIdHint(gpr_idx);
+#endif
+    }
+    LOOP_ARRAY(i, ctx->m_write_used) {
+        int gpr_idx = ctx->new_gpr();
+// printf("[%s][%d] %s() out %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
+        snprintf(cbuf, sizeof(cbuf), "out%d", i);
+        ctx->m_out[i] = cc.newGpz(cbuf);
+#ifdef SET_HOME_GPR
+        cc.virtRegByReg(ctx->m_out[i])->setHomeIdHint(gpr_idx);
+#endif
+    }
+    LOOP_ARRAY(i, ctx->m_read_used) {
+        int gpr_idx = ctx->new_gpr();
+// printf("[%s][%d] %s() in_padding %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
+        snprintf(cbuf, sizeof(cbuf), "in_padding%d", i);
+        ctx->m_in_padding[i] = cc.newGpz(cbuf);
+#ifdef SET_HOME_GPR
+        cc.virtRegByReg(ctx->m_in_padding[i])->setHomeIdHint(gpr_idx);
+#endif
+    }
+    LOOP_ARRAY(i, ctx->m_write_used) {
+        int gpr_idx = ctx->new_gpr();
+// printf("[%s][%d] %s() out_padding %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
+        snprintf(cbuf, sizeof(cbuf), "out_padding%d", i);
+        ctx->m_out_padding[i] = cc.newGpz(cbuf);
+#ifdef SET_HOME_GPR
+        cc.virtRegByReg(ctx->m_out_padding[i])->setHomeIdHint(gpr_idx);
+#endif
+    }
+    if (ctx->m_xy_used) {
+        int gpr_idx0 = ctx->new_gpr();
+        int gpr_idx1 = ctx->new_gpr();
+        int gpr_idx2 = ctx->new_gpr();
+// printf("[%s][%d] %s() xy_used %d %d %d\n", __FILE__, __LINE__, __func__, gpr_idx0, gpr_idx1, gpr_idx2);
+        ctx->m_orig_x = cc.newGpw("orig_x");
+        ctx->m_x_end = cc.newGpw("x_end");
+        ctx->m_y_end = cc.newGpw("y_end");
+#ifdef SET_HOME_GPR
+        cc.virtRegByReg(ctx->m_orig_x)->setHomeIdHint(gpr_idx0);
+        cc.virtRegByReg(ctx->m_x_end)->setHomeIdHint(gpr_idx1);
+        cc.virtRegByReg(ctx->m_y_end)->setHomeIdHint(gpr_idx2);
+#endif
+    }
+    for (int i = 0; i < ctx->m_scratch_used; i++) {
+        int gpr_idx = ctx->new_gpr();
+        snprintf(cbuf, sizeof(cbuf), "scratch%d", i);
+        ctx->m_scratch[i] = cc.newGpz(cbuf);
+#ifdef SET_HOME_GPR
+        cc.virtRegByReg(ctx->m_scratch[i])->setHomeIdHint(gpr_idx);
+#endif
+    }
+}
+
+static void asmjit_allocate_scratch(AsmJitContext *ctx)
+{
+    /* TODO immediates are loaded before other important stuff, so I could just reuse their registers */
+    /* Calculate scratch registers needed for loading immediates */
+    int scratch_used = 0;
+    for (size_t i = 0; i < ctx->m_imm.size(); i++) {
+        int small_value = ctx->m_imm[i].second >> 16;
+        uint8_t repeat_len = ctx->m_imm[i].second >> 8;
+        if (!small_value && repeat_len != 1) {
+            scratch_used++;
+        }
+    }
+
+    a64::Compiler &cc = *ctx->m_cc;
+    char cbuf[64];
+    for (int i = ctx->m_scratch_used; i < scratch_used; i++) {
+        int gpr_idx = ctx->new_gpr();
+printf("[%s][%d] %s() scratch_used %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
+        snprintf(cbuf, sizeof(cbuf), "scratch%d", i);
+        ctx->m_scratch[i] = cc.newGpz(cbuf);
+#ifdef SET_HOME_GPR
+        cc.virtRegByReg(ctx->m_scratch[i])->setHomeIdHint(gpr_idx);
+#endif
+    }
 }
 
 static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
@@ -843,34 +1023,27 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
     a64::Vec *vh = ctx->m_vh;
     std::vector<a64::Vec> &vimm = ctx->m_vimm;
 
-    const SwsOp &op = ops->ops[n];
+    const SwsOp *op = &ops->ops[n];
     const SwsOp *next = &ops->ops[n + 1];
 
     VectorElementType vet(op, block_size);
     int vet_size = vet.size;
 
-    bool use_vh = ((op.type == SWS_PIXEL_U16) && block_size == 16)
-               || ((op.type == SWS_PIXEL_U32) && block_size == 8)
-               || ((op.type == SWS_PIXEL_F32) && block_size == 8);
+    bool use_vh = ((op->type == SWS_PIXEL_U16) && block_size == 16)
+               || ((op->type == SWS_PIXEL_U32) && block_size == 8)
+               || ((op->type == SWS_PIXEL_F32) && block_size == 8);
 
     char cbuf[64];
 
-    switch (op.op) {
+    switch (op->op) {
     /* Input/output handling */
     case SWS_OP_READ:            /* gather raw pixels from planes */
-        ctx->m_read_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
-        if (!op.rw.packed) {
+        if (!op->rw.packed) {
             /* Load input pointers in setup */
             ctx->to_setup();
             cc.comment("read");
             LOOP_OUT(i) {
-                snprintf(cbuf, sizeof(cbuf), "in%d", i);
-                ctx->m_in[i] = cc.newGpz(cbuf);
-#if 1
-                cc.virtRegByReg(ctx->m_in[i])->setHomeIdHint(REGID_IN + i);
-#endif
                 cc.ldr(ctx->m_in[i], a64::ptr(exec, offsetof(SwsOpExec, in) + sizeof(uint8_t *) * i));
-                ctx->m_read_used[i] = true;
             }
             ctx->from_setup();
             /* Read vectors from input pointers */
@@ -886,19 +1059,14 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Load input pointer in setup */
             ctx->to_setup();
             cc.comment("read");
-            ctx->m_in[0] = cc.newGpz("in0");
-#if 1
-            cc.virtRegByReg(ctx->m_in[0])->setHomeIdHint(REGID_IN);
-#endif
             cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
-            ctx->m_read_used[0] = true;
             ctx->from_setup();
             /* Read vectors from input pointer */
             cc.comment("read");
-            for (int i = 0; i < op.rw.elems; i++) {
+            for (int i = 0; i < op->rw.elems; i++) {
                 new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
             }
-            switch (op.rw.elems) {
+            switch (op->rw.elems) {
             case 1:
                 if (use_vh)
                     cc.ld1(vl[0], vh[0],               a64::ptr(ctx->m_in[0]).post(vet_size * 2));
@@ -924,19 +1092,12 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         }
         break;
     case SWS_OP_WRITE:           /* write raw pixels to planes */
-        ctx->m_write_bytes = ff_sws_pixel_type_size(op.type) * (op.rw.packed ? op.rw.elems : 1);
-        if (!op.rw.packed) {
+        if (!op->rw.packed) {
             /* Load output pointers in setup */
             ctx->to_setup();
             cc.comment("write");
             LOOP_IN(i) {
-                snprintf(cbuf, sizeof(cbuf), "out%d", i);
-                ctx->m_out[i] = cc.newGpz(cbuf);
-#if 1
-                cc.virtRegByReg(ctx->m_out[i])->setHomeIdHint(REGID_OUT + i);
-#endif
                 cc.ldr(ctx->m_out[i], a64::ptr(exec, offsetof(SwsOpExec, out) + sizeof(uint8_t *) * i));
-                ctx->m_write_used[i] = true;
             }
             ctx->from_setup();
             cc.comment("write");
@@ -957,26 +1118,21 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Load output pointer in setup */
             ctx->to_setup();
             cc.comment("write");
-            ctx->m_out[0] = cc.newGpz("out0");
-#if 1
-            cc.virtRegByReg(ctx->m_out[0])->setHomeIdHint(REGID_OUT);
-#endif
             cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
-            ctx->m_write_used[0] = true;
             ctx->from_setup();
             /* Write vectors to output pointer */
             cc.comment("write");
 #if 1
-            for (int i = 0; i < op.rw.elems; i++) {
+            for (int i = 0; i < op->rw.elems; i++) {
                 cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + i);
                 if (use_vh)
                     cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i + 4);
             }
 #endif
-            for (int i = 0; i < op.rw.elems; i++) {
+            for (int i = 0; i < op->rw.elems; i++) {
                 save_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
             }
-            switch (op.rw.elems) {
+            switch (op->rw.elems) {
             case 1:
                 if (use_vh)
                     cc.st1(src_vl[0], src_vh[0],                       a64::ptr(ctx->m_out[0]).post(vet_size * 2));
@@ -1002,7 +1158,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         }
         break;
     case SWS_OP_SWAP_BYTES:      /* swap byte order (for differing endianness) */
-        if        (op.type == SWS_PIXEL_U16) {
+        if        (op->type == SWS_PIXEL_U16) {
             cc.comment("swap_bytes (u16)");
             ctx->new_step();
             LOOP_OUT(i) {
@@ -1011,7 +1167,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 if (use_vh)
                     cc.rev16(vh[i].b16(), src_vh[i].b16());
             }
-        } else /* if (op.type == SWS_PIXEL_U32 || op.type == SWS_PIXEL_F32) */ {
+        } else /* if (op->type == SWS_PIXEL_U32 || op->type == SWS_PIXEL_F32) */ {
             cc.comment("swap_bytes (u32)");
             ctx->new_step();
             LOOP_OUT(i) {
@@ -1025,9 +1181,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
     case SWS_OP_UNPACK:          /* split tightly packed data into components */
         {
             int offsets[4] = {
-                op.pack.pattern[3] + op.pack.pattern[2] + op.pack.pattern[1],
-                op.pack.pattern[3] + op.pack.pattern[2],
-                op.pack.pattern[3],
+                op->pack.pattern[3] + op->pack.pattern[2] + op->pack.pattern[1],
+                op->pack.pattern[3] + op->pack.pattern[2],
+                op->pack.pattern[3],
                 0
             };
 
@@ -1049,7 +1205,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
             ctx->new_step();
             LOOP_OUT(i) {
-                uint32_t mask = (1u << op.pack.pattern[i]) - 1;
+                uint32_t mask = (1u << op->pack.pattern[i]) - 1;
                 size_t vidx = ctx->push_imm32_op(op, mask);
                 refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
                 cc.and_    (vl[i].b16(), src_vl[i].b16(), vimm[vidx].b16());
@@ -1061,9 +1217,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
     case SWS_OP_PACK:            /* compress components into tightly packed data */
         {
             int offsets[4] = {
-                op.pack.pattern[3] + op.pack.pattern[2] + op.pack.pattern[1],
-                op.pack.pattern[3] + op.pack.pattern[2],
-                op.pack.pattern[3],
+                op->pack.pattern[3] + op->pack.pattern[2] + op->pack.pattern[1],
+                op->pack.pattern[3] + op->pack.pattern[2],
+                op->pack.pattern[3],
                 0
             };
 
@@ -1091,14 +1247,14 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
     /* Pixel manipulation */
     case SWS_OP_CLEAR:           /* clear pixel values */
         /* Set vectors to constant value */
-        if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) {
+        if (op->type == SWS_PIXEL_U8 || op->type == SWS_PIXEL_U16 || op->type == SWS_PIXEL_U32) {
             if (next->op == SWS_OP_WRITE) {
                 ctx->to_setup();
                 cc.comment("clear (integer)");
                 ctx->new_step();
                 for (int i = 0; i < 4; i++) {
-                    if (op.c.q4[i].den) {
-                        size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
+                    if (op->c.q4[i].den) {
+                        size_t vidx = ctx->push_imm32_op(op, av_q2i(op->c.q4[i]));
                         new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
                         cc.mov    (vl[i], vet.type(vimm[vidx]));
                         if (use_vh)
@@ -1110,27 +1266,27 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 cc.comment("clear (integer)");
                 ctx->new_step();
                 for (int i = 0; i < 4; i++) {
-                    if (op.c.q4[i].den) {
-                        size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
+                    if (op->c.q4[i].den) {
+                        size_t vidx = ctx->push_imm32_op(op, av_q2i(op->c.q4[i]));
                         vl[i] = vimm[vidx];
                         if (use_vh)
                             vh[i] = vimm[vidx];
                     }
                 }
             }
-        } else /* if (op.type == SWS_PIXEL_F32) */ {
+        } else /* if (op->type == SWS_PIXEL_F32) */ {
             /* Add const data */
             size_t vpos[4];
             for (int i = 0; i < 4; i++) {
-                if (op.c.q4[i].den)
-                    vpos[i] = ctx->push_q(op.c.q4[i]);
+                if (op->c.q4[i].den)
+                    vpos[i] = ctx->push_q(op->c.q4[i]);
             }
 
             /* Do the salmon dance */
             cc.comment("clear (f32)");
             ctx->new_step();
             for (int i = 0; i < 4; i++) {
-                if (op.c.q4[i].den) {
+                if (op->c.q4[i].den) {
                     new_vector(ctx, &vet, i);
                     cc.dup(vl[i], ctx->vdata(vpos[i]));
                     cc.dup(vh[i], ctx->vdata(vpos[i]));
@@ -1143,9 +1299,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         ctx->new_step();
         LOOP_OUT(i) {
             refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-            cc.shl    (vl[i], src_vl[i], op.c.u);
+            cc.shl    (vl[i], src_vl[i], op->c.u);
             if (use_vh)
-                cc.shl(vh[i], src_vh[i], op.c.u);
+                cc.shl(vh[i], src_vh[i], op->c.u);
         }
         break;
     case SWS_OP_RSHIFT:          /* right shift of raw pixel values by (u8) */
@@ -1153,9 +1309,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         ctx->new_step();
         LOOP_OUT(i) {
             refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-            cc.ushr    (vl[i], src_vl[i], op.c.u);
+            cc.ushr    (vl[i], src_vl[i], op->c.u);
             if (use_vh)
-                cc.ushr(vh[i], src_vh[i], op.c.u);
+                cc.ushr(vh[i], src_vh[i], op->c.u);
         }
         break;
     case SWS_OP_SWIZZLE:         /* rearrange channel order, or duplicate channels */
@@ -1164,11 +1320,11 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             if (next->op != SWS_OP_WRITE || next->rw.packed) {
                 bool used[4] = { false, false, false, false };
                 LOOP_OUT(i) {
-                    if (used[op.swizzle.in[i]]) {
+                    if (used[op->swizzle.in[i]]) {
                         reorder = false;
                         break;
                     }
-                    used[op.swizzle.in[i]] = true;
+                    used[op->swizzle.in[i]] = true;
                 }
             }
 
@@ -1178,22 +1334,22 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             if (reorder) {
                 cc.comment("swizzle (reorder)");
                 LOOP_OUT(i) {
-                    vl[i] = src_vl[op.swizzle.in[i]];
-                    vh[i] = src_vh[op.swizzle.in[i]];
+                    vl[i] = src_vl[op->swizzle.in[i]];
+                    vh[i] = src_vh[op->swizzle.in[i]];
                 }
             } else {
                 cc.comment("swizzle (copy)");
                 ctx->new_step();
                 LOOP_OUT(i) {
-                    if (i == op.swizzle.in[i]) {
-                        vl[i] = src_vl[op.swizzle.in[i]];
+                    if (i == op->swizzle.in[i]) {
+                        vl[i] = src_vl[op->swizzle.in[i]];
                         if (use_vh)
-                            vh[i] = src_vh[op.swizzle.in[i]];
+                            vh[i] = src_vh[op->swizzle.in[i]];
                     } else {
                         new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                        cc.mov    (vl[i].b16(), src_vl[op.swizzle.in[i]].b16());
+                        cc.mov    (vl[i].b16(), src_vl[op->swizzle.in[i]].b16());
                         if (use_vh)
-                            cc.mov(vh[i].b16(), src_vh[op.swizzle.in[i]].b16());
+                            cc.mov(vh[i].b16(), src_vh[op->swizzle.in[i]].b16());
                     }
                 }
             }
@@ -1201,12 +1357,12 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         break;
     case SWS_OP_CONVERT:         /* convert (cast) between formats */
         {
-            SwsPixelType from = op.type;
-            SwsPixelType to = op.convert.to;
+            SwsPixelType from = op->type;
+            SwsPixelType to = op->convert.to;
             int from_size = ff_sws_pixel_type_size(from);
             int to_size   = ff_sws_pixel_type_size(to);
 
-            if (op.convert.expand) {
+            if (op->convert.expand) {
                 snprintf(cbuf, sizeof(cbuf), "expand(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), block_size);
                 cc.comment(cbuf);
                 if (from_size == 1) {
@@ -1309,11 +1465,11 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         }
         break;
     case SWS_OP_DITHER:          /* add dithering noise */
-        if (op.dither.size_log2 == 0) {
+        if (op->dither.size_log2 == 0) {
             /* TODO dither(none) + convert(f32->u) use rounding convert instead */
             cc.comment("dither (none)");
 
-            size_t vidx = ctx->push_immq(op.dither.matrix[0]);
+            size_t vidx = ctx->push_immq(op->dither.matrix[0]);
             ctx->new_step();
             LOOP_OUT(i) {
                 refresh_vector(ctx, &vet, i);
@@ -1323,9 +1479,6 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         } else {
             cc.comment("dither");
 
-            /* Used by emit_loop to optimize away the use of x and y */
-            ctx->m_dither_op = &op;
-
             static const int y_off[4] = { 0, 3, 2, 5 };
             int largest_y_off = 0;
             LOOP_OUT(i) {
@@ -1333,19 +1486,18 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
 
             /* Write const data after function */
-            int size = 1 << op.dither.size_log2;
+            int size = 1 << op->dither.size_log2;
             std::vector<float> fdata;
             fdata.resize((size + largest_y_off) * size);
             for (int i = 0; i < (size + largest_y_off) * size; i++) {
-                fdata[i] = av_q2f(op.dither.matrix[i & ((size * size) - 1)]);
+                fdata[i] = av_q2f(op->dither.matrix[i & ((size * size) - 1)]);
             }
             Label ldata = ctx->emit_data(fdata.data(), (size + largest_y_off) * size * sizeof(float), "dither_matrix");
 
             /* Pointer to dither_matrix */
-            a64::Gp ptr = cc.newGpz("dither_matrix_ptr");
-#if 1
-            cc.virtRegByReg(ptr)->setHomeIdHint(REGID_TMP_PTR);
-#endif
+            a64::Gp ptr = ctx->m_scratch[0];
+            a64::Gp y   = ctx->m_scratch[1].r32();
+            a64::Gp x   = ctx->m_scratch[2].r32();
 
             BaseNode *last_use_of_ptr = nullptr;
 
@@ -1364,17 +1516,15 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     cc.adr(ptr, ldata);
 
                     /* y = ((y + y_off[i]) & ((1 << size_log2) - 1)) * (1 << size_log2) * sizeof(float32) */
-                    a64::Gp y = cc.newGpw("tmp_y");
                     if (y_off[i] == 0) {
-                        cc.ubfiz(y, ctx->m_y, op.dither.size_log2 + 2, op.dither.size_log2);
+                        cc.ubfiz(y, ctx->m_y, op->dither.size_log2 + 2, op->dither.size_log2);
                     } else {
                         cc.add  (y, ctx->m_y, y_off[i]);
-                        cc.ubfiz(y, y, op.dither.size_log2 + 2, op.dither.size_log2);
+                        cc.ubfiz(y, y, op->dither.size_log2 + 2, op->dither.size_log2);
                     }
 
                     /* x = (x & ((1 << size_log2) - 1)) * sizeof(float32) */
-                    a64::Gp x = cc.newGpw("tmp_x");
-                    cc.ubfiz(x, ctx->m_x, 2, op.dither.size_log2);
+                    cc.ubfiz(x, ctx->m_x, 2, op->dither.size_log2);
 
                     /* ptr = dither_matrix_ptr + y + x */
                     cc.add(ptr, ptr, y.r64());
@@ -1419,12 +1569,12 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 bool is_identity = true;
                 for (int j = 0; j < 5; j++) {
                     if (i == j) {
-                        if (op.lin.m[i][j].num != 1 || op.lin.m[i][j].den != 1) {
+                        if (op->lin.m[i][j].num != 1 || op->lin.m[i][j].den != 1) {
                             is_identity = false;
                             break;
                         }
                     } else {
-                        if (op.lin.m[i][j].num != 0) {
+                        if (op->lin.m[i][j].num != 0) {
                             is_identity = false;
                             break;
                         }
@@ -1439,8 +1589,8 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             LOOP_ARRAY(i, used) {
                 for (int j = 0; j < 5; j++) {
                     int sj = fdata_swizzle[j];
-                    if (op.lin.m[i][sj].num) {
-                        vpos[i][sj] = ctx->push_q(op.lin.m[i][sj]);
+                    if (op->lin.m[i][sj].num) {
+                        vpos[i][sj] = ctx->push_q(op->lin.m[i][sj]);
                     } else {
                         vpos[i][sj] = -1;
                     }
@@ -1515,9 +1665,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         }
         break;
     case SWS_OP_SCALE:           /* multiplication by scalar (q) */
-        if (op.type == SWS_PIXEL_F32) {
+        if (op->type == SWS_PIXEL_F32) {
             /* Add const data */
-            size_t vidx = ctx->push_q(op.c.q);
+            size_t vidx = ctx->push_q(op->c.q);
 
             /* Do the salmon dance */
             cc.comment("scale (f32)");
@@ -1527,9 +1677,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 cc.fmul(vl[i], src_vl[i], ctx->vdata(vidx));
                 cc.fmul(vh[i], src_vh[i], ctx->vdata(vidx));
             }
-        } else /* if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) */ {
+        } else /* if (op->type == SWS_PIXEL_U8 || op->type == SWS_PIXEL_U16 || op->type == SWS_PIXEL_U32) */ {
             /* Add immediate */
-            size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q));
+            size_t vidx = ctx->push_imm32_op(op, av_q2i(op->c.q));
 
             /* Do the salmon dance */
             cc.comment("scale (integer)");
@@ -1543,24 +1693,24 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         }
         break;
     case SWS_OP_MIN:             /* numeric minimum (q4) */
-        if (op.type == SWS_PIXEL_F32) {
+        if (op->type == SWS_PIXEL_F32) {
             cc.comment("min (f32)");
             ctx->new_step();
             LOOP_OUT(i) {
-                if (op.c.q4[i].den) {
-                    size_t vidx = ctx->push_immq(op.c.q4[i]);
+                if (op->c.q4[i].den) {
+                    size_t vidx = ctx->push_immq(op->c.q4[i]);
                     refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
                     cc.fmin    (vl[i], src_vl[i], vet.type(vimm[vidx]));
                     if (use_vh)
                         cc.fmin(vh[i], src_vh[i], vet.type(vimm[vidx]));
                 }
             }
-        } else /* if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) */ {
+        } else /* if (op->type == SWS_PIXEL_U8 || op->type == SWS_PIXEL_U16 || op->type == SWS_PIXEL_U32) */ {
             cc.comment("min (integer)");
             ctx->new_step();
             LOOP_OUT(i) {
-                if (op.c.q4[i].den) {
-                    size_t vidx = ctx->push_imm32_op(op, av_q2i(op.c.q4[i]));
+                if (op->c.q4[i].den) {
+                    size_t vidx = ctx->push_imm32_op(op, av_q2i(op->c.q4[i]));
                     refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
                     cc.umin    (vl[i], src_vl[i], vet.type(vimm[vidx]));
                     if (use_vh)
@@ -1570,30 +1720,30 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         }
         break;
     case SWS_OP_MAX:             /* numeric maximum (q4) */
-        if (op.type == SWS_PIXEL_F32) {
+        if (op->type == SWS_PIXEL_F32) {
             cc.comment("max");
             size_t vidx = ctx->push_imm32(0);
             ctx->new_step();
             LOOP_OUT(i) {
-                if (op.c.q4[i].den) {
+                if (op->c.q4[i].den) {
                     refresh_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
                     cc.fmax    (vl[i], src_vl[i], vet.type(vimm[vidx]));
                     if (use_vh)
                         cc.fmax(vh[i], src_vh[i], vet.type(vimm[vidx]));
                 }
             }
-        } else /* if (op.type == SWS_PIXEL_U8 || op.type == SWS_PIXEL_U16 || op.type == SWS_PIXEL_U32) */ {
+        } else /* if (op->type == SWS_PIXEL_U8 || op->type == SWS_PIXEL_U16 || op->type == SWS_PIXEL_U32) */ {
             /* Not implemented */
         }
         break;
 
     case SWS_OP_AARCH64_WIDEN_LSHIFT:
         {
-            const SwsWidenLshiftOp *priv = (const SwsWidenLshiftOp *) &op.convert;
+            const SwsWidenLshiftOp *priv = (const SwsWidenLshiftOp *) &op->convert;
 
             use_vh = (block_size == 16);
 
-            snprintf(cbuf, sizeof(cbuf), "widen_lshift(%s -> %s, lshift %d)", ff_sws_pixel_type_name(op.type), ff_sws_pixel_type_name(priv->convert.to), priv->lshift);
+            snprintf(cbuf, sizeof(cbuf), "widen_lshift(%s -> %s, lshift %d)", ff_sws_pixel_type_name(op->type), ff_sws_pixel_type_name(priv->convert.to), priv->lshift);
             cc.comment(cbuf);
 
             if (priv->lshift == 8) {
@@ -1621,9 +1771,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 
     case SWS_OP_AARCH64_SATURATING_CONVERT:
         {
-            snprintf(cbuf, sizeof(cbuf), "saturating_convert(%s -> %s)", ff_sws_pixel_type_name(op.type), ff_sws_pixel_type_name(op.convert.to));
+            snprintf(cbuf, sizeof(cbuf), "saturating_convert(%s -> %s)", ff_sws_pixel_type_name(op->type), ff_sws_pixel_type_name(op->convert.to));
             cc.comment(cbuf);
-            if (op.convert.to == SWS_PIXEL_U16) {
+            if (op->convert.to == SWS_PIXEL_U16) {
                 ctx->new_step();
                 LOOP_OUT(i) {
                     refresh_vector(ctx, &vet, i);
@@ -1633,7 +1783,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 LOOP_OUT(i) {
                     cc.ins(vl[i].d(1), vh[i].d(0));
                 }
-            } else /* if (op.convert.to == SWS_PIXEL_U8) */ {
+            } else /* if (op->convert.to == SWS_PIXEL_U8) */ {
                 ctx->new_step();
                 LOOP_OUT(i) {
                     refresh_vector(ctx, &vet, i, 0x0f);
@@ -1645,7 +1795,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
 
     case SWS_OP_AARCH64_SHUFFLE_BYTES:
         {
-            const SwsShuffleOp *priv = (SwsShuffleOp *) &op.rw;
+            const SwsShuffleOp *priv = (SwsShuffleOp *) &op->rw;
             const uint8_t *shuffle = priv->data;
             int shuffle_size = priv->size;
             int vector_size = 16;
@@ -1766,16 +1916,10 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
 
             /* Read */
-            ctx->m_read_bytes = priv->read_bytes / block_size;
             /* Load input pointer in setup */
             ctx->to_setup();
             cc.comment("read");
-            ctx->m_in[0] = cc.newGpz("in0");
-#if 1
-            cc.virtRegByReg(ctx->m_in[0])->setHomeIdHint(REGID_IN);
-#endif
             cc.ldr(ctx->m_in[0], a64::ptr(exec, offsetof(SwsOpExec, in)));
-            ctx->m_read_used[0] = true;
             ctx->from_setup();
             /* Read vectors from input pointer */
             cc.comment("read_bytes");
@@ -1791,8 +1935,8 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             Label ldata = ctx->emit_data(tbl_data, tbl_data_size, "tbl_data_array");
             /* Read tbl data into vectors (setup) */
             ctx->to_setup();
-            a64::Gp ptr = cc.newGpz("tbl_data_ptr");
             cc.comment("shuffle (tbl)");
+            a64::Gp ptr = ctx->m_scratch[0];
             cc.adr(ptr, ldata);
             if (tbl_insn_count > 4) {
                 cc.ld1(vshuffle[0], vshuffle[1], vshuffle[2], vshuffle[3], a64::ptr(ptr).post(64));
@@ -1828,8 +1972,8 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 Label ldata = ctx->emit_data(const_data, const_data_size, "const_data_array");
                 /* Read const data into vectors (setup) */
                 ctx->to_setup();
-                a64::Gp ptr = cc.newGpz("const_data_ptr");
                 cc.comment("shuffle (const)");
+                ptr = ctx->m_scratch[0];
                 cc.adr(ptr, ldata);
                 switch (vconst_count) {
                 case 1: cc.ld1(vconst[0],                                  a64::ptr(ptr)); break;
@@ -1867,16 +2011,10 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
 
             /* Write */
-            ctx->m_write_bytes = priv->write_bytes / block_size;
             /* Load output pointer in setup */
             ctx->to_setup();
             cc.comment("write");
-            ctx->m_out[0] = cc.newGpz("out0");
-#if 1
-            cc.virtRegByReg(ctx->m_out[0])->setHomeIdHint(REGID_OUT);
-#endif
             cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
-            ctx->m_write_used[0] = true;
             ctx->from_setup();
             /* Write vectors to output pointer */
             cc.comment("write_bytes");
@@ -1924,8 +2062,15 @@ static av_cold int asmjit_compile(SwsContext *swsctx, SwsOpList *ops, SwsCompile
     a64::Compiler &cc = *ctx->m_cc;
     Error err;
 
+    /* Allocate all GPRs in a deterministic order */
+    asmjit_allocate_gprs(ctx, ops);
+
+    /* Compile all operations */
     for (int n = 0; n < ops->num_ops; n++)
         asmjit_compile_op(ctx, ops, n);
+
+    /* Allocate remaining scratch registers */
+    asmjit_allocate_scratch(ctx);
 
     ctx->emit_const();
     ctx->load_immediates();
