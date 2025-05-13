@@ -47,6 +47,7 @@ extern "C" {
 // #define SET_HOME_GPR
 /* Free GPRs in the order they should be allocated */
 static const uint8_t free_gprs[] = {
+#if 0
 //  0, /* exec */
     1,
 //  2, /* num_blocks */
@@ -63,9 +64,11 @@ static const uint8_t free_gprs[] = {
 //  29, /* frame pointer */
 //  30, /* link regisers */
 //  31, /* stack pointer */
+#else
+    10, 11, 12, 13, 14, 15, 16, 17,
+#endif
 };
-/* TODO check how many are actually needed */
-#define SCRATCH_COUNT 8
+#define SCRATCH_COUNT 4
 
 /* Vector Registers */
 /* vimm: 16, 17, 18, 19 */
@@ -927,7 +930,20 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
     char cbuf[64];
     LOOP_ARRAY(i, ctx->m_read_used) {
         int gpr_idx = ctx->new_gpr();
-// printf("[%s][%d] %s() in %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
+        snprintf(cbuf, sizeof(cbuf), "in_padding%d", i);
+        ctx->m_in_padding[i] = cc.newGpz(cbuf);
+        cc.virtRegByReg(ctx->m_in_padding[i])->setHomeIdHint(gpr_idx);
+    }
+    LOOP_ARRAY(i, ctx->m_write_used) {
+        int gpr_idx = ctx->new_gpr();
+        snprintf(cbuf, sizeof(cbuf), "out_padding%d", i);
+        ctx->m_out_padding[i] = cc.newGpz(cbuf);
+        cc.virtRegByReg(ctx->m_out_padding[i])->setHomeIdHint(gpr_idx);
+    }
+    LOOP_ARRAY(i, ctx->m_read_used) {
+#ifdef SET_HOME_GPR
+        int gpr_idx = ctx->new_gpr();
+#endif
         snprintf(cbuf, sizeof(cbuf), "in%d", i);
         ctx->m_in[i] = cc.newGpz(cbuf);
 #ifdef SET_HOME_GPR
@@ -935,37 +951,21 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
 #endif
     }
     LOOP_ARRAY(i, ctx->m_write_used) {
+#ifdef SET_HOME_GPR
         int gpr_idx = ctx->new_gpr();
-// printf("[%s][%d] %s() out %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
+#endif
         snprintf(cbuf, sizeof(cbuf), "out%d", i);
         ctx->m_out[i] = cc.newGpz(cbuf);
 #ifdef SET_HOME_GPR
         cc.virtRegByReg(ctx->m_out[i])->setHomeIdHint(gpr_idx);
 #endif
     }
-    LOOP_ARRAY(i, ctx->m_read_used) {
-        int gpr_idx = ctx->new_gpr();
-// printf("[%s][%d] %s() in_padding %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
-        snprintf(cbuf, sizeof(cbuf), "in_padding%d", i);
-        ctx->m_in_padding[i] = cc.newGpz(cbuf);
-#ifdef SET_HOME_GPR
-        cc.virtRegByReg(ctx->m_in_padding[i])->setHomeIdHint(gpr_idx);
-#endif
-    }
-    LOOP_ARRAY(i, ctx->m_write_used) {
-        int gpr_idx = ctx->new_gpr();
-// printf("[%s][%d] %s() out_padding %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
-        snprintf(cbuf, sizeof(cbuf), "out_padding%d", i);
-        ctx->m_out_padding[i] = cc.newGpz(cbuf);
-#ifdef SET_HOME_GPR
-        cc.virtRegByReg(ctx->m_out_padding[i])->setHomeIdHint(gpr_idx);
-#endif
-    }
     if (ctx->m_xy_used) {
+#ifdef SET_HOME_GPR
         int gpr_idx0 = ctx->new_gpr();
         int gpr_idx1 = ctx->new_gpr();
         int gpr_idx2 = ctx->new_gpr();
-// printf("[%s][%d] %s() xy_used %d %d %d\n", __FILE__, __LINE__, __func__, gpr_idx0, gpr_idx1, gpr_idx2);
+#endif
         ctx->m_orig_x = cc.newGpw("orig_x");
         ctx->m_x_end = cc.newGpw("x_end");
         ctx->m_y_end = cc.newGpw("y_end");
@@ -976,7 +976,9 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
 #endif
     }
     for (int i = 0; i < ctx->m_scratch_used; i++) {
+#ifdef SET_HOME_GPR
         int gpr_idx = ctx->new_gpr();
+#endif
         snprintf(cbuf, sizeof(cbuf), "scratch%d", i);
         ctx->m_scratch[i] = cc.newGpz(cbuf);
 #ifdef SET_HOME_GPR
@@ -1001,8 +1003,9 @@ static void asmjit_allocate_scratch(AsmJitContext *ctx)
     a64::Compiler &cc = *ctx->m_cc;
     char cbuf[64];
     for (int i = ctx->m_scratch_used; i < scratch_used; i++) {
+#ifdef SET_HOME_GPR
         int gpr_idx = ctx->new_gpr();
-printf("[%s][%d] %s() scratch_used %d %d\n", __FILE__, __LINE__, __func__, i, gpr_idx);
+#endif
         snprintf(cbuf, sizeof(cbuf), "scratch%d", i);
         ctx->m_scratch[i] = cc.newGpz(cbuf);
 #ifdef SET_HOME_GPR
