@@ -751,6 +751,31 @@ retry:
             break;
 
         case SWS_OP_CONVERT:
+#if 0
+            /* Saturating convert */
+            if (next->op == SWS_OP_MIN && op->type == SWS_PIXEL_F32 && op->convert.to < SWS_PIXEL_U32) {
+                bool to_u16 = (op->convert.to == SWS_PIXEL_U16);
+                int u = to_u16 ? 65535 : 255;
+                AVRational q = av_make_q(u, 1);
+                bool enable = true;
+                LOOP_OUT(i) {
+                    enable &= (av_cmp_q(next->c.q4[i], q) == 0);
+                }
+                if (enable) {
+                    op->op = SWS_OP_CONVERT; /* unnecessary */
+                    op->type = SWS_PIXEL_F32; /* unnecessary */
+                    op->convert.to = to_u16 ? SWS_PIXEL_U32 : SWS_PIXEL_U16;
+                    op->convert.expand = false;
+
+                    next->op = (SwsOpType) SWS_OP_AARCH64_SATURATING_CONVERT;
+                    next->type = op->convert.to;
+                    next->convert.to = to_u16 ? SWS_PIXEL_U16 : SWS_PIXEL_U8;
+
+                    goto retry;
+                }
+            }
+#endif
+
             /* Simplify widen+lshift by zip with zero or ushll */
             if (op->type == SWS_PIXEL_U8 && op->convert.to == SWS_PIXEL_U16 && !op->convert.expand &&
                 next->op == SWS_OP_LSHIFT)
