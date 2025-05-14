@@ -419,12 +419,6 @@ static bool extract_swizzle(SwsLinearOp *op, SwsComps prev, SwsSwizzleOp *out_sw
     return true;
 }
 
-static void op_copy_flags(SwsOp *op, const SwsOp *op2)
-{
-    for (int i = 0; i < 4; i++)
-        op->comps.flags[i] = op2->comps.flags[i];
-}
-
 int ff_sws_op_list_optimize(SwsOpList *ops)
 {
     int ret;
@@ -574,7 +568,6 @@ retry:
                 const SwsSwizzleOp orig = op->swizzle;
                 for (int i = 0; i < 4; i++)
                     op->swizzle.in[i] = orig.in[next->swizzle.in[i]];
-                op_copy_flags(op, next);
                 ff_sws_op_list_remove_at(ops, n + 1, 1);
                 goto retry;
             }
@@ -610,7 +603,6 @@ retry:
             {
                 av_assert1(op->convert.to == next->type);
                 op->convert.to = next->convert.to;
-                op_copy_flags(op, next);
                 ff_sws_op_list_remove_at(ops, n + 1, 1);
                 goto retry;
             }
@@ -689,7 +681,6 @@ retry:
                         op->lin.m[i][j] = sum;
                     }
                 }
-                op_copy_flags(op, next);
                 op->lin.mask = ff_sws_linear_mask(op->lin);
                 ff_sws_op_list_remove_at(ops, n + 1, 1);
                 goto retry;
