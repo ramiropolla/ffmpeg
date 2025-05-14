@@ -57,9 +57,9 @@ static void process(const SwsOpExec *exec, const void *priv,
         if (idx == -1) {
             memset(out, p->clear_value[i], exec->out_stride[i] * lines);
         } else if (idx == -2) {
-            memset16((uint16_t *) out, p->clear_value[i], (exec->out_stride[i] * lines) / 2);
+            memset16((uint16_t *) out, p->clear_value[i], (exec->out_stride[i] * lines) >> 1);
         } else if (idx == -4) {
-            memset32((uint32_t *) out, p->clear_value[i], (exec->out_stride[i] * lines) / 4);
+            memset32((uint32_t *) out, p->clear_value[i], (exec->out_stride[i] * lines) >> 2);
         } else if (exec->out_stride[i] == exec->in_stride[idx]) {
             memcpy(out, exec->in[idx], exec->out_stride[i] * lines);
         } else {
