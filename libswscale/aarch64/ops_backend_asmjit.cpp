@@ -49,12 +49,12 @@ extern "C" {
 static const uint8_t free_gprs[] = {
 //  0, /* exec */
 //  1, /* scratch0 */
-//  2, /* num_blocks */
-//  3, /* num_lines */
-//  4, /* will be used */
-//  5, /* will be used */
+//  2, /* x_start */
+//  3, /* y */
+//  4, /* x_end */
+//  5, /* y_end */
 //  6, /* x */
-//  7, /* y */
+//  7, /* UNUSED */
 //  8, /* scratch1 */
 //  9, /* scratch2 */
     10, 11, 12, 13, 14, 15, 16, 17,
@@ -119,8 +119,10 @@ struct AsmJitContext {
     BaseNode *m_setup;
     BaseNode *m_tail;
     a64::Gp m_exec;
-    a64::Gp m_num_blocks;
-    a64::Gp m_num_lines;
+    a64::Gp m_x_start;
+    a64::Gp m_y;
+    a64::Gp m_x_end;
+    a64::Gp m_y_end;
     a64::Vec m_src_vl[4];
     a64::Vec m_src_vh[4];
     a64::Vec m_vl[4];
@@ -128,8 +130,9 @@ struct AsmJitContext {
     int m_vec_idx;
     int m_gpr_idx;
 
+    a64::Gp m_num_blocks;
+    a64::Gp m_num_lines;
     a64::Gp m_x;
-    a64::Gp m_y;
 
     int m_read_bytes;
     int m_write_bytes;
@@ -147,9 +150,6 @@ struct AsmJitContext {
     a64::Gp m_out[4];
     a64::Gp m_in_padding[4];
     a64::Gp m_out_padding[4];
-    a64::Gp m_orig_x;
-    a64::Gp m_x_end;
-    a64::Gp m_y_end;
     a64::Gp m_scratch[SCRATCH_COUNT];
 
     /* const data */
@@ -176,7 +176,7 @@ struct AsmJitContext {
         m_cc = new a64::Compiler(&m_code);
         a64::Compiler &cc = *m_cc;
         cc.addDiagnosticOptions(DiagnosticOptions::kRAAnnotate);
-        m_func = cc.addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, int, int>());
+        m_func = cc.addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, int, int, int, int>());
         /* HACK to set function name in asmjit */
         {
             LabelNode *func_label_node = static_cast<LabelNode *>(m_func);
@@ -459,12 +459,10 @@ struct AsmJitContext {
         Label vloop = cc.newNamedLabel("vloop");
 
         to_prologue();
-        if (m_xy_used) {
-            cc.comment("x/y");
-            cc.ldr(m_y, a64::ptr(m_exec, offsetof(SwsOpExec, y)));
-            cc.ldr(m_orig_x, a64::ptr(m_exec, offsetof(SwsOpExec, x)));
-            cc.add(m_y_end, m_y, m_num_lines);
-            cc.add(m_x_end, m_orig_x, m_num_blocks, a64::lsl(av_log2(m_block_size)));
+        cc.comment("x/y");
+        cc.sub(m_num_blocks, m_x_end, m_x_start);
+        if (!m_xy_used) {
+            cc.sub(m_num_lines, m_y_end, m_y);
         }
         cc.comment("padding");
         a64::Gp read_linesize;
@@ -533,7 +531,7 @@ struct AsmJitContext {
         cc.comment("=> outer loop");
         cc.bind(vloop);
         if (m_xy_used) {
-            cc.mov(m_x, m_orig_x);
+            cc.mov(m_x, m_x_start);
         } else {
             cc.mov(m_x, m_num_blocks);
         }
@@ -542,7 +540,7 @@ struct AsmJitContext {
 
         cc.comment("horizontal loop back");
         if (m_xy_used) {
-            cc.add(m_x, m_x, m_block_size);
+            cc.add(m_x, m_x, 1);
             cc.cmp(m_x, m_x_end);
             cc.b(a64::CondCode::kLO, hloop);
         } else {
@@ -890,19 +888,21 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
     ctx->m_scratch[0] = cc.newGpz("scratch0");
     cc.virtRegByReg(ctx->m_scratch[0])->setHomeIdHint(1);
     /* x2 */
-    ctx->m_num_blocks = cc.newGpw("num_blocks");
-    ctx->m_func->setArg(2, ctx->m_num_blocks);
+    ctx->m_x_start    = cc.newGpw("x_start");
+    ctx->m_func->setArg(2, ctx->m_x_start);
     /* x3 */
-    ctx->m_num_lines  = cc.newGpw("num_lines");
-    ctx->m_func->setArg(3, ctx->m_num_lines);
-    /* x4 skip for now */
-    /* x5 skip for now */
+    ctx->m_y          = cc.newGpw("y");
+    ctx->m_func->setArg(3, ctx->m_y);
+    /* x4 */
+    ctx->m_x_end      = cc.newGpw("x_end");
+    ctx->m_func->setArg(4, ctx->m_x_end);
+    /* x5 */
+    ctx->m_y_end      = cc.newGpw("y_end");
+    ctx->m_func->setArg(5, ctx->m_y_end);
     /* x6 x */
     ctx->m_x = cc.newGpw("x");
     cc.virtRegByReg(ctx->m_x)->setHomeIdHint(6);
-    /* x7 y */
-    ctx->m_y = cc.newGpw("y");
-    cc.virtRegByReg(ctx->m_y)->setHomeIdHint(7);
+    /* x7 UNUSED */
     /* x8 scratch1 */
     ctx->m_scratch[1] = cc.newGpz("scratch1");
     cc.virtRegByReg(ctx->m_scratch[1])->setHomeIdHint(8);
@@ -931,13 +931,9 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
         cc.virtRegByReg(ctx->m_out[i])->setHomeIdHint(ctx->new_gpr());
 #endif
     }
-    if (ctx->m_xy_used) {
-        ctx->m_orig_x = cc.newGpw("orig_x");
-        ctx->m_x_end = cc.newGpw("x_end");
-        ctx->m_y_end = cc.newGpw("y_end");
-        cc.virtRegByReg(ctx->m_orig_x)->setHomeIdHint(ctx->new_gpr());
-        cc.virtRegByReg(ctx->m_x_end)->setHomeIdHint(ctx->new_gpr());
-        cc.virtRegByReg(ctx->m_y_end)->setHomeIdHint(ctx->new_gpr());
+    ctx->m_num_blocks = cc.newGpw("num_blocks");
+    if (!ctx->m_xy_used) {
+        ctx->m_num_lines = cc.newGpw("num_lines");
     }
 }
 
@@ -1454,7 +1450,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     }
 
                     /* x = (x & ((1 << size_log2) - 1)) * sizeof(float32) */
-                    cc.ubfiz(x, ctx->m_x, 2, op->dither.size_log2);
+                    cc.ubfiz(x, ctx->m_x, 2 + av_log2(block_size), op->dither.size_log2 - av_log2(block_size));
 
                     /* ptr = dither_matrix_ptr + y + x */
                     cc.add(ptr, ptr, y.r64());
