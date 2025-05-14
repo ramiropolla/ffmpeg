@@ -470,6 +470,46 @@ static inline int fmt_is_subsampled(enum AVPixelFormat fmt)
            av_pix_fmt_desc_get(fmt)->log2_chroma_h != 0;
 }
 
+static int my_ignored(int fmt)
+{
+#if 0
+    switch (fmt) {
+    case AV_PIX_FMT_NV24:
+    case AV_PIX_FMT_NV42:
+    case AV_PIX_FMT_P410BE:
+    case AV_PIX_FMT_P410LE:
+    case AV_PIX_FMT_P412BE:
+    case AV_PIX_FMT_P412LE:
+    case AV_PIX_FMT_P416BE:
+    case AV_PIX_FMT_P416LE:
+    case AV_PIX_FMT_XYZ12BE:
+    case AV_PIX_FMT_XYZ12LE:
+    case AV_PIX_FMT_MONOWHITE:
+    case AV_PIX_FMT_MONOBLACK:
+    case AV_PIX_FMT_BGR8:
+    case AV_PIX_FMT_BGR4_BYTE:
+    case AV_PIX_FMT_RGB8:
+    case AV_PIX_FMT_RGB4_BYTE:
+    case AV_PIX_FMT_RGB555LE:
+    case AV_PIX_FMT_RGB555BE:
+    case AV_PIX_FMT_RGB565LE:
+    case AV_PIX_FMT_RGB565BE:
+    case AV_PIX_FMT_BGR555LE:
+    case AV_PIX_FMT_BGR555BE:
+    case AV_PIX_FMT_BGR565LE:
+    case AV_PIX_FMT_BGR565BE:
+    case AV_PIX_FMT_RGB444LE:
+    case AV_PIX_FMT_RGB444BE:
+    case AV_PIX_FMT_BGR444LE:
+    case AV_PIX_FMT_BGR444BE:
+    case AV_PIX_FMT_GRAYF32BE:
+    case AV_PIX_FMT_GRAYF32LE:
+        return 1;
+    }
+#endif
+    return 0;
+}
+
 static int run_self_tests(const AVFrame *ref, struct options opts)
 {
     const int dst_w[] = { opts.w, opts.w - opts.w / 3, opts.w + opts.w / 3 };
@@ -489,12 +529,12 @@ static int run_self_tests(const AVFrame *ref, struct options opts)
     for (src_fmt = src_fmt_min; src_fmt <= src_fmt_max; src_fmt++) {
         if (opts.unscaled && fmt_is_subsampled(src_fmt))
             continue;
-        if (!sws_test_format(src_fmt, 0) || !sws_test_format(src_fmt, 1))
+        if (!sws_test_format(src_fmt, 0) || !sws_test_format(src_fmt, 1) || my_ignored(src_fmt))
             continue;
         for (dst_fmt = dst_fmt_min; dst_fmt <= dst_fmt_max; dst_fmt++) {
             if (opts.unscaled && fmt_is_subsampled(dst_fmt))
                 continue;
-            if (!sws_test_format(dst_fmt, 0) || !sws_test_format(dst_fmt, 1))
+            if (!sws_test_format(dst_fmt, 0) || !sws_test_format(dst_fmt, 1) || my_ignored(dst_fmt))
                 continue;
             for (int h = 0; h < FF_ARRAY_ELEMS(dst_h); h++) {
                 for (int w = 0; w < FF_ARRAY_ELEMS(dst_w); w++) {
