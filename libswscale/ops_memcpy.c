@@ -19,30 +19,23 @@
  */
 
 #include "libavutil/avassert.h"
+#include "libavutil/bswap.h"
+
+#include "memops.h"
 
 #include "ops_backend.h"
 
 typedef struct MemcpyPriv {
     int num_planes;
     int index[4]; /* or -fmt_size to clear plane */
+    int bswap;
     uint32_t clear_value[4];
+    MemOpsContext mctx;
 } MemcpyPriv;
 
 /* Memcpy backend for trivial cases */
 
 #define av_q2f(q) ((q).den ? (float) (q).num / (q).den : 0)
-
-static av_noinline void memset16(uint16_t *dst, uint16_t val, size_t count)
-{
-    for (size_t i = 0; i < count; i++)
-        dst[i] = val;
-}
-
-static av_noinline void memset32(uint32_t *dst, uint32_t val, size_t count)
-{
-    for (size_t i = 0; i < count; i++)
-        dst[i] = val;
-}
 
 static void process(const SwsOpExec *exec, const void *priv,
                     int x_start, int y_start, int x_end, int y_end)
@@ -57,16 +50,24 @@ static void process(const SwsOpExec *exec, const void *priv,
         if (idx == -1) {
             memset(out, p->clear_value[i], exec->out_stride[i] * lines);
         } else if (idx == -2) {
-            memset16((uint16_t *) out, p->clear_value[i], (exec->out_stride[i] * lines) >> 1);
+            p->mctx.memset16((uint16_t *) out, p->clear_value[i], (exec->out_stride[i] * lines) >> 1);
         } else if (idx == -4) {
-            memset32((uint32_t *) out, p->clear_value[i], (exec->out_stride[i] * lines) >> 2);
+            p->mctx.memset32((uint32_t *) out, p->clear_value[i], (exec->out_stride[i] * lines) >> 2);
         } else if (exec->out_stride[i] == exec->in_stride[idx]) {
-            memcpy(out, exec->in[idx], exec->out_stride[i] * lines);
+            switch (p->bswap) {
+            case 0: memcpy           (             out,              exec->in[idx],  exec->out_stride[i] * lines);       break;
+            case 2: p->mctx.memswap16((uint16_t *) out, (uint16_t *) exec->in[idx], (exec->out_stride[i] * lines) >> 1); break;
+            case 4: p->mctx.memswap32((uint32_t *) out, (uint32_t *) exec->in[idx], (exec->out_stride[i] * lines) >> 2); break;
+            }
         } else {
             const int bytes = x_end * exec->pixel_bits_out >> 3;
             const uint8_t *in = exec->in[idx];
             for (int y = y_start; y < y_end; y++) {
-                memcpy(out, in, bytes);
+                switch (p->bswap) {
+                case 0: memcpy           (             out,              in, bytes);      break;
+                case 1: p->mctx.memswap16((uint16_t *) out, (uint16_t *) in, bytes >> 1); break;
+                case 2: p->mctx.memswap32((uint32_t *) out, (uint32_t *) in, bytes >> 2); break;
+                }
                 out += exec->out_stride[i];
                 in  += exec->in_stride[idx];
             }
@@ -87,6 +88,26 @@ static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
             for (int i = 0; i < op->rw.elems; i++)
                 p.index[i] = i;
             break;
+
+#if 1
+        case SWS_OP_SWAP_BYTES: {
+            int fmt_size = ff_sws_pixel_type_size(op->type);
+            if (p.bswap == 0) {
+                p.bswap = fmt_size;
+            } else if (p.bswap == fmt_size) {
+                p.bswap = 0;
+            } else {
+                return AVERROR(ENOTSUP);
+            }
+            for (int i = 0; i < 4; i++) {
+                switch (fmt_size) {
+                case 2: p.clear_value[i] = av_bswap16(p.clear_value[i]); break;
+                case 4: p.clear_value[i] = av_bswap32(p.clear_value[i]); break;
+                }
+            }
+            break;
+        }
+#endif
 
         case SWS_OP_SWIZZLE: {
             const MemcpyPriv orig = p;
@@ -142,6 +163,8 @@ static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
             return AVERROR(ENOTSUP);
         }
     }
+
+    ff_memops_init(&p.mctx);
 
     *out = (SwsCompiledOp) {
         .block_size = 1,
