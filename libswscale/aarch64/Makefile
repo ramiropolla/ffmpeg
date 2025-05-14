@@ -1,6 +1,7 @@
 OBJS        += aarch64/rgb2rgb.o                \
                aarch64/swscale.o                \
                aarch64/swscale_unscaled.o       \
+               aarch64/memops.o                 \
 
 NEON-OBJS   += aarch64/hscale.o                 \
                aarch64/input.o                  \
@@ -10,3 +11,4 @@ NEON-OBJS   += aarch64/hscale.o                 \
                aarch64/swscale_unscaled_neon.o  \
                aarch64/yuv2rgb_neon.o           \
                aarch64/ops_backend_asmjit.o     \
+               aarch64/memops_neon.o            \
