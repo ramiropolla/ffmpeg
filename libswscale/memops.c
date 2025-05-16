@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config.h"
+
 #include "memops.h"
 
 #include "libavutil/bswap.h"
@@ -34,24 +36,38 @@ static void memset32_c(uint32_t *dst, uint32_t val, size_t count)
         dst[i] = val;
 }
 
-static void memswap16_c(uint16_t *dst, uint16_t *src, size_t count)
+static void memswap16_c(uint16_t *restrict dst, const uint16_t *restrict src, size_t count)
 {
     for (size_t i = 0; i < count; i++)
         dst[i] = av_bswap16(src[i]);
 }
 
-static void memswap32_c(uint32_t *dst, uint32_t *src, size_t count)
+static void memswap32_c(uint32_t *restrict dst, const uint32_t *restrict src, size_t count)
 {
     for (size_t i = 0; i < count; i++)
         dst[i] = av_bswap32(src[i]);
 }
 
+static void memlshift16_c(uint16_t *restrict dst, const uint16_t *restrict src, size_t count, int shift)
+{
+    for (size_t i = 0; i < count; i++)
+        dst[i] = src[i] << shift;
+}
+
+static void memlshift32_c(uint32_t *restrict dst, const uint32_t *restrict src, size_t count, int shift)
+{
+    for (size_t i = 0; i < count; i++)
+        dst[i] = src[i] << shift;
+}
+
 av_cold void ff_memops_init(MemOpsContext *c)
 {
-    c->memset16  = memset16_c;
-    c->memset32  = memset32_c;
+    c->memset16 = memset16_c;
+    c->memset32 = memset32_c;
     c->memswap16 = memswap16_c;
     c->memswap32 = memswap32_c;
+    c->memlshift16 = memlshift16_c;
+    c->memlshift32 = memlshift32_c;
 #if ARCH_AARCH64
     ff_memops_init_aarch64(c);
 #endif

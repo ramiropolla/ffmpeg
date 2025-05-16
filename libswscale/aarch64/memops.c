@@ -18,11 +18,26 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/aarch64/cpu.h"
 #include "libswscale/memops.h"
 
 void ff_memset16_neon(uint16_t *dst, uint16_t val, size_t count);
+void ff_memset32_neon(uint32_t *dst, uint32_t val, size_t count);
+void ff_memswap16_neon(uint16_t *restrict dst, const uint16_t *restrict src, size_t count);
+void ff_memswap32_neon(uint32_t *restrict dst, const uint32_t *restrict src, size_t count);
+void ff_memlshift16_neon(uint16_t *restrict dst, const uint16_t *restrict src, size_t count, int shift);
+void ff_memlshift32_neon(uint32_t *restrict dst, const uint32_t *restrict src, size_t count, int shift);
 
 void ff_memops_init_aarch64(MemOpsContext *c)
 {
-    c->memset16 = ff_memset16_neon;
+    int cpu_flags = av_get_cpu_flags();
+
+    if (have_neon(cpu_flags)) {
+        c->memset16 = ff_memset16_neon;
+        c->memset32 = ff_memset32_neon;
+        c->memswap16 = ff_memswap16_neon;
+        c->memswap32 = ff_memswap32_neon;
+        c->memlshift16 = ff_memlshift16_neon;
+        c->memlshift32 = ff_memlshift32_neon;
+    }
 }

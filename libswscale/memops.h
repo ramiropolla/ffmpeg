@@ -24,16 +24,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef void (*memset16_func)(uint16_t *dst, uint16_t val, size_t count);
-typedef void (*memset32_func)(uint32_t *dst, uint32_t val, size_t count);
-typedef void (*memswap16_func)(uint16_t *dst, uint16_t *src, size_t count);
-typedef void (*memswap32_func)(uint32_t *dst, uint32_t *src, size_t count);
+typedef void (*memset16_func)(uint16_t *restrict dst, uint16_t val, size_t count);
+typedef void (*memset32_func)(uint32_t *restrict dst, uint32_t val, size_t count);
+typedef void (*memswap16_func)(uint16_t *restrict dst, const uint16_t *restrict src, size_t count);
+typedef void (*memswap32_func)(uint32_t *restrict dst, const uint32_t *restrict src, size_t count);
+typedef void (*memshift16_func)(uint16_t *restrict dst, const uint16_t *restrict src, size_t count, int shift);
+typedef void (*memshift32_func)(uint32_t *restrict dst, const uint32_t *restrict src, size_t count, int shift);
 
 typedef struct MemOpsContext {
     memset16_func memset16;
     memset32_func memset32;
     memswap16_func memswap16;
     memswap32_func memswap32;
+    memshift16_func memlshift16;
+    memshift32_func memlshift32;
 } MemOpsContext;
 
 void ff_memops_init(MemOpsContext *c);
