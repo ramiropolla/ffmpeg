@@ -29,6 +29,7 @@ typedef struct MemcpyPriv {
     int num_planes;
     int index[4]; /* or -fmt_size to clear plane */
     int bswap;
+    int lshift;
     uint32_t clear_value[4];
     MemOpsContext mctx;
 } MemcpyPriv;
@@ -54,19 +55,27 @@ static void process(const SwsOpExec *exec, const void *priv,
         } else if (idx == -4) {
             p->mctx.memset32((uint32_t *) out, p->clear_value[i], (exec->out_stride[i] * lines) >> 2);
         } else if (exec->out_stride[i] == exec->in_stride[idx]) {
-            switch (p->bswap) {
-            case 0: memcpy           (             out,              exec->in[idx],  exec->out_stride[i] * lines);       break;
-            case 2: p->mctx.memswap16((uint16_t *) out, (uint16_t *) exec->in[idx], (exec->out_stride[i] * lines) >> 1); break;
-            case 4: p->mctx.memswap32((uint32_t *) out, (uint32_t *) exec->in[idx], (exec->out_stride[i] * lines) >> 2); break;
+            if (p->lshift) {
+                p->mctx.memlshift16((uint16_t *) out, (uint16_t *) exec->in[idx], (exec->out_stride[i] * lines) >> 1, p->lshift);
+            } else {
+                switch (p->bswap) {
+                case 0: memcpy           (             out,              exec->in[idx],  exec->out_stride[i] * lines);       break;
+                case 2: p->mctx.memswap16((uint16_t *) out, (uint16_t *) exec->in[idx], (exec->out_stride[i] * lines) >> 1); break;
+                case 4: p->mctx.memswap32((uint32_t *) out, (uint32_t *) exec->in[idx], (exec->out_stride[i] * lines) >> 2); break;
+                }
             }
         } else {
             const int bytes = x_end * exec->pixel_bits_out >> 3;
             const uint8_t *in = exec->in[idx];
             for (int y = y_start; y < y_end; y++) {
-                switch (p->bswap) {
-                case 0: memcpy           (             out,              in, bytes);      break;
-                case 1: p->mctx.memswap16((uint16_t *) out, (uint16_t *) in, bytes >> 1); break;
-                case 2: p->mctx.memswap32((uint32_t *) out, (uint32_t *) in, bytes >> 2); break;
+                if (p->lshift) {
+                    p->mctx.memlshift16((uint16_t *) out, (uint16_t *) in, bytes >> 1, p->lshift);
+                } else {
+                    switch (p->bswap) {
+                    case 0: memcpy           (             out,              in, bytes);      break;
+                    case 1: p->mctx.memswap16((uint16_t *) out, (uint16_t *) in, bytes >> 1); break;
+                    case 2: p->mctx.memswap32((uint32_t *) out, (uint32_t *) in, bytes >> 2); break;
+                    }
                 }
                 out += exec->out_stride[i];
                 in  += exec->in_stride[idx];
@@ -89,8 +98,15 @@ static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
                 p.index[i] = i;
             break;
 
-#if 1
+        case SWS_OP_LSHIFT:
+            if (p.bswap)
+                return AVERROR(ENOTSUP);
+            p.lshift = op->c.u;
+            break;
+
         case SWS_OP_SWAP_BYTES: {
+            if (p.lshift)
+                return AVERROR(ENOTSUP);
             int fmt_size = ff_sws_pixel_type_size(op->type);
             if (p.bswap == 0) {
                 p.bswap = fmt_size;
@@ -107,7 +123,6 @@ static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
             }
             break;
         }
-#endif
 
         case SWS_OP_SWIZZLE: {
             const MemcpyPriv orig = p;
