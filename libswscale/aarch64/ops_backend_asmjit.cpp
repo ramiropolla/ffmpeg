@@ -118,6 +118,7 @@ struct AsmJitContext {
     BaseNode *m_prologue;
     BaseNode *m_setup;
     BaseNode *m_tail;
+    BaseNode *m_cmp_x;
     a64::Gp m_exec;
     a64::Gp m_x_start;
     a64::Gp m_y;
@@ -194,6 +195,7 @@ struct AsmJitContext {
         m_setup = cc.cursor();
         cc.comment("=> inner loop");
         m_tail = cc.cursor();
+        m_cmp_x = nullptr;
 #ifdef EMIT_BRK
         to_prologue();
         cc.comment("breakpoint");
@@ -541,11 +543,15 @@ struct AsmJitContext {
 
         cc.comment("horizontal loop back");
         if (m_xy_used) {
+            BaseNode *cur_node = cc.setCursor(m_cmp_x);
             cc.add(m_x, m_x, 1);
             cc.cmp(m_x, m_x_end);
+            cc.setCursor(cur_node);
             cc.b(a64::CondCode::kLO, hloop);
         } else {
+            BaseNode *cur_node = cc.setCursor(m_cmp_x);
             cc.subs(m_x, m_x, 1);
+            cc.setCursor(cur_node);
             cc.b(a64::CondCode::kGT, hloop);
         }
 
@@ -1044,6 +1050,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             }
             ctx->from_setup();
             cc.comment("write");
+            ctx->m_cmp_x = cc.cursor();
             /* Write vectors to output pointers */
             LOOP_IN(i) {
 #if 1
@@ -1070,8 +1077,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             cc.comment("write");
             cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
             ctx->from_setup();
-            /* Write vectors to output pointer */
+            ctx->m_cmp_x = cc.cursor();
             cc.comment("write");
+            /* Write vectors to output pointer */
 #if 1
             for (int i = 0; i < op->rw.elems; i++) {
                 cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + i);
@@ -1973,6 +1981,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             cc.comment("write");
             cc.ldr(ctx->m_out[0], a64::ptr(exec, offsetof(SwsOpExec, out)));
             ctx->from_setup();
+            ctx->m_cmp_x = cc.cursor();
             /* Write vectors to output pointer */
             cc.comment("write_bytes");
             switch (priv->write_bytes) {
