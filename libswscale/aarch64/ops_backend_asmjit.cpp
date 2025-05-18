@@ -982,12 +982,12 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     if (vet_size == 16)
                         cc.ldp(vl[i].q(), vh[i].q(), a64::ptr(ctx->m_in[i]).post(vet_size * 2));
                     else
-                        cc.ld1(vl[i],     vh[i],     a64::ptr(ctx->m_in[i]).post(vet_size * 2));
+                        cc.ldp(vl[i].d(), vh[i].d(), a64::ptr(ctx->m_in[i]).post(vet_size * 2));
                 } else {
                     if (vet_size == 16)
                         cc.ldr(vl[i].q(),            a64::ptr(ctx->m_in[i]).post(vet_size * 1));
                     else
-                        cc.ld1(vl[i],                a64::ptr(ctx->m_in[i]).post(vet_size * 1));
+                        cc.ldr(vl[i].d(),            a64::ptr(ctx->m_in[i]).post(vet_size * 1));
                 }
             }
         } else {
@@ -1042,12 +1042,12 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     if (vet_size == 16)
                         cc.stp(src_vl[i].q(), src_vh[i].q(), a64::ptr(ctx->m_out[i]).post(vet_size * 2));
                     else
-                        cc.st1(src_vl[i],     src_vh[i],     a64::ptr(ctx->m_out[i]).post(vet_size * 2));
+                        cc.stp(src_vl[i].d(), src_vh[i].d(), a64::ptr(ctx->m_out[i]).post(vet_size * 2));
                 } else {
                     if (vet_size == 16)
                         cc.str(src_vl[i].q(),                a64::ptr(ctx->m_out[i]).post(vet_size * 1));
                     else
-                        cc.st1(src_vl[i],                    a64::ptr(ctx->m_out[i]).post(vet_size * 1));
+                        cc.str(src_vl[i].d(),                a64::ptr(ctx->m_out[i]).post(vet_size * 1));
                 }
             }
         } else {
