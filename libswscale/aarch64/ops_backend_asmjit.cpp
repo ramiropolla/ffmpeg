@@ -444,10 +444,10 @@ struct AsmJitContext {
         cc.comment("const data");
         cc.adr(ptr, ldata);
         switch (m_vdata.size()) {
-        case 1: cc.ld1(m_vdata[0],                                     a64::ptr(ptr)); break;
-        case 2: cc.ld1(m_vdata[0], m_vdata[1],                         a64::ptr(ptr)); break;
-        case 3: cc.ld1(m_vdata[0], m_vdata[1], m_vdata[2],             a64::ptr(ptr)); break;
-        case 4: cc.ld1(m_vdata[0], m_vdata[1], m_vdata[2], m_vdata[3], a64::ptr(ptr)); break;
+        case 1: cc.ldr(m_vdata[0].q(),                                         a64::ptr(ptr)); break;
+        case 2: cc.ldp(m_vdata[0].q(), m_vdata[1].q(),                         a64::ptr(ptr)); break;
+        case 3: cc.ld1(m_vdata[0],     m_vdata[1],     m_vdata[2],             a64::ptr(ptr)); break;
+        case 4: cc.ld1(m_vdata[0],     m_vdata[1],     m_vdata[2], m_vdata[3], a64::ptr(ptr)); break;
         }
         from_prologue();
     }
@@ -975,10 +975,17 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             cc.comment("read");
             LOOP_OUT(i) {
                 new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                if (use_vh)
-                    cc.ld1(vl[i], vh[i], a64::ptr(ctx->m_in[i]).post(vet_size * 2));
-                else
-                    cc.ld1(vl[i],        a64::ptr(ctx->m_in[i]).post(vet_size * 1));
+                if (use_vh) {
+                    if (vet_size == 16)
+                        cc.ldp(vl[i].q(), vh[i].q(), a64::ptr(ctx->m_in[i]).post(vet_size * 2));
+                    else
+                        cc.ld1(vl[i],     vh[i],     a64::ptr(ctx->m_in[i]).post(vet_size * 2));
+                } else {
+                    if (vet_size == 16)
+                        cc.ldr(vl[i].q(),            a64::ptr(ctx->m_in[i]).post(vet_size * 1));
+                    else
+                        cc.ld1(vl[i],                a64::ptr(ctx->m_in[i]).post(vet_size * 1));
+                }
             }
         } else {
             /* Load input pointer in setup */
@@ -1028,10 +1035,17 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + (i * 2) + 1);
 #endif
                 save_vector(ctx, &vet, i);
-                if (use_vh)
-                    cc.st1(src_vl[i], src_vh[i], a64::ptr(ctx->m_out[i]).post(vet_size * 2));
-                else
-                    cc.st1(src_vl[i],            a64::ptr(ctx->m_out[i]).post(vet_size * 1));
+                if (use_vh) {
+                    if (vet_size == 16)
+                        cc.stp(src_vl[i].q(), src_vh[i].q(), a64::ptr(ctx->m_out[i]).post(vet_size * 2));
+                    else
+                        cc.st1(src_vl[i],     src_vh[i],     a64::ptr(ctx->m_out[i]).post(vet_size * 2));
+                } else {
+                    if (vet_size == 16)
+                        cc.str(src_vl[i].q(),                a64::ptr(ctx->m_out[i]).post(vet_size * 1));
+                    else
+                        cc.st1(src_vl[i],                    a64::ptr(ctx->m_out[i]).post(vet_size * 1));
+                }
             }
         } else {
             /* Load output pointer in setup */
@@ -1456,7 +1470,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 }
                 last_y_off = y_off[i];
 
-                cc.ld1(dither_vl, dither_vh, a64::ptr(ptr));
+                cc.ldp(dither_vl.q(), dither_vh.q(), a64::ptr(ptr));
                 last_use_of_ptr = cc.cursor();
 
                 refresh_vector(ctx, &vet, i);
@@ -1837,10 +1851,10 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Read vectors from input pointer */
             cc.comment("read_bytes");
             switch (priv->read_bytes) {
-            case 16: cc.ld1(vl[0],                      a64::ptr(ctx->m_in[0]).post(16)); break;
-            case 32: cc.ld1(vl[0], vl[1],               a64::ptr(ctx->m_in[0]).post(32)); break;
-            case 48: cc.ld1(vl[0], vl[1], vl[2],        a64::ptr(ctx->m_in[0]).post(48)); break;
-            case 64: cc.ld1(vl[0], vl[1], vl[2], vl[3], a64::ptr(ctx->m_in[0]).post(64)); break;
+            case 16: cc.ldr(vl[0].q(),                          a64::ptr(ctx->m_in[0]).post(16)); break;
+            case 32: cc.ldp(vl[0].q(), vl[1].q(),               a64::ptr(ctx->m_in[0]).post(32)); break;
+            case 48: cc.ld1(vl[0],     vl[1],     vl[2],        a64::ptr(ctx->m_in[0]).post(48)); break;
+            case 64: cc.ld1(vl[0],     vl[1],     vl[2], vl[3], a64::ptr(ctx->m_in[0]).post(64)); break;
             }
 
             /* Shuffle */
@@ -1855,28 +1869,28 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 cc.ld1(vshuffle[0], vshuffle[1], vshuffle[2], vshuffle[3], a64::ptr(ptr).post(64));
             } else {
                 switch (tbl_insn_count) {
-                case 1: cc.ld1(vshuffle[0],                                        a64::ptr(ptr)); break;
-                case 2: cc.ld1(vshuffle[0], vshuffle[1],                           a64::ptr(ptr)); break;
-                case 3: cc.ld1(vshuffle[0], vshuffle[1], vshuffle[2],              a64::ptr(ptr)); break;
-                case 4: cc.ld1(vshuffle[0], vshuffle[1], vshuffle[2], vshuffle[3], a64::ptr(ptr)); break;
+                case 1: cc.ldr(vshuffle[0].q(),                                            a64::ptr(ptr)); break;
+                case 2: cc.ldp(vshuffle[0].q(), vshuffle[1].q(),                           a64::ptr(ptr)); break;
+                case 3: cc.ld1(vshuffle[0],     vshuffle[1],     vshuffle[2],              a64::ptr(ptr)); break;
+                case 4: cc.ld1(vshuffle[0],     vshuffle[1],     vshuffle[2], vshuffle[3], a64::ptr(ptr)); break;
                 }
             }
             if (tbl_insn_count > 8) {
                 cc.ld1(vshuffle[4], vshuffle[5], vshuffle[6], vshuffle[7], a64::ptr(ptr).post(64));
             } else {
                 switch (tbl_insn_count) {
-                case 5: cc.ld1(vshuffle[4],                                        a64::ptr(ptr)); break;
-                case 6: cc.ld1(vshuffle[4], vshuffle[5],                           a64::ptr(ptr)); break;
-                case 7: cc.ld1(vshuffle[4], vshuffle[5], vshuffle[6],              a64::ptr(ptr)); break;
-                case 8: cc.ld1(vshuffle[4], vshuffle[5], vshuffle[6], vshuffle[7], a64::ptr(ptr)); break;
+                case 5: cc.ldr(vshuffle[4].q(),                                            a64::ptr(ptr)); break;
+                case 6: cc.ldp(vshuffle[4].q(), vshuffle[5].q(),                           a64::ptr(ptr)); break;
+                case 7: cc.ld1(vshuffle[4],     vshuffle[5],     vshuffle[6],              a64::ptr(ptr)); break;
+                case 8: cc.ld1(vshuffle[4],     vshuffle[5],     vshuffle[6], vshuffle[7], a64::ptr(ptr)); break;
                 }
             }
             switch (tbl_insn_count) {
-            case  9: cc.ld1(vshuffle[8],                                          a64::ptr(ptr)); break;
-            case 10: cc.ld1(vshuffle[8], vshuffle[9],                             a64::ptr(ptr)); break;
+            case  9: cc.ldr(vshuffle[8].q(),                                              a64::ptr(ptr)); break;
+            case 10: cc.ldp(vshuffle[8].q(), vshuffle[9].q(),                             a64::ptr(ptr)); break;
 #if 0
-            case 11: cc.ld1(vshuffle[8], vshuffle[9], vshuffle[10],               a64::ptr(ptr)); break;
-            case 12: cc.ld1(vshuffle[8], vshuffle[9], vshuffle[10], vshuffle[11], a64::ptr(ptr)); break;
+            case 11: cc.ld1(vshuffle[8],     vshuffle[9],     vshuffle[10],               a64::ptr(ptr)); break;
+            case 12: cc.ld1(vshuffle[8],     vshuffle[9],     vshuffle[10], vshuffle[11], a64::ptr(ptr)); break;
 #endif
             }
             ctx->from_setup();
@@ -1889,11 +1903,11 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 ptr = ctx->m_scratch[0];
                 cc.adr(ptr, ldata);
                 switch (vconst_count) {
-                case 1: cc.ld1(vconst[0],                                  a64::ptr(ptr)); break;
+                case 1: cc.ldr(vconst[0].q(),                                      a64::ptr(ptr)); break;
 #if 0
-                case 2: cc.ld1(vconst[0], vconst[1],                       a64::ptr(ptr)); break;
-                case 3: cc.ld1(vconst[0], vconst[1], vconst[2],            a64::ptr(ptr)); break;
-                case 4: cc.ld1(vconst[0], vconst[1], vconst[2], vconst[3], a64::ptr(ptr)); break;
+                case 2: cc.ldp(vconst[0].q(), vconst[1].q(),                       a64::ptr(ptr)); break;
+                case 3: cc.ld1(vconst[0],     vconst[1],     vconst[2],            a64::ptr(ptr)); break;
+                case 4: cc.ld1(vconst[0],     vconst[1],     vconst[2], vconst[3], a64::ptr(ptr)); break;
 #endif
                 }
                 ctx->from_setup();
@@ -1932,14 +1946,14 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Write vectors to output pointer */
             cc.comment("write_bytes");
             switch (priv->write_bytes) {
-            case  16: cc.st1(vh[0],                      a64::ptr(ctx->m_out[0]).post(16)); break;
-            case  32: cc.st1(vh[0], vh[1],               a64::ptr(ctx->m_out[0]).post(32)); break;
-            case  48: cc.st1(vh[0], vh[1], vh[2],        a64::ptr(ctx->m_out[0]).post(48)); break;
-            case  64: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64)); break;
-            case  96: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64));
-                      cc.st1(vh[4], vh[5],               a64::ptr(ctx->m_out[0]).post(32)); break;
-            case 128: cc.st1(vh[0], vh[1], vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64));
-                      cc.st1(vh[4], vh[5], vh[6], vh[7], a64::ptr(ctx->m_out[0]).post(64)); break;
+            case  16: cc.str(vh[0].q(),                          a64::ptr(ctx->m_out[0]).post(16)); break;
+            case  32: cc.stp(vh[0].q(), vh[1].q(),               a64::ptr(ctx->m_out[0]).post(32)); break;
+            case  48: cc.st1(vh[0],     vh[1],     vh[2],        a64::ptr(ctx->m_out[0]).post(48)); break;
+            case  64: cc.st1(vh[0],     vh[1],     vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64)); break;
+            case  96: cc.st1(vh[0],     vh[1],     vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64));
+                      cc.stp(vh[4].q(), vh[5].q(),               a64::ptr(ctx->m_out[0]).post(32)); break;
+            case 128: cc.st1(vh[0],     vh[1],     vh[2], vh[3], a64::ptr(ctx->m_out[0]).post(64));
+                      cc.st1(vh[4],     vh[5],     vh[6], vh[7], a64::ptr(ctx->m_out[0]).post(64)); break;
             }
         }
         break;
