@@ -9,3 +9,6 @@ NEON-OBJS   += aarch64/hscale.o                 \
                aarch64/rgb2rgb_neon.o           \
                aarch64/swscale_unscaled_neon.o  \
                aarch64/yuv2rgb_neon.o           \
+
+OBJS-$(CONFIG_UNSTABLE) += aarch64/memops.o
+NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/memops_neon.o
