@@ -54,7 +54,7 @@ static const uint8_t free_gprs[] = {
 //  4, /* x_end */
 //  5, /* y_end */
 //  6, /* x */
-//  7, /* UNUSED */
+//  7, /* num_blocks */
 //  8, /* scratch1 */
 //  9, /* scratch2 */
     10, 11, 12, 13, 14, 15, 16, 17,
@@ -904,7 +904,9 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
     /* x6 x */
     ctx->m_x = cc.newGpw("x");
     cc.virtRegByReg(ctx->m_x)->setHomeIdHint(6);
-    /* x7 UNUSED */
+    /* x7 num_blocks */
+    ctx->m_num_blocks = cc.newGpw("num_blocks");
+    cc.virtRegByReg(ctx->m_num_blocks)->setHomeIdHint(7);
     /* x8 scratch1 */
     ctx->m_scratch[1] = cc.newGpz("scratch1");
     cc.virtRegByReg(ctx->m_scratch[1])->setHomeIdHint(8);
@@ -933,7 +935,6 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
         cc.virtRegByReg(ctx->m_out[i])->setHomeIdHint(ctx->new_gpr());
 #endif
     }
-    ctx->m_num_blocks = cc.newGpw("num_blocks");
     if (!ctx->m_xy_used) {
         ctx->m_num_lines = cc.newGpw("num_lines");
     }
