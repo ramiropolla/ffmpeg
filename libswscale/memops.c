@@ -68,4 +68,7 @@ av_cold void ff_memops_init(MemOpsContext *c)
     c->bswap32 = bswap32_c;
     c->lshift16 = lshift16_c;
     c->lshift32 = lshift32_c;
+#if ARCH_AARCH64 && HAVE_NEON
+    ff_memops_init_aarch64(c);
+#endif
 }
