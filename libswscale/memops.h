@@ -41,5 +41,6 @@ typedef struct MemOpsContext {
 } MemOpsContext;
 
 void ff_memops_init(MemOpsContext *c);
+void ff_memops_init_aarch64(MemOpsContext *c);
 
 #endif /* SWSCALE_MEMOPS_H */

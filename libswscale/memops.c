@@ -68,4 +68,7 @@ av_cold void ff_memops_init(MemOpsContext *c)
     c->memswap32 = memswap32_c;
     c->memlshift16 = memlshift16_c;
     c->memlshift32 = memlshift32_c;
+#if ARCH_AARCH64
+    ff_memops_init_aarch64(c);
+#endif
 }
