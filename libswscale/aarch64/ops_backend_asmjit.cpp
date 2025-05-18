@@ -684,7 +684,9 @@ static int asmjit_optimize(SwsOpList *ops, int block_size)
     uint8_t shuffle[128];
     int read_bytes;
     int write_bytes;
-    int tmp_block_size = ff_sws_solve_shuffle(ops, shuffle, sizeof(shuffle), 16, 0x80, 0xff, &read_bytes, &write_bytes);
+    int tmp_block_size = -1;
+    if (ops->ops[1].op != SWS_OP_WRITE) /* don't shuffle simple packed read/write, they are just as fast but use less code */
+        tmp_block_size = ff_sws_solve_shuffle(ops, shuffle, sizeof(shuffle), 16, 0x80, 0xff, &read_bytes, &write_bytes);
     if (tmp_block_size >= 0) {
         /* Overwrite ops->ops[0] with the shuffle data */
         SwsShuffleOp *priv = (SwsShuffleOp *) &ops->ops[0].rw;
