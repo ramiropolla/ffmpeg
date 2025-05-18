@@ -530,6 +530,7 @@ struct AsmJitContext {
         to_setup();
         cc.comment("=> outer loop");
         cc.bind(vloop);
+        cc.align(AlignMode::kCode, 16);
         if (m_xy_used) {
             cc.mov(m_x, m_x_start);
         } else {
