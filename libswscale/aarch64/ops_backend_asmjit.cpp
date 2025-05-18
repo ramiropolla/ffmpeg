@@ -687,6 +687,7 @@ typedef struct SwsShuffleOp {
 
 static int asmjit_optimize(SwsOpList *ops, int block_size)
 {
+#if 1
     /* First try the shuffle solver */
     uint8_t shuffle[128];
     int read_bytes;
@@ -705,6 +706,7 @@ static int asmjit_optimize(SwsOpList *ops, int block_size)
         ops->num_ops = 1;
         return tmp_block_size;
     }
+#endif
 
     /* Continue with other optimizations */
 retry:
