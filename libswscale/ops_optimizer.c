@@ -107,6 +107,7 @@ void ff_sws_op_list_update_comps(SwsOpList *ops)
             for (int i = 0; i < op->rw.elems; i++) {
                 if (ff_sws_pixel_type_is_int(op->type)) {
                     int bits = 8 * ff_sws_pixel_type_size(op->type);
+                    bool bswap = false;
                     if (!op->rw.packed && ops->src.desc) {
                         /* Use legal value range from pixdesc if available;
                          * we don't need to do this for packed formats because
@@ -118,11 +119,15 @@ void ff_sws_op_list_update_comps(SwsOpList *ops)
                                 break;
                             }
                         }
+                        bswap = !!(ops->src.desc->flags & AV_PIX_FMT_FLAG_BE);
                     }
+                    int maxval = (1ULL << bits) - 1;
+                    if (bswap)
+                        maxval = av_bswap16(maxval);
 
                     op->comps.flags[i] = SWS_COMP_EXACT;
                     op->comps.min[i] = Q(0);
-                    op->comps.max[i] = Q((1ULL << bits) - 1);
+                    op->comps.max[i] = Q(maxval);
                 }
             }
             for (int i = op->rw.elems; i < 4; i++)
