@@ -141,6 +141,7 @@ WRAP_READ(read_planar, 1, 0, false)
 WRAP_READ(read_planar, 2, 0, false)
 WRAP_READ(read_planar, 3, 0, false)
 WRAP_READ(read_planar, 4, 0, false)
+WRAP_READ(read_packed, 1, 0, true)
 WRAP_READ(read_packed, 2, 0, true)
 WRAP_READ(read_packed, 3, 0, true)
 WRAP_READ(read_packed, 4, 0, true)
@@ -166,6 +167,7 @@ WRAP_WRITE(write_planar, 1, 0, false)
 WRAP_WRITE(write_planar, 2, 0, false)
 WRAP_WRITE(write_planar, 3, 0, false)
 WRAP_WRITE(write_planar, 4, 0, false)
+WRAP_WRITE(write_packed, 1, 0, true)
 WRAP_WRITE(write_packed, 2, 0, true)
 WRAP_WRITE(write_packed, 3, 0, true)
 WRAP_WRITE(write_packed, 4, 0, true)
@@ -493,6 +495,7 @@ static const SwsOpTable fn(op_table_int) = {
         &fn(op_read_planar2),
         &fn(op_read_planar3),
         &fn(op_read_planar4),
+        &fn(op_read_packed1),
         &fn(op_read_packed2),
         &fn(op_read_packed3),
         &fn(op_read_packed4),
@@ -501,6 +504,7 @@ static const SwsOpTable fn(op_table_int) = {
         &fn(op_write_planar2),
         &fn(op_write_planar3),
         &fn(op_write_planar4),
+        &fn(op_write_packed1),
         &fn(op_write_packed2),
         &fn(op_write_packed3),
         &fn(op_write_packed4),
