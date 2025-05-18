@@ -789,6 +789,7 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
         *pack_op = (SwsPackOp) {{ 1, 2, 1 }};
         *rw_op = (SwsReadWriteOp) {
             .elems = 1,
+            .packed = true,
             .frac  = 1,
         };
         return 0;
@@ -796,15 +797,15 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
     case AV_PIX_FMT_RGB4_BYTE:
     case AV_PIX_FMT_BGR4_BYTE:
         *pack_op = (SwsPackOp) {{ 1, 2, 1 }};
-        *rw_op = (SwsReadWriteOp) { .elems = 1 };
+        *rw_op = (SwsReadWriteOp) { .elems = 1, .packed = true };
         return 0;
     case AV_PIX_FMT_BGR8:
         *pack_op = (SwsPackOp) {{ 2, 3, 3 }};
-        *rw_op = (SwsReadWriteOp) { .elems = 1 };
+        *rw_op = (SwsReadWriteOp) { .elems = 1, .packed = true };
         return 0;
     case AV_PIX_FMT_RGB8:
         *pack_op = (SwsPackOp) {{ 3, 3, 2 }};
-        *rw_op = (SwsReadWriteOp) { .elems = 1 };
+        *rw_op = (SwsReadWriteOp) { .elems = 1, .packed = true };
         return 0;
 
     /* Packed 16-bit aligned formats */
@@ -813,21 +814,21 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
     case AV_PIX_FMT_BGR565BE:
     case AV_PIX_FMT_BGR565LE:
         *pack_op = (SwsPackOp) {{ 5, 6, 5 }};
-        *rw_op = (SwsReadWriteOp) { .elems = 1 };
+        *rw_op = (SwsReadWriteOp) { .elems = 1, .packed = true };
         return 0;
     case AV_PIX_FMT_RGB555BE:
     case AV_PIX_FMT_RGB555LE:
     case AV_PIX_FMT_BGR555BE:
     case AV_PIX_FMT_BGR555LE:
         *pack_op = (SwsPackOp) {{ 5, 5, 5 }};
-        *rw_op = (SwsReadWriteOp) { .elems = 1 };
+        *rw_op = (SwsReadWriteOp) { .elems = 1, .packed = true };
         return 0;
     case AV_PIX_FMT_RGB444BE:
     case AV_PIX_FMT_RGB444LE:
     case AV_PIX_FMT_BGR444BE:
     case AV_PIX_FMT_BGR444LE:
         *pack_op = (SwsPackOp) {{ 4, 4, 4 }};
-        *rw_op = (SwsReadWriteOp) { .elems = 1 };
+        *rw_op = (SwsReadWriteOp) { .elems = 1, .packed = true };
         return 0;
     /* Packed 32-bit aligned 4:4:4 formats */
     case AV_PIX_FMT_X2RGB10BE:
@@ -837,12 +838,12 @@ static int fmt_read_write(enum AVPixelFormat fmt, SwsReadWriteOp *rw_op,
     case AV_PIX_FMT_XV30BE:
     case AV_PIX_FMT_XV30LE:
         *pack_op = (SwsPackOp) {{ 2, 10, 10, 10 }};
-        *rw_op = (SwsReadWriteOp) { .elems = 1 };
+        *rw_op = (SwsReadWriteOp) { .elems = 1, .packed = true };
         return 0;
     case AV_PIX_FMT_V30XBE:
     case AV_PIX_FMT_V30XLE:
         *pack_op = (SwsPackOp) {{ 10, 10, 10, 2 }};
-        *rw_op = (SwsReadWriteOp) { .elems = 1 };
+        *rw_op = (SwsReadWriteOp) { .elems = 1, .packed = true };
         return 0;
     /* 3 component formats with one channel ignored */
     case AV_PIX_FMT_RGB0:
