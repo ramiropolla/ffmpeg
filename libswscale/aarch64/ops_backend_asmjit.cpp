@@ -992,12 +992,6 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
             }
             switch (op->rw.elems) {
-            case 1:
-                if (use_vh)
-                    cc.ld1(vl[0], vh[0],               a64::ptr(ctx->m_in[0]).post(vet_size * 2));
-                else
-                    cc.ld1(vl[0],                      a64::ptr(ctx->m_in[0]).post(vet_size * 1));
-                break;
             case 2:
                 cc.ld2    (vl[0], vl[1],               a64::ptr(ctx->m_in[0]).post(vet_size * 2));
                 if (use_vh)
@@ -1058,12 +1052,6 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 save_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
             }
             switch (op->rw.elems) {
-            case 1:
-                if (use_vh)
-                    cc.st1(src_vl[0], src_vh[0],                       a64::ptr(ctx->m_out[0]).post(vet_size * 2));
-                else
-                    cc.st1(src_vl[0],                                  a64::ptr(ctx->m_out[0]).post(vet_size * 1));
-                break;
             case 2:
                 cc.st2    (src_vl[0], src_vl[1],                       a64::ptr(ctx->m_out[0]).post(vet_size * 2));
                 if (use_vh)
