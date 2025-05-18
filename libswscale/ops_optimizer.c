@@ -537,7 +537,7 @@ retry:
             }
 
             /* Prefer to clear as late as possible, to avoid doing
-                * redundant work */
+             * redundant work */
             if ((op_type_is_independent(next->op) && next->op != SWS_OP_SWAP_BYTES) ||
                 next->op == SWS_OP_SWIZZLE)
             {
@@ -547,6 +547,20 @@ retry:
                 FFSWAP(SwsOp, *op, *next);
                 goto retry;
             }
+
+#if 0
+            if (op->type != SWS_PIXEL_F32 && prev->op == SWS_OP_SWAP_BYTES && next->op == SWS_OP_SWAP_BYTES) {
+                for (int i = 0; i < 4; i++) {
+                    switch (ff_sws_pixel_type_size(op->type)) {
+                    case 2: op->c.q4[i].num = av_bswap16(op->c.q4[i].num); break;
+                    case 4: op->c.q4[i].num = av_bswap32(op->c.q4[i].num); break;
+                    }
+                }
+                ff_sws_op_list_remove_at(ops, n + 1, 1);
+                ff_sws_op_list_remove_at(ops, n - 1, 1);
+                goto retry;
+            }
+#endif
             break;
 
         case SWS_OP_SWIZZLE: {
