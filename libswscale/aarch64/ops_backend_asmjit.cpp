@@ -1033,9 +1033,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* Write vectors to output pointers */
             LOOP_IN(i) {
 #if 1
-                cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + (i * 2) + 0);
+                cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + i);
                 if (use_vh)
-                    cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + (i * 2) + 1);
+                    cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i + 4);
 #endif
                 save_vector(ctx, &vet, i);
                 if (use_vh) {
