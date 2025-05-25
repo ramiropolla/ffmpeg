@@ -1369,11 +1369,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                 snprintf(cbuf, sizeof(cbuf), "convert(%s -> %s, block_w %d)", ff_sws_pixel_type_name(from), ff_sws_pixel_type_name(to), block_size);
                 cc.comment(cbuf);
                 if (from == SWS_PIXEL_F32) {
-                    ctx->new_step();
                     LOOP_OUT(i) {
-                        refresh_vector(ctx, &vet, i);
-                        cc.fcvtzu(vl[i].s4(), src_vl[i].s4());
-                        cc.fcvtzu(vh[i].s4(), src_vh[i].s4());
+                        cc.fcvtzu(vl[i].s4(), vl[i].s4());
+                        cc.fcvtzu(vh[i].s4(), vh[i].s4());
                     }
                 }
                 if (block_size == 8) {
@@ -1435,11 +1433,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     }
                 }
                 if (to == SWS_PIXEL_F32) {
-                    ctx->new_step();
                     LOOP_OUT(i) {
-                        refresh_vector(ctx, &vet, i);
-                        cc.ucvtf(vl[i].s4(), src_vl[i].s4());
-                        cc.ucvtf(vh[i].s4(), src_vh[i].s4());
+                        cc.ucvtf(vl[i].s4(), vl[i].s4());
+                        cc.ucvtf(vh[i].s4(), vh[i].s4());
                     }
                 }
             }
