@@ -466,46 +466,55 @@ struct AsmJitContext {
             cc.sub(m_num_lines, m_y_end, m_y);
         }
         cc.comment("padding");
-        a64::Gp read_linesize;
-        a64::Gp write_linesize;
-        int read_increment_log2 = exact_log2(m_read_increment);
-        int write_increment_log2 = exact_log2(m_write_increment);
-        if (m_read_increment == m_write_increment) {
-            read_linesize = m_scratch[0].r32();
-            if (read_increment_log2 == 0)
-                cc.mov(read_linesize, m_read_increment);
-            write_linesize = read_linesize;
-        } else {
-            read_linesize = m_scratch[0].r32();
-            write_linesize = m_scratch[1].r32();
-            if (read_increment_log2 == 0)
-                cc.mov(read_linesize, m_read_increment);
-            if (write_increment_log2 == 0)
-                cc.mov(write_linesize, m_write_increment);
-        }
-        LOOP_ARRAY(i, m_read_used) {
-            cc.ldr(m_in_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, in_stride) + (i * sizeof(ptrdiff_t))));
-        }
-        if (read_increment_log2 == 0) {
-            cc.mul(read_linesize, read_linesize, m_num_blocks);
-        } else {
-            cc.lsl(read_linesize, m_num_blocks, read_increment_log2);
-        }
-        if (m_read_increment != m_write_increment) {
-            if (write_increment_log2 == 0) {
-                cc.mul(write_linesize, write_linesize, m_num_blocks);
-            } else {
-                cc.lsl(write_linesize, m_num_blocks, write_increment_log2);
+        if (m_read_increment == 0 && m_write_increment == 0) {
+            LOOP_ARRAY(i, m_read_used) {
+                cc.ldr(m_in_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, in_bump) + (i * sizeof(ptrdiff_t))));
             }
-        }
-        LOOP_ARRAY(i, m_write_used) {
-            cc.ldr(m_out_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, out_stride) + (i * sizeof(ptrdiff_t))));
-        }
-        LOOP_ARRAY(i, m_read_used) {
-            cc.sub(m_in_padding[i], m_in_padding[i], read_linesize.r64());
-        }
-        LOOP_ARRAY(i, m_write_used) {
-            cc.sub(m_out_padding[i], m_out_padding[i], write_linesize.r64());
+            LOOP_ARRAY(i, m_write_used) {
+                cc.ldr(m_out_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, out_bump) + (i * sizeof(ptrdiff_t))));
+            }
+        } else {
+            a64::Gp read_linesize;
+            a64::Gp write_linesize;
+            int read_increment_log2 = exact_log2(m_read_increment);
+            int write_increment_log2 = exact_log2(m_write_increment);
+            if (m_read_increment == m_write_increment) {
+                read_linesize = m_scratch[0].r32();
+                if (read_increment_log2 == 0)
+                    cc.mov(read_linesize, m_read_increment);
+                write_linesize = read_linesize;
+            } else {
+                read_linesize = m_scratch[0].r32();
+                write_linesize = m_scratch[1].r32();
+                if (read_increment_log2 == 0)
+                    cc.mov(read_linesize, m_read_increment);
+                if (write_increment_log2 == 0)
+                    cc.mov(write_linesize, m_write_increment);
+            }
+            LOOP_ARRAY(i, m_read_used) {
+                cc.ldr(m_in_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, in_stride) + (i * sizeof(ptrdiff_t))));
+            }
+            if (read_increment_log2 == 0) {
+                cc.mul(read_linesize, read_linesize, m_num_blocks);
+            } else {
+                cc.lsl(read_linesize, m_num_blocks, read_increment_log2);
+            }
+            if (m_read_increment != m_write_increment) {
+                if (write_increment_log2 == 0) {
+                    cc.mul(write_linesize, write_linesize, m_num_blocks);
+                } else {
+                    cc.lsl(write_linesize, m_num_blocks, write_increment_log2);
+                }
+            }
+            LOOP_ARRAY(i, m_write_used) {
+                cc.ldr(m_out_padding[i], a64::ptr(m_exec, offsetof(SwsOpExec, out_stride) + (i * sizeof(ptrdiff_t))));
+            }
+            LOOP_ARRAY(i, m_read_used) {
+                cc.sub(m_in_padding[i], m_in_padding[i], read_linesize.r64());
+            }
+            LOOP_ARRAY(i, m_write_used) {
+                cc.sub(m_out_padding[i], m_out_padding[i], write_linesize.r64());
+            }
         }
 
         if (!m_xy_used) {
@@ -846,7 +855,6 @@ static void asmjit_mark_gprs(AsmJitContext *ctx, const SwsOp *op, const SwsOp *n
 {
     switch (op->op) {
     case SWS_OP_READ:
-        ctx->m_read_increment = (rw_pixel_bits(op) * ctx->m_block_size) >> 3;
         if (!op->rw.packed) {
             LOOP_OUT(i) {
                 ctx->m_read_used[i] = true;
@@ -856,7 +864,6 @@ static void asmjit_mark_gprs(AsmJitContext *ctx, const SwsOp *op, const SwsOp *n
         }
         break;
     case SWS_OP_WRITE:
-        ctx->m_write_increment = (rw_pixel_bits(op) * ctx->m_block_size) >> 3;
         if (!op->rw.packed) {
             LOOP_IN(i) {
                 ctx->m_write_used[i] = true;
