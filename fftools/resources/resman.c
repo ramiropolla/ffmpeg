@@ -41,11 +41,11 @@
 extern const unsigned char ff_graph_html_data[];
 extern const unsigned int ff_graph_html_len;
 
-extern const unsigned char ff_graph_css_data[];
-extern const unsigned ff_graph_css_len;
+extern const unsigned char ff_graph_css_min_data[];
+extern const unsigned ff_graph_css_min_len;
 
 static const FFResourceDefinition resource_definitions[] = {
-    [FF_RESOURCE_GRAPH_CSS]   = { FF_RESOURCE_GRAPH_CSS,   "graph.css",   &ff_graph_css_data[0],   &ff_graph_css_len   },
+    [FF_RESOURCE_GRAPH_CSS]   = { FF_RESOURCE_GRAPH_CSS,   "graph.css",   &ff_graph_css_min_data[0], &ff_graph_css_min_len },
     [FF_RESOURCE_GRAPH_HTML]  = { FF_RESOURCE_GRAPH_HTML,  "graph.html",  &ff_graph_html_data[0],  &ff_graph_html_len  },
 };
 
