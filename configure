@@ -4113,6 +4113,10 @@ htmlpages_deps_any="makeinfo_html texi2html"
 txtpages_deps="perl makeinfo"
 doc_deps_any="manpages htmlpages podpages txtpages"
 
+# embedded resources
+ptx_compression_deps="zlib gzip"
+resource_compression_deps="zlib gzip"
+
 # default parameters
 
 logfile="ffbuild/config.log"
@@ -6895,10 +6899,6 @@ enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
 enabled  lzma && check_lib lzma   lzma.h lzma_version_number -llzma
 
 [ -x "$(command -v gzip)" ] && enable gzip
-
-enabled zlib && enabled gzip || disable ptx_compression
-
-enabled zlib && enabled gzip || disable resource_compression
 
 # On some systems dynamic loading requires no extra linker flags
 check_lib libdl dlfcn.h "dlopen dlsym" || check_lib libdl dlfcn.h "dlopen dlsym" -ldl
