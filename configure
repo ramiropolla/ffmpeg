@@ -2548,7 +2548,6 @@ HAVE_LIST="
     posix_ioctl
     texi2html
     xmllint
-    zlib_gzip
     openvino2
 "
 
@@ -6895,19 +6894,11 @@ enabled  zlib && { check_pkg_config zlib zlib "zlib.h" zlibVersion ||
 enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
 enabled  lzma && check_lib lzma   lzma.h lzma_version_number -llzma
 
-enabled zlib && test_exec $zlib_extralibs <<EOF && enable zlib_gzip
-#include <zlib.h>
-int main(void) {
-    if (zlibCompileFlags() & (1 << 17)) return 1;
-    return 0;
-}
-EOF
-
 [ -x "$(command -v gzip)" ] && enable gzip
 
-enabled zlib_gzip && enabled gzip || disable ptx_compression
+enabled zlib && enabled gzip || disable ptx_compression
 
-enabled zlib_gzip && enabled gzip || disable resource_compression
+enabled zlib && enabled gzip || disable resource_compression
 
 # On some systems dynamic loading requires no extra linker flags
 check_lib libdl dlfcn.h "dlopen dlsym" || check_lib libdl dlfcn.h "dlopen dlsym" -ldl
