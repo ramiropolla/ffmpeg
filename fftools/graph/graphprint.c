@@ -940,10 +940,10 @@ static int init_graphprint(GraphPrintContext **pgpc, AVBPrint *target_buf)
     }
 
     if (!strcmp(text_formatter->name, "mermaid") || !strcmp(text_formatter->name, "mermaidhtml")) {
-        gpc->diagram_config.diagram_css = ff_resman_get_string(FF_RESOURCE_GRAPH_CSS);
+        gpc->diagram_config.diagram_css = ff_resman_get_string("graphprint.css.min");
 
         if (!strcmp(text_formatter->name, "mermaidhtml"))
-            gpc->diagram_config.html_template = ff_resman_get_string(FF_RESOURCE_GRAPH_HTML);
+            gpc->diagram_config.html_template = ff_resman_get_string("graphprint.html");
 
         av_diagram_init(tfc, &gpc->diagram_config);
     }

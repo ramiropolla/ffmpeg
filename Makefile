@@ -14,6 +14,8 @@ vpath %.texi $(SRC_PATH)
 vpath %.cu   $(SRC_PATH)
 vpath %.ptx  $(SRC_PATH)
 vpath %.metal $(SRC_PATH)
+vpath %.html $(SRC_PATH)
+vpath %.css  $(SRC_PATH)
 vpath %/fate_config.sh.template $(SRC_PATH)
 
 TESTTOOLS   = audiogen videogen rotozoom tiny_psnr tiny_ssim base64 audiomatch

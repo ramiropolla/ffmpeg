@@ -29,13 +29,7 @@
 #include "libavutil/bprint.h"
 #include "fftools/textformat/avtextformat.h"
 
-typedef enum {
-    FF_RESOURCE_GRAPH_CSS,
-    FF_RESOURCE_GRAPH_HTML,
-} FFResourceId;
-
 typedef struct FFResourceDefinition {
-    FFResourceId resource_id;
     const char *name;
 
     const unsigned char *data;
@@ -45,6 +39,6 @@ typedef struct FFResourceDefinition {
 
 void ff_resman_uninit(void);
 
-char *ff_resman_get_string(FFResourceId resource_id);
+char *ff_resman_get_string(const char *name);
 
 #endif /* FFTOOLS_RESOURCES_RESMAN_H */

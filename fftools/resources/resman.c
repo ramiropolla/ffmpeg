@@ -38,16 +38,7 @@
 #include "libavutil/dict.h"
 #include "libavutil/common.h"
 
-extern const unsigned char ff_graph_html_data[];
-extern const unsigned int ff_graph_html_len;
-
-extern const unsigned char ff_graph_css_data[];
-extern const unsigned ff_graph_css_len;
-
-static const FFResourceDefinition resource_definitions[] = {
-    [FF_RESOURCE_GRAPH_CSS]   = { FF_RESOURCE_GRAPH_CSS,   "graph.css",   &ff_graph_css_data[0],   &ff_graph_css_len   },
-    [FF_RESOURCE_GRAPH_HTML]  = { FF_RESOURCE_GRAPH_HTML,  "graph.html",  &ff_graph_html_data[0],  &ff_graph_html_len  },
-};
+#include "fftools/resources/resources_list.c"
 
 
 static const AVClass resman_class = {
@@ -156,7 +147,7 @@ void ff_resman_uninit(void)
 }
 
 
-char *ff_resman_get_string(FFResourceId resource_id)
+char *ff_resman_get_string(const char *name)
 {
     ResourceManagerContext *ctx               = get_resman_context();
     FFResourceDefinition resource_definition = { 0 };
@@ -168,14 +159,14 @@ char *ff_resman_get_string(FFResourceId resource_id)
 
     for (unsigned i = 0; i < FF_ARRAY_ELEMS(resource_definitions); ++i) {
         FFResourceDefinition def = resource_definitions[i];
-        if (def.resource_id == resource_id) {
+        if (!strcmp(def.name, name)) {
             resource_definition = def;
             break;
         }
     }
 
     if (!resource_definition.name) {
-        av_log(ctx, AV_LOG_ERROR, "Unable to find resource with ID %d\n", resource_id);
+        av_log(ctx, AV_LOG_ERROR, "Unable to find resource with name \"%s\"\n", name);
         return NULL;
     }
 
@@ -194,7 +185,7 @@ char *ff_resman_get_string(FFResourceId resource_id)
         int ret = decompress_gzip(ctx, (uint8_t *)resource_definition.data, *resource_definition.data_len, &out, &out_len);
 
         if (ret) {
-            av_log(NULL, AV_LOG_ERROR, "Unable to decompress the resource with ID %d\n", resource_id);
+            av_log(NULL, AV_LOG_ERROR, "Unable to decompress the resource with name \"%s\"\n", name);
             goto end;
         }
 

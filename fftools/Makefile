@@ -9,6 +9,7 @@ AVBASENAMES  = ffmpeg ffplay ffprobe
 ALLAVPROGS   = $(AVBASENAMES:%=%$(PROGSSUF)$(EXESUF))
 ALLAVPROGS_G = $(AVBASENAMES:%=%$(PROGSSUF)_g$(EXESUF))
 
+include $(SRC_PATH)/fftools/graph/Makefile
 include $(SRC_PATH)/fftools/resources/Makefile
 
 OBJS-ffmpeg +=                  \
@@ -21,7 +22,6 @@ OBJS-ffmpeg +=                  \
     fftools/ffmpeg_mux_init.o   \
     fftools/ffmpeg_opt.o        \
     fftools/ffmpeg_sched.o      \
-    fftools/graph/graphprint.o        \
     fftools/sync_queue.o        \
     fftools/thread_queue.o      \
     fftools/textformat/avtextformat.o \
@@ -35,7 +35,8 @@ OBJS-ffmpeg +=                  \
     fftools/textformat/tw_avio.o      \
     fftools/textformat/tw_buffer.o    \
     fftools/textformat/tw_stdout.o    \
-    $(OBJS-resman)                    \
+    $(GRAPHPRINT-OBJS)                \
+    $(RESMAN-OBJS)                    \
 
 OBJS-ffprobe +=                       \
     fftools/textformat/avtextformat.o \

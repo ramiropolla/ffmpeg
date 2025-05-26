@@ -1,6 +1,1 @@
-*.html.c
-*.css.c
-*.html.gz
-*.css.gz
-*.min
-*.min.gz
+/resources_list.c

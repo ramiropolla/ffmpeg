@@ -26,6 +26,9 @@
 *.ptx
 *.ptx.c
 *.ptx.gz
+*.css.min
+*.res.c
+*.res.gz
 *_g
 \#*
 .\#*
