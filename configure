@@ -6898,7 +6898,7 @@ enabled  zlib && { check_pkg_config zlib zlib "zlib.h" zlibVersion ||
 enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
 enabled  lzma && check_lib lzma   lzma.h lzma_version_number -llzma
 
-[ -x "$(command -v gzip)" ] && enable gzip
+gzip -V > /dev/null 2>&1 && enable gzip
 
 # On some systems dynamic loading requires no extra linker flags
 check_lib libdl dlfcn.h "dlopen dlsym" || check_lib libdl dlfcn.h "dlopen dlsym" -ldl
