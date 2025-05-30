@@ -21,6 +21,7 @@
 #ifndef FFTOOLS_RESOURCES_RESMAN_H
 #define FFTOOLS_RESOURCES_RESMAN_H
 
+// TODO all #includes here are unnecessary
 #include <stdint.h>
 
 #include "config.h"

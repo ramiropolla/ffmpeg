@@ -52,6 +52,7 @@ typedef struct ResourceManagerContext {
 
 static AVMutex mutex = AV_MUTEX_INITIALIZER;
 
+// TODO static
 ResourceManagerContext *resman_ctx = NULL;
 
 
@@ -68,6 +69,7 @@ static int decompress_gzip(ResourceManagerContext *ctx, uint8_t *in, unsigned in
     memset(&strm, 0, sizeof(strm));
 
     // Allocate output buffer with extra byte for null termination
+    // TODO remove cast
     buf = (uint8_t *)av_mallocz(chunk + 1);
     if (!buf) {
         av_log(ctx, AV_LOG_ERROR, "Failed to allocate decompression buffer\n");
@@ -97,6 +99,7 @@ static int decompress_gzip(ResourceManagerContext *ctx, uint8_t *in, unsigned in
 
     if (strm.avail_out == 0) {
         // TODO: Error or loop decoding?
+        // TODO ^^^
         av_log(ctx, AV_LOG_WARNING, "Decompression buffer may be too small\n");
     }
 
@@ -147,6 +150,7 @@ void ff_resman_uninit(void)
 }
 
 
+// TODO return const char *
 char *ff_resman_get_string(const char *name)
 {
     ResourceManagerContext *ctx               = get_resman_context();
