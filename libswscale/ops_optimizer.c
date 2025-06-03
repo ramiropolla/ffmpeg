@@ -784,13 +784,15 @@ retry:
     return 0;
 }
 
-int ff_sws_solve_shuffle(const SwsOpList *const ops, uint8_t shuffle[],
-                         int shuffle_size, uint8_t clear_val,
-                         int *out_read_bytes, int *out_write_bytes)
+int ff_sws_solve_shuffle(const SwsOpList *const ops, uint32_t mask[4],
+                         int *out_read_size, int *out_read_elems,
+                         int *out_write_size, int *out_write_elems,
+                         uint8_t clear_val)
 {
     const SwsOp read = ops->ops[0];
     const int read_size = ff_sws_pixel_type_size(read.type);
-    uint32_t mask[4] = {0};
+
+    memset(mask, 0, 4 * sizeof(uint32_t));
 
     if (!ops->num_ops || read.op != SWS_OP_READ)
         return AVERROR(EINVAL);
@@ -845,29 +847,11 @@ int ff_sws_solve_shuffle(const SwsOpList *const ops, uint8_t shuffle[],
             if (op->rw.frac || !op->rw.packed)
                 return AVERROR(ENOTSUP);
 
-            /* Initialize to no-op */
-            memset(shuffle, clear_val, shuffle_size);
-
-            const int write_size  = ff_sws_pixel_type_size(op->type);
-            const int read_chunk  = read.rw.elems * read_size;
-            const int write_chunk = op->rw.elems * write_size;
-            const int num_groups  = shuffle_size / FFMAX(read_chunk, write_chunk);
-            for (int n = 0; n < num_groups; n++) {
-                const int base_in  = n * read_chunk;
-                const int base_out = n * write_chunk;
-                for (int i = 0; i < op->rw.elems; i++) {
-                    const int offset = base_out + i * write_size;
-                    for (int b = 0; b < write_size; b++) {
-                        const uint8_t idx = mask[i] >> (b * 8);
-                        if (idx != clear_val)
-                            shuffle[offset + b] = base_in + idx;
-                    }
-                }
-            }
-
-            *out_read_bytes  = num_groups * read_chunk;
-            *out_write_bytes = num_groups * write_chunk;
-            return num_groups;
+            *out_read_size = read_size;
+            *out_read_elems = read.rw.elems;
+            *out_write_size = ff_sws_pixel_type_size(op->type);
+            *out_write_elems = op->rw.elems;
+            return 0;
         }
 
         default:

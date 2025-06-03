@@ -539,26 +539,51 @@ static bool op_is_type_invariant(const SwsOp *op)
 
 static int solve_shuffle(const SwsOpList *ops, int mmsize, SwsCompiledOp *out)
 {
+    const int clear_val = 0x80;
+    uint32_t mask[4];
     uint8_t shuffle[16];
     int read_bytes, write_bytes;
-    int pixels;
+    int read_size, write_size;
+    int read_elems, write_elems;
+    int ret;
 
     /* Solve the shuffle mask for one 128-bit lane only */
-    pixels = ff_sws_solve_shuffle(ops, shuffle, 16, 0x80, &read_bytes, &write_bytes);
-    if (pixels < 0)
-        return pixels;
+    ret = ff_sws_solve_shuffle(ops, mask, &read_size, &read_elems, &write_size, &write_elems, clear_val);
+    if (ret < 0)
+        return ret;
+
+    /* Initialize to no-op */
+    memset(shuffle, clear_val, 16);
+
+    const int read_chunk  = read_elems * read_size;
+    const int write_chunk = write_elems * write_size;
+    const int pixels      = 16 / FFMAX(read_chunk, write_chunk);
+    for (int n = 0; n < pixels; n++) {
+        const int base_in  = n * read_chunk;
+        const int base_out = n * write_chunk;
+        for (int i = 0; i < write_elems; i++) {
+            const int offset = base_out + i * write_size;
+            for (int b = 0; b < write_size; b++) {
+                const uint8_t idx = mask[i] >> (b * 8);
+                if (idx != clear_val)
+                    shuffle[offset + b] = base_in + idx;
+            }
+        }
+    }
 
     /* We can't shuffle acress lanes, so restrict the vector size to XMM
      * whenever the read/write size would be a subset of the full vector */
+    read_bytes = pixels * read_chunk;
+    write_bytes = pixels * write_chunk;
     if (read_bytes < 16 || write_bytes < 16)
         mmsize = 16;
 
     const int num_lanes = mmsize / 16;
     const int in_total  = num_lanes * read_bytes;
     const int out_total = num_lanes * write_bytes;
-    const int read_size = in_total <= 4 ? 4 : /* movd */
-                          in_total <= 8 ? 8 : /* movq */
-                          mmsize;             /* movu */
+    read_size = in_total <= 4 ? 4 : /* movd */
+                in_total <= 8 ? 8 : /* movq */
+                mmsize;             /* movu */
 
     *out = (SwsCompiledOp) {
         .priv       = av_memdup(shuffle, sizeof(shuffle)),

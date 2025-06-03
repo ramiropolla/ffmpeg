@@ -134,7 +134,9 @@ int ff_sws_ops_compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out
  * @return  The number of pixels processed per iteration, or a negative error
             code; in particular AVERROR(ENOTSUP) for unsupported operations.
  */
-int ff_sws_solve_shuffle(const SwsOpList *ops, uint8_t shuffle[], int size,
-                         uint8_t clear_val, int *read_bytes, int *write_bytes);
+int ff_sws_solve_shuffle(const SwsOpList *const ops, uint32_t mask[4],
+                         int *out_read_size, int *out_read_elems,
+                         int *out_write_size, int *out_write_elems,
+                         uint8_t clear_val);
 
 #endif
