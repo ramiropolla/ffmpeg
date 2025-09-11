@@ -2244,12 +2244,19 @@ int ff_mjpeg_find_marker(MJpegDecodeContext *s,
     int start_code;
     start_code = find_marker(buf_ptr, buf_end);
 
+    if (start_code != SOS ||
+        s->avctx->codec_id == AV_CODEC_ID_THP) {
+        *unescaped_buf_ptr  = *buf_ptr;
+        *unescaped_buf_size = buf_end - *buf_ptr;
+        return start_code;
+    }
+
     av_fast_padded_malloc(&s->buffer, &s->buffer_size, buf_end - *buf_ptr);
     if (!s->buffer)
         return AVERROR(ENOMEM);
 
     /* unescape buffer of SOS, use special treatment for JPEG-LS */
-    if (start_code == SOS && !s->ls) {
+    if (!s->ls) {
         const uint8_t *src = *buf_ptr;
         const uint8_t *ptr = src;
         uint8_t *dst = s->buffer;
@@ -2263,10 +2270,6 @@ int ff_mjpeg_find_marker(MJpegDecodeContext *s,
             }                                         \
         } while (0)
 
-        if (s->avctx->codec_id == AV_CODEC_ID_THP) {
-            ptr = buf_end;
-            copy_data_segment(0);
-        } else {
             while (ptr < buf_end) {
                 uint8_t x = *(ptr++);
 
@@ -2296,7 +2299,6 @@ int ff_mjpeg_find_marker(MJpegDecodeContext *s,
             }
             if (src < ptr)
                 copy_data_segment(0);
-        }
         #undef copy_data_segment
 
         *unescaped_buf_ptr  = s->buffer;
@@ -2306,7 +2308,7 @@ int ff_mjpeg_find_marker(MJpegDecodeContext *s,
 
         av_log(s->avctx, AV_LOG_DEBUG, "escaping removed %td bytes\n",
                (buf_end - *buf_ptr) - (dst - s->buffer));
-    } else if (start_code == SOS && s->ls) {
+    } else {
         const uint8_t *src = *buf_ptr;
         uint8_t *dst  = s->buffer;
         int bit_count = 0;
@@ -2348,9 +2350,6 @@ int ff_mjpeg_find_marker(MJpegDecodeContext *s,
         *unescaped_buf_size = (bit_count + 7) >> 3;
         memset(s->buffer + *unescaped_buf_size, 0,
                AV_INPUT_BUFFER_PADDING_SIZE);
-    } else {
-        *unescaped_buf_ptr  = *buf_ptr;
-        *unescaped_buf_size = buf_end - *buf_ptr;
     }
 
     return start_code;
