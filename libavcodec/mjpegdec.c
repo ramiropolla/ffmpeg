@@ -55,10 +55,7 @@
 #include "put_bits.h"
 
 
-static int mjpeg_unescape_sos(MJpegDecodeContext *s,
-                              const uint8_t *buf_ptr, const uint8_t *buf_end,
-                              const uint8_t **unescaped_buf_ptr,
-                              int *unescaped_buf_size);
+static int mjpeg_unescape_sos(MJpegDecodeContext *s);
 
 static int init_default_huffman_tables(MJpegDecodeContext *s)
 {
@@ -1817,14 +1814,7 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
     if (s->mjpb_skiptosod)
         bytestream2_skip(&s->gB, s->mjpb_skiptosod);
 
-    const uint8_t *unescaped_buf_ptr;
-    int unescaped_buf_size;
-    ret = mjpeg_unescape_sos(s, s->gB.buffer, s->gB.buffer + bytestream2_get_bytes_left(&s->gB),
-                             &unescaped_buf_ptr, &unescaped_buf_size);
-    if (ret < 0)
-        return ret;
-
-    ret = init_get_bits8(&ss->gb, unescaped_buf_ptr, unescaped_buf_size);
+    ret = mjpeg_unescape_sos(s);
     if (ret < 0)
         return ret;
 
@@ -2254,19 +2244,20 @@ found:
     return val;
 }
 
-static int mjpeg_unescape_sos(MJpegDecodeContext *s,
-                              const uint8_t *buf_ptr, const uint8_t *buf_end,
-                              const uint8_t **unescaped_buf_ptr,
-                              int *unescaped_buf_size)
+static int mjpeg_unescape_sos(MJpegDecodeContext *s)
 {
     MJpegSliceContext *ss = &s->slice_context;
+    const uint8_t *buf_ptr = s->gB.buffer;
+    const uint8_t *buf_end = buf_ptr + bytestream2_get_bytes_left(&s->gB);
+    const uint8_t *unescaped_buf_ptr;
+    int unescaped_buf_size;
 
     if (s->avctx->codec_id == AV_CODEC_ID_MEDIA100 ||
         s->avctx->codec_id == AV_CODEC_ID_MJPEGB ||
         s->avctx->codec_id == AV_CODEC_ID_THP) {
-        *unescaped_buf_ptr  = buf_ptr;
-        *unescaped_buf_size = buf_end - buf_ptr;
-        return 0;
+        unescaped_buf_ptr  = buf_ptr;
+        unescaped_buf_size = buf_end - buf_ptr;
+        goto the_end;
     }
 
     av_fast_padded_malloc(&ss->buffer, &ss->buffer_size, buf_end - buf_ptr);
@@ -2319,9 +2310,9 @@ static int mjpeg_unescape_sos(MJpegDecodeContext *s,
                 copy_data_segment(0);
         #undef copy_data_segment
 
-        *unescaped_buf_ptr  = ss->buffer;
-        *unescaped_buf_size = dst - ss->buffer;
-        memset(ss->buffer + *unescaped_buf_size, 0,
+        unescaped_buf_ptr  = ss->buffer;
+        unescaped_buf_size = dst - ss->buffer;
+        memset(ss->buffer + unescaped_buf_size, 0,
                AV_INPUT_BUFFER_PADDING_SIZE);
 
         av_log(s->avctx, AV_LOG_DEBUG, "escaping removed %td bytes\n",
@@ -2364,13 +2355,14 @@ static int mjpeg_unescape_sos(MJpegDecodeContext *s,
         }
         flush_put_bits(&pb);
 
-        *unescaped_buf_ptr  = dst;
-        *unescaped_buf_size = (bit_count + 7) >> 3;
-        memset(ss->buffer + *unescaped_buf_size, 0,
+        unescaped_buf_ptr  = dst;
+        unescaped_buf_size = (bit_count + 7) >> 3;
+        memset(ss->buffer + unescaped_buf_size, 0,
                AV_INPUT_BUFFER_PADDING_SIZE);
     }
 
-    return 0;
+the_end:
+    return init_get_bits8(&ss->gb, unescaped_buf_ptr, unescaped_buf_size);
 }
 
 static void reset_icc_profile(MJpegDecodeContext *s)
