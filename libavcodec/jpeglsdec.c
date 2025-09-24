@@ -34,6 +34,7 @@
 #include "mjpegdec.h"
 #include "jpegls.h"
 #include "jpeglsdec.h"
+#include "put_bits.h"
 
 /*
  * Uncomment this to significantly speed up decoding of broken JPEG-LS
@@ -353,6 +354,68 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
     return 0;
 }
 
+static int jpegls_unescape_sos(MJpegDecodeContext *s)
+{
+    MJpegSliceContext *ss = &s->slice_context;
+    const uint8_t *buf_ptr = s->gB.buffer;
+    const uint8_t *buf_end = buf_ptr + bytestream2_get_bytes_left(&s->gB);
+    const uint8_t *unescaped_buf_ptr;
+    int unescaped_buf_size;
+
+    av_fast_padded_malloc(&ss->buffer, &ss->buffer_size, buf_end - buf_ptr);
+    if (!ss->buffer)
+        return AVERROR(ENOMEM);
+
+    /* unescape buffer of SOS, use special treatment for JPEG-LS */
+    const uint8_t *src = buf_ptr;
+    const uint8_t *ptr = src;
+    uint8_t *dst = ss->buffer;
+    PutBitContext pb;
+
+    init_put_bits(&pb, dst, buf_end - src);
+
+    while ((ptr = memchr(ptr, 0xff, buf_end - ptr))) {
+        ptr++;
+        if (ptr < buf_end) {
+            /* Copy verbatim data. */
+            int length = (ptr - 1) - src;
+            if (length > 0)
+                ff_copy_bits(&pb, src, length * 8);
+
+            uint8_t x = *ptr++;
+            /* Discard multiple optional 0xFF fill bytes. */
+            while (x == 0xff && ptr < buf_end)
+                x = *ptr++;
+
+            src = ptr;
+            if (!(x & 0x80)) {
+                /* Stuffed zero bit */
+                put_bits(&pb, 15, 0x7f80 | x);
+            } else {
+                ptr -= 2;
+                goto found;
+            }
+        }
+    }
+    /* Copy remaining verbatim data. */
+    ptr = buf_end;
+    int length = ptr - src;
+    if (length > 0)
+        ff_copy_bits(&pb, src, length * 8);
+
+found:
+    flush_put_bits(&pb);
+
+    unescaped_buf_ptr  = dst;
+    unescaped_buf_size = put_bytes_output(&pb);
+    memset(ss->buffer + unescaped_buf_size, 0,
+           AV_INPUT_BUFFER_PADDING_SIZE);
+
+    bytestream2_skipu(&s->gB, ptr - buf_ptr);
+
+    return init_get_bits8(&ss->gb, unescaped_buf_ptr, unescaped_buf_size);
+}
+
 int ff_jpegls_decode_picture(MJpegDecodeContext *s)
 {
     MJpegSliceContext *ss = &s->slice_context;
@@ -422,6 +485,11 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
         av_log(s->avctx, AV_LOG_DEBUG, "JPEG params: ILV=%i Pt=%i BPP=%i, scan = %i\n",
                 ilv, point_transform, s->bits, s->cur_scan);
     }
+
+    ret = jpegls_unescape_sos(s);
+    if (ret < 0)
+        goto end;
+
     if (ilv == 0) { /* separate planes */
         if (s->cur_scan > s->nb_components) {
             ret = AVERROR_INVALIDDATA;
