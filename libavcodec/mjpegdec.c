@@ -1502,6 +1502,9 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s, int nb_components, int Ah,
         s->coefs_finished[c] |= 1;
     }
 
+    for (i = 0; i < nb_components; i++)
+        s->last_dc[i] = (4 << s->bits);
+
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
             const int copy_mb = mb_bitmask && !get_bits1(&mb_bitmask_gb);
@@ -1772,9 +1775,6 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
         skip_bits(&s->gb, 8);
 
 next_field:
-    for (i = 0; i < nb_components; i++)
-        s->last_dc[i] = (4 << s->bits);
-
     if (s->avctx->hwaccel) {
         int bytes_to_start = get_bits_count(&s->gb) / 8;
         av_assert0(bytes_to_start >= 0 &&
