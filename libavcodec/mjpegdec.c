@@ -52,9 +52,10 @@
 #include "mjpegdec.h"
 #include "jpeglsdec.h"
 #include "profiles.h"
-#include "put_bits.h"
 
 
+static void mjpeg_find_raw_scan_data(MJpegDecodeContext *s,
+                                     const uint8_t **pbuf_ptr, size_t *pbuf_size);
 static int mjpeg_unescape_sos(MJpegDecodeContext *s);
 
 static int init_default_huffman_tables(MJpegDecodeContext *s)
@@ -1165,6 +1166,10 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     for (i = 0; i < 4; i++)
         buffer[0][i] = 1 << (s->bits - 1);
 
+    ret = mjpeg_unescape_sos(s);
+    if (ret < 0)
+        return ret;
+
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         uint8_t *ptr = s->picture_ptr->data[0] + (linesize * mb_y);
 
@@ -1308,6 +1313,10 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
     mask = ((1 << s->bits) - 1) << point_transform;
 
     av_assert0(nb_components>=1 && nb_components<=4);
+
+    ret = mjpeg_unescape_sos(s);
+    if (ret < 0)
+        return ret;
 
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
@@ -1498,6 +1507,7 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s,
     int linesize[MAX_COMPONENTS];
     GetBitContext mb_bitmask_gb = {0}; // initialize to silence gcc warning
     int bytes_per_pixel = 1 + (s->bits > 8);
+    int ret;
 
     if (mb_bitmask) {
         if (mb_bitmask_size != (s->mb_width * s->mb_height + 7)>>3) {
@@ -1521,6 +1531,10 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s,
         linesize[c] = s->linesize[c];
         s->coefs_finished[c] |= 1;
     }
+
+    ret = mjpeg_unescape_sos(s);
+    if (ret < 0)
+        return ret;
 
 next_field:
     for (i = 0; i < nb_components; i++)
@@ -1639,6 +1653,7 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
     int EOBRUN = 0;
     int c = s->comp_index[0];
     uint16_t *quant_matrix = s->quant_matrixes[s->quant_sindex[0]];
+    int ret;
 
     av_assert0(Ss>=0 && Ah>=0 && Al>=0);
     if (Se < Ss || Se > 63) {
@@ -1651,6 +1666,10 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
     s->coefs_finished[c] |= (2ULL << Se) - (1ULL << Ss);
 
     s->restart_count = 0;
+
+    ret = mjpeg_unescape_sos(s);
+    if (ret < 0)
+        return ret;
 
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         int block_idx    = mb_y * s->block_stride[c];
@@ -1814,14 +1833,13 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
     if (s->mjpb_skiptosod)
         bytestream2_skip(&s->gB, s->mjpb_skiptosod);
 
-    ret = mjpeg_unescape_sos(s);
-    if (ret < 0)
-        return ret;
-
     if (s->avctx->hwaccel) {
-        ret = FF_HW_CALL(s->avctx, decode_slice,
-                         s->raw_scan_buffer,
-                         s->raw_scan_buffer_size);
+        const uint8_t *buf_ptr;
+        size_t buf_size;
+
+        mjpeg_find_raw_scan_data(s, &buf_ptr, &buf_size);
+
+        ret = FF_HW_CALL(s->avctx, decode_slice, buf_ptr, buf_size);
         if (ret < 0)
             return ret;
 
@@ -2244,6 +2262,36 @@ found:
     return val;
 }
 
+static void mjpeg_find_raw_scan_data(MJpegDecodeContext *s,
+                                     const uint8_t **pbuf_ptr, size_t *pbuf_size)
+{
+    const uint8_t *buf_ptr = s->gB.buffer;
+    const uint8_t *buf_end = buf_ptr + bytestream2_get_bytes_left(&s->gB);
+
+    /* Find size of image data buffer (including restart markers).
+     * No unescaping is performed. */
+    const uint8_t *ptr = buf_ptr;
+    while ((ptr = memchr(ptr, 0xff, buf_end - ptr))) {
+        ptr++;
+        if (ptr < buf_end) {
+            uint8_t x = *ptr++;
+            /* Discard multiple optional 0xFF fill bytes. */
+            while (x == 0xff && ptr < buf_end)
+                x = *ptr++;
+            if (x && (x < RST0 || x > RST7)) {
+                /* Non-restart marker */
+                ptr -= 2;
+                goto found;
+            }
+        }
+    }
+    ptr = buf_end;
+found:
+    *pbuf_ptr = buf_ptr;
+    *pbuf_size = ptr - buf_ptr;
+    bytestream2_skipu(&s->gB, *pbuf_size);
+}
+
 static int mjpeg_unescape_sos(MJpegDecodeContext *s)
 {
     MJpegSliceContext *ss = &s->slice_context;
@@ -2251,32 +2299,6 @@ static int mjpeg_unescape_sos(MJpegDecodeContext *s)
     const uint8_t *buf_end = buf_ptr + bytestream2_get_bytes_left(&s->gB);
     const uint8_t *unescaped_buf_ptr;
     int unescaped_buf_size;
-
-    if (s->avctx->hwaccel) {
-        /* Find size of image data buffer (including restart markers).
-         * No unescaping is performed. */
-        const uint8_t *ptr = buf_ptr;
-        while ((ptr = memchr(ptr, 0xff, buf_end - ptr))) {
-            ptr++;
-            if (ptr < buf_end) {
-                uint8_t x = *ptr++;
-                /* Discard multiple optional 0xFF fill bytes. */
-                while (x == 0xff && ptr < buf_end)
-                    x = *ptr++;
-                if (x && (x < RST0 || x > RST7)) {
-                    /* Non-restart marker */
-                    ptr -= 2;
-                    goto found_hw;
-                }
-            }
-        }
-        ptr = buf_end;
-found_hw:
-        s->raw_scan_buffer      = buf_ptr;
-        s->raw_scan_buffer_size = ptr - buf_ptr;
-        bytestream2_skipu(&s->gB, s->raw_scan_buffer_size);
-        return 0;
-    }
 
     if (s->avctx->codec_id == AV_CODEC_ID_MEDIA100 ||
         s->avctx->codec_id == AV_CODEC_ID_MJPEGB ||
@@ -2292,8 +2314,7 @@ found_hw:
     if (!ss->buffer)
         return AVERROR(ENOMEM);
 
-    /* unescape buffer of SOS, use special treatment for JPEG-LS */
-    if (!s->ls) {
+    /* unescape buffer of SOS */
         const uint8_t *src = buf_ptr;
         const uint8_t *ptr = src;
         uint8_t *dst = ss->buffer;
@@ -2344,53 +2365,6 @@ found:
 
         av_log(s->avctx, AV_LOG_DEBUG, "escaping removed %td bytes\n",
                (buf_end - buf_ptr) - (unescaped_buf_size));
-    } else {
-        const uint8_t *src = buf_ptr;
-        const uint8_t *ptr = src;
-        uint8_t *dst  = ss->buffer;
-        PutBitContext pb;
-
-        init_put_bits(&pb, dst, buf_end - src);
-
-        while ((ptr = memchr(ptr, 0xff, buf_end - ptr))) {
-            ptr++;
-            if (ptr < buf_end) {
-                /* Copy verbatim data. */
-                int length = (ptr - 1) - src;
-                if (length > 0)
-                    ff_copy_bits(&pb, src, length * 8);
-
-                uint8_t x = *ptr++;
-                /* Discard multiple optional 0xFF fill bytes. */
-                while (x == 0xff && ptr < buf_end)
-                    x = *ptr++;
-
-                src = ptr;
-                if (!(x & 0x80)) {
-                    /* Stuffed zero bit */
-                    put_bits(&pb, 15, 0x7f80 | x);
-                } else {
-                    ptr -= 2;
-                    goto found_ls;
-                }
-            }
-        }
-        /* Copy remaining verbatim data. */
-        ptr = buf_end;
-        int length = ptr - src;
-        if (length > 0)
-            ff_copy_bits(&pb, src, length * 8);
-
-found_ls:
-        flush_put_bits(&pb);
-
-        unescaped_buf_ptr  = dst;
-        unescaped_buf_size = put_bytes_output(&pb);
-        memset(ss->buffer + unescaped_buf_size, 0,
-               AV_INPUT_BUFFER_PADDING_SIZE);
-
-        bytestream2_skipu(&s->gB, ptr - buf_ptr);
-    }
 
 the_end:
     return init_get_bits8(&ss->gb, unescaped_buf_ptr, unescaped_buf_size);
