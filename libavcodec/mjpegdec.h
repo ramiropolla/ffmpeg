@@ -178,6 +178,24 @@ typedef struct MJpegDecodeContext {
     struct JLSState *jls_state;
 } MJpegDecodeContext;
 
+static inline int ff_mjpeg_should_restart(MJpegDecodeContext *s)
+{
+    int restart = 0;
+    if (s->restart_interval) {
+        if (s->restart_count <= 0) {
+            s->restart_count = s->restart_interval;
+            restart = 1;
+        }
+        s->restart_count--;
+    } else {
+        if (s->restart_count < 0) {
+            s->restart_count = 0;
+            restart = 1;
+        }
+    }
+    return restart;
+}
+
 int ff_mjpeg_build_vlc(VLC *vlc, const uint8_t *bits_table,
                        const uint8_t *val_table, int is_ac, void *logctx);
 int ff_mjpeg_decode_init(AVCodecContext *avctx);
