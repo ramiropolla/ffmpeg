@@ -2424,7 +2424,7 @@ redo_for_pal8:
         ret = -1;
 
         if (!CONFIG_JPEGLS_DECODER &&
-            (start_code == SOF48 || start_code == LSE)) {
+            (start_code == SOF55 || start_code == LSE)) {
             av_log(avctx, AV_LOG_ERROR, "JPEG-LS support not enabled.\n");
             return AVERROR(ENOSYS);
         }
@@ -2435,7 +2435,7 @@ redo_for_pal8:
             case SOF1:
             case SOF2:
             case SOF3:
-            case SOF48:
+            case SOF55:
                 break;
             default:
                 goto skip;
@@ -2489,7 +2489,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
             if ((ret = ff_mjpeg_decode_sof(s)) < 0)
                 goto fail;
             break;
-        case SOF48:
+        case SOF55:
             avctx->profile     = AV_PROFILE_MJPEG_JPEG_LS;
 #if FF_API_CODEC_PROPS
 FF_DISABLE_DEPRECATION_WARNINGS
@@ -2584,7 +2584,7 @@ eoi_parser:
             case SOF1:
             case SOF2:
             case SOF3:
-            case SOF48:
+            case SOF55:
                 s->got_picture = 0;
                 goto the_end_no_picture;
             }
