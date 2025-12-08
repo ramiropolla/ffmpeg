@@ -226,16 +226,20 @@ error:
 static void print_test(int level, const AVFrame *src, const AVFrame *dst,
                        struct mode mode, const float ssim[4])
 {
-    av_log(NULL, level, "%-14s %dx%d -> %-14s %3dx%3d, flags=0x%08x dither=%u\n",
+    if (av_log_get_level() >= level) {
+    printf("%-14s %4dx%4d -> %-14s %4dx%4d, flags=0x%08x dither=%u",
            av_get_pix_fmt_name(src->format), src->width, src->height,
            av_get_pix_fmt_name(dst->format), dst->width, dst->height,
            mode.flags, mode.dither);
+    }
 
     /* Make the SSIM dump just slightly more verbose - not enough to
      * bump it to the next category, but enough to be selectively opted
      * out of if the user really wants to. */
-    av_log(NULL, level + 4, "  SSIM {Y=%f U=%f V=%f A=%f}\n",
+    if (av_log_get_level() >= level + 4) {
+    printf(" SSIM {Y=%f U=%f V=%f A=%f}",
            ssim[0], ssim[1], ssim[2], ssim[3]);
+    }
 }
 
 /* Runs a series of ref -> src -> dst -> out, and compares out vs ref */
@@ -309,18 +313,6 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     get_ssim(ssim, out, ref, comps);
     loss = get_loss(ssim);
 
-    if (loss - expected_loss > 1e-4 && dst_w >= ref->width && dst_h >= ref->height) {
-        const int bad = loss - expected_loss > 1e-2;
-        const int level = bad ? AV_LOG_ERROR : AV_LOG_WARNING;
-        print_test(level, src, dst, mode, ssim);
-        av_log(NULL, level, "  loss %g is %s by %g, expected loss %g\n",
-               loss, bad ? "WORSE" : "worse", loss - expected_loss, expected_loss);
-        if (bad)
-            goto error;
-    } else {
-        print_test(AV_LOG_INFO, src, dst, mode, ssim);
-    }
-
     if (!ssim_ref && sws_isSupportedInput(src->format) && sws_isSupportedOutput(dst->format)) {
         /* Compare against the legacy swscale API as a reference */
         time_ref = av_gettime_relative();
@@ -350,18 +342,19 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         ssim_ref = ssim_sws;
     }
 
-    if (ssim_ref) {
-        const float loss_ref = get_loss(ssim_ref);
-        if (loss - loss_ref > 1e-4) {
-            int bad = loss - loss_ref > 1e-2;
-            av_log(NULL, bad ? AV_LOG_ERROR : AV_LOG_WARNING,
-                   "  loss %g is %s by %g, ref loss %g, "
-                   "SSIM {Y=%f U=%f V=%f A=%f}\n",
-                   loss, bad ? "WORSE" : "worse", loss - loss_ref, loss_ref,
-                   ssim_ref[0], ssim_ref[1], ssim_ref[2], ssim_ref[3]);
-            if (bad)
-                goto error;
-        }
+#if 1
+    /* added for asmjit */
+    printf("[%-6s] ", sws[1]->backend_name ? sws[1]->backend_name : "");
+    sws[1]->backend_name = NULL;
+#endif
+
+    int high_loss = (loss - expected_loss > 1e-4 && dst_w >= ref->width && dst_h >= ref->height);
+    int high_loss_bad = high_loss && (loss - expected_loss > 1e-2);
+    int high_loss_level = high_loss_bad ? AV_LOG_ERROR : AV_LOG_WARNING;
+    if (high_loss) {
+        print_test(high_loss_level, src, dst, mode, ssim);
+    } else {
+        print_test(AV_LOG_INFO, src, dst, mode, ssim);
     }
 
     if (opts.bench && time_ref) {
@@ -374,13 +367,39 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         }
 
         if (av_log_get_level() >= AV_LOG_INFO) {
-            printf("  time=%6"PRId64" us, ref=%6"PRId64" us, speedup=%6.3fx %s%s\033[0m\n",
+            printf(" time=%6"PRId64" us, ref=%6"PRId64" us, speedup=%6.3fx %s%s\033[0m",
                    time / opts.iters, time_ref / opts.iters, ratio,
                    speedup_color(ratio), ratio >= 1.0 ? "faster" : "slower");
         }
     } else if (opts.bench) {
-        av_log(NULL, AV_LOG_INFO, "  time=%6"PRId64" us\n", time / opts.iters);
+        if (av_log_get_level() >= AV_LOG_INFO) {
+            printf(" time=%6"PRId64" us", time / opts.iters);
+        }
     }
+
+    if (high_loss) {
+        if (av_log_get_level() >= high_loss_level) {
+        printf(" loss %g is %s by %g, expected loss %g",
+               loss, high_loss_bad ? "WORSE" : "worse", loss - expected_loss, expected_loss);
+        }
+        if (high_loss_bad)
+            goto error;
+    }
+
+    if (ssim_ref) {
+        const float loss_ref = get_loss(ssim_ref);
+        if (loss - loss_ref > 1e-4) {
+            int bad = loss - loss_ref > 1e-2;
+            if (av_log_get_level() >= (bad ? AV_LOG_ERROR : AV_LOG_WARNING)) {
+            printf(" loss %g is %s by %g, ref loss %g,",
+                   loss, bad ? "WORSE" : "worse", loss - loss_ref, loss_ref);
+            }
+            if (bad)
+                goto error;
+        }
+    }
+
+    printf("\n");
 
     fflush(stdout);
     ret = 0; /* fall through */
