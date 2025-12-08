@@ -223,6 +223,21 @@ error:
     return ret;
 }
 
+static void print_test(int level, const AVFrame *src, const AVFrame *dst,
+                       struct mode mode, const float ssim[4])
+{
+    av_log(NULL, level, "%s %dx%d -> %s %3dx%3d, flags=0x%x dither=%u\n",
+           av_get_pix_fmt_name(src->format), src->width, src->height,
+           av_get_pix_fmt_name(dst->format), dst->width, dst->height,
+           mode.flags, mode.dither);
+
+    /* Make the SSIM dump just slightly more verbose - not enough to
+     * bump it to the next category, but enough to be selectively opted
+     * out of if the user really wants to. */
+    av_log(NULL, level + 4, "  SSIM {Y=%f U=%f V=%f A=%f}\n",
+           ssim[0], ssim[1], ssim[2], ssim[3]);
+}
+
 /* Runs a series of ref -> src -> dst -> out, and compares out vs ref */
 static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
                     int dst_w, int dst_h, struct mode mode, struct options opts,
@@ -292,26 +307,18 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     }
 
     get_ssim(ssim, out, ref, comps);
-    av_log(NULL, AV_LOG_INFO, "%s %dx%d -> %s %3dx%3d, flags=0x%x dither=%u\n",
-           av_get_pix_fmt_name(src->format), src->width, src->height,
-           av_get_pix_fmt_name(dst->format), dst->width, dst->height,
-           mode.flags, mode.dither);
-
-    av_log(NULL, AV_LOG_VERBOSE - 4, "  SSIM {Y=%f U=%f V=%f A=%f}\n",
-           ssim[0], ssim[1], ssim[2], ssim[3]);
-
     loss = get_loss(ssim);
+
     if (loss - expected_loss > 1e-4 && dst_w >= ref->width && dst_h >= ref->height) {
         const int bad = loss - expected_loss > 1e-2;
         const int level = bad ? AV_LOG_ERROR : AV_LOG_WARNING;
-        av_log(NULL, level, "%s %dx%d -> %s %3dx%3d, flags=0x%x dither=%u\n",
-               av_get_pix_fmt_name(src->format), src->width, src->height,
-               av_get_pix_fmt_name(dst->format), dst->width, dst->height,
-               mode.flags, mode.dither);
+        print_test(level, src, dst, mode, ssim);
         av_log(NULL, level, "  loss %g is %s by %g, expected loss %g\n",
                loss, bad ? "WORSE" : "worse", loss - expected_loss, expected_loss);
         if (bad)
             goto error;
+    } else {
+        print_test(AV_LOG_INFO, src, dst, mode, ssim);
     }
 
     if (!ssim_ref && sws_isSupportedInput(src->format) && sws_isSupportedOutput(dst->format)) {
