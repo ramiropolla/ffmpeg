@@ -264,8 +264,8 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     dst->height = dst_h;
 
     if (sws_scale_frame(sws[0], src, ref) < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
-               av_get_pix_fmt_name(ref->format), av_get_pix_fmt_name(src->format));
+        fprintf(stderr, "Failed %s ---> %s\n",
+                av_get_pix_fmt_name(ref->format), av_get_pix_fmt_name(src->format));
         goto error;
     }
 
@@ -277,8 +277,8 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
 
     for (int i = 0; i < opts.iters; i++) {
         if (sws_scale_frame(sws[1], dst, src) < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
-                   av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format));
+            fprintf(stderr, "Failed %s ---> %s\n",
+                    av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format));
             goto error;
         }
     }
@@ -286,8 +286,8 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     time = av_gettime_relative() - time;
 
     if (sws_scale_frame(sws[2], out, dst) < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
-               av_get_pix_fmt_name(dst->format), av_get_pix_fmt_name(out->format));
+        fprintf(stderr, "Failed %s ---> %s\n",
+                av_get_pix_fmt_name(dst->format), av_get_pix_fmt_name(out->format));
         goto error;
     }
 
@@ -318,8 +318,8 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         /* Compare against the legacy swscale API as a reference */
         time_ref = av_gettime_relative();
         if (scale_legacy(dst, src, mode, opts) < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Failed ref %s ---> %s\n",
-                   av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format));
+            fprintf(stderr, "Failed ref %s ---> %s\n",
+                    av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format));
             goto error;
         }
         time_ref = av_gettime_relative() - time_ref;
