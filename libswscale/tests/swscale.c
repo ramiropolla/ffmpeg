@@ -226,7 +226,7 @@ error:
 static void print_test(int level, const AVFrame *src, const AVFrame *dst,
                        struct mode mode, const float ssim[4])
 {
-    av_log(NULL, level, "%s %dx%d -> %s %3dx%3d, flags=0x%x dither=%u\n",
+    av_log(NULL, level, "%-14s %dx%d -> %-14s %3dx%3d, flags=0x%08x dither=%u\n",
            av_get_pix_fmt_name(src->format), src->width, src->height,
            av_get_pix_fmt_name(dst->format), dst->width, dst->height,
            mode.flags, mode.dither);
@@ -374,12 +374,12 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         }
 
         if (av_log_get_level() >= AV_LOG_INFO) {
-            printf("  time=%"PRId64" us, ref=%"PRId64" us, speedup=%.3fx %s%s\033[0m\n",
+            printf("  time=%6"PRId64" us, ref=%6"PRId64" us, speedup=%6.3fx %s%s\033[0m\n",
                    time / opts.iters, time_ref / opts.iters, ratio,
                    speedup_color(ratio), ratio >= 1.0 ? "faster" : "slower");
         }
     } else if (opts.bench) {
-        av_log(NULL, AV_LOG_INFO, "  time=%"PRId64" us\n", time / opts.iters);
+        av_log(NULL, AV_LOG_INFO, "  time=%6"PRId64" us\n", time / opts.iters);
     }
 
     fflush(stdout);
