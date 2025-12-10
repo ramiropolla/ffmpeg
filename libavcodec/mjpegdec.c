@@ -872,7 +872,7 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
         GET_VLC(code, re, &ss->gb, s->vlcs[1][ac_index].table, 9, 2);
 
         i += ((unsigned)code) >> 4;
-            code &= 0xf;
+        code &= 0xf;
         if (code) {
             // GET_VLC updates the cache if parsing reaches the second stage.
             // So we have at least MIN_CACHE_BITS - 9 > 15 bits left here
@@ -1601,10 +1601,10 @@ next_field:
         bytestream2_tell(&s->gB) > 2 &&
         s->gB.buffer[-2] == 0xFF &&
         s->gB.buffer[-1] == 0xD1) {
-            av_log(s->avctx, AV_LOG_DEBUG, "AVRn interlaced picture marker found\n");
-            s->bottom_field ^= 1;
+        av_log(s->avctx, AV_LOG_DEBUG, "AVRn interlaced picture marker found\n");
+        s->bottom_field ^= 1;
 
-            goto next_field;
+        goto next_field;
     }
 
     return 0;
@@ -1640,27 +1640,27 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
         int16_t (*block)[64] = &s->blocks[c][block_idx];
         uint8_t *last_nnz    = &s->last_nnz[c][block_idx];
         for (mb_x = 0; mb_x < s->mb_width; mb_x++, block++, last_nnz++) {
-                int restart;
-                ret = handle_restart(s, &restart);
-                if (ret < 0)
-                    return ret;
-                if (restart)
-                    EOBRUN = 0;
+            int restart;
+            ret = handle_restart(s, &restart);
+            if (ret < 0)
+                return ret;
+            if (restart)
+                EOBRUN = 0;
 
-                if (Ah)
-                    ret = decode_block_refinement(s, *block, last_nnz, s->ac_index[0],
-                                                  quant_matrix, Ss, Se, Al, &EOBRUN);
-                else
-                    ret = decode_block_progressive(s, *block, last_nnz, s->ac_index[0],
-                                                   quant_matrix, Ss, Se, Al, &EOBRUN);
+            if (Ah)
+                ret = decode_block_refinement(s, *block, last_nnz, s->ac_index[0],
+                                              quant_matrix, Ss, Se, Al, &EOBRUN);
+            else
+                ret = decode_block_progressive(s, *block, last_nnz, s->ac_index[0],
+                                               quant_matrix, Ss, Se, Al, &EOBRUN);
 
-                if (ret >= 0 && get_bits_left(&ss->gb) < 0)
-                    ret = AVERROR_INVALIDDATA;
-                if (ret < 0) {
-                    av_log(s->avctx, AV_LOG_ERROR,
-                           "error y=%d x=%d\n", mb_y, mb_x);
-                    return AVERROR_INVALIDDATA;
-                }
+            if (ret >= 0 && get_bits_left(&ss->gb) < 0)
+                ret = AVERROR_INVALIDDATA;
+            if (ret < 0) {
+                av_log(s->avctx, AV_LOG_ERROR,
+                       "error y=%d x=%d\n", mb_y, mb_x);
+                return AVERROR_INVALIDDATA;
+            }
         }
     }
     return 0;
@@ -1768,9 +1768,9 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
 
     s->Ss = bytestream2_get_byteu(&s->gB); /* JPEG Ss / lossless JPEG predictor / JPEG-LS NEAR */
     s->Se = bytestream2_get_byteu(&s->gB); /* JPEG Se / JPEG-LS ILV */
-        uint8_t b = bytestream2_get_byteu(&s->gB);
-        s->Ah = b >> 4;   /* Ah */
-        s->Al = b & 0x0F; /* Al */
+    uint8_t b = bytestream2_get_byteu(&s->gB);
+    s->Ah = b >> 4;   /* Ah */
+    s->Al = b & 0x0F; /* Al */
 
     if (s->nb_components_sos > 1) {
         /* interleaved stream */
@@ -1835,9 +1835,9 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
     if (s->avctx->codec_id == AV_CODEC_ID_MEDIA100 ||
         s->avctx->codec_id == AV_CODEC_ID_MJPEGB ||
         s->avctx->codec_id == AV_CODEC_ID_THP) {
-    /* Add the amount of bits read from the unescaped image data buffer
-     * into the GetByteContext. */
-    bytestream2_skipu(&s->gB, (get_bits_count(&ss->gb) + 7) / 8);
+        /* Add the amount of bits read from the unescaped image data buffer
+         * into the GetByteContext. */
+        bytestream2_skipu(&s->gB, (get_bits_count(&ss->gb) + 7) / 8);
     }
 
     return 0;
@@ -1890,7 +1890,7 @@ static int mjpeg_decode_app(MJpegDecodeContext *s, int start_code)
             4bytes      field_size
             4bytes      field_size_less_padding
         */
-            s->buggy_avid = 1;
+        s->buggy_avid = 1;
         i = bytestream2_get_byteu(&s->gB); len--;
         av_log(s->avctx, AV_LOG_DEBUG, "polarity %d\n", i);
         goto out;
@@ -2278,56 +2278,56 @@ static int mjpeg_unescape_sos(MJpegDecodeContext *s)
         return AVERROR(ENOMEM);
 
     /* unescape buffer of SOS */
-        const uint8_t *src = buf_ptr;
-        const uint8_t *ptr = src;
-        uint8_t *dst = ss->buffer;
-        PutByteContext pb;
+    const uint8_t *src = buf_ptr;
+    const uint8_t *ptr = src;
+    uint8_t *dst = ss->buffer;
+    PutByteContext pb;
 
-        bytestream2_init_writer(&pb, dst, buf_end - src);
+    bytestream2_init_writer(&pb, dst, buf_end - src);
 
-        while ((ptr = memchr(ptr, 0xff, buf_end - ptr))) {
-            ptr++;
-            if (ptr < buf_end) {
-                /* Copy verbatim data. */
-                int length = (ptr - 1) - src;
-                if (length > 0)
-                    bytestream2_put_bufferu(&pb, src, length);
+    while ((ptr = memchr(ptr, 0xff, buf_end - ptr))) {
+        ptr++;
+        if (ptr < buf_end) {
+            /* Copy verbatim data. */
+            int length = (ptr - 1) - src;
+            if (length > 0)
+                bytestream2_put_bufferu(&pb, src, length);
 
-                uint8_t x = *ptr++;
-                /* Discard multiple optional 0xFF fill bytes. */
-                while (x == 0xff && ptr < buf_end)
-                    x = *ptr++;
+            uint8_t x = *ptr++;
+            /* Discard multiple optional 0xFF fill bytes. */
+            while (x == 0xff && ptr < buf_end)
+                x = *ptr++;
 
-                src = ptr;
-                if (x == 0) {
-                    /* Stuffed zero byte */
-                    bytestream2_put_byteu(&pb, 0xff);
-                } else if (x >= RST0 && x <= RST7) {
-                    /* Restart marker */
-                    goto found;
-                } else {
-                    /* Non-restart marker */
-                    ptr -= 2;
-                    goto found;
-                }
+            src = ptr;
+            if (x == 0) {
+                /* Stuffed zero byte */
+                bytestream2_put_byteu(&pb, 0xff);
+            } else if (x >= RST0 && x <= RST7) {
+                /* Restart marker */
+                goto found;
+            } else {
+                /* Non-restart marker */
+                ptr -= 2;
+                goto found;
             }
         }
-        /* Copy remaining verbatim data. */
-        ptr = buf_end;
-        int length = ptr - src;
-        if (length > 0)
-            bytestream2_put_bufferu(&pb, src, length);
+    }
+    /* Copy remaining verbatim data. */
+    ptr = buf_end;
+    int length = ptr - src;
+    if (length > 0)
+        bytestream2_put_bufferu(&pb, src, length);
 
 found:
-        unescaped_buf_ptr  = ss->buffer;
-        unescaped_buf_size = bytestream2_tell_p(&pb);
-        memset(ss->buffer + unescaped_buf_size, 0,
-               AV_INPUT_BUFFER_PADDING_SIZE);
+    unescaped_buf_ptr  = ss->buffer;
+    unescaped_buf_size = bytestream2_tell_p(&pb);
+    memset(ss->buffer + unescaped_buf_size, 0,
+           AV_INPUT_BUFFER_PADDING_SIZE);
 
-        bytestream2_skipu(&s->gB, ptr - buf_ptr);
+    bytestream2_skipu(&s->gB, ptr - buf_ptr);
 
-        av_log(s->avctx, AV_LOG_DEBUG, "escaping removed %td bytes\n",
-               (buf_end - buf_ptr) - (unescaped_buf_size));
+    av_log(s->avctx, AV_LOG_DEBUG, "escaping removed %td bytes\n",
+           (buf_end - buf_ptr) - (unescaped_buf_size));
 
 the_end:
     return init_get_bits8(&ss->gb, unescaped_buf_ptr, unescaped_buf_size);
