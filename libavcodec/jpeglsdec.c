@@ -391,7 +391,11 @@ static int jpegls_unescape_sos(MJpegDecodeContext *s)
             if (!(x & 0x80)) {
                 /* Stuffed zero bit */
                 put_bits(&pb, 15, 0x7f80 | x);
+            } else if (x >= RST0 && x <= RST7) {
+                /* Restart marker */
+                goto found;
             } else {
+                /* Non-restart marker */
                 ptr -= 2;
                 goto found;
             }
@@ -416,9 +420,19 @@ found:
     return init_get_bits8(&ss->gb, unescaped_buf_ptr, unescaped_buf_size);
 }
 
+static int handle_restart(MJpegDecodeContext *s, int *restart)
+{
+    *restart = ff_mjpeg_should_restart(s);
+    if (*restart) {
+        int ret = jpegls_unescape_sos(s);
+        if (ret < 0)
+            return ret;
+    }
+    return 0;
+}
+
 int ff_jpegls_decode_picture(MJpegDecodeContext *s)
 {
-    MJpegSliceContext *ss = &s->slice_context;
     int near = s->Ss;
     int point_transform = s->Al;
     int ilv = s->Se;
@@ -462,8 +476,6 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
         goto end;
     }
 
-    ff_jpegls_init_state(state);
-
     if (s->bits <= 8)
         shift = point_transform + (8 - s->bits);
     else
@@ -485,9 +497,7 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
                 ilv, point_transform, s->bits, s->cur_scan);
     }
 
-    ret = jpegls_unescape_sos(s);
-    if (ret < 0)
-        goto end;
+    s->restart_count = -1;
 
     if (ilv == 0) { /* separate planes */
         if (s->cur_scan > s->nb_components) {
@@ -499,6 +509,15 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
         width  = s->width * stride;
         cur   += off;
         for (i = 0; i < s->height; i++) {
+            int restart;
+            ret = handle_restart(s, &restart);
+            if (ret < 0)
+                goto end;
+            if (restart) {
+                ff_jpegls_init_state(state);
+                t = 0;
+                last = zero;
+            }
             if (s->bits <= 8) {
                 ret = ls_decode_line(state, s, last, cur, t, width, stride, off, 8);
                 t = last[0];
@@ -510,11 +529,6 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
                 break;
             last = cur;
             cur += s->picture_ptr->linesize[0];
-
-            if (s->restart_interval && !--s->restart_count) {
-                align_get_bits(&ss->gb);
-                skip_bits(&ss->gb, 16); /* skip RSTn */
-            }
         }
         decoded_height = i;
     } else if (ilv == 1) { /* line interleaving */
@@ -524,17 +538,21 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
         memset(cur, 0, s->picture_ptr->linesize[0]);
         width = s->width * stride;
         for (i = 0; i < s->height; i++) {
+            int restart;
+            ret = handle_restart(s, &restart);
+            if (ret < 0)
+                goto end;
+            if (restart) {
+                ff_jpegls_init_state(state);
+                memset(Rc, 0, sizeof(Rc));
+                last = zero;
+            }
             for (j = 0; j < stride; j++) {
                 ret = ls_decode_line(state, s, last + j, cur + j,
                                Rc[j], width, stride, j, 8);
                 if (ret < 0)
                     break;
                 Rc[j] = last[j];
-
-                if (s->restart_interval && !--s->restart_count) {
-                    align_get_bits(&ss->gb);
-                    skip_bits(&ss->gb, 16); /* skip RSTn */
-                }
             }
             if (ret < 0)
                 break;
