@@ -134,7 +134,6 @@ typedef struct MJpegDecodeContext {
     op_pixels_func copy_block;             ///< only set and used by mxpeg
 
     int restart_interval;
-    int restart_count;
 
     int buggy_avid;
     int cs_itu601;
@@ -177,18 +176,18 @@ typedef struct MJpegDecodeContext {
     struct JLSState *jls_state;
 } MJpegDecodeContext;
 
-static inline int ff_mjpeg_should_restart(MJpegDecodeContext *s)
+static inline int ff_mjpeg_should_restart(int *restart_count, int restart_interval)
 {
     int restart = 0;
-    if (s->restart_interval) {
-        if (s->restart_count <= 0) {
-            s->restart_count = s->restart_interval;
+    if (restart_interval) {
+        if (*restart_count <= 0) {
+            *restart_count = restart_interval;
             restart = 1;
         }
-        s->restart_count--;
+        *restart_count -= 1;
     } else {
-        if (s->restart_count < 0) {
-            s->restart_count = 0;
+        if (*restart_count < 0) {
+            *restart_count = 0;
             restart = 1;
         }
     }
