@@ -1080,9 +1080,9 @@ static int decode_block_refinement(MJpegDecodeContext *s, int16_t *block,
 #undef REFINE_BIT
 #undef ZERO_RUN
 
-static int handle_restart(MJpegDecodeContext *s, int *restart)
+static int handle_restart(MJpegDecodeContext *s, int *restart_count, int *restart)
 {
-    *restart = ff_mjpeg_should_restart(s);
+    *restart = ff_mjpeg_should_restart(restart_count, s->restart_interval);
     if (*restart) {
         int ret = mjpeg_unescape_sos(s);
         if (ret < 0)
@@ -1140,7 +1140,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     for (i = 0; i < 4; i++)
         buffer[0][i] = 1 << (s->bits - 1);
 
-    s->restart_count = -1;
+    int restart_count = -1;
 
     int start_mb = 0;
     int end_mb = s->mb_height * width;
@@ -1155,7 +1155,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
             int modified_predictor = predictor;
             int restart;
 
-            ret = handle_restart(s, &restart);
+            ret = handle_restart(s, &restart_count, &restart);
             if (ret < 0)
                 return ret;
             if (restart) {
@@ -1287,7 +1287,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
 
     av_assert0(nb_components>=1 && nb_components<=4);
 
-    s->restart_count = -1;
+    int restart_count = -1;
 
     int start_mb = 0;
     int end_mb = s->mb_height * s->mb_width;
@@ -1295,7 +1295,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
         int mb_y = cur_mb / s->mb_width;
         int mb_x = cur_mb % s->mb_width;
             int restart;
-            ret = handle_restart(s, &restart);
+            ret = handle_restart(s, &restart_count, &restart);
             if (ret < 0)
                 return ret;
             if (restart) {
@@ -1505,7 +1505,7 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s,
     }
 
 next_field:
-    s->restart_count = -1;
+    int restart_count = -1;
 
     int start_mb = 0;
     int end_mb = s->mb_height * s->mb_width;
@@ -1516,16 +1516,16 @@ next_field:
             int restart;
 
             if (s->avctx->codec_id == AV_CODEC_ID_THP) {
-                if (s->restart_count < 0) {
+                if (restart_count < 0) {
                     ret = mjpeg_unescape_sos(s);
                     if (ret < 0)
                         return ret;
                 }
-                restart = ff_mjpeg_should_restart(s);
+                restart = ff_mjpeg_should_restart(&restart_count, s->restart_interval);
                 if (restart)
                     align_get_bits(&ss->gb);
             } else {
-                ret = handle_restart(s, &restart);
+                ret = handle_restart(s, &restart_count, &restart);
                 if (ret < 0)
                     return ret;
             }
@@ -1644,7 +1644,7 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
     // Ss and Se are parameters telling start and end coefficients
     s->coefs_finished[c] |= (2ULL << Se) - (1ULL << Ss);
 
-    s->restart_count = -1;
+    int restart_count = -1;
 
     int start_mb = 0;
     int end_mb = s->mb_height * s->mb_width;
@@ -1654,7 +1654,7 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
         int16_t (*block)[64] = &s->blocks[c][cur_mb];
         uint8_t *last_nnz    = &s->last_nnz[c][cur_mb];
             int restart;
-            ret = handle_restart(s, &restart);
+            ret = handle_restart(s, &restart_count, &restart);
             if (ret < 0)
                 return ret;
             if (restart)
