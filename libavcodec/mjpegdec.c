@@ -848,7 +848,7 @@ static inline int mjpeg_decode_dc(MJpegDecodeContext *s, int dc_index, int *val)
 }
 
 /* decode block and dequantize */
-static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
+static int decode_block(MJpegDecodeContext *s, int16_t *block, int *last_dc,
                         int dc_index, int ac_index, const uint16_t *quant_matrix)
 {
     int code, i, j, level, val;
@@ -858,8 +858,8 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
     if (ret < 0)
         return ret;
 
-    val = val * (unsigned)quant_matrix[0] + s->last_dc[component];
-    s->last_dc[component] = val;
+    val = val * (unsigned)quant_matrix[0] + *last_dc;
+    *last_dc = val;
     block[0] = av_clip_int16(val);
     /* AC coefs */
     i = 0;
@@ -896,7 +896,7 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
 }
 
 static int decode_dc_progressive(MJpegDecodeContext *s, int16_t *block,
-                                 int component, int dc_index,
+                                 int *last_dc, int dc_index,
                                  const uint16_t *quant_matrix, int Al)
 {
     unsigned val;
@@ -905,8 +905,8 @@ static int decode_dc_progressive(MJpegDecodeContext *s, int16_t *block,
     if (ret < 0)
         return ret;
 
-    val = (val * (quant_matrix[0] << Al)) + s->last_dc[component];
-    s->last_dc[component] = val;
+    val = (val * (quant_matrix[0] << Al)) + *last_dc;
+    *last_dc = val;
     block[0] = val;
     return 0;
 }
@@ -1448,6 +1448,7 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s)
     int i, mb_x, mb_y, chroma_h_shift, chroma_v_shift, chroma_width, chroma_height;
     uint8_t *data[MAX_COMPONENTS];
     const uint8_t *reference_data[MAX_COMPONENTS];
+    int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
     int linesize[MAX_COMPONENTS];
     GetBitContext mb_bitmask_gb = {0}; // initialize to silence gcc warning
     int bytes_per_pixel = 1 + (s->bits > 8);
@@ -1503,7 +1504,7 @@ next_field:
             }
             if (restart) {
                 for (i = 0; i < nb_components; i++)
-                    s->last_dc[i] = (4 << s->bits);
+                    last_dc[i] = (4 << s->bits);
             }
 
             if (get_bits_left(&s->gb) < 0) {
@@ -1540,7 +1541,7 @@ next_field:
 
                         } else {
                             s->bdsp.clear_block(s->block);
-                            if (decode_block(s, s->block, i,
+                            if (decode_block(s, s->block, &last_dc[i],
                                              s->dc_index[i], s->ac_index[i],
                                              s->quant_matrixes[s->quant_sindex[i]]) < 0) {
                                 av_log(s->avctx, AV_LOG_ERROR,
@@ -1560,7 +1561,7 @@ next_field:
                         if (Ah)
                             block[0] += get_bits1(&s->gb) *
                                         s->quant_matrixes[s->quant_sindex[i]][0] << Al;
-                        else if (decode_dc_progressive(s, block, i, s->dc_index[i],
+                        else if (decode_dc_progressive(s, block, &last_dc[i], s->dc_index[i],
                                                        s->quant_matrixes[s->quant_sindex[i]],
                                                        Al) < 0) {
                             av_log(s->avctx, AV_LOG_ERROR,
