@@ -57,6 +57,8 @@ typedef struct MJpegSliceContext {
     GetBitContext gb;
     uint8_t *buffer;
     int buffer_size;
+
+    int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
 } MJpegSliceContext;
 
 typedef struct MJpegDecodeContext {
@@ -117,7 +119,6 @@ typedef struct MJpegDecodeContext {
     int quant_sindex[MAX_COMPONENTS];
     int h_max, v_max; /* maximum h and v counts */
     int quant_index[4];   /* quant table index for each component */
-    int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
     AVFrame *picture; /* picture structure */
     AVFrame *picture_ptr; /* pointer to picture structure */
     int got_picture;                                ///< we found a SOF and picture is valid, too.
