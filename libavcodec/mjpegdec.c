@@ -1098,7 +1098,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     int nb_components = s->nb_components_sos;
     int predictor = s->Ss;
     int point_transform = s->Al;
-    int i, mb_x, mb_y;
+    int i;
     unsigned width;
     uint16_t (*buffer)[4];
     int left[4], top[4], topleft[4];
@@ -1142,16 +1142,16 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
 
     s->restart_count = -1;
 
-    for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
-        uint8_t *ptr = s->picture_ptr->data[0] + (linesize * mb_y);
+    int start_mb = 0;
+    int end_mb = s->mb_height * width;
+    for (int cur_mb = start_mb; cur_mb < end_mb; cur_mb++) {
+        int mb_y = cur_mb / width;
+        int mb_x = cur_mb % width;
 
-        if (s->interlaced && s->bottom_field)
-            ptr += linesize >> 1;
-
+        if (!mb_x)
         for (i = 0; i < 4; i++)
             top[i] = left[i] = topleft[i] = buffer[0][i];
 
-        for (mb_x = 0; mb_x < width; mb_x++) {
             int modified_predictor = predictor;
             int restart;
 
@@ -1195,7 +1195,13 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
                 left[i] = buffer[mb_x][i] =
                     mask & (pred + (unsigned)(dc * (1 << point_transform)));
             }
-        }
+
+        if (mb_x == width - 1) {
+        uint8_t *ptr = s->picture_ptr->data[0] + (linesize * mb_y);
+
+        if (s->interlaced && s->bottom_field)
+            ptr += linesize >> 1;
+
         if (s->rct && s->nb_components == 4) {
             for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
                 ptr[4*mb_x + 2] = buffer[mb_x][0] - ((buffer[mb_x][1] + buffer[mb_x][2] - 0x200) >> 2);
@@ -1259,6 +1265,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
                 }
             }
         }
+        }
     }
     return 0;
 }
@@ -1269,7 +1276,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
     int predictor = s->Ss;
     int point_transform = s->Al;
     int nb_components = s->nb_components_sos;
-    int i, mb_x, mb_y, mask;
+    int i, mask;
     int bits= (s->bits+7)&~7;
     int resync_mb_y = 0;
     int resync_mb_x = 0;
@@ -1282,8 +1289,11 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
 
     s->restart_count = -1;
 
-    for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
-        for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+    int start_mb = 0;
+    int end_mb = s->mb_height * s->mb_width;
+    for (int cur_mb = start_mb; cur_mb < end_mb; cur_mb++) {
+        int mb_y = cur_mb / s->mb_width;
+        int mb_x = cur_mb % s->mb_width;
             int restart;
             ret = handle_restart(s, &restart);
             if (ret < 0)
@@ -1420,7 +1430,6 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
                     }
                 }
             }
-        }
     }
     return 0;
 }
@@ -1465,7 +1474,7 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s,
     int nb_components = s->nb_components_sos;
     int Ah = s->Ah;
     int Al = s->Al;
-    int i, mb_x, mb_y, chroma_h_shift, chroma_v_shift, chroma_width, chroma_height;
+    int i, chroma_h_shift, chroma_v_shift, chroma_width, chroma_height;
     int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
     uint8_t *data[MAX_COMPONENTS];
     const uint8_t *reference_data[MAX_COMPONENTS];
@@ -1498,8 +1507,11 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s,
 next_field:
     s->restart_count = -1;
 
-    for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
-        for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+    int start_mb = 0;
+    int end_mb = s->mb_height * s->mb_width;
+    for (int cur_mb = start_mb; cur_mb < end_mb; cur_mb++) {
+        int mb_y = cur_mb / s->mb_width;
+        int mb_x = cur_mb % s->mb_width;
             const int copy_mb = mb_bitmask && !get_bits1(&mb_bitmask_gb);
             int restart;
 
@@ -1594,7 +1606,6 @@ next_field:
                     }
                 }
             }
-        }
     }
 
     if (s->interlaced &&
@@ -1618,7 +1629,6 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
     int Se = s->Se;
     int Ah = s->Ah;
     int Al = s->Al;
-    int mb_x, mb_y;
     int EOBRUN = 0;
     int c = s->comp_index[0];
     uint16_t *quant_matrix = s->quant_matrixes[s->quant_sindex[0]];
@@ -1636,11 +1646,13 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
 
     s->restart_count = -1;
 
-    for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
-        int block_idx    = mb_y * s->block_stride[c];
-        int16_t (*block)[64] = &s->blocks[c][block_idx];
-        uint8_t *last_nnz    = &s->last_nnz[c][block_idx];
-        for (mb_x = 0; mb_x < s->mb_width; mb_x++, block++, last_nnz++) {
+    int start_mb = 0;
+    int end_mb = s->mb_height * s->mb_width;
+    for (int cur_mb = start_mb; cur_mb < end_mb; cur_mb++) {
+        int mb_y = cur_mb / s->mb_width;
+        int mb_x = cur_mb % s->mb_width;
+        int16_t (*block)[64] = &s->blocks[c][cur_mb];
+        uint8_t *last_nnz    = &s->last_nnz[c][cur_mb];
             int restart;
             ret = handle_restart(s, &restart);
             if (ret < 0)
@@ -1662,7 +1674,6 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
                        "error y=%d x=%d\n", mb_y, mb_x);
                 return AVERROR_INVALIDDATA;
             }
-        }
     }
     return 0;
 }
