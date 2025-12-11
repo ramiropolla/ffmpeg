@@ -420,9 +420,9 @@ found:
     return init_get_bits8(&ss->gb, unescaped_buf_ptr, unescaped_buf_size);
 }
 
-static int handle_restart(MJpegDecodeContext *s, int *restart)
+static int handle_restart(MJpegDecodeContext *s, int *restart_count, int *restart)
 {
-    *restart = ff_mjpeg_should_restart(s);
+    *restart = ff_mjpeg_should_restart(restart_count, s->restart_interval);
     if (*restart) {
         int ret = jpegls_unescape_sos(s);
         if (ret < 0)
@@ -498,7 +498,7 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
                 ilv, point_transform, s->bits, s->cur_scan);
     }
 
-    s->restart_count = -1;
+    int restart_count = -1;
 
     if (ilv == 0) { /* separate planes */
         if (s->cur_scan > s->nb_components) {
@@ -511,7 +511,7 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
         cur   += off;
         for (i = 0; i < s->height; i++) {
             int restart;
-            ret = handle_restart(s, &restart);
+            ret = handle_restart(s, &restart_count, &restart);
             if (ret < 0)
                 goto end;
             if (restart) {
@@ -540,7 +540,7 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
         width = s->width * stride;
         for (i = 0; i < s->height; i++) {
             int restart;
-            ret = handle_restart(s, &restart);
+            ret = handle_restart(s, &restart_count, &restart);
             if (ret < 0)
                 goto end;
             if (restart) {
