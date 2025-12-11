@@ -851,7 +851,7 @@ static inline int mjpeg_decode_dc(MJpegDecodeContext *s, int dc_index, int *val)
 
 /* decode block and dequantize */
 static int decode_block(MJpegDecodeContext *s, int16_t *block, int *last_dc,
-                        int dc_index, int ac_index, uint16_t *quant_matrix)
+                        int dc_index, int ac_index, const uint16_t *quant_matrix)
 {
     MJpegSliceContext *ss = &s->slice_context;
     int code, i, j, level, val;
@@ -900,7 +900,7 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int *last_dc,
 
 static int decode_dc_progressive(MJpegDecodeContext *s, int16_t *block,
                                  int *last_dc, int dc_index,
-                                 uint16_t *quant_matrix, int Al)
+                                 const uint16_t *quant_matrix, int Al)
 {
     unsigned val;
     s->bdsp.clear_block(block);
