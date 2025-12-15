@@ -1465,54 +1465,35 @@ static void shift_output(MJpegDecodeContext *s, uint8_t *ptr, int linesize)
     }
 }
 
-static int mjpeg_decode_scan(MJpegDecodeContext *s,
-                             const uint8_t *mb_bitmask,
-                             int mb_bitmask_size,
-                             const AVFrame *reference)
+typedef struct MJpegSliceContext {
+    /* input */
+    const MJpegDecodeContext *s;
+    GetBitContext *mb_bitmask_gb;
+    const uint8_t *reference_data[MAX_COMPONENTS];
+    int start_mb;
+    int end_mb;
+} MJpegSliceContext;
+
+static int mjpeg_decode_slice(MJpegSliceContext *ss)
 {
-    MJpegSliceContext *ss = &s->slice_context;
+    const MJpegDecodeContext *s                   = ss->s;
     int nb_components = s->nb_components_sos;
     int Ah = s->Ah;
     int Al = s->Al;
-    int i, chroma_h_shift, chroma_v_shift, chroma_width, chroma_height;
+    GetBitContext *mb_bitmask_gb                  = ss->mb_bitmask_gb;
+    const uint8_t **reference_data = ss->reference_data;
+    int start_mb                                  = ss->start_mb;
+    int end_mb                                    = ss->end_mb;
+
+    GetBitContext gb;
     int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
-    uint8_t *data[MAX_COMPONENTS];
-    const uint8_t *reference_data[MAX_COMPONENTS];
-    int linesize[MAX_COMPONENTS];
-    GetBitContext mb_bitmask_gb = {0}; // initialize to silence gcc warning
-    int bytes_per_pixel = 1 + (s->bits > 8);
-    int ret;
-
-    if (mb_bitmask) {
-        if (mb_bitmask_size != (s->mb_width * s->mb_height + 7)>>3) {
-            av_log(s->avctx, AV_LOG_ERROR, "mb_bitmask_size mismatches\n");
-            return AVERROR_INVALIDDATA;
-        }
-        init_get_bits(&mb_bitmask_gb, mb_bitmask, s->mb_width * s->mb_height);
-    }
-
-    av_pix_fmt_get_chroma_sub_sample(s->avctx->pix_fmt, &chroma_h_shift,
-                                     &chroma_v_shift);
-    chroma_width  = AV_CEIL_RSHIFT(s->width,  chroma_h_shift);
-    chroma_height = AV_CEIL_RSHIFT(s->height, chroma_v_shift);
-
-    for (i = 0; i < nb_components; i++) {
-        int c   = s->comp_index[i];
-        data[c] = s->picture_ptr->data[c];
-        reference_data[c] = reference ? reference->data[c] : NULL;
-        linesize[c] = s->linesize[c];
-        s->coefs_finished[c] |= 1;
-    }
-
-next_field:
     int restart_count = -1;
-
-    int start_mb = 0;
-    int end_mb = s->mb_height * s->mb_width;
+    int ret = 0;
+    int i;
     for (int cur_mb = start_mb; cur_mb < end_mb; cur_mb++) {
         int mb_y = cur_mb / s->mb_width;
         int mb_x = cur_mb % s->mb_width;
-        const int copy_mb = mb_bitmask && !get_bits1(&mb_bitmask_gb);
+        const int copy_mb = mb_bitmask_gb && !get_bits1(mb_bitmask_gb);
         int restart;
 
         if (s->avctx->codec_id == AV_CODEC_ID_THP) {
@@ -1608,6 +1589,52 @@ next_field:
             }
         }
     }
+    return ret;
+}
+
+static int mjpeg_decode_scan(MJpegDecodeContext *s, int nb_components, int Ah,
+                             int Al, const uint8_t *mb_bitmask,
+                             int mb_bitmask_size,
+                             const AVFrame *reference)
+{
+    int i, chroma_h_shift, chroma_v_shift, chroma_width, chroma_height;
+    uint8_t *data[MAX_COMPONENTS];
+    const uint8_t *reference_data[MAX_COMPONENTS];
+    int linesize[MAX_COMPONENTS];
+    GetBitContext mb_bitmask_gb = {0}; // initialize to silence gcc warning
+    int bytes_per_pixel = 1 + (s->bits > 8);
+    int ret;
+
+    if (mb_bitmask) {
+        if (mb_bitmask_size != (s->mb_width * s->mb_height + 7)>>3) {
+            av_log(s->avctx, AV_LOG_ERROR, "mb_bitmask_size mismatches\n");
+            return AVERROR_INVALIDDATA;
+        }
+        init_get_bits(&mb_bitmask_gb, mb_bitmask, s->mb_width * s->mb_height);
+    }
+
+    av_pix_fmt_get_chroma_sub_sample(s->avctx->pix_fmt, &chroma_h_shift,
+                                     &chroma_v_shift);
+    chroma_width  = AV_CEIL_RSHIFT(s->width,  chroma_h_shift);
+    chroma_height = AV_CEIL_RSHIFT(s->height, chroma_v_shift);
+
+    for (i = 0; i < nb_components; i++) {
+        int c   = s->comp_index[i];
+        data[c] = s->picture_ptr->data[c];
+        reference_data[c] = reference ? reference->data[c] : NULL;
+        linesize[c] = s->linesize[c];
+        s->coefs_finished[c] |= 1;
+    }
+
+next_field:
+    int start_mb = 0;
+    int end_mb = s->mb_height * s->mb_width;
+    MJpegSliceContext ss = {
+        s, nb_components, Ah, Al, mb_bitmask ? &mb_bitmask_gb : NULL, reference_data, start_mb, end_mb
+    };
+    ret = mjpeg_decode_slice(&ss);
+    if (ret < 0)
+        return ret;
 
     if (s->interlaced &&
         bytestream2_get_bytes_left(&s->gB) > 2 &&
