@@ -753,10 +753,14 @@ void ff_sws_op_list_print(void *log, int lev, const SwsOpList *ops)
             op->comps.max[2].den || op->comps.max[3].den)
         {
             av_log(log, AV_LOG_TRACE, "    min: {%s, %s, %s, %s}, max: {%s, %s, %s, %s}\n",
-                PRINTQ(op->comps.min[0]), PRINTQ(op->comps.min[1]),
-                PRINTQ(op->comps.min[2]), PRINTQ(op->comps.min[3]),
-                PRINTQ(op->comps.max[0]), PRINTQ(op->comps.max[1]),
-                PRINTQ(op->comps.max[2]), PRINTQ(op->comps.max[3]));
+                   op->comps.min[0].den ? PRINTQ(op->comps.min[0]) : "_",
+                   op->comps.min[1].den ? PRINTQ(op->comps.min[1]) : "_",
+                   op->comps.min[2].den ? PRINTQ(op->comps.min[2]) : "_",
+                   op->comps.min[3].den ? PRINTQ(op->comps.min[3]) : "_",
+                   op->comps.max[0].den ? PRINTQ(op->comps.max[0]) : "_",
+                   op->comps.max[1].den ? PRINTQ(op->comps.max[1]) : "_",
+                   op->comps.max[2].den ? PRINTQ(op->comps.max[2]) : "_",
+                   op->comps.max[3].den ? PRINTQ(op->comps.max[3]) : "_");
         }
 
     }
