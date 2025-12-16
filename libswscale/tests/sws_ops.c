@@ -68,7 +68,7 @@ fail:
 static void log_stdout(void *avcl, int level, const char *fmt, va_list vl)
 {
     if (level == AV_LOG_INFO ||
-        (level == AV_LOG_TRACE && !strcmp(fmt, "    min: {%s, %s, %s, %s}, max: {%s, %s, %s, %s}\n"))) {
+        (level == AV_LOG_TRACE && !strcmp(fmt, "    mask {%s, %s, %s, %s} min: {%s, %s, %s, %s}, max: {%s, %s, %s, %s}\n"))) {
         vfprintf(stdout, fmt, vl);
     } else {
         av_log_default_callback(avcl, level, fmt, vl);

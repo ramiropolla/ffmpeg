@@ -83,6 +83,11 @@ typedef union SwsConst {
 static_assert(sizeof(SwsConst) == sizeof(AVRational) * 4,
               "First field of SwsConst should span the entire union");
 
+typedef struct SwsCompMask {
+    uint32_t val;
+    int n;
+} SwsCompMask;
+
 typedef struct SwsComps {
     unsigned flags[4]; /* knowledge about (output) component contents */
     bool unused[4];    /* which input components are definitely unused */
@@ -90,6 +95,7 @@ typedef struct SwsComps {
     /* Keeps track of the known possible value range, or {0, 0} for undefined
      * or (unknown range) floating point inputs */
     AVRational min[4], max[4];
+    SwsCompMask mask[4];
 } SwsComps;
 
 typedef struct SwsReadWriteOp {
@@ -104,6 +110,8 @@ typedef struct SwsReadWriteOp {
      *    monow     = 1x u8 (frac 3)
      *    rgb4      = 1x u8 (frac 1)
      */
+
+    SwsCompMask mask[4];
 } SwsReadWriteOp;
 
 typedef struct SwsPackOp {

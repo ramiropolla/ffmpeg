@@ -902,6 +902,14 @@ int ff_sws_decode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
                     &pixel_type, &raw_type));
 
     /* TODO: handle subsampled or semipacked input formats */
+    // generates mask for bits read. flag for native endian
+    // special attention:
+    // - monow: +
+    // - monob: +
+    // - bgr4: ++++
+    // - bgr4_byte: XXXX++++ (data has been read but it's meaningless)
+    // - rgb555: X+++++++++++++++, ++++++++X+++++++ for non-native endian
+    // - rgb565: ++++++++++++++++
     RET(ff_sws_op_list_append(ops, &(SwsOp) {
         .op   = SWS_OP_READ,
         .type = raw_type,
@@ -909,11 +917,13 @@ int ff_sws_decode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
     }));
 
     if ((desc->flags & AV_PIX_FMT_FLAG_BE) != NATIVE_ENDIAN_FLAG) {
+        // swaps flags for native endian
         RET(ff_sws_op_list_append(ops, &(SwsOp) {
             .op   = SWS_OP_SWAP_BYTES,
             .type = raw_type,
         }));
     }
+    // now we are certain to have correct endianness
 
     if (unpack.pattern[0]) {
         RET(ff_sws_op_list_append(ops, &(SwsOp) {

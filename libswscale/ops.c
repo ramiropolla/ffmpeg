@@ -393,6 +393,20 @@ static const char *print_q(const AVRational q, char buf[], int buf_len)
 
 #define PRINTQ(q) print_q(q, (char[32]){0}, sizeof(char[32]) - 1)
 
+static const char *print_mask(SwsPixelType type, const SwsCompMask mask, char buf[], int buf_len)
+{
+    if (!mask.n) {
+        return "_";
+    }
+    int size = ff_sws_pixel_type_size(type) * 8;
+    for (int i = 0; i < size; i++) {
+        buf[size - i - 1] = (mask.val & (1 << i)) ? '+' : 'X';
+    }
+    buf[size] = '\0';
+    return buf;
+}
+#define PRINTMASK(type, mask) print_mask(type, mask, (char[65]){0}, sizeof(char[65]) - 1)
+
 void ff_sws_op_list_print(void *log, int lev, const SwsOpList *ops)
 {
     if (!ops->num_ops) {
@@ -503,7 +517,11 @@ void ff_sws_op_list_print(void *log, int lev, const SwsOpList *ops)
             op->comps.max[0].den || op->comps.max[1].den ||
             op->comps.max[2].den || op->comps.max[3].den)
         {
-            av_log(log, AV_LOG_TRACE, "    min: {%s, %s, %s, %s}, max: {%s, %s, %s, %s}\n",
+            av_log(log, AV_LOG_TRACE, "    mask {%s, %s, %s, %s} min: {%s, %s, %s, %s}, max: {%s, %s, %s, %s}\n",
+                   PRINTMASK(op->type, op->comps.mask[0]),
+                   PRINTMASK(op->type, op->comps.mask[1]),
+                   PRINTMASK(op->type, op->comps.mask[2]),
+                   PRINTMASK(op->type, op->comps.mask[3]),
                    op->comps.min[0].den ? PRINTQ(op->comps.min[0]) : "_",
                    op->comps.min[1].den ? PRINTQ(op->comps.min[1]) : "_",
                    op->comps.min[2].den ? PRINTQ(op->comps.min[2]) : "_",

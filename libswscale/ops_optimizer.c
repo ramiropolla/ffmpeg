@@ -198,6 +198,8 @@ void ff_sws_op_list_update_comps(SwsOpList *ops)
                     op->comps.flags[i] = SWS_COMP_EXACT;
                     op->comps.min[i] = Q(0);
                     op->comps.max[i] = Q((1ULL << bits) - 1);
+                    op->comps.mask[i].val = (1ULL << bits) - 1;
+                    op->comps.mask[i].n = bits;
                 }
             }
             for (int i = op->rw.elems; i < 4; i++)
