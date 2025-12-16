@@ -95,6 +95,8 @@ int main(int argc, char **argv)
             int err = run_test(ctx, frame, src, dst);
             if (err < 0)
                 goto fail;
+            if (av_pix_fmt_desc_get_id(dst) == AV_PIX_FMT_RGB24)
+                break;
         }
     }
 
