@@ -553,6 +553,18 @@ typedef struct VectorElementType {
         return vreg.b16();
     }
 
+    a64::Vec type_gpr(const a64::Vec &vreg) const
+    {
+        switch ((m_fmt_size << 8) | size) {
+        case 0x0110: return vreg.q();
+        case 0x0108: return vreg.d();
+        case 0x0210: return vreg.q();
+        case 0x0410: return vreg.q();
+        }
+        printf("ERORROORORRORORO gpr %d %d\n", m_fmt_size, size);
+        return vreg.q();
+    }
+
     uint8_t m_fmt_size;
     uint8_t size;
 } VectorElementType;
@@ -888,10 +900,10 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             uint8_t shift_array[16] = { 0 };
             for (int i = 0; i < block_size; i++)
                 shift_array[i] = -((7 - i) & 7);
-            Label ldata = ctx->emit_data(shift_array, sizeof(shift_array), "read_shift_array");
+            Label ldata = ctx->emit_data(shift_array, block_size, "read_shift_array");
             a64::Gp ptr = ctx->m_scratch[0];
             cc.adr(ptr, ldata);
-            cc.ldr(shift, a64::ptr(ptr));
+            cc.ldr(vet.type_gpr(shift), a64::ptr(ptr));
             ctx->from_setup();
 
             new_vector(ctx, &vet, 0, 0x0f);
