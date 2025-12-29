@@ -1611,14 +1611,38 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s,
     }
 
 next_field:
-    ss->gB = s->gB;
     ss->restart_count = -1;
     ss->start_mb = 0;
     ss->end_mb = s->mb_height * s->mb_width;
-    ret = mjpeg_decode_slice(s, ss);
-    if (ret < 0)
-        return ret;
-    s->gB = ss->gB;
+    int use_threads = HAVE_THREADS;
+    // printf("[%d] %d\n", __LINE__, use_threads);
+    if (use_threads)
+        use_threads = !!(s->avctx->active_thread_type & FF_THREAD_SLICE);
+    // printf("[%d] %d\n", __LINE__, use_threads);
+    if (use_threads)
+        use_threads = (s->restart_interval != 0);
+    // printf("[%d] %d\n", __LINE__, use_threads);
+    if (use_threads)
+        use_threads = !mb_bitmask;
+    // printf("[%d] %d\n", __LINE__, use_threads);
+    if (use_threads) {
+        int expected_number_of_restart_markers = (ss->end_mb + s->restart_interval - 1) / s->restart_interval;
+        printf("THREADS %d\n", expected_number_of_restart_markers);
+        // THREAD
+        ss->gB = s->gB;
+        ret = mjpeg_decode_slice(s, ss);
+        if (ret < 0)
+            return ret;
+        s->gB = ss->gB;
+    } else {
+        printf("NO THREADS\n");
+        // NO THREADS
+        ss->gB = s->gB;
+        ret = mjpeg_decode_slice(s, ss);
+        if (ret < 0)
+            return ret;
+        s->gB = ss->gB;
+    }
 
     if (s->interlaced &&
         bytestream2_get_bytes_left(&s->gB) > 2 &&
@@ -2976,7 +3000,7 @@ const FFCodec ff_mjpeg_decoder = {
     .close          = ff_mjpeg_decode_end,
     FF_CODEC_DECODE_CB(ff_mjpeg_decode_frame),
     .flush          = decode_flush,
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS,
     .p.max_lowres   = 3,
     .p.priv_class   = &mjpegdec_class,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_mjpeg_profiles),
