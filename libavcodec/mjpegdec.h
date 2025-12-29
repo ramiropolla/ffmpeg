@@ -57,6 +57,7 @@ typedef struct MJpegSliceContext {
     GetBitContext gb;
     uint8_t *buffer;
     int buffer_size;
+    int restart_count;
 
     int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
     DECLARE_ALIGNED(32, int16_t, block)[64];
@@ -136,7 +137,6 @@ typedef struct MJpegDecodeContext {
     op_pixels_func copy_block;             ///< only set and used by mxpeg
 
     int restart_interval;
-    int restart_count;
 
     int buggy_avid;
     int cs_itu601;
@@ -181,16 +181,17 @@ typedef struct MJpegDecodeContext {
 
 static inline int ff_mjpeg_should_restart(MJpegDecodeContext *s)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int restart = 0;
     if (s->restart_interval) {
-        if (s->restart_count <= 0) {
-            s->restart_count = s->restart_interval;
+        if (ss->restart_count <= 0) {
+            ss->restart_count = s->restart_interval;
             restart = 1;
         }
-        s->restart_count--;
+        ss->restart_count--;
     } else {
-        if (s->restart_count < 0) {
-            s->restart_count = 0;
+        if (ss->restart_count < 0) {
+            ss->restart_count = 0;
             restart = 1;
         }
     }

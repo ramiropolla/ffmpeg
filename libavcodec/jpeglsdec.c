@@ -433,6 +433,7 @@ static int handle_restart(MJpegDecodeContext *s, int *restart)
 
 int ff_jpegls_decode_picture(MJpegDecodeContext *s)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int near = s->Ss;
     int point_transform = s->Al;
     int ilv = s->Se;
@@ -497,7 +498,7 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
                 ilv, point_transform, s->bits, s->cur_scan);
     }
 
-    s->restart_count = -1;
+    ss->restart_count = -1;
 
     if (ilv == 0) { /* separate planes */
         if (s->cur_scan > s->nb_components) {
