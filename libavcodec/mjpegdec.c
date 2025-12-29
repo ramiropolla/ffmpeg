@@ -138,8 +138,8 @@ av_cold int ff_mjpeg_decode_init(AVCodecContext *avctx)
     s->avctx = avctx;
     ff_blockdsp_init(&s->bdsp);
     init_idct(avctx);
-    s->buffer_size   = 0;
-    s->buffer        = NULL;
+    s->slice_context.buffer_size   = 0;
+    s->slice_context.buffer        = NULL;
     s->first_picture = 1;
     s->got_picture   = 0;
     s->orig_height    = avctx->coded_height;
@@ -838,15 +838,16 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
 
 static inline int mjpeg_decode_dc(MJpegDecodeContext *s, int dc_index, int *val)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int code;
-    code = get_vlc2(&s->gb, s->vlcs[0][dc_index].table, 9, 2);
+    code = get_vlc2(&ss->gb, s->vlcs[0][dc_index].table, 9, 2);
     if (code < 0 || code > 16) {
         av_log(s->avctx, AV_LOG_ERROR,
                "mjpeg_decode_dc: bad vlc: %d\n", dc_index);
         return AVERROR_INVALIDDATA;
     }
 
-    *val = code ? get_xbits(&s->gb, code) : 0;
+    *val = code ? get_xbits(&ss->gb, code) : 0;
     return 0;
 }
 
@@ -854,6 +855,7 @@ static inline int mjpeg_decode_dc(MJpegDecodeContext *s, int dc_index, int *val)
 static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
                         int dc_index, int ac_index, uint16_t *quant_matrix)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int code, i, j, level, val;
 
     /* DC coef */
@@ -866,10 +868,10 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
     block[0] = av_clip_int16(val);
     /* AC coefs */
     i = 0;
-    {OPEN_READER(re, &s->gb);
+    {OPEN_READER(re, &ss->gb);
     do {
-        UPDATE_CACHE(re, &s->gb);
-        GET_VLC(code, re, &s->gb, s->vlcs[1][ac_index].table, 9, 2);
+        UPDATE_CACHE(re, &ss->gb);
+        GET_VLC(code, re, &ss->gb, s->vlcs[1][ac_index].table, 9, 2);
 
         i += ((unsigned)code) >> 4;
             code &= 0xf;
@@ -878,12 +880,12 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
             // So we have at least MIN_CACHE_BITS - 9 > 15 bits left here
             // and don't need to refill the cache.
             {
-                int cache = GET_CACHE(re, &s->gb);
+                int cache = GET_CACHE(re, &ss->gb);
                 int sign  = (~cache) >> 31;
                 level     = (NEG_USR32(sign ^ cache,code) ^ sign) - sign;
             }
 
-            LAST_SKIP_BITS(re, &s->gb, code);
+            LAST_SKIP_BITS(re, &ss->gb, code);
 
             if (i > 63) {
                 av_log(s->avctx, AV_LOG_ERROR, "error count: %d\n", i);
@@ -893,7 +895,7 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
             block[j] = level * quant_matrix[i];
         }
     } while (i < 63);
-    CLOSE_READER(re, &s->gb);}
+    CLOSE_READER(re, &ss->gb);}
 
     return 0;
 }
@@ -920,6 +922,7 @@ static int decode_block_progressive(MJpegDecodeContext *s, int16_t *block,
                                     uint16_t *quant_matrix,
                                     int Ss, int Se, int Al, int *EOBRUN)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int code, i, j, val, run;
     unsigned level;
 
@@ -929,10 +932,10 @@ static int decode_block_progressive(MJpegDecodeContext *s, int16_t *block,
     }
 
     {
-        OPEN_READER(re, &s->gb);
+        OPEN_READER(re, &ss->gb);
         for (i = Ss; ; i++) {
-            UPDATE_CACHE(re, &s->gb);
-            GET_VLC(code, re, &s->gb, s->vlcs[2][ac_index].table, 9, 2);
+            UPDATE_CACHE(re, &ss->gb);
+            GET_VLC(code, re, &ss->gb, s->vlcs[2][ac_index].table, 9, 2);
 
             run = ((unsigned) code) >> 4;
             code &= 0xF;
@@ -940,12 +943,12 @@ static int decode_block_progressive(MJpegDecodeContext *s, int16_t *block,
                 i += run;
 
                 {
-                    int cache = GET_CACHE(re, &s->gb);
+                    int cache = GET_CACHE(re, &ss->gb);
                     int sign  = (~cache) >> 31;
                     level     = (NEG_USR32(sign ^ cache,code) ^ sign) - sign;
                 }
 
-                LAST_SKIP_BITS(re, &s->gb, code);
+                LAST_SKIP_BITS(re, &ss->gb, code);
 
                 if (i >= Se) {
                     if (i == Se) {
@@ -970,15 +973,15 @@ static int decode_block_progressive(MJpegDecodeContext *s, int16_t *block,
                     if (run) {
                         // Given that GET_VLC reloads internally, we always
                         // have at least 16 bits in the cache here.
-                        val += NEG_USR32(GET_CACHE(re, &s->gb), run);
-                        LAST_SKIP_BITS(re, &s->gb, run);
+                        val += NEG_USR32(GET_CACHE(re, &ss->gb), run);
+                        LAST_SKIP_BITS(re, &ss->gb, run);
                     }
                     *EOBRUN = val - 1;
                     break;
                 }
             }
         }
-        CLOSE_READER(re, &s->gb);
+        CLOSE_READER(re, &ss->gb);
     }
 
     if (i > *last_nnz)
@@ -988,11 +991,11 @@ static int decode_block_progressive(MJpegDecodeContext *s, int16_t *block,
 }
 
 #define REFINE_BIT(j) {                                             \
-    UPDATE_CACHE(re, &s->gb);                                       \
+    UPDATE_CACHE(re, &ss->gb);                                      \
     sign = block[j] >> 15;                                          \
-    block[j] += SHOW_UBITS(re, &s->gb, 1) *                         \
+    block[j] += SHOW_UBITS(re, &ss->gb, 1) *                        \
                 ((quant_matrix[i] ^ sign) - sign) << Al;            \
-    LAST_SKIP_BITS(re, &s->gb, 1);                                  \
+    LAST_SKIP_BITS(re, &ss->gb, 1);                                 \
 }
 
 #define ZERO_RUN                                                    \
@@ -1018,21 +1021,22 @@ static int decode_block_refinement(MJpegDecodeContext *s, int16_t *block,
                                    int ac_index, uint16_t *quant_matrix,
                                    int Ss, int Se, int Al, int *EOBRUN)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int code, i = Ss, j, sign, val, run;
     int last    = FFMIN(Se, *last_nnz);
 
-    OPEN_READER(re, &s->gb);
+    OPEN_READER(re, &ss->gb);
     if (*EOBRUN) {
         (*EOBRUN)--;
     } else {
         for (; ; i++) {
-            UPDATE_CACHE(re, &s->gb);
-            GET_VLC(code, re, &s->gb, s->vlcs[2][ac_index].table, 9, 2);
+            UPDATE_CACHE(re, &ss->gb);
+            GET_VLC(code, re, &ss->gb, s->vlcs[2][ac_index].table, 9, 2);
 
             if (code & 0xF) {
                 run = ((unsigned) code) >> 4;
-                val = SHOW_UBITS(re, &s->gb, 1);
-                LAST_SKIP_BITS(re, &s->gb, 1);
+                val = SHOW_UBITS(re, &ss->gb, 1);
+                LAST_SKIP_BITS(re, &ss->gb, 1);
                 ZERO_RUN;
                 j = s->permutated_scantable[i];
                 val--;
@@ -1040,7 +1044,7 @@ static int decode_block_refinement(MJpegDecodeContext *s, int16_t *block,
                 if (i == Se) {
                     if (i > *last_nnz)
                         *last_nnz = i;
-                    CLOSE_READER(re, &s->gb);
+                    CLOSE_READER(re, &ss->gb);
                     return 0;
                 }
             } else {
@@ -1053,8 +1057,8 @@ static int decode_block_refinement(MJpegDecodeContext *s, int16_t *block,
                     if (val) {
                         // Given that GET_VLC reloads internally, we always
                         // have at least 16 bits in the cache here.
-                        run += SHOW_UBITS(re, &s->gb, val);
-                        LAST_SKIP_BITS(re, &s->gb, val);
+                        run += SHOW_UBITS(re, &ss->gb, val);
+                        LAST_SKIP_BITS(re, &ss->gb, val);
                     }
                     *EOBRUN = run - 1;
                     break;
@@ -1071,7 +1075,7 @@ static int decode_block_refinement(MJpegDecodeContext *s, int16_t *block,
         if (block[j])
             REFINE_BIT(j)
     }
-    CLOSE_READER(re, &s->gb);
+    CLOSE_READER(re, &ss->gb);
 
     return 0;
 }
@@ -1080,32 +1084,33 @@ static int decode_block_refinement(MJpegDecodeContext *s, int16_t *block,
 
 static int handle_rstn(MJpegDecodeContext *s, int nb_components)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int i;
     int reset = 0;
 
     if (s->restart_interval) {
         s->restart_count--;
         if(s->restart_count == 0 && s->avctx->codec_id == AV_CODEC_ID_THP){
-            align_get_bits(&s->gb);
+            align_get_bits(&ss->gb);
             for (i = 0; i < nb_components; i++) /* reset dc */
                 s->last_dc[i] = (4 << s->bits);
         }
 
-        i = 8 + ((-get_bits_count(&s->gb)) & 7);
+        i = 8 + ((-get_bits_count(&ss->gb)) & 7);
         /* skip RSTn */
         if (s->restart_count == 0) {
-            if(   show_bits(&s->gb, i) == (1 << i) - 1
-               || show_bits(&s->gb, i) == 0xFF) {
-                int pos = get_bits_count(&s->gb);
-                align_get_bits(&s->gb);
-                while (get_bits_left(&s->gb) >= 8 && show_bits(&s->gb, 8) == 0xFF)
-                    skip_bits(&s->gb, 8);
-                if (get_bits_left(&s->gb) >= 8 && (get_bits(&s->gb, 8) & 0xF8) == 0xD0) {
+            if(   show_bits(&ss->gb, i) == (1 << i) - 1
+               || show_bits(&ss->gb, i) == 0xFF) {
+                int pos = get_bits_count(&ss->gb);
+                align_get_bits(&ss->gb);
+                while (get_bits_left(&ss->gb) >= 8 && show_bits(&ss->gb, 8) == 0xFF)
+                    skip_bits(&ss->gb, 8);
+                if (get_bits_left(&ss->gb) >= 8 && (get_bits(&ss->gb, 8) & 0xF8) == 0xD0) {
                     for (i = 0; i < nb_components; i++) /* reset dc */
                         s->last_dc[i] = (4 << s->bits);
                     reset = 1;
                 } else
-                    skip_bits_long(&s->gb, pos - get_bits_count(&s->gb));
+                    skip_bits_long(&ss->gb, pos - get_bits_count(&ss->gb));
             }
         }
     }
@@ -1115,6 +1120,7 @@ static int handle_rstn(MJpegDecodeContext *s, int nb_components)
 /* Handles 1 to 4 components */
 static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int nb_components = s->nb_components_sos;
     int predictor = s->Ss;
     int point_transform = s->Al;
@@ -1179,7 +1185,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
         for (mb_x = 0; mb_x < width; mb_x++) {
             int modified_predictor = predictor;
 
-            if (get_bits_left(&s->gb) < 1) {
+            if (get_bits_left(&ss->gb) < 1) {
                 av_log(s->avctx, AV_LOG_ERROR, "bitstream end in rgb_scan\n");
                 return AVERROR_INVALIDDATA;
             }
@@ -1218,8 +1224,8 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
             }
 
             if (s->restart_interval && !--s->restart_count) {
-                align_get_bits(&s->gb);
-                skip_bits(&s->gb, 16); /* skip RSTn */
+                align_get_bits(&ss->gb);
+                skip_bits(&ss->gb, 16); /* skip RSTn */
             }
         }
         if (s->rct && s->nb_components == 4) {
@@ -1291,6 +1297,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
 
 static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int predictor = s->Ss;
     int point_transform = s->Al;
     int nb_components = s->nb_components_sos;
@@ -1307,7 +1314,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
 
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
-            if (get_bits_left(&s->gb) < 1) {
+            if (get_bits_left(&ss->gb) < 1) {
                 av_log(s->avctx, AV_LOG_ERROR, "bitstream end in yuv_scan\n");
                 return AVERROR_INVALIDDATA;
             }
@@ -1440,8 +1447,8 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
                 }
             }
             if (s->restart_interval && !--s->restart_count) {
-                align_get_bits(&s->gb);
-                skip_bits(&s->gb, 16); /* skip RSTn */
+                align_get_bits(&ss->gb);
+                skip_bits(&ss->gb, 16); /* skip RSTn */
             }
         }
     }
@@ -1484,6 +1491,7 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s,
                              int mb_bitmask_size,
                              const AVFrame *reference)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int nb_components = s->nb_components_sos;
     int Ah = s->Ah;
     int Al = s->Al;
@@ -1528,9 +1536,9 @@ next_field:
             if (s->restart_interval && !s->restart_count)
                 s->restart_count = s->restart_interval;
 
-            if (get_bits_left(&s->gb) < 0) {
+            if (get_bits_left(&ss->gb) < 0) {
                 av_log(s->avctx, AV_LOG_ERROR, "overread %d\n",
-                       -get_bits_left(&s->gb));
+                       -get_bits_left(&ss->gb));
                 return AVERROR_INVALIDDATA;
             }
             for (i = 0; i < nb_components; i++) {
@@ -1580,7 +1588,7 @@ next_field:
                                          (h * mb_x + x);
                         int16_t *block = s->blocks[c][block_idx];
                         if (Ah)
-                            block[0] += get_bits1(&s->gb) *
+                            block[0] += get_bits1(&ss->gb) *
                                         s->quant_matrixes[s->quant_sindex[i]][0] << Al;
                         else if (decode_dc_progressive(s, block, i, s->dc_index[i],
                                                        s->quant_matrixes[s->quant_sindex[i]],
@@ -1606,14 +1614,14 @@ next_field:
     }
 
     if (s->interlaced &&
-        get_bits_left(&s->gb) > 32 &&
-        show_bits(&s->gb, 8) == 0xFF) {
-        GetBitContext bak = s->gb;
+        get_bits_left(&ss->gb) > 32 &&
+        show_bits(&ss->gb, 8) == 0xFF) {
+        GetBitContext bak = ss->gb;
         align_get_bits(&bak);
         if (show_bits(&bak, 16) == 0xFFD1) {
             av_log(s->avctx, AV_LOG_DEBUG, "AVRn interlaced picture marker found\n");
-            s->gb = bak;
-            skip_bits(&s->gb, 16);
+            ss->gb = bak;
+            skip_bits(&ss->gb, 16);
             s->bottom_field ^= 1;
 
             goto next_field;
@@ -1625,6 +1633,7 @@ next_field:
 
 static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int Ss = s->Ss;
     int Se = s->Se;
     int Ah = s->Ah;
@@ -1662,7 +1671,7 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
                     ret = decode_block_progressive(s, *block, last_nnz, s->ac_index[0],
                                                    quant_matrix, Ss, Se, Al, &EOBRUN);
 
-                if (ret >= 0 && get_bits_left(&s->gb) < 0)
+                if (ret >= 0 && get_bits_left(&ss->gb) < 0)
                     ret = AVERROR_INVALIDDATA;
                 if (ret < 0) {
                     av_log(s->avctx, AV_LOG_ERROR,
@@ -1715,6 +1724,7 @@ static void mjpeg_idct_scan_progressive_ac(MJpegDecodeContext *s)
 int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
                         int mb_bitmask_size, const AVFrame *reference)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int len, i, h, v;
     int index, id, ret;
     const int block_size = s->lossless ? 1 : 8;
@@ -1814,7 +1824,7 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
     if (ret < 0)
         return ret;
 
-    ret = init_get_bits8(&s->gb, unescaped_buf_ptr, unescaped_buf_size);
+    ret = init_get_bits8(&ss->gb, unescaped_buf_ptr, unescaped_buf_size);
     if (ret < 0)
         return ret;
 
@@ -1856,7 +1866,7 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
 
     /* Add the amount of bits read from the unescaped image data buffer
      * into the GetByteContext. */
-    bytestream2_skipu(&s->gB, (get_bits_count(&s->gb) + 7) / 8);
+    bytestream2_skipu(&s->gB, (get_bits_count(&ss->gb) + 7) / 8);
 
     return 0;
  out_of_range:
@@ -2253,6 +2263,8 @@ static int mjpeg_unescape_sos(MJpegDecodeContext *s,
                               const uint8_t **unescaped_buf_ptr,
                               int *unescaped_buf_size)
 {
+    MJpegSliceContext *ss = &s->slice_context;
+
     if (s->avctx->codec_id == AV_CODEC_ID_MEDIA100 ||
         s->avctx->codec_id == AV_CODEC_ID_MJPEGB ||
         s->avctx->codec_id == AV_CODEC_ID_THP) {
@@ -2261,15 +2273,15 @@ static int mjpeg_unescape_sos(MJpegDecodeContext *s,
         return 0;
     }
 
-    av_fast_padded_malloc(&s->buffer, &s->buffer_size, buf_end - buf_ptr);
-    if (!s->buffer)
+    av_fast_padded_malloc(&ss->buffer, &ss->buffer_size, buf_end - buf_ptr);
+    if (!ss->buffer)
         return AVERROR(ENOMEM);
 
     /* unescape buffer of SOS, use special treatment for JPEG-LS */
     if (!s->ls) {
         const uint8_t *src = buf_ptr;
         const uint8_t *ptr = src;
-        uint8_t *dst = s->buffer;
+        uint8_t *dst = ss->buffer;
 
         #define copy_data_segment(skip) do {       \
             ptrdiff_t length = (ptr - src) - (skip);  \
@@ -2311,16 +2323,16 @@ static int mjpeg_unescape_sos(MJpegDecodeContext *s,
                 copy_data_segment(0);
         #undef copy_data_segment
 
-        *unescaped_buf_ptr  = s->buffer;
-        *unescaped_buf_size = dst - s->buffer;
-        memset(s->buffer + *unescaped_buf_size, 0,
+        *unescaped_buf_ptr  = ss->buffer;
+        *unescaped_buf_size = dst - ss->buffer;
+        memset(ss->buffer + *unescaped_buf_size, 0,
                AV_INPUT_BUFFER_PADDING_SIZE);
 
         av_log(s->avctx, AV_LOG_DEBUG, "escaping removed %td bytes\n",
-               (buf_end - buf_ptr) - (dst - s->buffer));
+               (buf_end - buf_ptr) - (dst - ss->buffer));
     } else {
         const uint8_t *src = buf_ptr;
-        uint8_t *dst  = s->buffer;
+        uint8_t *dst  = ss->buffer;
         int bit_count = 0;
         int t = 0, b = 0;
         PutBitContext pb;
@@ -2358,7 +2370,7 @@ static int mjpeg_unescape_sos(MJpegDecodeContext *s,
 
         *unescaped_buf_ptr  = dst;
         *unescaped_buf_size = (bit_count + 7) >> 3;
-        memset(s->buffer + *unescaped_buf_size, 0,
+        memset(ss->buffer + *unescaped_buf_size, 0,
                AV_INPUT_BUFFER_PADDING_SIZE);
     }
 
@@ -2912,7 +2924,7 @@ av_cold int ff_mjpeg_decode_end(AVCodecContext *avctx)
 
     av_frame_free(&s->smv_frame);
 
-    av_freep(&s->buffer);
+    av_freep(&s->slice_context.buffer);
     av_freep(&s->stereo3d);
     av_freep(&s->ljpeg_buffer);
     s->ljpeg_buffer_size = 0;
