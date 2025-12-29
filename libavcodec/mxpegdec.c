@@ -311,11 +311,12 @@ static int mxpeg_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
                                          AV_GET_BUFFER_FLAG_REF)) < 0)
                     return ret;
 
-                ret = ff_mjpeg_decode_sos(jpg, s->mxm_bitmask, s->bitmask_size, reference_ptr);
+                jpg->reference = reference_ptr;
+                ret = ff_mjpeg_decode_sos(jpg, s->mxm_bitmask, s->bitmask_size);
                 if (ret < 0 && (avctx->err_recognition & AV_EF_EXPLODE))
                     return ret;
             } else {
-                ret = ff_mjpeg_decode_sos(jpg, NULL, 0, NULL);
+                ret = ff_mjpeg_decode_sos(jpg, NULL, 0);
                 if (ret < 0 && (avctx->err_recognition & AV_EF_EXPLODE))
                     return ret;
             }

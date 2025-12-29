@@ -422,7 +422,8 @@ found:
 
 static int handle_restart(MJpegDecodeContext *s, int *restart)
 {
-    *restart = ff_mjpeg_should_restart(s);
+    MJpegSliceContext *ss = &s->slice_context;
+    *restart = ff_mjpeg_should_restart(s, ss);
     if (*restart) {
         int ret = jpegls_unescape_sos(s);
         if (ret < 0)
