@@ -1140,7 +1140,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     for (i = 0; i < 4; i++)
         buffer[0][i] = 1 << (s->bits - 1);
 
-    s->restart_count = -1;
+    ss->restart_count = -1;
 
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         uint8_t *ptr = s->picture_ptr->data[0] + (linesize * mb_y);
@@ -1280,7 +1280,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
 
     av_assert0(nb_components>=1 && nb_components<=4);
 
-    s->restart_count = -1;
+    ss->restart_count = -1;
 
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
@@ -1493,7 +1493,7 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s,
     }
 
 next_field:
-    s->restart_count = -1;
+    ss->restart_count = -1;
 
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
@@ -1501,7 +1501,7 @@ next_field:
             int restart;
 
             if (s->avctx->codec_id == AV_CODEC_ID_THP) {
-                if (s->restart_count < 0) {
+                if (ss->restart_count < 0) {
                     ret = mjpeg_unescape_sos(s);
                     if (ret < 0)
                         return ret;
@@ -1631,7 +1631,7 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
     // Ss and Se are parameters telling start and end coefficients
     s->coefs_finished[c] |= (2ULL << Se) - (1ULL << Ss);
 
-    s->restart_count = -1;
+    ss->restart_count = -1;
 
     for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
         int block_idx    = mb_y * s->block_stride[c];
