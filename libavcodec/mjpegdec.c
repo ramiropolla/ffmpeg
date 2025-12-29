@@ -1149,122 +1149,122 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
         int mb_x = cur_mb % width;
 
         if (!mb_x)
-        for (i = 0; i < 4; i++)
-            top[i] = left[i] = topleft[i] = buffer[0][i];
+            for (i = 0; i < 4; i++)
+                top[i] = left[i] = topleft[i] = buffer[0][i];
 
-            int modified_predictor = predictor;
-            int restart;
+        int modified_predictor = predictor;
+        int restart;
 
-            ret = handle_restart(s, &restart);
+        ret = handle_restart(s, &restart);
+        if (ret < 0)
+            return ret;
+        if (restart) {
+            resync_mb_x = mb_x;
+            resync_mb_y = mb_y;
+            for(i=0; i<4; i++)
+                top[i] = left[i]= topleft[i]= 1 << (s->bits - 1);
+        }
+
+        if (get_bits_left(&ss->gb) < 1) {
+            av_log(s->avctx, AV_LOG_ERROR, "bitstream end in rgb_scan\n");
+            return AVERROR_INVALIDDATA;
+        }
+
+        if (mb_y == resync_mb_y || mb_y == resync_mb_y+1 && mb_x < resync_mb_x || !mb_x)
+            modified_predictor = 1;
+
+        for (i=0;i<nb_components;i++) {
+            int pred, dc;
+
+            topleft[i] = top[i];
+            top[i]     = buffer[mb_x][i];
+
+            ret = mjpeg_decode_dc(s, s->dc_index[i], &dc);
             if (ret < 0)
                 return ret;
-            if (restart) {
-                resync_mb_x = mb_x;
-                resync_mb_y = mb_y;
-                for(i=0; i<4; i++)
-                    top[i] = left[i]= topleft[i]= 1 << (s->bits - 1);
+
+            if (!s->bayer || mb_x) {
+                pred = left[i];
+            } else { /* This path runs only for the first line in bayer images */
+                vpred[i] += dc;
+                pred = vpred[i] - dc;
             }
 
-            if (get_bits_left(&ss->gb) < 1) {
-                av_log(s->avctx, AV_LOG_ERROR, "bitstream end in rgb_scan\n");
-                return AVERROR_INVALIDDATA;
-            }
+            PREDICT(pred, topleft[i], top[i], pred, modified_predictor);
 
-            if (mb_y == resync_mb_y || mb_y == resync_mb_y+1 && mb_x < resync_mb_x || !mb_x)
-                modified_predictor = 1;
-
-            for (i=0;i<nb_components;i++) {
-                int pred, dc;
-
-                topleft[i] = top[i];
-                top[i]     = buffer[mb_x][i];
-
-                ret = mjpeg_decode_dc(s, s->dc_index[i], &dc);
-                if (ret < 0)
-                    return ret;
-
-                if (!s->bayer || mb_x) {
-                    pred = left[i];
-                } else { /* This path runs only for the first line in bayer images */
-                    vpred[i] += dc;
-                    pred = vpred[i] - dc;
-                }
-
-                PREDICT(pred, topleft[i], top[i], pred, modified_predictor);
-
-                left[i] = buffer[mb_x][i] =
-                    mask & (pred + (unsigned)(dc * (1 << point_transform)));
-            }
+            left[i] = buffer[mb_x][i] =
+                mask & (pred + (unsigned)(dc * (1 << point_transform)));
+        }
 
         if (mb_x == width - 1) {
-        uint8_t *ptr = s->picture_ptr->data[0] + (linesize * mb_y);
+            uint8_t *ptr = s->picture_ptr->data[0] + (linesize * mb_y);
 
-        if (s->interlaced && s->bottom_field)
-            ptr += linesize >> 1;
+            if (s->interlaced && s->bottom_field)
+                ptr += linesize >> 1;
 
-        if (s->rct && s->nb_components == 4) {
-            for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
-                ptr[4*mb_x + 2] = buffer[mb_x][0] - ((buffer[mb_x][1] + buffer[mb_x][2] - 0x200) >> 2);
-                ptr[4*mb_x + 1] = buffer[mb_x][1] + ptr[4*mb_x + 2];
-                ptr[4*mb_x + 3] = buffer[mb_x][2] + ptr[4*mb_x + 2];
-                ptr[4*mb_x + 0] = buffer[mb_x][3];
-            }
-        } else if (s->nb_components == 4) {
-            for(i=0; i<nb_components; i++) {
-                int c= s->comp_index[i];
-                if (s->bits <= 8) {
-                    for(mb_x = 0; mb_x < s->mb_width; mb_x++) {
-                        ptr[4*mb_x+3-c] = buffer[mb_x][i];
+            if (s->rct && s->nb_components == 4) {
+                for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+                    ptr[4*mb_x + 2] = buffer[mb_x][0] - ((buffer[mb_x][1] + buffer[mb_x][2] - 0x200) >> 2);
+                    ptr[4*mb_x + 1] = buffer[mb_x][1] + ptr[4*mb_x + 2];
+                    ptr[4*mb_x + 3] = buffer[mb_x][2] + ptr[4*mb_x + 2];
+                    ptr[4*mb_x + 0] = buffer[mb_x][3];
+                }
+            } else if (s->nb_components == 4) {
+                for(i=0; i<nb_components; i++) {
+                    int c= s->comp_index[i];
+                    if (s->bits <= 8) {
+                        for(mb_x = 0; mb_x < s->mb_width; mb_x++) {
+                            ptr[4*mb_x+3-c] = buffer[mb_x][i];
+                        }
+                    } else if(s->bits == 9) {
+                        return AVERROR_PATCHWELCOME;
+                    } else {
+                        for(mb_x = 0; mb_x < s->mb_width; mb_x++) {
+                            ((uint16_t*)ptr)[4*mb_x+c] = buffer[mb_x][i];
+                        }
                     }
-                } else if(s->bits == 9) {
+                }
+            } else if (s->rct) {
+                for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+                    ptr[3*mb_x + 1] = buffer[mb_x][0] - ((buffer[mb_x][1] + buffer[mb_x][2] - 0x200) >> 2);
+                    ptr[3*mb_x + 0] = buffer[mb_x][1] + ptr[3*mb_x + 1];
+                    ptr[3*mb_x + 2] = buffer[mb_x][2] + ptr[3*mb_x + 1];
+                }
+            } else if (s->pegasus_rct) {
+                for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
+                    ptr[3*mb_x + 1] = buffer[mb_x][0] - ((buffer[mb_x][1] + buffer[mb_x][2]) >> 2);
+                    ptr[3*mb_x + 0] = buffer[mb_x][1] + ptr[3*mb_x + 1];
+                    ptr[3*mb_x + 2] = buffer[mb_x][2] + ptr[3*mb_x + 1];
+                }
+            } else if (s->bayer) {
+                if (s->bits <= 8)
                     return AVERROR_PATCHWELCOME;
-                } else {
-                    for(mb_x = 0; mb_x < s->mb_width; mb_x++) {
-                        ((uint16_t*)ptr)[4*mb_x+c] = buffer[mb_x][i];
+                if (nb_components == 1) {
+                    /* Leave decoding to the TIFF/DNG decoder (see comment in ff_mjpeg_decode_sof) */
+                    for (mb_x = 0; mb_x < width; mb_x++)
+                        ((uint16_t*)ptr)[mb_x] = buffer[mb_x][0];
+                } else if (nb_components == 2) {
+                    for (mb_x = 0; mb_x < width; mb_x++) {
+                        ((uint16_t*)ptr)[2*mb_x + 0] = buffer[mb_x][0];
+                        ((uint16_t*)ptr)[2*mb_x + 1] = buffer[mb_x][1];
+                    }
+                }
+            } else {
+                for(i=0; i<nb_components; i++) {
+                    int c= s->comp_index[i];
+                    if (s->bits <= 8) {
+                        for(mb_x = 0; mb_x < s->mb_width; mb_x++) {
+                            ptr[3*mb_x+2-c] = buffer[mb_x][i];
+                        }
+                    } else if(s->bits == 9) {
+                        return AVERROR_PATCHWELCOME;
+                    } else {
+                        for(mb_x = 0; mb_x < s->mb_width; mb_x++) {
+                            ((uint16_t*)ptr)[3*mb_x+2-c] = buffer[mb_x][i];
+                        }
                     }
                 }
             }
-        } else if (s->rct) {
-            for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
-                ptr[3*mb_x + 1] = buffer[mb_x][0] - ((buffer[mb_x][1] + buffer[mb_x][2] - 0x200) >> 2);
-                ptr[3*mb_x + 0] = buffer[mb_x][1] + ptr[3*mb_x + 1];
-                ptr[3*mb_x + 2] = buffer[mb_x][2] + ptr[3*mb_x + 1];
-            }
-        } else if (s->pegasus_rct) {
-            for (mb_x = 0; mb_x < s->mb_width; mb_x++) {
-                ptr[3*mb_x + 1] = buffer[mb_x][0] - ((buffer[mb_x][1] + buffer[mb_x][2]) >> 2);
-                ptr[3*mb_x + 0] = buffer[mb_x][1] + ptr[3*mb_x + 1];
-                ptr[3*mb_x + 2] = buffer[mb_x][2] + ptr[3*mb_x + 1];
-            }
-        } else if (s->bayer) {
-            if (s->bits <= 8)
-                return AVERROR_PATCHWELCOME;
-            if (nb_components == 1) {
-                /* Leave decoding to the TIFF/DNG decoder (see comment in ff_mjpeg_decode_sof) */
-                for (mb_x = 0; mb_x < width; mb_x++)
-                    ((uint16_t*)ptr)[mb_x] = buffer[mb_x][0];
-            } else if (nb_components == 2) {
-                for (mb_x = 0; mb_x < width; mb_x++) {
-                    ((uint16_t*)ptr)[2*mb_x + 0] = buffer[mb_x][0];
-                    ((uint16_t*)ptr)[2*mb_x + 1] = buffer[mb_x][1];
-                }
-            }
-        } else {
-            for(i=0; i<nb_components; i++) {
-                int c= s->comp_index[i];
-                if (s->bits <= 8) {
-                    for(mb_x = 0; mb_x < s->mb_width; mb_x++) {
-                        ptr[3*mb_x+2-c] = buffer[mb_x][i];
-                    }
-                } else if(s->bits == 9) {
-                    return AVERROR_PATCHWELCOME;
-                } else {
-                    for(mb_x = 0; mb_x < s->mb_width; mb_x++) {
-                        ((uint16_t*)ptr)[3*mb_x+2-c] = buffer[mb_x][i];
-                    }
-                }
-            }
-        }
         }
     }
     return 0;
