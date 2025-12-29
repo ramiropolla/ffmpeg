@@ -1540,8 +1540,9 @@ next_field:
                                                 linesize[c], s->avctx->lowres);
 
                         } else {
-                            s->bdsp.clear_block(s->block);
-                            if (decode_block(s, s->block, &last_dc[i],
+                            DECLARE_ALIGNED(32, int16_t, block)[64];
+                            s->bdsp.clear_block(block);
+                            if (decode_block(s, block, &last_dc[i],
                                              s->dc_index[i], s->ac_index[i],
                                              s->quant_matrixes[s->quant_sindex[i]]) < 0) {
                                 av_log(s->avctx, AV_LOG_ERROR,
@@ -1549,7 +1550,7 @@ next_field:
                                 return AVERROR_INVALIDDATA;
                             }
                             if (ptr && linesize[c]) {
-                                s->idsp.idct_put(ptr, linesize[c], s->block);
+                                s->idsp.idct_put(ptr, linesize[c], block);
                                 if (s->bits & 7)
                                     shift_output(s, ptr, linesize[c]);
                             }
