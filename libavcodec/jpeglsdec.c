@@ -233,6 +233,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
                                   void *last, void *dst, int last2, int w,
                                   int stride, int comp, int bits)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int i, x = 0;
     int Ra, Rb, Rc, Rd;
     int D0, D1, D2;
@@ -240,7 +241,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
     while (x < w) {
         int err, pred;
 
-        if (get_bits_left(&s->gb) <= 0)
+        if (get_bits_left(&ss->gb) <= 0)
             return AVERROR_INVALIDDATA;
 
         /* compute gradients */
@@ -259,7 +260,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
             int RItype;
 
             /* decode full runs while available */
-            while (get_bits1(&s->gb)) {
+            while (get_bits1(&ss->gb)) {
                 int r;
                 r = 1 << ff_log2_run[state->run_index[comp]];
                 if (x + r * stride > w)
@@ -279,7 +280,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
             /* decode aborted run */
             r = ff_log2_run[state->run_index[comp]];
             if (r)
-                r = get_bits(&s->gb, r);
+                r = get_bits(&ss->gb, r);
             if (x + r * stride > w) {
                 r = (w - x) / stride;
             }
@@ -297,7 +298,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
             /* decode run termination value */
             Rb     = R(last, x);
             RItype = (FFABS(Ra - Rb) <= state->near) ? 1 : 0;
-            err    = ls_get_code_runterm(&s->gb, state, RItype,
+            err    = ls_get_code_runterm(&ss->gb, state, RItype,
                                          ff_log2_run[state->run_index[comp]]);
             if (state->run_index[comp])
                 state->run_index[comp]--;
@@ -327,10 +328,10 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
 
             if (sign) {
                 pred = av_clip(pred - state->C[context], 0, state->maxval);
-                err  = -ls_get_code_regular(&s->gb, state, context);
+                err  = -ls_get_code_regular(&ss->gb, state, context);
             } else {
                 pred = av_clip(pred + state->C[context], 0, state->maxval);
-                err  = ls_get_code_regular(&s->gb, state, context);
+                err  = ls_get_code_regular(&ss->gb, state, context);
             }
 
             /* we have to do something more for near-lossless coding */
@@ -354,6 +355,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
 
 int ff_jpegls_decode_picture(MJpegDecodeContext *s)
 {
+    MJpegSliceContext *ss = &s->slice_context;
     int near = s->Ss;
     int point_transform = s->Al;
     int ilv = s->Se;
@@ -420,7 +422,7 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
         av_log(s->avctx, AV_LOG_DEBUG, "JPEG params: ILV=%i Pt=%i BPP=%i, scan = %i\n",
                 ilv, point_transform, s->bits, s->cur_scan);
     }
-    if (get_bits_left(&s->gb) < s->height) {
+    if (get_bits_left(&ss->gb) < s->height) {
         ret = AVERROR_INVALIDDATA;
         goto end;
     }
@@ -447,8 +449,8 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
             cur += s->picture_ptr->linesize[0];
 
             if (s->restart_interval && !--s->restart_count) {
-                align_get_bits(&s->gb);
-                skip_bits(&s->gb, 16); /* skip RSTn */
+                align_get_bits(&ss->gb);
+                skip_bits(&ss->gb, 16); /* skip RSTn */
             }
         }
         decoded_height = i;
@@ -467,8 +469,8 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
                 Rc[j] = last[j];
 
                 if (s->restart_interval && !--s->restart_count) {
-                    align_get_bits(&s->gb);
-                    skip_bits(&s->gb, 16); /* skip RSTn */
+                    align_get_bits(&ss->gb);
+                    skip_bits(&ss->gb, 16); /* skip RSTn */
                 }
             }
             if (ret < 0)
