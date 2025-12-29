@@ -1650,27 +1650,27 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
         int mb_x = cur_mb % s->mb_width;
         int16_t (*block)[64] = &s->blocks[c][cur_mb];
         uint8_t *last_nnz    = &s->last_nnz[c][cur_mb];
-            int restart;
-            ret = handle_restart(s, &restart);
-            if (ret < 0)
-                return ret;
-            if (restart)
-                EOBRUN = 0;
+        int restart;
+        ret = handle_restart(s, &restart);
+        if (ret < 0)
+            return ret;
+        if (restart)
+            EOBRUN = 0;
 
-            if (Ah)
-                ret = decode_block_refinement(s, *block, last_nnz, s->ac_index[0],
-                                              quant_matrix, Ss, Se, Al, &EOBRUN);
-            else
-                ret = decode_block_progressive(s, *block, last_nnz, s->ac_index[0],
-                                               quant_matrix, Ss, Se, Al, &EOBRUN);
+        if (Ah)
+            ret = decode_block_refinement(s, *block, last_nnz, s->ac_index[0],
+                                          quant_matrix, Ss, Se, Al, &EOBRUN);
+        else
+            ret = decode_block_progressive(s, *block, last_nnz, s->ac_index[0],
+                                           quant_matrix, Ss, Se, Al, &EOBRUN);
 
-            if (ret >= 0 && get_bits_left(&ss->gb) < 0)
-                ret = AVERROR_INVALIDDATA;
-            if (ret < 0) {
-                av_log(s->avctx, AV_LOG_ERROR,
-                       "error y=%d x=%d\n", mb_y, mb_x);
-                return AVERROR_INVALIDDATA;
-            }
+        if (ret >= 0 && get_bits_left(&ss->gb) < 0)
+            ret = AVERROR_INVALIDDATA;
+        if (ret < 0) {
+            av_log(s->avctx, AV_LOG_ERROR,
+                   "error y=%d x=%d\n", mb_y, mb_x);
+            return AVERROR_INVALIDDATA;
+        }
     }
     return 0;
 }
