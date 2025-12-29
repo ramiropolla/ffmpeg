@@ -56,7 +56,11 @@
 
 static void mjpeg_find_raw_scan_data(MJpegDecodeContext *s,
                                      const uint8_t **pbuf_ptr, size_t *pbuf_size);
+<<<<<<< HEAD
 static int mjpeg_unescape_sos(MJpegDecodeContext *s);
+=======
+static int mjpeg_unescape_sos(MJpegSliceContext *ss);
+>>>>>>> 9245a44a75 (ok)
 
 static int init_default_huffman_tables(MJpegDecodeContext *s)
 {
@@ -136,8 +140,13 @@ av_cold int ff_mjpeg_decode_init(AVCodecContext *avctx)
     s->avctx = avctx;
     ff_blockdsp_init(&s->bdsp);
     init_idct(avctx);
+<<<<<<< HEAD
     s->slice_context.buffer_size   = 0;
     s->slice_context.buffer        = NULL;
+=======
+    // s->buffer_size   = 0;
+    // s->buffer        = NULL;
+>>>>>>> 9245a44a75 (ok)
     s->first_picture = 1;
     s->got_picture   = 0;
     s->orig_height    = avctx->coded_height;
@@ -834,7 +843,11 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
     return 0;
 }
 
+<<<<<<< HEAD
 static inline int mjpeg_decode_dc(MJpegDecodeContext *s, int dc_index, int *val)
+=======
+static inline int mjpeg_decode_dc(const MJpegDecodeContext *s, GetBitContext *gb, int dc_index, int *val)
+>>>>>>> 9245a44a75 (ok)
 {
     MJpegSliceContext *ss = &s->slice_context;
     int code;
@@ -850,7 +863,11 @@ static inline int mjpeg_decode_dc(MJpegDecodeContext *s, int dc_index, int *val)
 }
 
 /* decode block and dequantize */
+<<<<<<< HEAD
 static int decode_block(MJpegDecodeContext *s, int16_t *block, int *last_dc,
+=======
+static int decode_block(const MJpegDecodeContext *s, GetBitContext *gb, int16_t *block, int *last_dc,
+>>>>>>> 9245a44a75 (ok)
                         int dc_index, int ac_index, const uint16_t *quant_matrix)
 {
     MJpegSliceContext *ss = &s->slice_context;
@@ -898,7 +915,11 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int *last_dc,
     return 0;
 }
 
+<<<<<<< HEAD
 static int decode_dc_progressive(MJpegDecodeContext *s, int16_t *block,
+=======
+static int decode_dc_progressive(const MJpegDecodeContext *s, GetBitContext *gb, int16_t *block,
+>>>>>>> 9245a44a75 (ok)
                                  int *last_dc, int dc_index,
                                  const uint16_t *quant_matrix, int Al)
 {
@@ -1080,11 +1101,20 @@ static int decode_block_refinement(MJpegDecodeContext *s, int16_t *block,
 #undef REFINE_BIT
 #undef ZERO_RUN
 
+<<<<<<< HEAD
 static int handle_restart(MJpegDecodeContext *s, int *restart_count, int *restart)
 {
     *restart = ff_mjpeg_should_restart(restart_count, s->restart_interval);
     if (*restart) {
         int ret = mjpeg_unescape_sos(s);
+=======
+static int handle_restart(MJpegSliceContext *ss, int *restart_count, int *restart)
+{
+    const MJpegDecodeContext *s = ss->s;
+    *restart = should_restart(restart_count, s->restart_interval);
+    if (*restart) {
+        int ret = mjpeg_unescape_sos(ss);
+>>>>>>> 9245a44a75 (ok)
         if (ret < 0)
             return ret;
     }
@@ -1094,10 +1124,15 @@ static int handle_restart(MJpegDecodeContext *s, int *restart_count, int *restar
 /* Handles 1 to 4 components */
 static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
 {
+<<<<<<< HEAD
     MJpegSliceContext *ss = &s->slice_context;
     int nb_components = s->nb_components_sos;
     int predictor = s->Ss;
     int point_transform = s->Al;
+=======
+    MJpegSliceContext ss;
+    GetBitContext gb;
+>>>>>>> 9245a44a75 (ok)
     int i;
     unsigned width;
     uint16_t (*buffer)[4];
@@ -1155,7 +1190,11 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
             int modified_predictor = predictor;
             int restart;
 
+<<<<<<< HEAD
             ret = handle_restart(s, &restart_count, &restart);
+=======
+            ret = handle_restart(&ss, &restart_count, &restart);
+>>>>>>> 9245a44a75 (ok)
             if (ret < 0)
                 return ret;
             if (restart) {
@@ -1272,10 +1311,15 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
 
 static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
 {
+<<<<<<< HEAD
     MJpegSliceContext *ss = &s->slice_context;
     int predictor = s->Ss;
     int point_transform = s->Al;
     int nb_components = s->nb_components_sos;
+=======
+    GetBitContext gb;
+    MJpegSliceContext ss;
+>>>>>>> 9245a44a75 (ok)
     int i, mask;
     int bits= (s->bits+7)&~7;
     int resync_mb_y = 0;
@@ -1295,7 +1339,11 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
         int mb_y = cur_mb / s->mb_width;
         int mb_x = cur_mb % s->mb_width;
             int restart;
+<<<<<<< HEAD
             ret = handle_restart(s, &restart_count, &restart);
+=======
+            ret = handle_restart(&ss, &restart_count, &restart);
+>>>>>>> 9245a44a75 (ok)
             if (ret < 0)
                 return ret;
             if (restart) {
@@ -1434,7 +1482,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
     return 0;
 }
 
-static av_always_inline void mjpeg_copy_block(MJpegDecodeContext *s,
+static av_always_inline void mjpeg_copy_block(const MJpegDecodeContext *s,
                                               uint8_t *dst, const uint8_t *src,
                                               int linesize, int lowres)
 {
@@ -1450,7 +1498,7 @@ static av_always_inline void mjpeg_copy_block(MJpegDecodeContext *s,
     }
 }
 
-static void shift_output(MJpegDecodeContext *s, uint8_t *ptr, int linesize)
+static void shift_output(const MJpegDecodeContext *s, uint8_t *ptr, int linesize)
 {
     int block_x, block_y;
     int size = 8 >> s->avctx->lowres;
@@ -1465,6 +1513,7 @@ static void shift_output(MJpegDecodeContext *s, uint8_t *ptr, int linesize)
     }
 }
 
+<<<<<<< HEAD
 typedef struct MJpegSliceContext {
     /* input */
     const MJpegDecodeContext *s;
@@ -1475,6 +1524,9 @@ typedef struct MJpegSliceContext {
 } MJpegSliceContext;
 
 static int mjpeg_decode_slice(MJpegSliceContext *ss)
+=======
+static int mjpeg_decode_slice_sequential(MJpegSliceContext *ss)
+>>>>>>> 9245a44a75 (ok)
 {
     const MJpegDecodeContext *s                   = ss->s;
     int nb_components = s->nb_components_sos;
@@ -1484,6 +1536,15 @@ static int mjpeg_decode_slice(MJpegSliceContext *ss)
     const uint8_t **reference_data = ss->reference_data;
     int start_mb                                  = ss->start_mb;
     int end_mb                                    = ss->end_mb;
+    const int *linesize = ss->linesize;
+    uint8_t **data = ss->data;
+    int bytes_per_pixel = 1 + (s->bits > 8);
+
+    int chroma_h_shift, chroma_v_shift, chroma_width, chroma_height;
+    av_pix_fmt_get_chroma_sub_sample(s->avctx->pix_fmt, &chroma_h_shift,
+                                     &chroma_v_shift);
+    chroma_width  = AV_CEIL_RSHIFT(s->width,  chroma_h_shift);
+    chroma_height = AV_CEIL_RSHIFT(s->height, chroma_v_shift);
 
     GetBitContext gb;
     int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
@@ -1498,7 +1559,11 @@ static int mjpeg_decode_slice(MJpegSliceContext *ss)
 
         if (s->avctx->codec_id == AV_CODEC_ID_THP) {
             if (restart_count < 0) {
+<<<<<<< HEAD
                 ret = mjpeg_unescape_sos(s);
+=======
+                ret = mjpeg_unescape_sos(ss);
+>>>>>>> 9245a44a75 (ok)
                 if (ret < 0)
                     return ret;
             }
@@ -1506,7 +1571,11 @@ static int mjpeg_decode_slice(MJpegSliceContext *ss)
             if (restart)
                 align_get_bits(&ss->gb);
         } else {
+<<<<<<< HEAD
             ret = handle_restart(s, &restart_count, &restart);
+=======
+            ret = handle_restart(ss, &restart_count, &restart);
+>>>>>>> 9245a44a75 (ok)
             if (ret < 0)
                 return ret;
         }
@@ -1589,6 +1658,7 @@ static int mjpeg_decode_slice(MJpegSliceContext *ss)
             }
         }
     }
+    ss->gb = gb;
     return ret;
 }
 
@@ -1597,12 +1667,10 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s, int nb_components, int Ah,
                              int mb_bitmask_size,
                              const AVFrame *reference)
 {
-    int i, chroma_h_shift, chroma_v_shift, chroma_width, chroma_height;
     uint8_t *data[MAX_COMPONENTS];
     const uint8_t *reference_data[MAX_COMPONENTS];
     int linesize[MAX_COMPONENTS];
     GetBitContext mb_bitmask_gb = {0}; // initialize to silence gcc warning
-    int bytes_per_pixel = 1 + (s->bits > 8);
     int ret;
 
     if (mb_bitmask) {
@@ -1613,12 +1681,7 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s, int nb_components, int Ah,
         init_get_bits(&mb_bitmask_gb, mb_bitmask, s->mb_width * s->mb_height);
     }
 
-    av_pix_fmt_get_chroma_sub_sample(s->avctx->pix_fmt, &chroma_h_shift,
-                                     &chroma_v_shift);
-    chroma_width  = AV_CEIL_RSHIFT(s->width,  chroma_h_shift);
-    chroma_height = AV_CEIL_RSHIFT(s->height, chroma_v_shift);
-
-    for (i = 0; i < nb_components; i++) {
+    for (int i = 0; i < nb_components; i++) {
         int c   = s->comp_index[i];
         data[c] = s->picture_ptr->data[c];
         reference_data[c] = reference ? reference->data[c] : NULL;
@@ -1630,9 +1693,13 @@ next_field:
     int start_mb = 0;
     int end_mb = s->mb_height * s->mb_width;
     MJpegSliceContext ss = {
-        s, nb_components, Ah, Al, mb_bitmask ? &mb_bitmask_gb : NULL, reference_data, start_mb, end_mb
+        s, s->gB, nb_components, Ah, Al, mb_bitmask ? &mb_bitmask_gb : NULL, start_mb, end_mb
     };
-    ret = mjpeg_decode_slice(&ss);
+    memcpy(ss.reference_data, reference_data, sizeof(ss.reference_data));
+    memcpy(ss.linesize, linesize, sizeof(ss.linesize));
+    memcpy(ss.data, data, sizeof(ss.data));
+    ret = mjpeg_decode_slice_sequential(&ss);
+    s->gB = ss.gB;
     if (ret < 0)
         return ret;
 
@@ -1647,16 +1714,32 @@ next_field:
         goto next_field;
     }
 
+<<<<<<< HEAD
+=======
+    if (s->avctx->codec_id == AV_CODEC_ID_MEDIA100 ||
+        s->avctx->codec_id == AV_CODEC_ID_MJPEGB ||
+        s->avctx->codec_id == AV_CODEC_ID_THP) {
+        /* Add the amount of bits read from the unescaped image data buffer
+         * into the GetByteContext. */
+        bytestream2_skipu(&s->gB, (get_bits_count(&ss.gb) + 7) / 8);
+    }
+
+>>>>>>> 9245a44a75 (ok)
     return 0;
 }
 
 static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
 {
+<<<<<<< HEAD
     MJpegSliceContext *ss = &s->slice_context;
     int Ss = s->Ss;
     int Se = s->Se;
     int Ah = s->Ah;
     int Al = s->Al;
+=======
+    MJpegSliceContext ss;
+    GetBitContext gb;
+>>>>>>> 9245a44a75 (ok)
     int EOBRUN = 0;
     int c = s->comp_index[0];
     uint16_t *quant_matrix = s->quant_matrixes[s->quant_sindex[0]];
@@ -1682,7 +1765,11 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
         int16_t (*block)[64] = &s->blocks[c][cur_mb];
         uint8_t *last_nnz    = &s->last_nnz[c][cur_mb];
             int restart;
+<<<<<<< HEAD
             ret = handle_restart(s, &restart_count, &restart);
+=======
+            ret = handle_restart(&ss, &restart_count, &restart);
+>>>>>>> 9245a44a75 (ok)
             if (ret < 0)
                 return ret;
             if (restart)
@@ -2295,11 +2382,21 @@ found:
     bytestream2_skipu(&s->gB, *pbuf_size);
 }
 
+<<<<<<< HEAD
 static int mjpeg_unescape_sos(MJpegDecodeContext *s)
 {
     MJpegSliceContext *ss = &s->slice_context;
     const uint8_t *buf_ptr = s->gB.buffer;
     const uint8_t *buf_end = buf_ptr + bytestream2_get_bytes_left(&s->gB);
+=======
+static int mjpeg_unescape_sos(MJpegSliceContext *ss)
+{
+    const MJpegDecodeContext *s = ss->s;
+    GetByteContext *gB = &ss->gB;
+    GetBitContext *gb = &ss->gb;
+    const uint8_t *buf_ptr = gB->buffer;
+    const uint8_t *buf_end = buf_ptr + bytestream2_get_bytes_left(gB);
+>>>>>>> 9245a44a75 (ok)
     const uint8_t *unescaped_buf_ptr;
     int unescaped_buf_size;
 
@@ -2364,7 +2461,7 @@ found:
     memset(ss->buffer + unescaped_buf_size, 0,
            AV_INPUT_BUFFER_PADDING_SIZE);
 
-    bytestream2_skipu(&s->gB, ptr - buf_ptr);
+    bytestream2_skipu(gB, ptr - buf_ptr);
 
     av_log(s->avctx, AV_LOG_DEBUG, "escaping removed %td bytes\n",
            (buf_end - buf_ptr) - (unescaped_buf_size));

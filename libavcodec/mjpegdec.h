@@ -65,8 +65,11 @@ typedef struct MJpegDecodeContext {
     GetByteContext gB;
     int buf_size;
 
+<<<<<<< HEAD
     MJpegSliceContext slice_context;
 
+=======
+>>>>>>> 9245a44a75 (ok)
     uint16_t quant_matrixes[4][64];
     VLC vlcs[3][4];
     int qscale[4];      ///< quantizer scale calculated from quant_matrixes
@@ -174,6 +177,24 @@ typedef struct MJpegDecodeContext {
     void *hwaccel_picture_private;
     struct JLSState *jls_state;
 } MJpegDecodeContext;
+
+typedef struct MJpegSliceContext {
+    /* input */
+    const MJpegDecodeContext *s;
+    GetByteContext gB;
+    GetBitContext *mb_bitmask_gb;
+    int start_mb;
+    int end_mb;
+    const uint8_t *reference_data[MAX_COMPONENTS];
+    uint8_t *data[MAX_COMPONENTS];
+    int linesize[MAX_COMPONENTS];
+
+    int buffer_size;
+    uint8_t *buffer;
+
+    // FIXME used just to get bits count
+    GetBitContext gb;
+} MJpegSliceContext;
 
 static inline int ff_mjpeg_should_restart(int *restart_count, int restart_interval)
 {
