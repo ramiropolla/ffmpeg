@@ -54,11 +54,16 @@ typedef struct ICCEntry {
 struct JLSState;
 
 typedef struct MJpegSliceContext {
+    GetByteContext gB;
     GetBitContext gb;
     uint8_t *buffer;
     int buffer_size;
     int restart_count;
 
+    int start_mb;
+    int end_mb;
+
+    GetBitContext mb_bitmask_gb;
     int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
     DECLARE_ALIGNED(32, int16_t, block)[64];
 } MJpegSliceContext;
@@ -70,6 +75,7 @@ typedef struct MJpegDecodeContext {
     int buf_size;
 
     MJpegSliceContext slice_context;
+    AVFrame *reference;
 
     uint16_t quant_matrixes[4][64];
     VLC vlcs[3][4];
@@ -179,9 +185,8 @@ typedef struct MJpegDecodeContext {
     struct JLSState *jls_state;
 } MJpegDecodeContext;
 
-static inline int ff_mjpeg_should_restart(MJpegDecodeContext *s)
+static inline int ff_mjpeg_should_restart(const MJpegDecodeContext *s, MJpegSliceContext *ss)
 {
-    MJpegSliceContext *ss = &s->slice_context;
     int restart = 0;
     if (s->restart_interval) {
         if (ss->restart_count <= 0) {
@@ -212,8 +217,7 @@ int ff_mjpeg_decode_dqt(MJpegDecodeContext *s);
 int ff_mjpeg_decode_dht(MJpegDecodeContext *s);
 int ff_mjpeg_decode_sof(MJpegDecodeContext *s);
 int ff_mjpeg_decode_sos(MJpegDecodeContext *s,
-                        const uint8_t *mb_bitmask,int mb_bitmask_size,
-                        const AVFrame *reference);
+                        const uint8_t *mb_bitmask,int mb_bitmask_size);
 int ff_mjpeg_find_marker(const uint8_t **buf_ptr, const uint8_t *buf_end);
 
 #endif /* AVCODEC_MJPEGDEC_H */
