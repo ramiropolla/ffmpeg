@@ -53,15 +53,19 @@ typedef struct ICCEntry {
 
 struct JLSState;
 
+typedef struct MJpegSliceContext {
+    GetBitContext gb;
+    uint8_t *buffer;
+    int buffer_size;
+} MJpegSliceContext;
+
 typedef struct MJpegDecodeContext {
     AVClass *class;
     AVCodecContext *avctx;
-    GetBitContext gb;
     GetByteContext gB;
     int buf_size;
 
-    int buffer_size;
-    uint8_t *buffer;
+    MJpegSliceContext slice_context;
 
     uint16_t quant_matrixes[4][64];
     VLC vlcs[3][4];
