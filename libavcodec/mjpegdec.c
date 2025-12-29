@@ -1445,7 +1445,7 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s)
     int Al = s->Al;
     const uint8_t *mb_bitmask = NULL;
     const AVFrame *reference = NULL;
-    int i, mb_x, mb_y, chroma_h_shift, chroma_v_shift, chroma_width, chroma_height;
+    int i, mb_x, mb_y, chroma_width, chroma_height;
     uint8_t *data[MAX_COMPONENTS];
     const uint8_t *reference_data[MAX_COMPONENTS];
     int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
@@ -1467,10 +1467,8 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s)
         init_get_bits(&mb_bitmask_gb, mb_bitmask, s->mb_width * s->mb_height);
     }
 
-    av_pix_fmt_get_chroma_sub_sample(s->avctx->pix_fmt, &chroma_h_shift,
-                                     &chroma_v_shift);
-    chroma_width  = AV_CEIL_RSHIFT(s->width,  chroma_h_shift);
-    chroma_height = AV_CEIL_RSHIFT(s->height, chroma_v_shift);
+    chroma_width  = AV_CEIL_RSHIFT(s->width,  s->pix_desc->log2_chroma_w);
+    chroma_height = AV_CEIL_RSHIFT(s->height, s->pix_desc->log2_chroma_h);
 
     for (i = 0; i < nb_components; i++) {
         int c   = s->comp_index[i];
