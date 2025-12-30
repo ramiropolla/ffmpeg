@@ -185,8 +185,9 @@ typedef struct MJpegDecodeContext {
     struct JLSState *jls_state;
 } MJpegDecodeContext;
 
-static inline int ff_mjpeg_should_restart(const MJpegDecodeContext *s, MJpegSliceContext *ss)
+static inline int ff_mjpeg_should_restart(MJpegSliceContext *ss)
 {
+    const MJpegDecodeContext *s = ss->s;
     int restart = 0;
     if (s->restart_interval) {
         if (ss->restart_count <= 0) {
