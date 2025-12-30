@@ -832,8 +832,9 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
     return 0;
 }
 
-static inline int mjpeg_decode_dc(const MJpegDecodeContext *s, MJpegSliceContext *ss, int dc_index, int *val)
+static inline int mjpeg_decode_dc(MJpegSliceContext *ss, int dc_index, int *val)
 {
+    const MJpegDecodeContext *s = ss->s;
     int code;
     code = get_vlc2(&ss->gb, s->vlcs[0][dc_index].table, 9, 2);
     if (code < 0 || code > 16) {
@@ -847,13 +848,14 @@ static inline int mjpeg_decode_dc(const MJpegDecodeContext *s, MJpegSliceContext
 }
 
 /* decode block and dequantize */
-static int decode_block(const MJpegDecodeContext *s, MJpegSliceContext *ss, int16_t *block, int *last_dc,
+static int decode_block(MJpegSliceContext *ss, int16_t *block, int *last_dc,
                         int dc_index, int ac_index, const uint16_t *quant_matrix)
 {
+    const MJpegDecodeContext *s = ss->s;
     int code, i, j, level, val;
 
     /* DC coef */
-    int ret = mjpeg_decode_dc(s, ss, dc_index, &val);
+    int ret = mjpeg_decode_dc(ss, dc_index, &val);
     if (ret < 0)
         return ret;
 
@@ -894,13 +896,14 @@ static int decode_block(const MJpegDecodeContext *s, MJpegSliceContext *ss, int1
     return 0;
 }
 
-static int decode_dc_progressive(const MJpegDecodeContext *s, MJpegSliceContext *ss, int16_t *block,
+static int decode_dc_progressive(MJpegSliceContext *ss, int16_t *block,
                                  int *last_dc, int dc_index,
                                  const uint16_t *quant_matrix, int Al)
 {
+    const MJpegDecodeContext *s = ss->s;
     unsigned val;
     s->bdsp.clear_block(block);
-    int ret = mjpeg_decode_dc(s, ss, dc_index, &val);
+    int ret = mjpeg_decode_dc(ss, dc_index, &val);
     if (ret < 0)
         return ret;
 
@@ -911,12 +914,13 @@ static int decode_dc_progressive(const MJpegDecodeContext *s, MJpegSliceContext 
 }
 
 /* decode block and dequantize - progressive JPEG version */
-static int decode_block_progressive(const MJpegDecodeContext *s, MJpegSliceContext *ss,
+static int decode_block_progressive(MJpegSliceContext *ss,
                                     int16_t *block,
                                     uint8_t *last_nnz, int ac_index,
                                     const uint16_t *quant_matrix,
                                     int Ss, int Se, int Al, int *EOBRUN)
 {
+    const MJpegDecodeContext *s = ss->s;
     int code, i, j, val, run;
     unsigned level;
 
@@ -1010,11 +1014,12 @@ for (; ; i++) {                                                     \
 }
 
 /* decode block and dequantize - progressive JPEG refinement pass */
-static int decode_block_refinement(const MJpegDecodeContext *s, MJpegSliceContext *ss,
+static int decode_block_refinement(MJpegSliceContext *ss,
                                    int16_t *block, uint8_t *last_nnz,
                                    int ac_index, const uint16_t *quant_matrix,
                                    int Ss, int Se, int Al, int *EOBRUN)
 {
+    const MJpegDecodeContext *s = ss->s;
     int code, i = Ss, j, sign, val, run;
     int last    = FFMIN(Se, *last_nnz);
 
@@ -1176,7 +1181,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
             topleft[i] = top[i];
             top[i]     = buffer[mb_x][i];
 
-            ret = mjpeg_decode_dc(s, &ss, s->dc_index[i], &dc);
+            ret = mjpeg_decode_dc(&ss, s->dc_index[i], &dc);
             if (ret < 0)
                 return ret;
 
@@ -1327,7 +1332,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
                     for(j=0; j<n; j++) {
                         int pred, dc;
 
-                        ret = mjpeg_decode_dc(s, &ss, s->dc_index[i], &dc);
+                        ret = mjpeg_decode_dc(&ss, s->dc_index[i], &dc);
                         if (ret < 0)
                             return ret;
 
@@ -1399,7 +1404,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
                     for (j = 0; j < n; j++) {
                         int pred;
 
-                        ret = mjpeg_decode_dc(s, &ss, s->dc_index[i], &dc);
+                        ret = mjpeg_decode_dc(&ss, s->dc_index[i], &dc);
                         if (ret < 0)
                             return ret;
 
@@ -1548,7 +1553,7 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
 
                     } else {
                         s->bdsp.clear_block(ss->block);
-                        if (decode_block(s, ss, ss->block, &ss->last_dc[i],
+                        if (decode_block(ss, ss->block, &ss->last_dc[i],
                                          s->dc_index[i], s->ac_index[i],
                                          s->quant_matrixes[s->quant_sindex[i]]) < 0) {
                             av_log(s->avctx, AV_LOG_ERROR,
@@ -1568,7 +1573,7 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
                     if (Ah)
                         block[0] += get_bits1(&ss->gb) *
                                     s->quant_matrixes[s->quant_sindex[i]][0] << Al;
-                    else if (decode_dc_progressive(s, ss, block, &ss->last_dc[i], s->dc_index[i],
+                    else if (decode_dc_progressive(ss, block, &ss->last_dc[i], s->dc_index[i],
                                                    s->quant_matrixes[s->quant_sindex[i]],
                                                    Al) < 0) {
                         av_log(s->avctx, AV_LOG_ERROR,
@@ -1733,10 +1738,10 @@ static int mjpeg_decode_slice_progressive_ac(MJpegSliceContext *ss)
             EOBRUN = 0;
 
         if (Ah)
-            ret = decode_block_refinement(s, ss, *block, last_nnz, s->ac_index[0],
+            ret = decode_block_refinement(ss, *block, last_nnz, s->ac_index[0],
                                           quant_matrix, Ss, Se, Al, &EOBRUN);
         else
-            ret = decode_block_progressive(s, ss, *block, last_nnz, s->ac_index[0],
+            ret = decode_block_progressive(ss, *block, last_nnz, s->ac_index[0],
                                            quant_matrix, Ss, Se, Al, &EOBRUN);
 
         if (ret >= 0 && get_bits_left(&ss->gb) < 0)
