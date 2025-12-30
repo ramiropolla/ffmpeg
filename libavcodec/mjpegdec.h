@@ -75,7 +75,6 @@ typedef struct MJpegDecodeContext {
     GetByteContext gB;
     int buf_size;
 
-    MJpegSliceContext slice_context;
     AVFrame *reference;
 
     uint16_t quant_matrixes[4][64];
