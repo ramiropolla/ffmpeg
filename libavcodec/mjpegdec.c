@@ -1464,8 +1464,10 @@ static void shift_output(const MJpegDecodeContext *s, uint8_t *ptr, int linesize
     }
 }
 
-static int mjpeg_decode_slice(const MJpegDecodeContext *s, MJpegSliceContext *ss)
+static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
 {
+    MJpegSliceContext *ss = arg;
+    const MJpegDecodeContext *s = ss->s;
     const AVFrame *reference = s->reference;
     int nb_components = s->nb_components_sos;
     int Ah = s->Ah;
@@ -1486,6 +1488,8 @@ static int mjpeg_decode_slice(const MJpegDecodeContext *s, MJpegSliceContext *ss
     }
 
     for (int cur_mb = ss->start_mb; cur_mb < ss->end_mb; cur_mb++) {
+// printf("cur_mb %d\n", cur_mb);
+// fflush(stdout);
         int mb_y = cur_mb / s->mb_width;
         int mb_x = cur_mb % s->mb_width;
         const int copy_mb = ss->mb_bitmask_gb.buffer && !get_bits1(&ss->mb_bitmask_gb);
@@ -1611,34 +1615,84 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s,
     }
 
 next_field:
+    ss = &s->slice_context;
     ss->restart_count = -1;
     ss->start_mb = 0;
-    ss->end_mb = s->mb_height * s->mb_width;
-    int use_threads = HAVE_THREADS;
-    // printf("[%d] %d\n", __LINE__, use_threads);
-    if (use_threads)
-        use_threads = !!(s->avctx->active_thread_type & FF_THREAD_SLICE);
-    // printf("[%d] %d\n", __LINE__, use_threads);
-    if (use_threads)
-        use_threads = (s->restart_interval != 0);
-    // printf("[%d] %d\n", __LINE__, use_threads);
-    if (use_threads)
-        use_threads = !mb_bitmask;
-    // printf("[%d] %d\n", __LINE__, use_threads);
-    if (use_threads) {
-        int expected_number_of_restart_markers = (ss->end_mb + s->restart_interval - 1) / s->restart_interval;
-        printf("THREADS %d\n", expected_number_of_restart_markers);
-        // THREAD
+    int end_mb = s->mb_height * s->mb_width;
+    ss->end_mb = end_mb;
+    int nb_segments = 1;
+    int thread_count = 1;
+    if (HAVE_THREADS &&
+        (s->avctx->active_thread_type & FF_THREAD_SLICE) &&
+        s->restart_interval && !mb_bitmask) {
+        nb_segments = (end_mb + s->restart_interval - 1) / s->restart_interval;
+        thread_count = FFMIN(s->avctx->thread_count, nb_segments);
+    }
+    if (thread_count > 1) {
+#define MAX_THREADS 32
+        MJpegSliceContext slice_context[MAX_THREADS];
+        int q = nb_segments / thread_count;
+        int r = nb_segments % thread_count;
+        int cur_segment = 0;
+
+        int next_slice_segment = 0;
+        int cur_slice = 0;
+
+        const uint8_t *buf_ptr = s->gB.buffer;
+        const uint8_t *buf_end = buf_ptr + bytestream2_get_bytes_left(&s->gB);
+        const uint8_t *buf_start = buf_ptr;
+        while (buf_ptr < buf_end) {
+            const uint8_t *buf_start_x = buf_ptr;
+            int start_code = ff_mjpeg_find_marker(&buf_ptr, buf_end);
+            if ((start_code < RST0 || start_code > RST7))
+                break;
+
+            if (cur_segment == next_slice_segment) {
+                // Close previous slice
+                if (cur_slice) {
+                    MJpegSliceContext *prev_ss = &slice_context[cur_slice - 1];
+                    bytestream2_init(&prev_ss->gB, buf_start, buf_ptr - buf_start);
+                    buf_start = buf_start_x;
+    // printf(" closing [%2d] [%4d, %4d] [%p %p] %5d\n", cur_slice - 1, prev_ss->start_mb, prev_ss->end_mb, prev_ss->gB.buffer_start, prev_ss->gB.buffer_end, (int)(prev_ss->gB.buffer_end - prev_ss->gB.buffer_start));
+                }
+
+                next_slice_segment = FFMIN(next_slice_segment + q + (cur_slice < r ? 1 : 0), nb_segments);
+
+                MJpegSliceContext *ss = &slice_context[cur_slice++];
+                ss->s = s;
+                ss->mb_bitmask_gb.buffer = NULL; // TODO
+                ss->buffer = NULL; // TODO free
+                ss->buffer_size = 0;
+                ss->restart_count = -1;
+                ss->start_mb = cur_segment * s->restart_interval;
+                ss->end_mb = FFMIN(next_slice_segment * s->restart_interval, end_mb);
+                bytestream2_init(&ss->gB, buf_start, buf_end - buf_start);
+            }
+            cur_segment++;
+        }
+        if (cur_slice == thread_count) {
+#if 0
+printf("buf_start %p end %p\n", s->gB.buffer, s->gB.buffer + bytestream2_get_bytes_left(&s->gB));
+for (int xxx = 0; xxx < thread_count; xxx++) {
+    MJpegSliceContext *ss = &slice_context[xxx];
+    printf(" [%2d] [%4d, %4d] [%p %p] %5d\n", xxx, ss->start_mb, ss->end_mb, ss->gB.buffer_start, ss->gB.buffer_end, (int)(ss->gB.buffer_end - ss->gB.buffer_start));
+}
+fflush(stdout);
+#endif
+            s->avctx->execute(s->avctx, mjpeg_decode_slice,
+                              slice_context, NULL,
+                              thread_count, sizeof(slice_context[0]));
+        } else {
+printf("FAIL end_mb %d cur_slice %d thread_count %d\n", end_mb, cur_slice, thread_count);
+            thread_count = 1;
+        }
+    }
+
+//    thread_count = 1;
+    if (thread_count == 1) {
         ss->gB = s->gB;
-        ret = mjpeg_decode_slice(s, ss);
-        if (ret < 0)
-            return ret;
-        s->gB = ss->gB;
-    } else {
-        printf("NO THREADS\n");
-        // NO THREADS
-        ss->gB = s->gB;
-        ret = mjpeg_decode_slice(s, ss);
+        ss->s = s;
+        ret = mjpeg_decode_slice(s->avctx, ss);
         if (ret < 0)
             return ret;
         s->gB = ss->gB;
@@ -1653,6 +1707,14 @@ next_field:
         s->bottom_field ^= 1;
 
         goto next_field;
+    }
+
+    if (s->avctx->codec_id == AV_CODEC_ID_MEDIA100 ||
+        s->avctx->codec_id == AV_CODEC_ID_MJPEGB ||
+        s->avctx->codec_id == AV_CODEC_ID_THP) {
+        /* Add the amount of bits read from the unescaped image data buffer
+         * into the GetByteContext. */
+        bytestream2_skipu(&s->gB, (get_bits_count(&ss->gb) + 7) / 8);
     }
 
     return 0;
@@ -1767,7 +1829,6 @@ static void mjpeg_idct_scan_progressive_ac(MJpegDecodeContext *s)
 int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
                         int mb_bitmask_size)
 {
-    MJpegSliceContext *ss = &s->slice_context;
     int len, i, h, v;
     int index, id, ret;
     const int block_size = s->lossless ? 1 : 8;
@@ -1893,14 +1954,6 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
             if ((ret = mjpeg_decode_scan(s, mb_bitmask, mb_bitmask_size)) < 0)
                 return ret;
         }
-    }
-
-    if (s->avctx->codec_id == AV_CODEC_ID_MEDIA100 ||
-        s->avctx->codec_id == AV_CODEC_ID_MJPEGB ||
-        s->avctx->codec_id == AV_CODEC_ID_THP) {
-        /* Add the amount of bits read from the unescaped image data buffer
-         * into the GetByteContext. */
-        bytestream2_skipu(&s->gB, (get_bits_count(&ss->gb) + 7) / 8);
     }
 
     return 0;

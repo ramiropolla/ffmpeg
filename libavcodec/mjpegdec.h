@@ -54,6 +54,7 @@ typedef struct ICCEntry {
 struct JLSState;
 
 typedef struct MJpegSliceContext {
+    const struct MJpegDecodeContext *s;
     GetByteContext gB;
     GetBitContext gb;
     uint8_t *buffer;
