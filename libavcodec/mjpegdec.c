@@ -1077,7 +1077,7 @@ static int decode_block_refinement(const MJpegDecodeContext *s, MJpegSliceContex
 
 static int handle_restart(const MJpegDecodeContext *s, MJpegSliceContext *ss, int *restart)
 {
-    *restart = ff_mjpeg_should_restart(s, ss);
+    *restart = ff_mjpeg_should_restart(ss);
     if (*restart) {
         int ret = mjpeg_unescape_sos(s, ss);
         if (ret < 0)
@@ -1135,6 +1135,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     for (i = 0; i < 4; i++)
         buffer[0][i] = 1 << (s->bits - 1);
 
+    ss.s = s;
     ss.gB = s->gB;
     ss.restart_count = -1;
 
@@ -1283,6 +1284,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
 
     av_assert0(nb_components>=1 && nb_components<=4);
 
+    ss.s = s;
     ss.gB = s->gB;
     ss.restart_count = -1;
 
@@ -1499,7 +1501,7 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
                 if (ret < 0)
                     return ret;
             }
-            restart = ff_mjpeg_should_restart(s, ss);
+            restart = ff_mjpeg_should_restart(ss);
             if (restart)
                 align_get_bits(&ss->gb);
         } else {

@@ -420,7 +420,7 @@ found:
 
 static int handle_restart(MJpegSliceContext *ss, int *restart)
 {
-    *restart = ff_mjpeg_should_restart(ss->s, ss);
+    *restart = ff_mjpeg_should_restart(ss);
     if (*restart) {
         int ret = jpegls_unescape_sos(ss);
         if (ret < 0)
