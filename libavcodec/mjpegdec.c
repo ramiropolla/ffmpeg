@@ -1092,6 +1092,7 @@ static int handle_restart(MJpegSliceContext *ss, int *restart)
 }
 
 /* Handles 1 to 4 components */
+// TODO MJpegDecodeContext -> MJpegSliceContext
 static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
 {
     MJpegSliceContext ss = { 0 };
@@ -1272,6 +1273,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     return 0;
 }
 
+// TODO MJpegDecodeContext -> MJpegSliceContext
 static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
 {
     MJpegSliceContext ss = { 0 };
