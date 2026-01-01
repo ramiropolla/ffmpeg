@@ -1919,6 +1919,7 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s, const uint8_t *mb_bitmask,
     if (s->mjpb_skiptosod)
         bytestream2_skip(&s->gB, s->mjpb_skiptosod);
 
+printf("MJpegSliceContext %zu MJpegDecodeContext %zu\n", sizeof(MJpegSliceContext), sizeof(MJpegDecodeContext)); // 256...
     if (s->avctx->hwaccel) {
         const uint8_t *buf_ptr;
         size_t buf_size;
