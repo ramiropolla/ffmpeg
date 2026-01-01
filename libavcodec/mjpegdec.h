@@ -183,6 +183,9 @@ typedef struct MJpegDecodeContext {
     enum AVPixelFormat hwaccel_pix_fmt;
     void *hwaccel_picture_private;
     struct JLSState *jls_state;
+
+    // TODO
+    MJpegSliceContext *slice_data;
 } MJpegDecodeContext;
 
 static inline int ff_mjpeg_should_restart(MJpegSliceContext *ss)
