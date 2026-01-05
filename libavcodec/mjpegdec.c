@@ -1479,6 +1479,7 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
     int nb_components = s->nb_components_sos;
     int Ah = s->Ah;
     int Al = s->Al;
+    int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
     uint8_t *data[MAX_COMPONENTS];
     const uint8_t *reference_data[MAX_COMPONENTS];
     int linesize[MAX_COMPONENTS];
@@ -1518,7 +1519,7 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
         }
         if (restart) {
             for (int i = 0; i < nb_components; i++)
-                ss->last_dc[i] = (4 << s->bits);
+                last_dc[i] = (4 << s->bits);
         }
 
         if (get_bits_left(&ss->gb) < 0) {
@@ -1555,7 +1556,7 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
 
                     } else {
                         s->bdsp.clear_block(ss->block);
-                        if (decode_block(ss, ss->block, &ss->last_dc[i],
+                        if (decode_block(ss, ss->block, &last_dc[i],
                                          s->dc_index[i], s->ac_index[i],
                                          s->quant_matrixes[s->quant_sindex[i]]) < 0) {
                             av_log(s->avctx, AV_LOG_ERROR,
@@ -1575,7 +1576,7 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
                     if (Ah)
                         block[0] += get_bits1(&ss->gb) *
                                     s->quant_matrixes[s->quant_sindex[i]][0] << Al;
-                    else if (decode_dc_progressive(ss, block, &ss->last_dc[i], s->dc_index[i],
+                    else if (decode_dc_progressive(ss, block, &last_dc[i], s->dc_index[i],
                                                    s->quant_matrixes[s->quant_sindex[i]],
                                                    Al) < 0) {
                         av_log(s->avctx, AV_LOG_ERROR,
