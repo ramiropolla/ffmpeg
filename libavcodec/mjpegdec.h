@@ -65,7 +65,6 @@ typedef struct MJpegSliceContext {
     int end_mb;
 
     GetBitContext mb_bitmask_gb;
-    DECLARE_ALIGNED(32, int16_t, block)[64];
 } MJpegSliceContext;
 
 typedef struct MJpegDecodeContext {

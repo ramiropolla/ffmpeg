@@ -1480,6 +1480,7 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
     int Ah = s->Ah;
     int Al = s->Al;
     int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
+    DECLARE_ALIGNED(32, int16_t, block)[64];
     uint8_t *data[MAX_COMPONENTS];
     const uint8_t *reference_data[MAX_COMPONENTS];
     int linesize[MAX_COMPONENTS];
@@ -1555,8 +1556,8 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
                                             linesize[c], s->avctx->lowres);
 
                     } else {
-                        s->bdsp.clear_block(ss->block);
-                        if (decode_block(ss, ss->block, &last_dc[i],
+                        s->bdsp.clear_block(block);
+                        if (decode_block(ss, block, &last_dc[i],
                                          s->dc_index[i], s->ac_index[i],
                                          s->quant_matrixes[s->quant_sindex[i]]) < 0) {
                             av_log(s->avctx, AV_LOG_ERROR,
@@ -1564,7 +1565,7 @@ static int mjpeg_decode_slice(AVCodecContext *c, void *arg)
                             return AVERROR_INVALIDDATA;
                         }
                         if (ptr && linesize[c]) {
-                            s->idsp.idct_put(ptr, linesize[c], ss->block);
+                            s->idsp.idct_put(ptr, linesize[c], block);
                             if (s->bits & 7)
                                 shift_output(s, ptr, linesize[c]);
                         }
