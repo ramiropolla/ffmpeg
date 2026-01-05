@@ -65,7 +65,6 @@ typedef struct MJpegSliceContext {
     int end_mb;
 
     GetBitContext mb_bitmask_gb;
-    int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
     DECLARE_ALIGNED(32, int16_t, block)[64];
 } MJpegSliceContext;
 
