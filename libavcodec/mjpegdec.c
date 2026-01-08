@@ -849,7 +849,7 @@ static inline int mjpeg_decode_dc(MJpegDecodeContext *s, int dc_index, int *val)
 
 /* decode block and dequantize */
 static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
-                        int dc_index, int ac_index, uint16_t *quant_matrix)
+                        int dc_index, int ac_index, const uint16_t *quant_matrix)
 {
     int code, i, j, level, val;
 
@@ -897,7 +897,7 @@ static int decode_block(MJpegDecodeContext *s, int16_t *block, int component,
 
 static int decode_dc_progressive(MJpegDecodeContext *s, int16_t *block,
                                  int component, int dc_index,
-                                 uint16_t *quant_matrix, int Al)
+                                 const uint16_t *quant_matrix, int Al)
 {
     unsigned val;
     s->bdsp.clear_block(block);
@@ -914,7 +914,7 @@ static int decode_dc_progressive(MJpegDecodeContext *s, int16_t *block,
 /* decode block and dequantize - progressive JPEG version */
 static int decode_block_progressive(MJpegDecodeContext *s, int16_t *block,
                                     uint8_t *last_nnz, int ac_index,
-                                    uint16_t *quant_matrix,
+                                    const uint16_t *quant_matrix,
                                     int Ss, int Se, int Al, int *EOBRUN)
 {
     int code, i, j, val, run;
@@ -1012,7 +1012,7 @@ for (; ; i++) {                                                     \
 /* decode block and dequantize - progressive JPEG refinement pass */
 static int decode_block_refinement(MJpegDecodeContext *s, int16_t *block,
                                    uint8_t *last_nnz,
-                                   int ac_index, uint16_t *quant_matrix,
+                                   int ac_index, const uint16_t *quant_matrix,
                                    int Ss, int Se, int Al, int *EOBRUN)
 {
     int code, i = Ss, j, sign, val, run;
@@ -1407,7 +1407,7 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
     return 0;
 }
 
-static av_always_inline void mjpeg_copy_block(MJpegDecodeContext *s,
+static av_always_inline void mjpeg_copy_block(const MJpegDecodeContext *s,
                                               uint8_t *dst, const uint8_t *src,
                                               int linesize, int lowres)
 {
@@ -1423,7 +1423,7 @@ static av_always_inline void mjpeg_copy_block(MJpegDecodeContext *s,
     }
 }
 
-static void shift_output(MJpegDecodeContext *s, uint8_t *ptr, int linesize)
+static void shift_output(const MJpegDecodeContext *s, uint8_t *ptr, int linesize)
 {
     int block_x, block_y;
     int size = 8 >> s->avctx->lowres;
@@ -1604,7 +1604,7 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
     int mb_x, mb_y;
     int EOBRUN = 0;
     int c = s->comp_index[0];
-    uint16_t *quant_matrix = s->quant_matrixes[s->quant_sindex[0]];
+    const uint16_t *quant_matrix = s->quant_matrixes[s->quant_sindex[0]];
 
     av_assert0(Ss>=0 && Ah>=0 && Al>=0);
     if (Se < Ss || Se > 63) {
