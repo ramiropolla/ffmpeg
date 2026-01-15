@@ -229,7 +229,7 @@ static inline int ls_get_code_runterm(GetBitContext *gb, JLSState *state,
 /**
  * Decode one line of image
  */
-static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
+static inline int ls_decode_line(JLSState *state, MJpegSliceContext *ss,
                                   void *last, void *dst, int last2, int w,
                                   int stride, int comp, int bits)
 {
@@ -240,7 +240,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
     while (x < w) {
         int err, pred;
 
-        if (get_bits_left(&s->gb) <= 0)
+        if (get_bits_left(&ss->gb) <= 0)
             return AVERROR_INVALIDDATA;
 
         /* compute gradients */
@@ -259,7 +259,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
             int RItype;
 
             /* decode full runs while available */
-            while (get_bits1(&s->gb)) {
+            while (get_bits1(&ss->gb)) {
                 int r;
                 r = 1 << ff_log2_run[state->run_index[comp]];
                 if (x + r * stride > w)
@@ -279,7 +279,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
             /* decode aborted run */
             r = ff_log2_run[state->run_index[comp]];
             if (r)
-                r = get_bits(&s->gb, r);
+                r = get_bits(&ss->gb, r);
             if (x + r * stride > w) {
                 r = (w - x) / stride;
             }
@@ -297,7 +297,7 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
             /* decode run termination value */
             Rb     = R(last, x);
             RItype = (FFABS(Ra - Rb) <= state->near) ? 1 : 0;
-            err    = ls_get_code_runterm(&s->gb, state, RItype,
+            err    = ls_get_code_runterm(&ss->gb, state, RItype,
                                          ff_log2_run[state->run_index[comp]]);
             if (state->run_index[comp])
                 state->run_index[comp]--;
@@ -327,10 +327,10 @@ static inline int ls_decode_line(JLSState *state, MJpegDecodeContext *s,
 
             if (sign) {
                 pred = av_clip(pred - state->C[context], 0, state->maxval);
-                err  = -ls_get_code_regular(&s->gb, state, context);
+                err  = -ls_get_code_regular(&ss->gb, state, context);
             } else {
                 pred = av_clip(pred + state->C[context], 0, state->maxval);
-                err  = ls_get_code_regular(&s->gb, state, context);
+                err  = ls_get_code_regular(&ss->gb, state, context);
             }
 
             /* we have to do something more for near-lossless coding */
@@ -418,7 +418,9 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
                 ilv, point_transform, s->bits, s->cur_scan);
     }
 
-    s->restart_count = -1;
+    MJpegSliceContext *ss = s->slice_data;
+    ss->gB = s->gB;
+    ss->restart_count = -1;
 
     if (ilv == 0) { /* separate planes */
         if (s->cur_scan > s->nb_components) {
@@ -431,7 +433,7 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
         cur   += off;
         for (i = 0; i < s->height; i++) {
             int restart;
-            ret = ff_mjpeg_handle_restart(s, &restart);
+            ret = ff_mjpeg_handle_restart(ss, &restart);
             if (ret < 0)
                 goto end;
             if (restart) {
@@ -440,10 +442,10 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
                 last = zero;
             }
             if (s->bits <= 8) {
-                ret = ls_decode_line(state, s, last, cur, t, width, stride, off, 8);
+                ret = ls_decode_line(state, ss, last, cur, t, width, stride, off, 8);
                 t = last[0];
             } else {
-                ret = ls_decode_line(state, s, last, cur, t, width, stride, off, 16);
+                ret = ls_decode_line(state, ss, last, cur, t, width, stride, off, 16);
                 t = *((uint16_t *)last);
             }
             if (ret < 0)
@@ -460,7 +462,7 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
         width = s->width * stride;
         for (i = 0; i < s->height; i++) {
             int restart;
-            ret = ff_mjpeg_handle_restart(s, &restart);
+            ret = ff_mjpeg_handle_restart(ss, &restart);
             if (ret < 0)
                 goto end;
             if (restart) {
@@ -469,7 +471,7 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
                 last = zero;
             }
             for (j = 0; j < stride; j++) {
-                ret = ls_decode_line(state, s, last + j, cur + j,
+                ret = ls_decode_line(state, ss, last + j, cur + j,
                                Rc[j], width, stride, j, 8);
                 if (ret < 0)
                     break;

@@ -56,12 +56,10 @@ struct JLSState;
 typedef struct MJpegDecodeContext {
     AVClass *class;
     AVCodecContext *avctx;
-    GetBitContext gb;
     GetByteContext gB;
     int buf_size;
 
-    int buffer_size;
-    uint8_t *buffer;
+    struct MJpegSliceContext *slice_data;
 
     uint16_t quant_matrixes[4][64];
     VLC vlcs[3][4];
@@ -129,7 +127,6 @@ typedef struct MJpegDecodeContext {
     op_pixels_func copy_block;             ///< only set and used by mxpeg
 
     int restart_interval;
-    int restart_count;
 
     int cs_itu601;
     int interlace_polarity;
@@ -139,9 +136,6 @@ typedef struct MJpegDecodeContext {
 
     int cur_scan; /* current scan, used by JPEG-LS */
     int flipped; /* true if picture is flipped */
-
-    uint16_t (*ljpeg_buffer)[4];
-    unsigned int ljpeg_buffer_size;
 
     int extern_huff;
     AVExifMetadata exif_metadata;
@@ -175,6 +169,17 @@ typedef struct MJpegDecodeContext {
     const AVFrame *reference;
 } MJpegDecodeContext;
 
+typedef struct MJpegSliceContext {
+    const MJpegDecodeContext *s;
+    GetByteContext gB;
+    GetBitContext gb;
+    int buffer_size;
+    uint8_t *buffer;
+    int restart_count;
+    uint16_t (*ljpeg_buffer)[4];
+    unsigned int ljpeg_buffer_size;
+} MJpegSliceContext;
+
 int ff_mjpeg_build_vlc(VLC *vlc, const uint8_t *bits_table,
                        const uint8_t *val_table, int is_ac, void *logctx);
 int ff_mjpeg_decode_init(AVCodecContext *avctx);
@@ -190,31 +195,32 @@ int ff_mjpeg_decode_dht(MJpegDecodeContext *s);
 int ff_mjpeg_decode_sof(MJpegDecodeContext *s);
 int ff_mjpeg_decode_sos(MJpegDecodeContext *s);
 int ff_mjpeg_find_marker(const uint8_t **buf_ptr, const uint8_t *buf_end);
-int ff_mjpeg_unescape_sos(MJpegDecodeContext *s);
+int ff_mjpeg_unescape_sos(MJpegSliceContext *ss);
 
-static inline int ff_mjpeg_should_restart(MJpegDecodeContext *s)
+static inline int ff_mjpeg_should_restart(MJpegSliceContext *ss)
 {
+    const MJpegDecodeContext *s = ss->s;
     int restart = 0;
     if (s->restart_interval) {
-        if (s->restart_count <= 0) {
-            s->restart_count = s->restart_interval;
+        if (ss->restart_count <= 0) {
+            ss->restart_count = s->restart_interval;
             restart = 1;
         }
-        s->restart_count--;
+        ss->restart_count--;
     } else {
-        if (s->restart_count < 0) {
-            s->restart_count = 0;
+        if (ss->restart_count < 0) {
+            ss->restart_count = 0;
             restart = 1;
         }
     }
     return restart;
 }
 
-static inline int ff_mjpeg_handle_restart(MJpegDecodeContext *s, int *restart)
+static inline int ff_mjpeg_handle_restart(MJpegSliceContext *ss, int *restart)
 {
-    *restart = ff_mjpeg_should_restart(s);
+    *restart = ff_mjpeg_should_restart(ss);
     if (*restart) {
-        int ret = ff_mjpeg_unescape_sos(s);
+        int ret = ff_mjpeg_unescape_sos(ss);
         if (ret < 0)
             return ret;
     }
