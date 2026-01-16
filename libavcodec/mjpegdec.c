@@ -1079,8 +1079,10 @@ static int decode_block_refinement(MJpegSliceContext *ss, int16_t *block,
 #undef ZERO_RUN
 
 /* Handles 1 to 4 components */
-static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
+static int ljpeg_decode_rgb_slice(AVCodecContext *avctx, void *arg)
 {
+    MJpegSliceContext *ss = arg;
+    const MJpegDecodeContext *s = ss->s;
     int nb_components = s->nb_components_sos;
     int predictor = s->Ss;
     int point_transform = s->Al;
@@ -1095,20 +1097,6 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     int vpred[6];
     int ret;
 
-    if (!s->bayer && s->nb_components < 3)
-        return AVERROR_INVALIDDATA;
-    if (s->bayer && s->nb_components > 2)
-        return AVERROR_INVALIDDATA;
-    if (s->nb_components <= 0 || s->nb_components > 4)
-        return AVERROR_INVALIDDATA;
-    if (s->v_max != 1 || s->h_max != 1 || !s->lossless)
-        return AVERROR_INVALIDDATA;
-    if (s->bayer) {
-        if (s->rct || s->pegasus_rct)
-            return AVERROR_INVALIDDATA;
-    }
-
-
     for (i = 0; i < 6; i++)
         vpred[i] = 1 << (s->bits-1);
 
@@ -1117,8 +1105,6 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     else
         width = s->mb_width;
 
-    ff_mjpeg_split_slices(s);
-    MJpegSliceContext *ss = s->slice_data;
     ss->restart_count = -1;
 
     av_fast_malloc(&ss->ljpeg_buffer, &ss->ljpeg_buffer_size, width * 4 * sizeof(ss->ljpeg_buffer[0][0]));
@@ -1130,9 +1116,7 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     for (i = 0; i < 4; i++)
         buffer[0][i] = 1 << (s->bits - 1);
 
-    int start_mb = 0;
-    int end_mb = s->mb_height * width;
-    for (int cur_mb = start_mb; cur_mb < end_mb; cur_mb++) {
+    for (int cur_mb = ss->start_mb; cur_mb < ss->end_mb; cur_mb++) {
         int mb_y = cur_mb / width;
         int mb_x = cur_mb % width;
 
@@ -1258,8 +1242,33 @@ static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
     return 0;
 }
 
-static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
+static int ljpeg_decode_rgb_scan(MJpegDecodeContext *s)
 {
+    if (!s->bayer && s->nb_components < 3)
+        return AVERROR_INVALIDDATA;
+    if (s->bayer && s->nb_components > 2)
+        return AVERROR_INVALIDDATA;
+    if (s->nb_components <= 0 || s->nb_components > 4)
+        return AVERROR_INVALIDDATA;
+    if (s->v_max != 1 || s->h_max != 1 || !s->lossless)
+        return AVERROR_INVALIDDATA;
+    if (s->bayer) {
+        if (s->rct || s->pegasus_rct)
+            return AVERROR_INVALIDDATA;
+    }
+
+    ff_mjpeg_split_slices(s);
+    s->avctx->execute(s->avctx, ljpeg_decode_rgb_slice,
+                      s->slice_data, NULL,
+                      s->thread_count, sizeof(s->slice_data[0]));
+
+    return 0;
+}
+
+static int ljpeg_decode_yuv_slice(AVCodecContext *avctx, void *arg)
+{
+    MJpegSliceContext *ss = arg;
+    const MJpegDecodeContext *s = ss->s;
     int predictor = s->Ss;
     int point_transform = s->Al;
     int nb_components = s->nb_components_sos;
@@ -1274,13 +1283,9 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
 
     av_assert0(nb_components>=1 && nb_components<=4);
 
-    ff_mjpeg_split_slices(s);
-    MJpegSliceContext *ss = s->slice_data;
     ss->restart_count = -1;
 
-    int start_mb = 0;
-    int end_mb = s->mb_height * s->mb_width;
-    for (int cur_mb = start_mb; cur_mb < end_mb; cur_mb++) {
+    for (int cur_mb = ss->start_mb; cur_mb < ss->end_mb; cur_mb++) {
         int mb_y = cur_mb / s->mb_width;
         int mb_x = cur_mb % s->mb_width;
             int restart;
@@ -1423,6 +1428,15 @@ static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
     return 0;
 }
 
+static int ljpeg_decode_yuv_scan(MJpegDecodeContext *s)
+{
+    ff_mjpeg_split_slices(s);
+    s->avctx->execute(s->avctx, ljpeg_decode_yuv_slice,
+                      s->slice_data, NULL,
+                      s->thread_count, sizeof(s->slice_data[0]));
+    return 0;
+}
+
 static av_always_inline void mjpeg_copy_block(const MJpegDecodeContext *s,
                                               uint8_t *dst, const uint8_t *src,
                                               int linesize, int lowres)
@@ -1454,20 +1468,24 @@ static void shift_output(const MJpegDecodeContext *s, uint8_t *ptr, int linesize
     }
 }
 
-static int mjpeg_decode_scan(MJpegDecodeContext *s)
+static int mjpeg_decode_slice(AVCodecContext *avctx, void *arg)
 {
+    MJpegSliceContext *ss = arg;
+    const MJpegDecodeContext *s = ss->s;
     int nb_components = s->nb_components_sos;
     int Ah = s->Ah;
     int Al = s->Al;
     const uint8_t *mb_bitmask = NULL;
     const AVFrame *reference = NULL;
-    int i, chroma_width, chroma_height;
+    int i;
     uint8_t *data[MAX_COMPONENTS];
     const uint8_t *reference_data[MAX_COMPONENTS];
     int last_dc[MAX_COMPONENTS]; /* last DEQUANTIZED dc (XXX: am I right to do that ?) */
     int linesize[MAX_COMPONENTS];
     GetBitContext mb_bitmask_gb = {0}; // initialize to silence gcc warning
     int bytes_per_pixel = 1 + (s->bits > 8);
+    int chroma_width  = AV_CEIL_RSHIFT(s->width,  s->pix_desc->log2_chroma_w);
+    int chroma_height = AV_CEIL_RSHIFT(s->height, s->pix_desc->log2_chroma_h);
     int ret;
 
     if (s->avctx->codec_id == AV_CODEC_ID_MXPEG) {
@@ -1483,26 +1501,15 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s)
         init_get_bits(&mb_bitmask_gb, mb_bitmask, s->mb_width * s->mb_height);
     }
 
-    chroma_width  = AV_CEIL_RSHIFT(s->width,  s->pix_desc->log2_chroma_w);
-    chroma_height = AV_CEIL_RSHIFT(s->height, s->pix_desc->log2_chroma_h);
-
-    for (i = 0; i < nb_components; i++) {
+    for (int i = 0; i < nb_components; i++) {
         int c   = s->comp_index[i];
         data[c] = s->picture_ptr->data[c];
         reference_data[c] = reference ? reference->data[c] : NULL;
         linesize[c] = s->linesize[c];
-        s->coefs_finished[c] |= 1;
     }
 
-    ff_mjpeg_split_slices(s);
-    MJpegSliceContext *ss = s->slice_data;
-
-next_field:
     ss->restart_count = -1;
-
-    int start_mb = 0;
-    int end_mb = s->mb_height * s->mb_width;
-    for (int cur_mb = start_mb; cur_mb < end_mb; cur_mb++) {
+    for (int cur_mb = ss->start_mb; cur_mb < ss->end_mb; cur_mb++) {
         int mb_y = cur_mb / s->mb_width;
         int mb_x = cur_mb % s->mb_width;
             const int copy_mb = mb_bitmask && !get_bits1(&mb_bitmask_gb);
@@ -1602,11 +1609,32 @@ next_field:
             }
     }
 
+    return 0;
+}
+
+static int mjpeg_decode_scan(MJpegDecodeContext *s)
+{
+    int nb_components = s->nb_components_sos;
+
+    for (int i = 0; i < nb_components; i++) {
+        int c   = s->comp_index[i];
+        s->coefs_finished[c] |= 1;
+    }
+
+    ff_mjpeg_split_slices(s);
+
+next_field:
+    s->avctx->execute(s->avctx, mjpeg_decode_slice,
+                      s->slice_data, NULL,
+                      s->thread_count, sizeof(s->slice_data[0]));
+
+    MJpegSliceContext *ss = s->slice_data;
     if (s->interlaced &&
         bytestream2_get_bytes_left(&ss->gB) > 2 &&
         bytestream2_tell(&ss->gB) > 2 &&
         ss->gB.buffer[-2] == 0xFF &&
         ss->gB.buffer[-1] == 0xD1) {
+printf("BLASDf\n");
             av_log(s->avctx, AV_LOG_DEBUG, "AVRn interlaced picture marker found\n");
             s->bottom_field ^= 1;
 
@@ -1616,8 +1644,10 @@ next_field:
     return 0;
 }
 
-static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
+static int mjpeg_decode_slice_progressive_ac(AVCodecContext *avctx, void *arg)
 {
+    MJpegSliceContext *ss = arg;
+    const MJpegDecodeContext *s = ss->s;
     int Ss = s->Ss;
     int Se = s->Se;
     int Ah = s->Ah;
@@ -1626,23 +1656,9 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
     int c = s->comp_index[0];
     const uint16_t *quant_matrix = s->quant_matrixes[s->quant_sindex[0]];
 
-    av_assert0(Ss>=0 && Ah>=0 && Al>=0);
-    if (Se < Ss || Se > 63) {
-        av_log(s->avctx, AV_LOG_ERROR, "SS/SE %d/%d is invalid\n", Ss, Se);
-        return AVERROR_INVALIDDATA;
-    }
-
-    // s->coefs_finished is a bitmask for coefficients coded
-    // Ss and Se are parameters telling start and end coefficients
-    s->coefs_finished[c] |= (2ULL << Se) - (1ULL << Ss);
-
-    ff_mjpeg_split_slices(s);
-    MJpegSliceContext *ss = s->slice_data;
     ss->restart_count = -1;
 
-    int start_mb = 0;
-    int end_mb = s->mb_height * s->mb_width;
-    for (int cur_mb = start_mb; cur_mb < end_mb; cur_mb++) {
+    for (int cur_mb = ss->start_mb; cur_mb < ss->end_mb; cur_mb++) {
         int mb_y = cur_mb / s->mb_width;
         int mb_x = cur_mb % s->mb_width;
         int block_idx    = mb_y * s->block_stride[c];
@@ -1671,6 +1687,31 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
                     return AVERROR_INVALIDDATA;
                 }
     }
+    return 0;
+}
+
+static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s)
+{
+    int Ss = s->Ss;
+    int Se = s->Se;
+    int Ah = s->Ah;
+    int Al = s->Al;
+    int c = s->comp_index[0];
+
+    av_assert0(Ss>=0 && Ah>=0 && Al>=0);
+    if (Se < Ss || Se > 63) {
+        av_log(s->avctx, AV_LOG_ERROR, "SS/SE %d/%d is invalid\n", Ss, Se);
+        return AVERROR_INVALIDDATA;
+    }
+
+    // s->coefs_finished is a bitmask for coefficients coded
+    // Ss and Se are parameters telling start and end coefficients
+    s->coefs_finished[c] |= (2ULL << Se) - (1ULL << Ss);
+
+    ff_mjpeg_split_slices(s);
+    s->avctx->execute(s->avctx, mjpeg_decode_slice_progressive_ac,
+                      s->slice_data, NULL,
+                      s->thread_count, sizeof(s->slice_data[0]));
     return 0;
 }
 
@@ -3079,7 +3120,7 @@ const FFCodec ff_mjpeg_decoder = {
     .close          = ff_mjpeg_decode_end,
     FF_CODEC_DECODE_CB(ff_mjpeg_decode_frame),
     .flush          = decode_flush,
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS,
     .p.max_lowres   = 3,
     .p.priv_class   = &mjpegdec_class,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_mjpeg_profiles),
