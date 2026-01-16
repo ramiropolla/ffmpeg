@@ -1723,7 +1723,6 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s)
     int len, i, h, v;
     int index, id, ret;
     const int block_size = s->lossless ? 1 : 8;
-    MJpegSliceContext *ss = s->slice_data;
 
     if (!s->got_picture) {
         av_log(s->avctx, AV_LOG_WARNING,
@@ -1848,7 +1847,6 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s)
                 return ret;
         }
     }
-        s->gB = ss->gB;
     }
 
     if (s->avctx->codec_id == AV_CODEC_ID_MEDIA100 ||
@@ -1856,7 +1854,7 @@ int ff_mjpeg_decode_sos(MJpegDecodeContext *s)
         s->avctx->codec_id == AV_CODEC_ID_THP) {
     /* Add the amount of bits read from the unescaped image data buffer
      * into the GetByteContext. */
-    bytestream2_skipu(&s->gB, (get_bits_count(&ss->gb) + 7) / 8);
+    bytestream2_skipu(&s->gB, (get_bits_count(&s->slice_data->gb) + 7) / 8);
     }
 
     return 0;
