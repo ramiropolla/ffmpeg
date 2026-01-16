@@ -418,8 +418,8 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s)
                 ilv, point_transform, s->bits, s->cur_scan);
     }
 
+    ff_mjpeg_split_slices(s);
     MJpegSliceContext *ss = s->slice_data;
-    ss->gB = s->gB;
     ss->restart_count = -1;
 
     if (ilv == 0) { /* separate planes */

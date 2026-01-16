@@ -60,6 +60,8 @@ typedef struct MJpegDecodeContext {
     int buf_size;
 
     struct MJpegSliceContext *slice_data;
+    unsigned int slice_data_size;
+    unsigned int thread_count;
 
     uint16_t quant_matrixes[4][64];
     VLC vlcs[3][4];
@@ -173,6 +175,8 @@ typedef struct MJpegSliceContext {
     const MJpegDecodeContext *s;
     GetByteContext gB;
     GetBitContext gb;
+    int start_mb;
+    int end_mb;
     int buffer_size;
     uint8_t *buffer;
     int restart_count;
@@ -196,6 +200,7 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s);
 int ff_mjpeg_decode_sos(MJpegDecodeContext *s);
 int ff_mjpeg_find_marker(const uint8_t **buf_ptr, const uint8_t *buf_end);
 int ff_mjpeg_unescape_sos(MJpegSliceContext *ss);
+int ff_mjpeg_split_slices(MJpegDecodeContext *s);
 
 static inline int ff_mjpeg_should_restart(MJpegSliceContext *ss)
 {
