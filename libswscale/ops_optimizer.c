@@ -244,21 +244,28 @@ static bool extract_swizzle(SwsLinearOp *op, SwsComps prev, SwsSwizzleOp *out_sw
     SwsSwizzleOp swiz = SWS_SWIZZLE(0, 1, 2, 3);
     SwsLinearOp c = *op;
 
+    /* Find non-zero coefficients in the main 4x4 matrix */
+    uint32_t nonzero = 0;
     for (int i = 0; i < 4; i++) {
-        int idx = -1;
         for (int j = 0; j < 4; j++) {
             if (!c.m[i][j].num || (prev.flags[j] & SWS_COMP_ZERO))
                 continue;
-            if (idx >= 0)
-                return false; /* multiple inputs */
-            idx = j;
+            nonzero |= SWS_MASK(i, j);
         }
+    }
 
-        if (idx >= 0 && idx != i) {
-            /* Move coefficient to the diagonal */
-            c.m[i][i] = c.m[i][idx];
-            c.m[i][idx] = Q(0);
-            swiz.in[i] = idx;
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            /* If this value is unique in its row and the target column is
+             * empty, move it there and update the input swizzle */
+            const bool unique_row = (nonzero & SWS_MASK_ROW(i)) == SWS_MASK(i, j);
+            const bool empty_col  = (nonzero & SWS_MASK_COL(i)) == 0;
+            if (unique_row && empty_col) {
+                /* Move coefficient to the diagonal */
+                c.m[i][i] = c.m[i][j];
+                c.m[i][j] = Q(0);
+                swiz.in[i] = j;
+            }
         }
     }
 
