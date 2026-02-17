@@ -165,21 +165,17 @@ struct AsmJitContext {
         m_cc = new a64::Compiler(&m_code);
         a64::Compiler &cc = *m_cc;
         cc.add_diagnostic_options(DiagnosticOptions::kRAAnnotate);
-        m_func = cc.add_func(FuncSignature::build<void, uint8_t *, uint8_t *, int, int, int, int>());
-#if 0
-// TODO
-        /* HACK to set function name in asmjit */
-        {
-            LabelNode *func_label_node = static_cast<LabelNode *>(m_func);
-            uint32_t func_label_id = func_label_node->label_id();
-            LabelEntry &func_label_entry = m_code.label_entry_of(func_label_id);
-            func_label_entry._type = LabelType::kGlobal;
-            snprintf(m_func_name, sizeof(m_func_name), "asmjit_%s_to_%s_neon",
-                     av_get_pix_fmt_name(ops->src.format),
-                     av_get_pix_fmt_name(ops->dst.format));
-            func_label_entry._name.setData(&m_code._zone, m_func_name, strlen(m_func_name));
-        }
-#endif
+
+        cc.new_func_node(Out(m_func), FuncSignature::build<void, uint8_t*, uint8_t*, int, int, int, int>());
+        /* set function name */
+        snprintf(m_func_name, sizeof(m_func_name), "asmjit_%s_to_%s_neon",
+                 av_get_pix_fmt_name(ops->src.format),
+                 av_get_pix_fmt_name(ops->dst.format));
+        Label func_label = cc.new_named_label(m_func_name);
+        m_func->_label_id = func_label.id();
+        cc._label_nodes[m_func->_label_id] = m_func;
+        cc.add_func(m_func);
+
         cc.comment("=> prologue");
         m_prologue = cc.cursor();
         cc.comment("=> setup");
