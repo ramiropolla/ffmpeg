@@ -159,31 +159,34 @@ struct AsmJitContext {
     AsmJitContext(const SwsOpList *ops, int block_size)
       : m_block_size(block_size)
     {
-        m_code.init(m_rt.environment(), m_rt.cpuFeatures());
+        m_code.init(m_rt.environment(), m_rt.cpu_features());
         if (av_log_get_level() >= AV_LOG_DEBUG)
-            m_code.setLogger(&m_logger);
+            m_code.set_logger(&m_logger);
         m_cc = new a64::Compiler(&m_code);
         a64::Compiler &cc = *m_cc;
-        cc.addDiagnosticOptions(DiagnosticOptions::kRAAnnotate);
-        m_func = cc.addFunc(FuncSignature::build<void, uint8_t *, uint8_t *, int, int, int, int>());
+        cc.add_diagnostic_options(DiagnosticOptions::kRAAnnotate);
+        m_func = cc.add_func(FuncSignature::build<void, uint8_t *, uint8_t *, int, int, int, int>());
+#if 0
+// TODO
         /* HACK to set function name in asmjit */
         {
             LabelNode *func_label_node = static_cast<LabelNode *>(m_func);
-            uint32_t func_label_id = func_label_node->labelId();
-            LabelEntry *func_label_entry = m_code.labelEntry(func_label_id);
-            func_label_entry->_type = LabelType::kGlobal;
+            uint32_t func_label_id = func_label_node->label_id();
+            LabelEntry &func_label_entry = m_code.label_entry_of(func_label_id);
+            func_label_entry._type = LabelType::kGlobal;
             snprintf(m_func_name, sizeof(m_func_name), "asmjit_%s_to_%s_neon",
                      av_get_pix_fmt_name(ops->src.format),
                      av_get_pix_fmt_name(ops->dst.format));
-            func_label_entry->_name.setData(&m_code._zone, m_func_name, strlen(m_func_name));
+            func_label_entry._name.setData(&m_code._zone, m_func_name, strlen(m_func_name));
         }
+#endif
         cc.comment("=> prologue");
         m_prologue = cc.cursor();
         cc.comment("=> setup");
         m_setup = cc.cursor();
         cc.align(AlignMode::kCode, 16);
         cc.comment("=> inner loop");
-        m_loop = cc.newNamedLabel("loop");
+        m_loop = cc.new_named_label("loop");
         cc.bind(m_loop);
         m_tail = cc.cursor();
         m_cmp_x = nullptr;
@@ -214,10 +217,10 @@ struct AsmJitContext {
         m_vec_idx++;
     }
 
-    void to_prologue  (void) { m_tail     = m_cc->setCursor(m_prologue); }
-    void to_setup     (void) { m_tail     = m_cc->setCursor(m_setup); }
-    void from_prologue(void) { m_prologue = m_cc->setCursor(m_tail); }
-    void from_setup   (void) { m_setup    = m_cc->setCursor(m_tail); }
+    void to_prologue  (void) { m_tail     = m_cc->set_cursor(m_prologue); }
+    void to_setup     (void) { m_tail     = m_cc->set_cursor(m_setup); }
+    void from_prologue(void) { m_prologue = m_cc->set_cursor(m_tail); }
+    void from_setup   (void) { m_setup    = m_cc->set_cursor(m_tail); }
 
     /* immediates */
     size_t push_imm32(uint32_t val, int len = 4)
@@ -252,8 +255,8 @@ struct AsmJitContext {
         m_imm.push_back(std::make_pair(val, (small_value << 16) | (repeat_len << 8) | len));
         char cbuf[64];
         snprintf(cbuf, sizeof(cbuf), "vimm%d", (int) ret);
-        a64::Vec vimm = m_cc->newVecQ(cbuf);
-        m_cc->virtRegByReg(vimm)->setHomeIdHint(REGID_VIMM + ret);
+        a64::Vec vimm = m_cc->new_vec_q(cbuf);
+        m_cc->virt_reg_by_reg(vimm)->set_home_id_hint(REGID_VIMM + ret);
         m_vimm.push_back(vimm);
         return ret;
     }
@@ -365,8 +368,8 @@ struct AsmJitContext {
             size_t vidx = (ret >> 2);
             char cbuf[64];
             snprintf(cbuf, sizeof(cbuf), "vdata%d", (int) vidx);
-            a64::Vec vdata = m_cc->newVecQ(cbuf).b16();
-            m_cc->virtRegByReg(vdata)->setHomeIdHint(REGID_VDATA + vidx);
+            a64::Vec vdata = m_cc->new_vec_q(cbuf).b16();
+            m_cc->virt_reg_by_reg(vdata)->set_home_id_hint(REGID_VDATA + vidx);
             m_vdata.push_back(vdata);
         }
         return ret;
@@ -386,13 +389,13 @@ struct AsmJitContext {
     {
         a64::Compiler &cc = *m_cc;
 
-        Label ldata = cc.newNamedLabel(name);
+        Label ldata = cc.new_named_label(name);
         BaseNode *cursor = cc.cursor();
-        cc.setCursor(m_func->endNode()->prev());
+        cc.set_cursor(m_func->end_node()->prev());
         cc.align(AlignMode::kData, 16);
         cc.bind(ldata);
         cc.embed(data, size);
-        cc.setCursor(cursor);
+        cc.set_cursor(cursor);
 
         return ldata;
     }
@@ -501,9 +504,9 @@ struct AsmJitContext {
 
         cc.comment("horizontal loop back");
         if (m_xy_used) {
-            BaseNode *cur_node = cc.setCursor(m_cmp_x);
+            BaseNode *cur_node = cc.set_cursor(m_cmp_x);
             cc.add(m_x, m_x, 1);
-            cc.setCursor(cur_node);
+            cc.set_cursor(cur_node);
             cc.cmp(m_x, m_x_end);
             cc.b(a64::CondCode::kLO, m_loop);
         } else {
@@ -581,7 +584,7 @@ static inline void save_vectors_mask(AsmJitContext *ctx, VectorElementType *vet,
 
 static inline a64::Vec new_vector_vet(AsmJitContext *ctx, VectorElementType *vet, const char *name)
 {
-    a64::Vec ret = ctx->m_cc->newVecQ(name);
+    a64::Vec ret = ctx->m_cc->new_vec_q(name);
     return vet->type(ret);
 }
 
@@ -806,21 +809,21 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
 
     /* Allocate all GPRs in a deterministic order */
     a64::Compiler &cc = *ctx->m_cc;
-    ctx->m_exec       = cc.newGpz("exec");
-    ctx->m_priv       = cc.newGpz("priv");
-    ctx->m_x_start    = cc.newGpw("x_start");
-    ctx->m_y          = cc.newGpw("y");
-    ctx->m_x_end      = cc.newGpw("x_end");
-    ctx->m_y_end      = cc.newGpw("y_end");
-    ctx->m_x          = cc.newGpw("x");
+    ctx->m_exec       = cc.new_gpz("exec");
+    ctx->m_priv       = cc.new_gpz("priv");
+    ctx->m_x_start    = cc.new_gpw("x_start");
+    ctx->m_y          = cc.new_gpw("y");
+    ctx->m_x_end      = cc.new_gpw("x_end");
+    ctx->m_y_end      = cc.new_gpw("y_end");
+    ctx->m_x          = cc.new_gpw("x");
 
-    ctx->m_func->setArg(0, ctx->m_exec);
-    ctx->m_func->setArg(1, ctx->m_priv);
-    ctx->m_func->setArg(2, ctx->m_x_start);
-    ctx->m_func->setArg(3, ctx->m_y);
-    ctx->m_func->setArg(4, ctx->m_x_end);
-    ctx->m_func->setArg(5, ctx->m_y_end);
-    cc.virtRegByReg(ctx->m_x)->setHomeIdHint(6);
+    ctx->m_func->set_arg(0, ctx->m_exec);
+    ctx->m_func->set_arg(1, ctx->m_priv);
+    ctx->m_func->set_arg(2, ctx->m_x_start);
+    ctx->m_func->set_arg(3, ctx->m_y);
+    ctx->m_func->set_arg(4, ctx->m_x_end);
+    ctx->m_func->set_arg(5, ctx->m_y_end);
+    cc.virt_reg_by_reg(ctx->m_x)->set_home_id_hint(6);
 
     /* scratch registers */
     ctx->m_scratch[0] = ctx->m_exec;
@@ -834,23 +837,23 @@ static void asmjit_allocate_gprs(AsmJitContext *ctx, const SwsOpList *ops)
     char cbuf[64];
     LOOP_ARRAY(i, ctx->m_read_used) {
         snprintf(cbuf, sizeof(cbuf), "in%d", i);
-        ctx->m_in[i] = cc.newGpz(cbuf);
-        cc.virtRegByReg(ctx->m_in[i])->setHomeIdHint(ctx->new_gpr());
+        ctx->m_in[i] = cc.new_gpz(cbuf);
+        cc.virt_reg_by_reg(ctx->m_in[i])->set_home_id_hint(ctx->new_gpr());
     }
     LOOP_ARRAY(i, ctx->m_write_used) {
         snprintf(cbuf, sizeof(cbuf), "out%d", i);
-        ctx->m_out[i] = cc.newGpz(cbuf);
-        cc.virtRegByReg(ctx->m_out[i])->setHomeIdHint(ctx->new_gpr());
+        ctx->m_out[i] = cc.new_gpz(cbuf);
+        cc.virt_reg_by_reg(ctx->m_out[i])->set_home_id_hint(ctx->new_gpr());
     }
     LOOP_ARRAY(i, ctx->m_read_used) {
         snprintf(cbuf, sizeof(cbuf), "in_padding%d", i);
-        ctx->m_in_padding[i] = cc.newGpz(cbuf);
-        cc.virtRegByReg(ctx->m_in_padding[i])->setHomeIdHint(ctx->new_gpr());
+        ctx->m_in_padding[i] = cc.new_gpz(cbuf);
+        cc.virt_reg_by_reg(ctx->m_in_padding[i])->set_home_id_hint(ctx->new_gpr());
     }
     LOOP_ARRAY(i, ctx->m_write_used) {
         snprintf(cbuf, sizeof(cbuf), "out_padding%d", i);
-        ctx->m_out_padding[i] = cc.newGpz(cbuf);
-        cc.virtRegByReg(ctx->m_out_padding[i])->setHomeIdHint(ctx->new_gpr());
+        ctx->m_out_padding[i] = cc.new_gpz(cbuf);
+        cc.virt_reg_by_reg(ctx->m_out_padding[i])->set_home_id_hint(ctx->new_gpr());
     }
 }
 
@@ -883,7 +886,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         /* Read vectors from input pointers */
         cc.comment("read");
         if (op->rw.frac == 3) {
-            a64::Vec shift = cc.newVecQ("read_shift");
+            a64::Vec shift = cc.new_vec_q("read_shift");
 
             ctx->to_setup();
             uint8_t shift_array[16] = { 0 };
@@ -898,7 +901,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             new_vector(ctx, &vet, 0, 0x0f);
             size_t vidx = ctx->push_imm8(1);
             if (block_size == 16) {
-                a64::Vec tmp1 = cc.newVecQ("tmp1");
+                a64::Vec tmp1 = cc.new_vec_q("tmp1");
                 a64::Gp tmp_gpr = ctx->m_scratch[1].r32();
                 cc.ldrh(tmp_gpr,     a64::ptr(ctx->m_in[0]).post(2));
                 cc.dup (vl[0].b8(),  tmp_gpr);
@@ -958,7 +961,7 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             /* NOTE only blocksize of 8 is supported */
             av_assert0(block_size == 8);
 
-            a64::Vec shift = cc.newVecQ("write_shift");
+            a64::Vec shift = cc.new_vec_q("write_shift");
 
             ctx->to_setup();
             uint8_t shift_array[16] = { 0 };
@@ -976,8 +979,8 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             ctx->m_cmp_x = cc.cursor();
             cc.str(vl[0].b(), a64::ptr(ctx->m_out[0]).post(1));
         } else if (!op->rw.packed) {
-            LOOP_IN   (i) cc.virtRegByReg(vl[i])->setHomeIdHint(REGID_VSTX + i);
-            LOOP_IN_VH(i) cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i + 4);
+            LOOP_IN   (i) cc.virt_reg_by_reg(vl[i])->set_home_id_hint(REGID_VSTX + i);
+            LOOP_IN_VH(i) cc.virt_reg_by_reg(vh[i])->set_home_id_hint(REGID_VSTX + i + 4);
             LOOP_IN   (i) {
                 save_vector(ctx, &vet, i);
                 switch ((use_vh ? 0x100 : 0) | vet_size) {
@@ -990,9 +993,9 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
         } else {
 #if 1
             for (int i = 0; i < op->rw.elems; i++) {
-                cc.virtRegByReg    (vl[i])->setHomeIdHint(REGID_VSTX + i);
+                cc.virt_reg_by_reg    (vl[i])->set_home_id_hint(REGID_VSTX + i);
                 if (use_vh)
-                    cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSTX + i + 4);
+                    cc.virt_reg_by_reg(vh[i])->set_home_id_hint(REGID_VSTX + i + 4);
             }
 #endif
             for (int i = 0; i < op->rw.elems; i++) {
@@ -1269,8 +1272,8 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             LOOP_OUT(i) {
                 // offset = ((((y + yoff[i]) & mask) << log2_size) + (x & mask)) * sizeof(float32);
 
-                a64::Vec dither_vl = vet.type(cc.newVecQ("vditherl"));
-                a64::Vec dither_vh = vet.type(cc.newVecQ("vditherh"));
+                a64::Vec dither_vl = vet.type(cc.new_vec_q("vditherl"));
+                a64::Vec dither_vh = vet.type(cc.new_vec_q("vditherh"));
 
                 if (last_y_off < 0) {
                     /* On the first run, calculate pointer inside dither_matrix */
@@ -1298,13 +1301,13 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
                     /* On subsequent runs, just increment the pointer.
                      * The matrix repeats itself at the end, so we don't risk overreading.
                      */
-                    last_use_of_ptr = cc.setCursor(last_use_of_ptr);
+                    last_use_of_ptr = cc.set_cursor(last_use_of_ptr);
                     int offset = (y_off[i] - last_y_off) * size * sizeof(float);
                     if (offset < 0)
                         cc.sub(ptr, ptr, -offset);
                     else
                         cc.add(ptr, ptr, offset);
-                    cc.setCursor(last_use_of_ptr);
+                    cc.set_cursor(last_use_of_ptr);
                 }
                 last_y_off = y_off[i];
 
@@ -1594,36 +1597,36 @@ static void asmjit_compile_op(AsmJitContext *ctx, const SwsOpList *ops, int n)
             int vconst_count = (const_data_size >> 4);
             for (int i = 0; i < vin_count; i++) {
                 snprintf(cbuf, sizeof(cbuf), "vin%d", i);
-                vl[i] = cc.newVecQ(cbuf).b16();
-                cc.virtRegByReg(vl[i])->setHomeIdHint(REGID_VSHUFFLE_IN + i);
+                vl[i] = cc.new_vec_q(cbuf).b16();
+                cc.virt_reg_by_reg(vl[i])->set_home_id_hint(REGID_VSHUFFLE_IN + i);
             }
             /* Create output vectors */
             for (int i = 0; i < vout_count; i++) {
                 snprintf(cbuf, sizeof(cbuf), "vout%d", i);
-                vh[i] = cc.newVecQ(cbuf).b16();
-                cc.virtRegByReg(vh[i])->setHomeIdHint(REGID_VSHUFFLE_OUT + i);
+                vh[i] = cc.new_vec_q(cbuf).b16();
+                cc.virt_reg_by_reg(vh[i])->set_home_id_hint(REGID_VSHUFFLE_OUT + i);
             }
             /* Create tbl data vectors */
             std::vector<a64::Vec> vshuffle;
             for (int i = 0; i < tbl_insn_count; i++) {
                 snprintf(cbuf, sizeof(cbuf), "vshuffle%d", i);
-                a64::Vec vreg = cc.newVecQ(cbuf).b16();
+                a64::Vec vreg = cc.new_vec_q(cbuf).b16();
                 vshuffle.push_back(vreg);
-                cc.virtRegByReg(vreg)->setHomeIdHint(REGID_VSHUFFLE_TBL + i);
+                cc.virt_reg_by_reg(vreg)->set_home_id_hint(REGID_VSHUFFLE_TBL + i);
             }
             /* Create const data vectors */
             std::vector<a64::Vec> vconst;
             for (int i = 0; i < vconst_count; i++) {
                 snprintf(cbuf, sizeof(cbuf), "vconst%d", i);
-                a64::Vec vreg = cc.newVecQ(cbuf).b16();
+                a64::Vec vreg = cc.new_vec_q(cbuf).b16();
                 vconst.push_back(vreg);
-                cc.virtRegByReg(vreg)->setHomeIdHint(REGID_VSHUFFLE_CONST + i);
+                cc.virt_reg_by_reg(vreg)->set_home_id_hint(REGID_VSHUFFLE_CONST + i);
             }
             /* Create temporary vectors */
             std::vector<a64::Vec> vtmp;
             for (int i = 0; i < vtmp_count; i++) {
                 snprintf(cbuf, sizeof(cbuf), "vtmp%d", i);
-                a64::Vec vreg = cc.newVecQ(cbuf).b16();
+                a64::Vec vreg = cc.new_vec_q(cbuf).b16();
                 vtmp.push_back(vreg);
             }
 
@@ -1750,14 +1753,14 @@ static av_cold int asmjit_compile(SwsContext *swsctx, SwsOpList *ops, SwsCompile
 
     cc.ret();
 
-    err = cc.endFunc();
-    if (err) {
-        std::cout << "Failed to end function: " << DebugUtils::errorAsString(err) << "\n";
+    err = cc.end_func();
+    if (err != Error::kOk) {
+        std::cout << "Failed to end function: " << DebugUtils::error_as_string(err) << "\n";
         goto log_and_error;
     }
     err = cc.finalize();
-    if (err) {
-        std::cout << "Failed to finalize code: " << DebugUtils::errorAsString(err) << "\n";
+    if (err != Error::kOk) {
+        std::cout << "Failed to finalize code: " << DebugUtils::error_as_string(err) << "\n";
         goto log_and_error;
     }
 
@@ -1773,7 +1776,7 @@ static av_cold int asmjit_compile(SwsContext *swsctx, SwsOpList *ops, SwsCompile
         FILE *fp = fopen(path, "a");
         if (fp) {
             uintptr_t address = (uintptr_t) out->func;
-            size_t size = ctx->m_code.codeSize();
+            size_t size = ctx->m_code.code_size();
             const char *name = ctx->m_func_name;
             fprintf(fp, "%" PRIxPTR " %zx %s\n", address, size, name);
             fclose(fp);
