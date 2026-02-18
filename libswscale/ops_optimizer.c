@@ -378,7 +378,6 @@ retry:
                     continue;
 
                 if ((prev->comps.flags[i] & SWS_COMP_ZERO) &&
-                    !(prev->comps.flags[i] & SWS_COMP_GARBAGE) &&
                     op->c.q4[i].num == 0)
                 {
                     /* Redundant clear-to-zero of zero component */

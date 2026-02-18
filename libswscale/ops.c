@@ -220,9 +220,7 @@ void ff_sws_apply_op_q(const SwsOp *op, AVRational x[4])
 static const unsigned flags_identity = SWS_COMP_ZERO | SWS_COMP_EXACT;
 static unsigned merge_comp_flags(unsigned a, unsigned b)
 {
-    const unsigned flags_or  = SWS_COMP_GARBAGE;
-    const unsigned flags_and = SWS_COMP_ZERO | SWS_COMP_EXACT;
-    return ((a & b) & flags_and) | ((a | b) & flags_or);
+    return ((a & b) & flags_identity);
 }
 
 /* Infer + propagate known information about components */
@@ -299,8 +297,7 @@ void ff_sws_op_list_update_comps(SwsOpList *ops)
                     op->comps.flags[i] = prev.flags[0];
                     op->comps.min[i]   = Q(0);
                     op->comps.max[i]   = Q((1ULL << pattern) - 1);
-                } else
-                    op->comps.flags[i] = SWS_COMP_GARBAGE;
+                }
             }
             break;
         case SWS_OP_PACK: {
@@ -308,8 +305,6 @@ void ff_sws_op_list_update_comps(SwsOpList *ops)
             for (int i = 0; i < 4; i++) {
                 if (op->pack.pattern[i])
                     flags = merge_comp_flags(flags, prev.flags[i]);
-                if (i > 0) /* clear remaining comps for sanity */
-                    op->comps.flags[i] = SWS_COMP_GARBAGE;
             }
             op->comps.flags[0] = flags;
             break;
@@ -453,6 +448,15 @@ void ff_sws_op_list_update_comps(SwsOpList *ops)
                 op->comps.unused[j] = unused;
             }
             break;
+        }
+
+        /* Clear unused components */
+        for (int i = (op->op == SWS_OP_WRITE) ? op->rw.elems : 0; i < 4; i++) {
+            if (next.unused[i]) {
+                op->comps.flags[i] = SWS_COMP_GARBAGE;
+                op->comps.min[i].den = 0;
+                op->comps.max[i].den = 0;
+            }
         }
 
         next = op->comps;
