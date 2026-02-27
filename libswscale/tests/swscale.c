@@ -490,6 +490,39 @@ static int run_file_tests(const AVFrame *ref, FILE *fp, struct options opts)
     return 0;
 }
 
+static int initialize_reference_frame(AVFrame *ref, const struct options *opts)
+{
+    SwsContext *ctx = sws_alloc_context();
+    AVFrame *rgb = av_frame_alloc();
+    AVLFG rand;
+    int ret = -1;
+
+    if (!ctx || !rgb)
+        goto error;
+
+    rgb->width  = opts->w / 12;
+    rgb->height = opts->h / 12;
+    rgb->format = AV_PIX_FMT_RGBA;
+    if (av_frame_get_buffer(rgb, 32) < 0)
+        goto error;
+
+    av_lfg_init(&rand, 1);
+    for (int y = 0; y < rgb->height; y++) {
+        for (int x = 0; x < rgb->width; x++) {
+            for (int c = 0; c < 4; c++)
+                rgb->data[0][y * rgb->linesize[0] + x * 4 + c] = av_lfg_get(&rand);
+        }
+    }
+
+    ctx->flags = SWS_BILINEAR;
+    ret = sws_scale_frame(ctx, ref, rgb);
+
+error:
+    sws_free_context(&ctx);
+    av_frame_free(&rgb);
+    return ret;
+}
+
 static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
 {
     int ret = -1;
@@ -606,7 +639,7 @@ int main(int argc, char **argv)
         .dither  = -1,
     };
 
-    AVFrame *rgb = NULL, *ref = NULL;
+    AVFrame *ref = NULL;
     FILE *fp = NULL;
     AVLFG rand;
     int ret = -1;
@@ -625,22 +658,6 @@ int main(int argc, char **argv)
         sws[i]->flags = SWS_BILINEAR;
     }
 
-    rgb = av_frame_alloc();
-    if (!rgb)
-        goto error;
-    rgb->width  = opts.w / 12;
-    rgb->height = opts.h / 12;
-    rgb->format = AV_PIX_FMT_RGBA;
-    if (av_frame_get_buffer(rgb, 32) < 0)
-        goto error;
-
-    for (int y = 0; y < rgb->height; y++) {
-        for (int x = 0; x < rgb->width; x++) {
-            for (int c = 0; c < 4; c++)
-                rgb->data[0][y * rgb->linesize[0] + x * 4 + c] = av_lfg_get(&rand);
-        }
-    }
-
     ref = av_frame_alloc();
     if (!ref)
         goto error;
@@ -648,7 +665,7 @@ int main(int argc, char **argv)
     ref->height = opts.h;
     ref->format = AV_PIX_FMT_YUVA444P;
 
-    if (sws_scale_frame(sws[0], ref, rgb) < 0)
+    if (initialize_reference_frame(ref, &opts) < 0)
         goto error;
 
     ret = fp ? run_file_tests(ref, fp, opts)
@@ -658,7 +675,6 @@ int main(int argc, char **argv)
 error:
     for (int i = 0; i < 3; i++)
         sws_free_context(&sws[i]);
-    av_frame_free(&rgb);
     av_frame_free(&ref);
     if (fp)
         fclose(fp);
