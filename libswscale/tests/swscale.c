@@ -51,6 +51,7 @@ struct options {
     int flags;
     int dither;
     int unscaled;
+    int legacy;
 };
 
 struct mode {
@@ -605,6 +606,8 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
                     "       Test with a specific dither mode\n"
                     "   -unscaled <1 or 0>\n"
                     "       If 1, test only conversions that do not involve scaling\n"
+                    "   -legacy <1 or 0>\n"
+                    "       If 1, force using legacy swscale\n"
                     "   -threads <threads>\n"
                     "       Use the specified number of threads\n"
                     "   -cpuflags <cpuflags>\n"
@@ -661,6 +664,8 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
             opts->dither = atoi(argv[i + 1]);
         } else if (!strcmp(argv[i], "-unscaled")) {
             opts->unscaled = atoi(argv[i + 1]);
+        } else if (!strcmp(argv[i], "-legacy")) {
+            opts->legacy = atoi(argv[i + 1]);
         } else if (!strcmp(argv[i], "-threads")) {
             opts->threads = atoi(argv[i + 1]);
         } else if (!strcmp(argv[i], "-p")) {
