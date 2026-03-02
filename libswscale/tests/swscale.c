@@ -519,7 +519,7 @@ static int initialize_reference_frame(AVFrame *ref, const struct options *opts)
         }
     }
 
-    ctx->flags = SWS_BILINEAR;
+    ctx->flags = SWS_BILINEAR | SWS_BITEXACT;
     ret = sws_scale_frame(ctx, ref, rgb);
 
 error:
@@ -661,9 +661,8 @@ int main(int argc, char **argv)
     sws_dst_out = sws_alloc_context();
     if (!sws_ref_src || !sws_src_dst || !sws_dst_out)
         goto error;
-    sws_ref_src->flags = SWS_BILINEAR;
-    sws_src_dst->flags = SWS_BILINEAR;
-    sws_dst_out->flags = SWS_BILINEAR;
+    sws_ref_src->flags = SWS_BILINEAR | SWS_BITEXACT;
+    sws_dst_out->flags = SWS_BILINEAR | SWS_BITEXACT;
 
     ref = av_frame_alloc();
     if (!ref)
