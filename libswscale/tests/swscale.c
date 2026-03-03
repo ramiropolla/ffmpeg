@@ -197,42 +197,32 @@ static float get_loss(const float ssim[4])
     return 1.0 - sum;
 }
 
-static int scale_legacy(AVFrame *dst, const AVFrame *src,
-                        const struct mode *mode, const struct options *opts)
+static int init_legacy_context(AVFrame *dst, const AVFrame *src,
+                               const struct mode *mode, const struct options *opts)
 {
-    SwsContext *sws_legacy;
-    int ret;
+    sws_free_context(&sws_src_dst);
+    sws_src_dst = sws_alloc_context();
+    if (!sws_src_dst)
+        return AVERROR(ENOMEM);
 
-    sws_legacy = sws_alloc_context();
-    if (!sws_legacy)
-        return -1;
-
-    sws_legacy->src_w      = src->width;
-    sws_legacy->src_h      = src->height;
-    sws_legacy->src_format = src->format;
-    sws_legacy->dst_w      = dst->width;
-    sws_legacy->dst_h      = dst->height;
-    sws_legacy->dst_format = dst->format;
-    sws_legacy->flags      = mode->flags;
-    sws_legacy->dither     = mode->dither;
-    sws_legacy->threads    = opts->threads;
+    sws_src_dst->src_w      = src->width;
+    sws_src_dst->src_h      = src->height;
+    sws_src_dst->src_format = src->format;
+    sws_src_dst->dst_w      = dst->width;
+    sws_src_dst->dst_h      = dst->height;
+    sws_src_dst->dst_format = dst->format;
+    sws_src_dst->flags      = mode->flags;
+    sws_src_dst->dither     = mode->dither;
+    sws_src_dst->threads    = opts->threads;
 
     /* Clear dst frame to prevent overwriting data referenced from src. */
     av_frame_unref(dst);
     av_frame_copy_props(dst, src);
-    dst->width  = sws_legacy->dst_w;
-    dst->height = sws_legacy->dst_h;
-    dst->format = sws_legacy->dst_format;
+    dst->width  = sws_src_dst->dst_w;
+    dst->height = sws_src_dst->dst_h;
+    dst->format = sws_src_dst->dst_format;
 
-    if ((ret = sws_init_context(sws_legacy, NULL, NULL)) < 0)
-        goto error;
-
-    for (int i = 0; ret >= 0 && i < opts->iters; i++)
-        ret = sws_scale_frame(sws_legacy, dst, src);
-
-error:
-    sws_freeContext(sws_legacy);
-    return ret;
+    return sws_init_context(sws_src_dst, NULL, NULL);
 }
 
 static void print_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
@@ -243,63 +233,82 @@ static void print_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
                        float loss_ref, float expected_loss, float loss,
                        int64_t time_ref, int64_t time)
 {
-    av_log(NULL, AV_LOG_INFO, "%s %dx%d -> %s %3dx%3d, flags=0x%x dither=%u"
-           " SSIM {Y=%f U=%f V=%f A=%f}\n",
+    printf("%-14s w=%4d h=%4d -> %-14s w=%4d h=%4d, flags=0x%08x dither=%u"
+           " SSIM {Y=%f U=%f V=%f A=%f} loss=%e",
            av_get_pix_fmt_name(src_fmt), src->width, src->height,
            av_get_pix_fmt_name(dst_fmt), dst->width, dst->height,
            mode->flags, mode->dither,
-           ssim[0], ssim[1], ssim[2], ssim[3]);
+           ssim[0], ssim[1], ssim[2], ssim[3], loss);
+
+    if (opts->bench) {
+        printf(" time=%6"PRId64" us", time / opts->iters);
+        if (time_ref) {
+            double ratio = (double) time_ref / time;
+            if (FFMIN(time, time_ref) > 100 /* don't pollute stats with low precision */) {
+                speedup_min = FFMIN(speedup_min, ratio);
+                speedup_max = FFMAX(speedup_max, ratio);
+                speedup_logavg += log(ratio);
+                speedup_count++;
+            }
+
+            printf(" ref=%"PRId64" us, speedup=%.3fx %s%s\033[0m",
+                   time_ref / opts->iters, ratio,
+                   speedup_color(ratio), ratio >= 1.0 ? "faster" : "slower");
+        }
+    }
+    printf("\n");
 
     if (loss - expected_loss > 1e-4 && dst_w >= ref->width && dst_h >= ref->height) {
         const int bad = loss - expected_loss > 1e-2;
         const int level = bad ? AV_LOG_ERROR : AV_LOG_WARNING;
-        av_log(NULL, level, "  loss %g is %s by %g, expected loss %g\n",
-               loss, bad ? "WORSE" : "worse", loss - expected_loss, expected_loss);
+        av_log(NULL, level, "  loss is %s by %g, expected loss %g\n",
+               bad ? "WORSE" : "worse", loss - expected_loss, expected_loss);
     }
 
-    if (ssim_ref) {
-        if (loss - loss_ref > 1e-4) {
-            int bad = loss - loss_ref > 1e-2;
-            av_log(NULL, bad ? AV_LOG_ERROR : AV_LOG_WARNING,
-                   "  loss %g is %s by %g, ref loss %g, "
-                   "SSIM {Y=%f U=%f V=%f A=%f}\n",
-                   loss, bad ? "WORSE" : "worse", loss - loss_ref, loss_ref,
-                   ssim_ref[0], ssim_ref[1], ssim_ref[2], ssim_ref[3]);
-        }
-    }
-
-    if (opts->bench && time_ref) {
-        double ratio = (double) time_ref / time;
-        if (FFMIN(time, time_ref) > 100 /* don't pollute stats with low precision */) {
-            speedup_min = FFMIN(speedup_min, ratio);
-            speedup_max = FFMAX(speedup_max, ratio);
-            speedup_logavg += log(ratio);
-            speedup_count++;
-        }
-
-        if (av_log_get_level() >= AV_LOG_INFO) {
-            printf("  time=%"PRId64" us, ref=%"PRId64" us, speedup=%.3fx %s%s\033[0m\n",
-                   time / opts->iters, time_ref / opts->iters, ratio,
-                   speedup_color(ratio), ratio >= 1.0 ? "faster" : "slower");
-        }
-    } else if (opts->bench) {
-        av_log(NULL, AV_LOG_INFO, "  time=%"PRId64" us\n", time / opts->iters);
+    if (ssim_ref && loss - loss_ref > 1e-4) {
+        const int bad = loss - loss_ref > 1e-2;
+        const int level = bad ? AV_LOG_ERROR : AV_LOG_WARNING;
+        av_log(NULL, level, "  loss is %s by %g, ref loss %g\n",
+               bad ? "WORSE" : "worse", loss - loss_ref, loss_ref);
     }
 
     fflush(stdout);
+}
+
+static int sws_scale_frame_wrapper(SwsContext *c, AVFrame *dst, const AVFrame *src)
+{
+    int ret = sws_scale_frame(c, dst, src);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
+               av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format));
+    }
+    return ret;
+}
+
+static AVFrame *initialize_frame(const AVFrame *ref, int width, int height, enum AVPixelFormat format)
+{
+    AVFrame *frame = av_frame_alloc();
+    if (frame) {
+        av_frame_copy_props(frame, ref);
+        frame->width  = width;
+        frame->height = height;
+        frame->format = format;
+    }
+    return frame;
 }
 
 /* Runs a series of ref -> src -> dst -> out, and compares out vs ref */
 static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
                     int dst_w, int dst_h,
                     const struct mode *mode, const struct options *opts,
-                    const AVFrame *ref, AVFrame *src, const float ssim_ref[4])
+                    const AVFrame *ref, AVFrame *src,
+                    const float ssim_ref[4], float loss_ref)
 {
     AVFrame *dst = NULL, *out = NULL;
-    float ssim[4], ssim_sws[4];
+    float ssim[4];
     const int comps = fmt_comps(src_fmt) & fmt_comps(dst_fmt);
     int64_t time, time_ref = 0;
-    int ret = -1;
+    int ret = 0;
 
     /* Estimate the expected amount of loss from bit depth reduction */
     const float c1 = 0.01 * 0.01; /* stabilization constant */
@@ -311,78 +320,58 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     const float ssim_luma = (2 * ref_var + c1) / (2 * ref_var + total_var + c1);
     const float ssim_expected[4] = { ssim_luma, 1, 1, 1 }; /* for simplicity */
     const float expected_loss = get_loss(ssim_expected);
-    float loss_ref = 0.;
     float loss;
 
-    dst = av_frame_alloc();
-    out = av_frame_alloc();
-    if (!dst || !out)
-        goto error;
-
+    /* ref -> src (if needed) */
     if (src->format != src_fmt) {
         av_frame_unref(src);
         av_frame_copy_props(src, ref);
         src->width  = ref->width;
         src->height = ref->height;
         src->format = src_fmt;
-        if (sws_scale_frame(sws_ref_src, src, ref) < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
-                   av_get_pix_fmt_name(ref->format), av_get_pix_fmt_name(src_fmt));
+        ret = sws_scale_frame_wrapper(sws_ref_src, src, ref);
+        if (ret < 0)
             goto error;
-        }
     }
 
-    av_frame_copy_props(dst, ref);
-    av_frame_copy_props(out, ref);
-    out->width  = ref->width;
-    out->height = ref->height;
-    out->format = ref->format;
-    dst->format = dst_fmt;
-    dst->width  = dst_w;
-    dst->height = dst_h;
-
-    sws_src_dst->flags  = mode->flags;
-    sws_src_dst->dither = mode->dither;
-    sws_src_dst->threads = opts->threads;
-
-    time = av_gettime_relative();
-
-    for (int i = 0; i < opts->iters; i++) {
-        if (sws_scale_frame(sws_src_dst, dst, src) < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
-                   av_get_pix_fmt_name(src_fmt), av_get_pix_fmt_name(dst_fmt));
-            goto error;
-        }
-    }
-
-    time = av_gettime_relative() - time;
-
-    if (sws_scale_frame(sws_dst_out, out, dst) < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
-               av_get_pix_fmt_name(dst_fmt), av_get_pix_fmt_name(out->format));
+    /* src -> dst */
+    dst = initialize_frame(ref, dst_w, dst_h, dst_fmt);
+    if (!dst) {
+        ret = AVERROR(ENOMEM);
         goto error;
     }
 
+    if (opts->legacy) {
+        ret = init_legacy_context(dst, src, mode, opts);
+        if (ret < 0)
+            goto error;
+    } else {
+        sws_src_dst->flags  = mode->flags;
+        sws_src_dst->dither = mode->dither;
+        sws_src_dst->threads = opts->threads;
+    }
+
+    time = av_gettime_relative();
+    for (int i = 0; ret >= 0 && i < opts->iters; i++)
+        ret = sws_scale_frame_wrapper(sws_src_dst, dst, src);
+    time = av_gettime_relative() - time;
+    if (ret < 0)
+        goto error;
+
+    /* dst -> out */
+    out = initialize_frame(ref, ref->width, ref->height, ref->format);
+    if (!out) {
+        ret = AVERROR(ENOMEM);
+        goto error;
+    }
+
+    ret = sws_scale_frame_wrapper(sws_dst_out, out, dst);
+    if (ret < 0)
+        goto error;
+
     get_ssim(ssim, out, ref, comps);
-    loss = get_loss(ssim);
-    if (loss - expected_loss > 1e-2 && dst_w >= ref->width && dst_h >= ref->height)
-        goto early_exit;
 
-    if (!ssim_ref) {
-        /* Compare against the legacy swscale API as a reference */
-        time_ref = av_gettime_relative();
-        if (scale_legacy(dst, src, mode, opts) < 0) {
-            av_log(NULL, AV_LOG_ERROR, "Failed ref %s ---> %s\n",
-                   av_get_pix_fmt_name(src_fmt), av_get_pix_fmt_name(dst_fmt));
-            goto error;
-        }
-        time_ref = av_gettime_relative() - time_ref;
-
-        if (sws_scale_frame(sws_dst_out, out, dst) < 0)
-            goto error;
-
-        get_ssim(ssim_sws, out, ref, comps);
-
+    if (opts->legacy) {
         /* Legacy swscale does not perform bit accurate upconversions of low
          * bit depth RGB. This artificially improves the SSIM score because the
          * resulting error deletes some of the input dither noise. This gives
@@ -391,17 +380,16 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
          * higher than it theoretically "should" be. */
         if (src_var > dst_var) {
             const float src_loss = (2 * ref_var + c1) / (2 * ref_var + src_var + c1);
-            ssim_sws[0] = FFMIN(ssim_sws[0], src_loss);
+            ssim[0] = FFMIN(ssim[0], src_loss);
         }
-
-        ssim_ref = ssim_sws;
     }
 
-    if (ssim_ref) {
-        loss_ref = get_loss(ssim_ref);
-        if (loss - loss_ref > 1e-2)
-            goto early_exit;
-    }
+    loss = get_loss(ssim);
+    if (loss - expected_loss > 1e-2 && dst_w >= ref->width && dst_h >= ref->height)
+        goto early_exit;
+
+    if (ssim_ref && loss - loss_ref > 1e-2)
+        goto early_exit;
 
     ret = 0; /* fall through */
 
@@ -470,7 +458,7 @@ static int run_self_tests(const AVFrame *ref, const struct options *opts)
                             continue;
 
                         ret = run_test(src_fmt, dst_fmt, dst_w[w], dst_h[h],
-                                       &mode, opts, ref, src, NULL);
+                                       &mode, opts, ref, src, NULL, 0.);
                         if (ret < 0)
                             goto error;
 
@@ -534,7 +522,7 @@ static int run_file_tests(const AVFrame *ref, FILE *fp, const struct options *op
             opts->dst_fmt != AV_PIX_FMT_NONE && dst_fmt != opts->dst_fmt)
             continue;
 
-        ret = run_test(src_fmt, dst_fmt, dw, dh, &mode, opts, ref, src, ssim);
+        ret = run_test(src_fmt, dst_fmt, dw, dh, &mode, opts, ref, src, ssim, 0.);
         if (ret < 0)
             goto error;
     }
