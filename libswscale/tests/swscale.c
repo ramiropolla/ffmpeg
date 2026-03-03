@@ -252,12 +252,6 @@ static void print_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     if (loss - expected_loss > 1e-4 && dst_w >= ref->width && dst_h >= ref->height) {
         const int bad = loss - expected_loss > 1e-2;
         const int level = bad ? AV_LOG_ERROR : AV_LOG_WARNING;
-#if 1
-        av_log(NULL, level, "%s %dx%d -> %s %3dx%3d, flags=0x%x dither=%u\n",
-               av_get_pix_fmt_name(src_fmt), src->width, src->height,
-               av_get_pix_fmt_name(dst_fmt), dst->width, dst->height,
-               mode->flags, mode->dither);
-#endif
         av_log(NULL, level, "  loss %g is %s by %g, expected loss %g\n",
                loss, bad ? "WORSE" : "worse", loss - expected_loss, expected_loss);
     }
