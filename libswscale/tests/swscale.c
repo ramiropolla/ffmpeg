@@ -216,6 +216,13 @@ static int scale_legacy(AVFrame *dst, const AVFrame *src,
     sws_legacy->dither     = mode->dither;
     sws_legacy->threads    = opts->threads;
 
+    /* Clear dst frame to prevent overwriting data referenced from src. */
+    av_frame_unref(dst);
+    av_frame_copy_props(dst, src);
+    dst->width  = sws_legacy->dst_w;
+    dst->height = sws_legacy->dst_h;
+    dst->format = sws_legacy->dst_format;
+
     if ((ret = sws_init_context(sws_legacy, NULL, NULL)) < 0)
         goto error;
 
