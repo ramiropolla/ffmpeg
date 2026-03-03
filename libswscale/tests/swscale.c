@@ -271,7 +271,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         src->format = src_fmt;
         if (sws_scale_frame(sws_ref_src, src, ref) < 0) {
             av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
-                   av_get_pix_fmt_name(ref->format), av_get_pix_fmt_name(src->format));
+                   av_get_pix_fmt_name(ref->format), av_get_pix_fmt_name(src_fmt));
             goto error;
         }
     }
@@ -294,7 +294,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     for (int i = 0; i < opts->iters; i++) {
         if (sws_scale_frame(sws_src_dst, dst, src) < 0) {
             av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
-                   av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format));
+                   av_get_pix_fmt_name(src_fmt), av_get_pix_fmt_name(dst_fmt));
             goto error;
         }
     }
@@ -303,14 +303,14 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
 
     if (sws_scale_frame(sws_dst_out, out, dst) < 0) {
         av_log(NULL, AV_LOG_ERROR, "Failed %s ---> %s\n",
-               av_get_pix_fmt_name(dst->format), av_get_pix_fmt_name(out->format));
+               av_get_pix_fmt_name(dst_fmt), av_get_pix_fmt_name(out->format));
         goto error;
     }
 
     get_ssim(ssim, out, ref, comps);
     av_log(NULL, AV_LOG_INFO, "%s %dx%d -> %s %3dx%3d, flags=0x%x dither=%u\n",
-           av_get_pix_fmt_name(src->format), src->width, src->height,
-           av_get_pix_fmt_name(dst->format), dst->width, dst->height,
+           av_get_pix_fmt_name(src_fmt), src->width, src->height,
+           av_get_pix_fmt_name(dst_fmt), dst->width, dst->height,
            mode->flags, mode->dither);
 
     av_log(NULL, AV_LOG_VERBOSE - 4, "  SSIM {Y=%f U=%f V=%f A=%f}\n",
@@ -321,8 +321,8 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         const int bad = loss - expected_loss > 1e-2;
         const int level = bad ? AV_LOG_ERROR : AV_LOG_WARNING;
         av_log(NULL, level, "%s %dx%d -> %s %3dx%3d, flags=0x%x dither=%u\n",
-               av_get_pix_fmt_name(src->format), src->width, src->height,
-               av_get_pix_fmt_name(dst->format), dst->width, dst->height,
+               av_get_pix_fmt_name(src_fmt), src->width, src->height,
+               av_get_pix_fmt_name(dst_fmt), dst->width, dst->height,
                mode->flags, mode->dither);
         av_log(NULL, level, "  loss %g is %s by %g, expected loss %g\n",
                loss, bad ? "WORSE" : "worse", loss - expected_loss, expected_loss);
@@ -335,7 +335,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
         time_ref = av_gettime_relative();
         if (scale_legacy(dst, src, mode, opts) < 0) {
             av_log(NULL, AV_LOG_ERROR, "Failed ref %s ---> %s\n",
-                   av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format));
+                   av_get_pix_fmt_name(src_fmt), av_get_pix_fmt_name(dst_fmt));
             goto error;
         }
         time_ref = av_gettime_relative() - time_ref;
