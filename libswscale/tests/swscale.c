@@ -271,7 +271,7 @@ static void print_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     if (dst_w >= ref->width && dst_h >= ref->height)
         print_loss(expected_loss, loss, "expected");
 
-    if (loss_ref >= 0.)
+    if (!isnan(loss_ref))
         print_loss(loss_ref, loss, "ref");
 
     fflush(stdout);
@@ -451,7 +451,7 @@ static int run_self_tests(const AVFrame *ref, const struct options *opts)
                             continue;
 
                         ret = run_test(src_fmt, dst_fmt, dst_w[w], dst_h[h],
-                                       &mode, opts, ref, src, -1., 0);
+                                       &mode, opts, ref, src, NAN, 0);
                         if (ret < 0)
                             goto error;
 
