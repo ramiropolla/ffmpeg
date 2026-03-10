@@ -61,7 +61,8 @@ typedef struct SwsOpBackend {
      *
      * Returns 0 or a negative error code.
      */
-    int (*compile)(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out);
+    int (*compile)(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out,
+                   int flags);
 
     /**
      * If NONE, backend only supports software frames.
@@ -80,7 +81,8 @@ extern const SwsOpBackend *const ff_sws_op_backends[];
  * Returns 0 on success, or a negative error code on failure.
  */
 int ff_sws_ops_compile_backend(SwsContext *ctx, const SwsOpBackend *backend,
-                               const SwsOpList *ops, SwsCompiledOp *out);
+                               const SwsOpList *ops, SwsCompiledOp *out,
+                               int flags);
 
 /**
  * Compile a list of operations using the best available backend.
