@@ -153,7 +153,7 @@ static void check_ops(const char *report, const unsigned ranges[NB_PLANES],
         const bool is_ref = !strcmp(backend->name, "c");
         if (is_ref || !comp_new.func) {
             SwsCompiledOp comp;
-            int ret = ff_sws_ops_compile_backend(ctx, backend, &oplist, &comp);
+            int ret = ff_sws_ops_compile_backend(ctx, backend, &oplist, &comp, 0);
             if (ret == AVERROR(ENOTSUP))
                 continue;
             else if (ret < 0)
