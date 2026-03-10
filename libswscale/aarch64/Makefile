@@ -10,3 +10,26 @@ NEON-OBJS   += aarch64/hscale.o                 \
                aarch64/swscale_unscaled_neon.o  \
                aarch64/xyz2rgb_neon.o           \
                aarch64/yuv2rgb_neon.o           \
+
+NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops.o
+NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_impl.o
+NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_lookup.o
+NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_neon.o
+
+HOSTPROGS = aarch64/ops_asmgen$(HOSTEXESUF)
+
+$(SUBDIR)aarch64/ops_neon.S: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
+	$(M)$< -ops > $@.tmp
+	$(CP) $@.tmp $@
+	$(RM) $@.tmp
+
+$(SUBDIR)aarch64/ops_lookup.c: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
+	$(M)$< -lookup > $@.tmp
+	$(CP) $@.tmp $@
+	$(RM) $@.tmp
+
+sws_ops_entries_aarch64: TAG = GEN
+sws_ops_entries_aarch64: $(SUBDIR)tests/sws_ops$(EXESUF)
+	$(M)$< -backend aarch64 -v 0 -print_ops libswscale/aarch64/ops_entries.c.tmp
+	$(CP) libswscale/aarch64/ops_entries.c.tmp $(SRC_PATH)/libswscale/aarch64/ops_entries.c
+	$(RM) libswscale/aarch64/ops_entries.c.tmp
