@@ -306,6 +306,8 @@ int ff_sws_op_list_optimize(SwsOpList *ops);
 enum SwsOpCompileFlags {
     /* Automatically optimize the operations when compiling */
     SWS_OP_FLAG_OPTIMIZE = 1 << 0,
+    /* Generate assembly for backend */
+    SWS_OP_FLAG_ASMGEN  = 1 << 1,
 };
 
 /**

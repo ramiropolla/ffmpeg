@@ -301,7 +301,8 @@ static int add_ops_glsl(VulkanPriv *p, FFVulkanOpsCtx *s,
 }
 #endif
 
-static int compile(SwsContext *sws, SwsOpList *ops, SwsCompiledOp *out)
+static int compile(SwsContext *sws, SwsOpList *ops, SwsCompiledOp *out,
+                   int flags)
 {
     int err;
     SwsInternal *c = sws_internal(sws);

@@ -55,7 +55,8 @@ static const SwsOpTable *const tables[] = {
     &bitfn(op_table_float, f32),
 };
 
-static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
+static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out,
+                   int flags)
 {
     int ret;
 

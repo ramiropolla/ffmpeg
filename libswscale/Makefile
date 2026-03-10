@@ -33,6 +33,7 @@ OBJS-$(CONFIG_UNSTABLE) +=                              \
        ops_dispatch.o                                   \
        ops_memcpy.o                                     \
        ops_optimizer.o                                  \
+       ffasm/aarch64.o                                  \
 
 ifeq ($(CONFIG_UNSTABLE),yes)
 include $(SRC_PATH)/libswscale/vulkan/Makefile
@@ -49,3 +50,5 @@ TESTPROGS = colorspace                                                  \
             pixdesc_query                                               \
             swscale                                                     \
             sws_ops                                                     \
+            aarch64                                                     \
+            asmgen                                                      \

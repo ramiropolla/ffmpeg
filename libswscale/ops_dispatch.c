@@ -45,7 +45,8 @@ typedef struct SwsOpPass {
 } SwsOpPass;
 
 int ff_sws_ops_compile_backend(SwsContext *ctx, const SwsOpBackend *backend,
-                               const SwsOpList *ops, SwsCompiledOp *out)
+                               const SwsOpList *ops, SwsCompiledOp *out,
+                               int flags)
 {
     SwsOpList *copy;
     SwsCompiledOp compiled = {0};
@@ -58,7 +59,7 @@ int ff_sws_ops_compile_backend(SwsContext *ctx, const SwsOpBackend *backend,
     /* Ensure these are always set during compilation */
     ff_sws_op_list_update_comps(copy);
 
-    ret = backend->compile(ctx, copy, &compiled);
+    ret = backend->compile(ctx, copy, &compiled, flags);
     if (ret < 0) {
         int msg_lev = ret == AVERROR(ENOTSUP) ? AV_LOG_TRACE : AV_LOG_ERROR;
         av_log(ctx, msg_lev, "Backend '%s' failed to compile operations: %s\n",
@@ -78,7 +79,7 @@ int ff_sws_ops_compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out
         if (ops->src.hw_format != backend->hw_format ||
             ops->dst.hw_format != backend->hw_format)
             continue;
-        if (ff_sws_ops_compile_backend(ctx, backend, ops, out) < 0)
+        if (ff_sws_ops_compile_backend(ctx, backend, ops, out, 0) < 0)
             continue;
 
         av_log(ctx, AV_LOG_VERBOSE, "Compiled using backend '%s': "

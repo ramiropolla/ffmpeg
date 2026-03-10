@@ -672,7 +672,8 @@ static void normalize_clear(SwsOp *op)
     }
 }
 
-static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
+static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out,
+                   int flags)
 {
     const int cpu_flags = av_get_cpu_flags();
     const int mmsize = get_mmsize(cpu_flags);

@@ -18,8 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/tree.h"
 #include "libswscale/ops.h"
+#include "libswscale/ops_internal.h" /* TODO FIXME */
 #include "libswscale/format.h"
 
 #ifdef _WIN32
@@ -27,9 +30,17 @@
 #include <fcntl.h>
 #endif
 
+extern const SwsOpBackend backend_aarch64; /* TODO FIXME */
+
+static int sig_cmp(const void *a, const void *b)
+{
+    return strcmp(a, b);
+}
+
 static int run_test(SwsContext *const ctx, AVFrame *frame,
                     const AVPixFmtDescriptor *const src_desc,
-                    const AVPixFmtDescriptor *const dst_desc)
+                    const AVPixFmtDescriptor *const dst_desc,
+                    int quiet, int asmgen, struct AVTreeNode **root)
 {
     /* Reuse ff_fmt_from_frame() to ensure correctly sanitized metadata */
     frame->format = av_pix_fmt_desc_get_id(src_desc);
@@ -53,14 +64,35 @@ static int run_test(SwsContext *const ctx, AVFrame *frame,
     if (ff_sws_encode_pixfmt(ops, dst.format) < 0)
         goto fail;
 
-    av_log(NULL, AV_LOG_INFO, "%s -> %s:\n",
-           av_get_pix_fmt_name(src.format), av_get_pix_fmt_name(dst.format));
+    if (!quiet) {
+        av_log(NULL, AV_LOG_INFO, "%s -> %s:\n",
+               av_get_pix_fmt_name(src.format), av_get_pix_fmt_name(dst.format));
+    }
 
     ff_sws_op_list_optimize(ops);
-    if (ff_sws_op_list_is_noop(ops))
-        av_log(NULL, AV_LOG_INFO, "  (no-op)\n");
-    else
-        ff_sws_op_list_print(NULL, AV_LOG_INFO, AV_LOG_INFO, ops);
+    if (asmgen) {
+        SwsCompiledOp comp;
+        int ret = ff_sws_ops_compile_backend(ctx, &backend_aarch64, ops, &comp, SWS_OP_FLAG_ASMGEN);
+        if (ret < 0)
+            goto fail;
+        {
+            // OH MY HACK
+            char **priv = comp.priv;
+            while (*priv) {
+                struct AVTreeNode *node = av_tree_node_alloc();
+                av_tree_insert(root, av_strdup(*priv++), sig_cmp, &node);
+                if (node)
+                    av_free(node);
+            }
+        }
+        ff_sws_compiled_op_unref(&comp);
+    }
+    if (!quiet) {
+        if (ff_sws_op_list_is_noop(ops))
+            av_log(NULL, AV_LOG_INFO, "  (no-op)\n");
+        else
+            ff_sws_op_list_print(NULL, AV_LOG_INFO, AV_LOG_INFO, ops);
+    }
 
 fail:
     /* silently skip unsupported formats */
@@ -77,12 +109,20 @@ static void log_stdout(void *avcl, int level, const char *fmt, va_list vl)
     }
 }
 
+static int print_ops(void *opaque, void *elem)
+{
+    printf("%s\n", (char *) elem);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     enum AVPixelFormat src_fmt_min = 0;
     enum AVPixelFormat dst_fmt_min = 0;
     enum AVPixelFormat src_fmt_max = AV_PIX_FMT_NB - 1;
     enum AVPixelFormat dst_fmt_max = AV_PIX_FMT_NB - 1;
+    int quiet = 0;
+    int asmgen = 0;
     int ret = 1;
 
 #ifdef _WIN32
@@ -99,6 +139,10 @@ int main(int argc, char **argv)
                     "       Only test the specified destination pixel format\n"
                     "   -src <pixfmt>\n"
                     "       Only test the specified source pixel format\n"
+                    "   -quiet <1 or 0>\n"
+                    "       Be quiet\n"
+                    "   -asmgen <1 or 0>\n"
+                    "       Generate assembly for backend\n"
             );
             return 0;
         }
@@ -116,6 +160,10 @@ int main(int argc, char **argv)
                 fprintf(stderr, "invalid pixel format %s\n", argv[i + 1]);
                 goto error;
             }
+        } else if (!strcmp(argv[i], "-quiet")) {
+            quiet = atoi(argv[i + 1]);
+        } else if (!strcmp(argv[i], "-asmgen")) {
+            asmgen = atoi(argv[i + 1]);
         } else {
 bad_option:
             fprintf(stderr, "bad option or argument missing (%s) see -help\n", argv[i]);
@@ -123,6 +171,7 @@ bad_option:
         }
     }
 
+    struct AVTreeNode *root = NULL;
     SwsContext *ctx = sws_alloc_context();
     AVFrame *frame = av_frame_alloc();
     if (!ctx || !frame)
@@ -138,14 +187,20 @@ bad_option:
             enum AVPixelFormat dst_fmt = av_pix_fmt_desc_get_id(dst);
             if (dst_fmt < dst_fmt_min || dst_fmt > dst_fmt_max)
                 continue;
-            int err = run_test(ctx, frame, src, dst);
+            int err = run_test(ctx, frame, src, dst, quiet, asmgen, &root);
             if (err < 0)
                 goto fail;
         }
     }
 
+    if (asmgen) {
+        av_tree_enumerate(root, NULL, NULL, print_ops);
+    }
+
     ret = 0;
 fail:
+    if (asmgen)
+        av_tree_destroy(root);
     av_frame_free(&frame);
     sws_free_context(&ctx);
     return ret;
