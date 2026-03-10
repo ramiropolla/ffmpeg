@@ -197,7 +197,7 @@ endif
 clean::
 	$(RM) $(BIN2CEXE) $(CLEANSUFFIXES:%=ffbuild/%)
 
-%.c %.h %.pc %.ver %.version: TAG = GEN
+%.c %.h %.S %.pc %.ver %.version: TAG = GEN
 
 # Dummy rule to stop make trying to rebuild removed or renamed headers
 %.h %_template.c:
@@ -251,7 +251,7 @@ checkheaders: $(HOBJS)
 alltools: $(TOOLS)
 
 $(HOSTOBJS): %.o: %.c
-	$(COMPILE_HOSTC)
+	$(COMPILE_HOSTC) -g
 
 $(HOSTPROGS): %$(HOSTEXESUF): %.o
 	$(HOSTLD) $(HOSTLDFLAGS) $(HOSTLD_O) $^ $(HOSTEXTRALIBS)

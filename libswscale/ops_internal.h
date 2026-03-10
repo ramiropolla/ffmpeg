@@ -63,6 +63,10 @@ typedef struct SwsOpBackend {
      */
     int (*compile)(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out);
 
+    int (*collect_ops)(SwsContext *ctx, const SwsOpList *ops,
+                       struct AVTreeNode **root);
+    int (*print_ops)(struct AVTreeNode **root, FILE *fp);
+
     /**
      * If NONE, backend only supports software frames.
      * Otherwise, frame hardware format must match hw_format for the backend

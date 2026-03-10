@@ -29,7 +29,9 @@
 
 static int run_test(SwsContext *const ctx, AVFrame *frame,
                     const AVPixFmtDescriptor *const src_desc,
-                    const AVPixFmtDescriptor *const dst_desc)
+                    const AVPixFmtDescriptor *const dst_desc,
+                    int quiet, const SwsOpBackend *backend,
+                    struct AVTreeNode **root)
 {
     /* Reuse ff_fmt_from_frame() to ensure correctly sanitized metadata */
     frame->format = av_pix_fmt_desc_get_id(src_desc);
@@ -53,14 +55,25 @@ static int run_test(SwsContext *const ctx, AVFrame *frame,
     if (ff_sws_encode_pixfmt(ops, dst.format) < 0)
         goto fail;
 
-    av_log(NULL, AV_LOG_INFO, "%s -> %s:\n",
-           av_get_pix_fmt_name(src.format), av_get_pix_fmt_name(dst.format));
+    if (!quiet) {
+        av_log(NULL, AV_LOG_INFO, "%s -> %s:\n",
+               av_get_pix_fmt_name(src.format), av_get_pix_fmt_name(dst.format));
+    }
 
     ff_sws_op_list_optimize(ops);
-    if (ff_sws_op_list_is_noop(ops))
-        av_log(NULL, AV_LOG_INFO, "  (no-op)\n");
-    else
-        ff_sws_op_list_print(NULL, AV_LOG_INFO, AV_LOG_INFO, ops);
+
+    if (backend) {
+        int ret = ff_sws_backend_collect_ops(ctx, backend, ops, root);
+        if (ret < 0)
+            goto fail;
+    }
+
+    if (!quiet) {
+        if (ff_sws_op_list_is_noop(ops))
+            av_log(NULL, AV_LOG_INFO, "  (no-op)\n");
+        else
+            ff_sws_op_list_print(NULL, AV_LOG_INFO, AV_LOG_INFO, ops);
+    }
 
 fail:
     /* silently skip unsupported formats */
@@ -83,6 +96,10 @@ int main(int argc, char **argv)
     enum AVPixelFormat dst_fmt_min = 0;
     enum AVPixelFormat src_fmt_max = AV_PIX_FMT_NB - 1;
     enum AVPixelFormat dst_fmt_max = AV_PIX_FMT_NB - 1;
+    int quiet = 0;
+    const SwsOpBackend *backend = NULL;
+    struct AVTreeNode *root = NULL;
+    FILE *fp_entries = NULL;
     int ret = 1;
 
 #ifdef _WIN32
@@ -99,6 +116,12 @@ int main(int argc, char **argv)
                     "       Only test the specified destination pixel format\n"
                     "   -src <pixfmt>\n"
                     "       Only test the specified source pixel format\n"
+                    "   -quiet <1 or 0>\n"
+                    "       Be quiet\n"
+                    "   -backend <name>\n"
+                    "       Use specified backend to print ops\n"
+                    "   -print_ops <file name>\n"
+                    "       Generate ops entry file for specified backend\n"
             );
             return 0;
         }
@@ -114,6 +137,20 @@ int main(int argc, char **argv)
             dst_fmt_min = dst_fmt_max = av_get_pix_fmt(argv[i + 1]);
             if (dst_fmt_min == AV_PIX_FMT_NONE) {
                 fprintf(stderr, "invalid pixel format %s\n", argv[i + 1]);
+                goto error;
+            }
+        } else if (!strcmp(argv[i], "-quiet")) {
+            quiet = atoi(argv[i + 1]);
+        } else if (!strcmp(argv[i], "-backend")) {
+            backend = ff_sws_find_backend_by_name(argv[i + 1]);
+            if (!backend) {
+                fprintf(stderr, "Could not find backend %s\n", argv[i + 1]);
+                goto error;
+            }
+        } else if (!strcmp(argv[i], "-print_ops")) {
+            fp_entries = fopen(argv[i + 1], "w");
+            if (!fp_entries) {
+                fprintf(stderr, "Could not open file %s\n", argv[i + 1]);
                 goto error;
             }
         } else {
@@ -138,14 +175,21 @@ bad_option:
             enum AVPixelFormat dst_fmt = av_pix_fmt_desc_get_id(dst);
             if (dst_fmt < dst_fmt_min || dst_fmt > dst_fmt_max)
                 continue;
-            int err = run_test(ctx, frame, src, dst);
+            int err = run_test(ctx, frame, src, dst, quiet, backend, &root);
             if (err < 0)
                 goto fail;
         }
     }
 
+    if (root)
+        ff_sws_backend_print_ops(backend, &root, fp_entries);
+
     ret = 0;
 fail:
+    if (root)
+        av_tree_destroy(root);
+    if (fp_entries)
+        fclose(fp_entries);
     av_frame_free(&frame);
     sws_free_context(&ctx);
     return ret;
