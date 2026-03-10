@@ -20,3 +20,10 @@ X86ASM-OBJS-$(CONFIG_UNSTABLE)  += x86/ops_int.o                        \
                                    x86/ops_float.o                      \
                                    x86/ops.o
 endif
+
+# TODO obviously should go into aarch64 and not x86,
+#      but I'm developing this on x86 at the moment.
+OBJS-$(CONFIG_UNSTABLE) += aarch64/ops.o
+OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_impl.o
+
+HOSTPROGS = aarch64/ops_asmgen
