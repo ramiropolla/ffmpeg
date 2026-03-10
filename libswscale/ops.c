@@ -30,12 +30,15 @@
 
 extern const SwsOpBackend backend_c;
 extern const SwsOpBackend backend_murder;
+extern const SwsOpBackend backend_aarch64;
 extern const SwsOpBackend backend_x86;
 extern const SwsOpBackend backend_vulkan;
 
 const SwsOpBackend * const ff_sws_op_backends[] = {
     &backend_murder,
-#if ARCH_X86_64 && HAVE_X86ASM
+#if ARCH_AARCH64 && HAVE_NEON
+    &backend_aarch64,
+#elif ARCH_X86_64 && HAVE_X86ASM
     &backend_x86,
 #endif
     &backend_c,
@@ -876,4 +879,35 @@ void ff_sws_op_list_print(void *log, int lev, int lev_extra,
     }
 
     av_log(log, lev, "    (X = unused, z = byteswapped, + = exact, 0 = zero)\n");
+}
+
+const SwsOpBackend *ff_sws_find_backend_by_name(const char *name)
+{
+    for (int i = 0; ff_sws_op_backends[i]; i++) {
+        const SwsOpBackend *backend = ff_sws_op_backends[i];
+        if (!strcmp(name, backend->name))
+            return backend;
+    }
+    return NULL;
+}
+
+int ff_sws_backend_collect_ops(const SwsOpBackend *backend,
+                               const SwsOpList *ops,
+                               struct AVTreeNode **root)
+{
+    if (!backend || !ops || !root)
+        return AVERROR(EINVAL);
+    if (!backend->collect_ops)
+        return AVERROR(ENOTSUP);
+    return backend->collect_ops(ops, root);
+}
+
+int ff_sws_backend_print_ops(const SwsOpBackend *backend,
+                             struct AVTreeNode **root, FILE *fp)
+{
+    if (!backend || !root || !fp)
+        return AVERROR(EINVAL);
+    if (!backend->print_ops)
+        return AVERROR(ENOTSUP);
+    return backend->print_ops(root, fp);
 }
