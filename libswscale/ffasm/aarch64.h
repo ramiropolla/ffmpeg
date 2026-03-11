@@ -128,14 +128,17 @@ typedef enum AArch64OpType {
 
 typedef struct AArch64GPR {
     uint8_t n;
-    uint8_t size;
+    uint8_t s; /* gpr size */
 } AArch64GPR;
+
+typedef struct AArch64ArrangementSpecifier {
+    uint8_t c; /* element count */
+    uint8_t s; /* element size */
+} AArch64ArrangementSpecifier;
 
 typedef struct AArch64Vec {
     uint8_t n;
-    uint8_t size;
-    uint8_t elem_count;
-    uint8_t elem_size;
+    AArch64ArrangementSpecifier t;
 } AArch64Vec;
 
 typedef struct AArch64Op {
@@ -153,6 +156,7 @@ static_assert(sizeof(AArch64Op) == 8, "AArch64Op must fit in uint64_t exactly");
 typedef struct AArch64Insn {
     AArch64InsnId id;
     AArch64Op op[4];
+    char *comment;
 } AArch64Insn;
 
 typedef struct AArch64InsnList {
@@ -172,311 +176,314 @@ void aarch64_free(AArch64Context **p_actx);
 int aarch64_add_insn(AArch64Context *actx, AArch64InsnId id,
                        AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3);
 
+void aarch64_annotate(AArch64Context *actx, const char *comment);
+
 int aarch64_print(AArch64Context *actx, AVBPrint *bp);
 
-inline AArch64Op aarch64_opn   (void)  { return (AArch64Op) { AARCH64_OP_NONE }; }
-inline AArch64Op aarch64_gpw   (int n) { return (AArch64Op) { AARCH64_OP_GPR, .gpr = { n, sizeof(uint32_t) } }; }
-inline AArch64Op aarch64_gpx   (int n) { return (AArch64Op) { AARCH64_OP_GPR, .gpr = { n, sizeof(uint64_t) } }; }
-inline AArch64Op aarch64_vec   (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n } }; }
+static inline AArch64Op aarch64_opn   (void)  { return (AArch64Op) { AARCH64_OP_NONE }; }
+static inline AArch64Op aarch64_gpw   (int n) { return (AArch64Op) { AARCH64_OP_GPR, .gpr = { n, sizeof(uint32_t) } }; }
+static inline AArch64Op aarch64_gpx   (int n) { return (AArch64Op) { AARCH64_OP_GPR, .gpr = { n, sizeof(uint64_t) } }; }
+static inline AArch64Op aarch64_vec   (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n } }; }
 
-inline AArch64Op aarch64_vecb  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n,  1,  0,  1 } }; }
-inline AArch64Op aarch64_vech  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n,  2,  0,  2 } }; }
-inline AArch64Op aarch64_vecs  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n,  4,  0,  4 } }; }
-inline AArch64Op aarch64_vecd  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n,  8,  0,  8 } }; }
-inline AArch64Op aarch64_vecq  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, 16,  0, 16 } }; }
-inline AArch64Op aarch64_vec8b (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n,  8,  8,  1 } }; }
-inline AArch64Op aarch64_vec16b(int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, 16, 16,  1 } }; }
-inline AArch64Op aarch64_vec4h (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n,  8,  4,  2 } }; }
-inline AArch64Op aarch64_vec8h (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, 16,  8,  2 } }; }
-inline AArch64Op aarch64_vec2s (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n,  8,  2,  4 } }; }
-inline AArch64Op aarch64_vec4s (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, 16,  4,  4 } }; }
-inline AArch64Op aarch64_vec2d (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, 16,  2,  8 } }; }
-
-/*********************************************************************/
-inline AArch64Op aarch64_8b (AArch64Op op) { return aarch64_vec8b (op.vec.n); }
-inline AArch64Op aarch64_16b(AArch64Op op) { return aarch64_vec16b(op.vec.n); }
-inline AArch64Op aarch64_4h (AArch64Op op) { return aarch64_vec4h (op.vec.n); }
-inline AArch64Op aarch64_8h (AArch64Op op) { return aarch64_vec8h (op.vec.n); }
-inline AArch64Op aarch64_2s (AArch64Op op) { return aarch64_vec2s (op.vec.n); }
-inline AArch64Op aarch64_4s (AArch64Op op) { return aarch64_vec4s (op.vec.n); }
-inline AArch64Op aarch64_2d (AArch64Op op) { return aarch64_vec2d (op.vec.n); }
+static inline AArch64Op aarch64_vecb  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  0,  1 } } }; }
+static inline AArch64Op aarch64_vech  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  0,  2 } } }; }
+static inline AArch64Op aarch64_vecs  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  0,  4 } } }; }
+static inline AArch64Op aarch64_vecd  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  0,  8 } } }; }
+static inline AArch64Op aarch64_vecq  (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  0, 16 } } }; }
+static inline AArch64Op aarch64_vec8b (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  8,  1 } } }; }
+static inline AArch64Op aarch64_vec16b(int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = { 16,  1 } } }; }
+static inline AArch64Op aarch64_vec4h (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  4,  2 } } }; }
+static inline AArch64Op aarch64_vec8h (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  8,  2 } } }; }
+static inline AArch64Op aarch64_vec2s (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  2,  4 } } }; }
+static inline AArch64Op aarch64_vec4s (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  4,  4 } } }; }
+static inline AArch64Op aarch64_vec2d (int n) { return (AArch64Op) { AARCH64_OP_VEC, .vec = { n, .t = {  2,  8 } } }; }
 
 /*********************************************************************/
-inline AArch64Op aarch64_w0 (void) { return aarch64_gpw( 0); }
-inline AArch64Op aarch64_w1 (void) { return aarch64_gpw( 1); }
-inline AArch64Op aarch64_w2 (void) { return aarch64_gpw( 2); }
-inline AArch64Op aarch64_w3 (void) { return aarch64_gpw( 3); }
-inline AArch64Op aarch64_w4 (void) { return aarch64_gpw( 4); }
-inline AArch64Op aarch64_w5 (void) { return aarch64_gpw( 5); }
-inline AArch64Op aarch64_w6 (void) { return aarch64_gpw( 6); }
-inline AArch64Op aarch64_w7 (void) { return aarch64_gpw( 7); }
-inline AArch64Op aarch64_w8 (void) { return aarch64_gpw( 8); }
-inline AArch64Op aarch64_w9 (void) { return aarch64_gpw( 9); }
-inline AArch64Op aarch64_w10(void) { return aarch64_gpw(10); }
-inline AArch64Op aarch64_w11(void) { return aarch64_gpw(11); }
-inline AArch64Op aarch64_w12(void) { return aarch64_gpw(12); }
-inline AArch64Op aarch64_w13(void) { return aarch64_gpw(13); }
-inline AArch64Op aarch64_w14(void) { return aarch64_gpw(14); }
-inline AArch64Op aarch64_w15(void) { return aarch64_gpw(15); }
-inline AArch64Op aarch64_w16(void) { return aarch64_gpw(16); }
-inline AArch64Op aarch64_w17(void) { return aarch64_gpw(17); }
-inline AArch64Op aarch64_w18(void) { return aarch64_gpw(18); }
-inline AArch64Op aarch64_w19(void) { return aarch64_gpw(19); }
-inline AArch64Op aarch64_w20(void) { return aarch64_gpw(20); }
-inline AArch64Op aarch64_w21(void) { return aarch64_gpw(21); }
-inline AArch64Op aarch64_w22(void) { return aarch64_gpw(22); }
-inline AArch64Op aarch64_w23(void) { return aarch64_gpw(23); }
-inline AArch64Op aarch64_w24(void) { return aarch64_gpw(24); }
-inline AArch64Op aarch64_w25(void) { return aarch64_gpw(25); }
-inline AArch64Op aarch64_w26(void) { return aarch64_gpw(26); }
-inline AArch64Op aarch64_w27(void) { return aarch64_gpw(27); }
-inline AArch64Op aarch64_w28(void) { return aarch64_gpw(28); }
-inline AArch64Op aarch64_w29(void) { return aarch64_gpw(29); }
-inline AArch64Op aarch64_w30(void) { return aarch64_gpw(30); }
-inline AArch64Op aarch64_w31(void) { return aarch64_gpw(31); }
+static inline AArch64Op aarch64_8b (AArch64Op op) { return aarch64_vec8b (op.vec.n); }
+static inline AArch64Op aarch64_16b(AArch64Op op) { return aarch64_vec16b(op.vec.n); }
+static inline AArch64Op aarch64_4h (AArch64Op op) { return aarch64_vec4h (op.vec.n); }
+static inline AArch64Op aarch64_8h (AArch64Op op) { return aarch64_vec8h (op.vec.n); }
+static inline AArch64Op aarch64_2s (AArch64Op op) { return aarch64_vec2s (op.vec.n); }
+static inline AArch64Op aarch64_4s (AArch64Op op) { return aarch64_vec4s (op.vec.n); }
+static inline AArch64Op aarch64_2d (AArch64Op op) { return aarch64_vec2d (op.vec.n); }
 
 /*********************************************************************/
-inline AArch64Op aarch64_x0 (void) { return aarch64_gpx( 0); }
-inline AArch64Op aarch64_x1 (void) { return aarch64_gpx( 1); }
-inline AArch64Op aarch64_x2 (void) { return aarch64_gpx( 2); }
-inline AArch64Op aarch64_x3 (void) { return aarch64_gpx( 3); }
-inline AArch64Op aarch64_x4 (void) { return aarch64_gpx( 4); }
-inline AArch64Op aarch64_x5 (void) { return aarch64_gpx( 5); }
-inline AArch64Op aarch64_x6 (void) { return aarch64_gpx( 6); }
-inline AArch64Op aarch64_x7 (void) { return aarch64_gpx( 7); }
-inline AArch64Op aarch64_x8 (void) { return aarch64_gpx( 8); }
-inline AArch64Op aarch64_x9 (void) { return aarch64_gpx( 9); }
-inline AArch64Op aarch64_x10(void) { return aarch64_gpx(10); }
-inline AArch64Op aarch64_x11(void) { return aarch64_gpx(11); }
-inline AArch64Op aarch64_x12(void) { return aarch64_gpx(12); }
-inline AArch64Op aarch64_x13(void) { return aarch64_gpx(13); }
-inline AArch64Op aarch64_x14(void) { return aarch64_gpx(14); }
-inline AArch64Op aarch64_x15(void) { return aarch64_gpx(15); }
-inline AArch64Op aarch64_x16(void) { return aarch64_gpx(16); }
-inline AArch64Op aarch64_x17(void) { return aarch64_gpx(17); }
-inline AArch64Op aarch64_x18(void) { return aarch64_gpx(18); }
-inline AArch64Op aarch64_x19(void) { return aarch64_gpx(19); }
-inline AArch64Op aarch64_x20(void) { return aarch64_gpx(20); }
-inline AArch64Op aarch64_x21(void) { return aarch64_gpx(21); }
-inline AArch64Op aarch64_x22(void) { return aarch64_gpx(22); }
-inline AArch64Op aarch64_x23(void) { return aarch64_gpx(23); }
-inline AArch64Op aarch64_x24(void) { return aarch64_gpx(24); }
-inline AArch64Op aarch64_x25(void) { return aarch64_gpx(25); }
-inline AArch64Op aarch64_x26(void) { return aarch64_gpx(26); }
-inline AArch64Op aarch64_x27(void) { return aarch64_gpx(27); }
-inline AArch64Op aarch64_x28(void) { return aarch64_gpx(28); }
-inline AArch64Op aarch64_x29(void) { return aarch64_gpx(29); }
-inline AArch64Op aarch64_x30(void) { return aarch64_gpx(30); }
-inline AArch64Op aarch64_x31(void) { return aarch64_gpx(31); }
+static inline AArch64Op aarch64_w0 (void) { return aarch64_gpw( 0); }
+static inline AArch64Op aarch64_w1 (void) { return aarch64_gpw( 1); }
+static inline AArch64Op aarch64_w2 (void) { return aarch64_gpw( 2); }
+static inline AArch64Op aarch64_w3 (void) { return aarch64_gpw( 3); }
+static inline AArch64Op aarch64_w4 (void) { return aarch64_gpw( 4); }
+static inline AArch64Op aarch64_w5 (void) { return aarch64_gpw( 5); }
+static inline AArch64Op aarch64_w6 (void) { return aarch64_gpw( 6); }
+static inline AArch64Op aarch64_w7 (void) { return aarch64_gpw( 7); }
+static inline AArch64Op aarch64_w8 (void) { return aarch64_gpw( 8); }
+static inline AArch64Op aarch64_w9 (void) { return aarch64_gpw( 9); }
+static inline AArch64Op aarch64_w10(void) { return aarch64_gpw(10); }
+static inline AArch64Op aarch64_w11(void) { return aarch64_gpw(11); }
+static inline AArch64Op aarch64_w12(void) { return aarch64_gpw(12); }
+static inline AArch64Op aarch64_w13(void) { return aarch64_gpw(13); }
+static inline AArch64Op aarch64_w14(void) { return aarch64_gpw(14); }
+static inline AArch64Op aarch64_w15(void) { return aarch64_gpw(15); }
+static inline AArch64Op aarch64_w16(void) { return aarch64_gpw(16); }
+static inline AArch64Op aarch64_w17(void) { return aarch64_gpw(17); }
+static inline AArch64Op aarch64_w18(void) { return aarch64_gpw(18); }
+static inline AArch64Op aarch64_w19(void) { return aarch64_gpw(19); }
+static inline AArch64Op aarch64_w20(void) { return aarch64_gpw(20); }
+static inline AArch64Op aarch64_w21(void) { return aarch64_gpw(21); }
+static inline AArch64Op aarch64_w22(void) { return aarch64_gpw(22); }
+static inline AArch64Op aarch64_w23(void) { return aarch64_gpw(23); }
+static inline AArch64Op aarch64_w24(void) { return aarch64_gpw(24); }
+static inline AArch64Op aarch64_w25(void) { return aarch64_gpw(25); }
+static inline AArch64Op aarch64_w26(void) { return aarch64_gpw(26); }
+static inline AArch64Op aarch64_w27(void) { return aarch64_gpw(27); }
+static inline AArch64Op aarch64_w28(void) { return aarch64_gpw(28); }
+static inline AArch64Op aarch64_w29(void) { return aarch64_gpw(29); }
+static inline AArch64Op aarch64_w30(void) { return aarch64_gpw(30); }
+static inline AArch64Op aarch64_w31(void) { return aarch64_gpw(31); }
 
 /*********************************************************************/
-inline AArch64Op aarch64_v0 (void) { return aarch64_vec( 0); }
-inline AArch64Op aarch64_v1 (void) { return aarch64_vec( 1); }
-inline AArch64Op aarch64_v2 (void) { return aarch64_vec( 2); }
-inline AArch64Op aarch64_v3 (void) { return aarch64_vec( 3); }
-inline AArch64Op aarch64_v4 (void) { return aarch64_vec( 4); }
-inline AArch64Op aarch64_v5 (void) { return aarch64_vec( 5); }
-inline AArch64Op aarch64_v6 (void) { return aarch64_vec( 6); }
-inline AArch64Op aarch64_v7 (void) { return aarch64_vec( 7); }
-inline AArch64Op aarch64_v8 (void) { return aarch64_vec( 8); }
-inline AArch64Op aarch64_v9 (void) { return aarch64_vec( 9); }
-inline AArch64Op aarch64_v10(void) { return aarch64_vec(10); }
-inline AArch64Op aarch64_v11(void) { return aarch64_vec(11); }
-inline AArch64Op aarch64_v12(void) { return aarch64_vec(12); }
-inline AArch64Op aarch64_v13(void) { return aarch64_vec(13); }
-inline AArch64Op aarch64_v14(void) { return aarch64_vec(14); }
-inline AArch64Op aarch64_v15(void) { return aarch64_vec(15); }
-inline AArch64Op aarch64_v16(void) { return aarch64_vec(16); }
-inline AArch64Op aarch64_v17(void) { return aarch64_vec(17); }
-inline AArch64Op aarch64_v18(void) { return aarch64_vec(18); }
-inline AArch64Op aarch64_v19(void) { return aarch64_vec(19); }
-inline AArch64Op aarch64_v20(void) { return aarch64_vec(20); }
-inline AArch64Op aarch64_v21(void) { return aarch64_vec(21); }
-inline AArch64Op aarch64_v22(void) { return aarch64_vec(22); }
-inline AArch64Op aarch64_v23(void) { return aarch64_vec(23); }
-inline AArch64Op aarch64_v24(void) { return aarch64_vec(24); }
-inline AArch64Op aarch64_v25(void) { return aarch64_vec(25); }
-inline AArch64Op aarch64_v26(void) { return aarch64_vec(26); }
-inline AArch64Op aarch64_v27(void) { return aarch64_vec(27); }
-inline AArch64Op aarch64_v28(void) { return aarch64_vec(28); }
-inline AArch64Op aarch64_v29(void) { return aarch64_vec(29); }
-inline AArch64Op aarch64_v30(void) { return aarch64_vec(30); }
-inline AArch64Op aarch64_v31(void) { return aarch64_vec(31); }
+static inline AArch64Op aarch64_x0 (void) { return aarch64_gpx( 0); }
+static inline AArch64Op aarch64_x1 (void) { return aarch64_gpx( 1); }
+static inline AArch64Op aarch64_x2 (void) { return aarch64_gpx( 2); }
+static inline AArch64Op aarch64_x3 (void) { return aarch64_gpx( 3); }
+static inline AArch64Op aarch64_x4 (void) { return aarch64_gpx( 4); }
+static inline AArch64Op aarch64_x5 (void) { return aarch64_gpx( 5); }
+static inline AArch64Op aarch64_x6 (void) { return aarch64_gpx( 6); }
+static inline AArch64Op aarch64_x7 (void) { return aarch64_gpx( 7); }
+static inline AArch64Op aarch64_x8 (void) { return aarch64_gpx( 8); }
+static inline AArch64Op aarch64_x9 (void) { return aarch64_gpx( 9); }
+static inline AArch64Op aarch64_x10(void) { return aarch64_gpx(10); }
+static inline AArch64Op aarch64_x11(void) { return aarch64_gpx(11); }
+static inline AArch64Op aarch64_x12(void) { return aarch64_gpx(12); }
+static inline AArch64Op aarch64_x13(void) { return aarch64_gpx(13); }
+static inline AArch64Op aarch64_x14(void) { return aarch64_gpx(14); }
+static inline AArch64Op aarch64_x15(void) { return aarch64_gpx(15); }
+static inline AArch64Op aarch64_x16(void) { return aarch64_gpx(16); }
+static inline AArch64Op aarch64_x17(void) { return aarch64_gpx(17); }
+static inline AArch64Op aarch64_x18(void) { return aarch64_gpx(18); }
+static inline AArch64Op aarch64_x19(void) { return aarch64_gpx(19); }
+static inline AArch64Op aarch64_x20(void) { return aarch64_gpx(20); }
+static inline AArch64Op aarch64_x21(void) { return aarch64_gpx(21); }
+static inline AArch64Op aarch64_x22(void) { return aarch64_gpx(22); }
+static inline AArch64Op aarch64_x23(void) { return aarch64_gpx(23); }
+static inline AArch64Op aarch64_x24(void) { return aarch64_gpx(24); }
+static inline AArch64Op aarch64_x25(void) { return aarch64_gpx(25); }
+static inline AArch64Op aarch64_x26(void) { return aarch64_gpx(26); }
+static inline AArch64Op aarch64_x27(void) { return aarch64_gpx(27); }
+static inline AArch64Op aarch64_x28(void) { return aarch64_gpx(28); }
+static inline AArch64Op aarch64_x29(void) { return aarch64_gpx(29); }
+static inline AArch64Op aarch64_x30(void) { return aarch64_gpx(30); }
+static inline AArch64Op aarch64_x31(void) { return aarch64_gpx(31); }
 
 /*********************************************************************/
-inline AArch64Op aarch64_b0 (void) { return aarch64_vecb( 0); }
-inline AArch64Op aarch64_b1 (void) { return aarch64_vecb( 1); }
-inline AArch64Op aarch64_b2 (void) { return aarch64_vecb( 2); }
-inline AArch64Op aarch64_b3 (void) { return aarch64_vecb( 3); }
-inline AArch64Op aarch64_b4 (void) { return aarch64_vecb( 4); }
-inline AArch64Op aarch64_b5 (void) { return aarch64_vecb( 5); }
-inline AArch64Op aarch64_b6 (void) { return aarch64_vecb( 6); }
-inline AArch64Op aarch64_b7 (void) { return aarch64_vecb( 7); }
-inline AArch64Op aarch64_b8 (void) { return aarch64_vecb( 8); }
-inline AArch64Op aarch64_b9 (void) { return aarch64_vecb( 9); }
-inline AArch64Op aarch64_b10(void) { return aarch64_vecb(10); }
-inline AArch64Op aarch64_b11(void) { return aarch64_vecb(11); }
-inline AArch64Op aarch64_b12(void) { return aarch64_vecb(12); }
-inline AArch64Op aarch64_b13(void) { return aarch64_vecb(13); }
-inline AArch64Op aarch64_b14(void) { return aarch64_vecb(14); }
-inline AArch64Op aarch64_b15(void) { return aarch64_vecb(15); }
-inline AArch64Op aarch64_b16(void) { return aarch64_vecb(16); }
-inline AArch64Op aarch64_b17(void) { return aarch64_vecb(17); }
-inline AArch64Op aarch64_b18(void) { return aarch64_vecb(18); }
-inline AArch64Op aarch64_b19(void) { return aarch64_vecb(19); }
-inline AArch64Op aarch64_b20(void) { return aarch64_vecb(20); }
-inline AArch64Op aarch64_b21(void) { return aarch64_vecb(21); }
-inline AArch64Op aarch64_b22(void) { return aarch64_vecb(22); }
-inline AArch64Op aarch64_b23(void) { return aarch64_vecb(23); }
-inline AArch64Op aarch64_b24(void) { return aarch64_vecb(24); }
-inline AArch64Op aarch64_b25(void) { return aarch64_vecb(25); }
-inline AArch64Op aarch64_b26(void) { return aarch64_vecb(26); }
-inline AArch64Op aarch64_b27(void) { return aarch64_vecb(27); }
-inline AArch64Op aarch64_b28(void) { return aarch64_vecb(28); }
-inline AArch64Op aarch64_b29(void) { return aarch64_vecb(29); }
-inline AArch64Op aarch64_b30(void) { return aarch64_vecb(30); }
-inline AArch64Op aarch64_b31(void) { return aarch64_vecb(31); }
+static inline AArch64Op aarch64_v0 (void) { return aarch64_vec( 0); }
+static inline AArch64Op aarch64_v1 (void) { return aarch64_vec( 1); }
+static inline AArch64Op aarch64_v2 (void) { return aarch64_vec( 2); }
+static inline AArch64Op aarch64_v3 (void) { return aarch64_vec( 3); }
+static inline AArch64Op aarch64_v4 (void) { return aarch64_vec( 4); }
+static inline AArch64Op aarch64_v5 (void) { return aarch64_vec( 5); }
+static inline AArch64Op aarch64_v6 (void) { return aarch64_vec( 6); }
+static inline AArch64Op aarch64_v7 (void) { return aarch64_vec( 7); }
+static inline AArch64Op aarch64_v8 (void) { return aarch64_vec( 8); }
+static inline AArch64Op aarch64_v9 (void) { return aarch64_vec( 9); }
+static inline AArch64Op aarch64_v10(void) { return aarch64_vec(10); }
+static inline AArch64Op aarch64_v11(void) { return aarch64_vec(11); }
+static inline AArch64Op aarch64_v12(void) { return aarch64_vec(12); }
+static inline AArch64Op aarch64_v13(void) { return aarch64_vec(13); }
+static inline AArch64Op aarch64_v14(void) { return aarch64_vec(14); }
+static inline AArch64Op aarch64_v15(void) { return aarch64_vec(15); }
+static inline AArch64Op aarch64_v16(void) { return aarch64_vec(16); }
+static inline AArch64Op aarch64_v17(void) { return aarch64_vec(17); }
+static inline AArch64Op aarch64_v18(void) { return aarch64_vec(18); }
+static inline AArch64Op aarch64_v19(void) { return aarch64_vec(19); }
+static inline AArch64Op aarch64_v20(void) { return aarch64_vec(20); }
+static inline AArch64Op aarch64_v21(void) { return aarch64_vec(21); }
+static inline AArch64Op aarch64_v22(void) { return aarch64_vec(22); }
+static inline AArch64Op aarch64_v23(void) { return aarch64_vec(23); }
+static inline AArch64Op aarch64_v24(void) { return aarch64_vec(24); }
+static inline AArch64Op aarch64_v25(void) { return aarch64_vec(25); }
+static inline AArch64Op aarch64_v26(void) { return aarch64_vec(26); }
+static inline AArch64Op aarch64_v27(void) { return aarch64_vec(27); }
+static inline AArch64Op aarch64_v28(void) { return aarch64_vec(28); }
+static inline AArch64Op aarch64_v29(void) { return aarch64_vec(29); }
+static inline AArch64Op aarch64_v30(void) { return aarch64_vec(30); }
+static inline AArch64Op aarch64_v31(void) { return aarch64_vec(31); }
 
 /*********************************************************************/
-inline AArch64Op aarch64_h0 (void) { return aarch64_vech( 0); }
-inline AArch64Op aarch64_h1 (void) { return aarch64_vech( 1); }
-inline AArch64Op aarch64_h2 (void) { return aarch64_vech( 2); }
-inline AArch64Op aarch64_h3 (void) { return aarch64_vech( 3); }
-inline AArch64Op aarch64_h4 (void) { return aarch64_vech( 4); }
-inline AArch64Op aarch64_h5 (void) { return aarch64_vech( 5); }
-inline AArch64Op aarch64_h6 (void) { return aarch64_vech( 6); }
-inline AArch64Op aarch64_h7 (void) { return aarch64_vech( 7); }
-inline AArch64Op aarch64_h8 (void) { return aarch64_vech( 8); }
-inline AArch64Op aarch64_h9 (void) { return aarch64_vech( 9); }
-inline AArch64Op aarch64_h10(void) { return aarch64_vech(10); }
-inline AArch64Op aarch64_h11(void) { return aarch64_vech(11); }
-inline AArch64Op aarch64_h12(void) { return aarch64_vech(12); }
-inline AArch64Op aarch64_h13(void) { return aarch64_vech(13); }
-inline AArch64Op aarch64_h14(void) { return aarch64_vech(14); }
-inline AArch64Op aarch64_h15(void) { return aarch64_vech(15); }
-inline AArch64Op aarch64_h16(void) { return aarch64_vech(16); }
-inline AArch64Op aarch64_h17(void) { return aarch64_vech(17); }
-inline AArch64Op aarch64_h18(void) { return aarch64_vech(18); }
-inline AArch64Op aarch64_h19(void) { return aarch64_vech(19); }
-inline AArch64Op aarch64_h20(void) { return aarch64_vech(20); }
-inline AArch64Op aarch64_h21(void) { return aarch64_vech(21); }
-inline AArch64Op aarch64_h22(void) { return aarch64_vech(22); }
-inline AArch64Op aarch64_h23(void) { return aarch64_vech(23); }
-inline AArch64Op aarch64_h24(void) { return aarch64_vech(24); }
-inline AArch64Op aarch64_h25(void) { return aarch64_vech(25); }
-inline AArch64Op aarch64_h26(void) { return aarch64_vech(26); }
-inline AArch64Op aarch64_h27(void) { return aarch64_vech(27); }
-inline AArch64Op aarch64_h28(void) { return aarch64_vech(28); }
-inline AArch64Op aarch64_h29(void) { return aarch64_vech(29); }
-inline AArch64Op aarch64_h30(void) { return aarch64_vech(30); }
-inline AArch64Op aarch64_h31(void) { return aarch64_vech(31); }
+static inline AArch64Op aarch64_b0 (void) { return aarch64_vecb( 0); }
+static inline AArch64Op aarch64_b1 (void) { return aarch64_vecb( 1); }
+static inline AArch64Op aarch64_b2 (void) { return aarch64_vecb( 2); }
+static inline AArch64Op aarch64_b3 (void) { return aarch64_vecb( 3); }
+static inline AArch64Op aarch64_b4 (void) { return aarch64_vecb( 4); }
+static inline AArch64Op aarch64_b5 (void) { return aarch64_vecb( 5); }
+static inline AArch64Op aarch64_b6 (void) { return aarch64_vecb( 6); }
+static inline AArch64Op aarch64_b7 (void) { return aarch64_vecb( 7); }
+static inline AArch64Op aarch64_b8 (void) { return aarch64_vecb( 8); }
+static inline AArch64Op aarch64_b9 (void) { return aarch64_vecb( 9); }
+static inline AArch64Op aarch64_b10(void) { return aarch64_vecb(10); }
+static inline AArch64Op aarch64_b11(void) { return aarch64_vecb(11); }
+static inline AArch64Op aarch64_b12(void) { return aarch64_vecb(12); }
+static inline AArch64Op aarch64_b13(void) { return aarch64_vecb(13); }
+static inline AArch64Op aarch64_b14(void) { return aarch64_vecb(14); }
+static inline AArch64Op aarch64_b15(void) { return aarch64_vecb(15); }
+static inline AArch64Op aarch64_b16(void) { return aarch64_vecb(16); }
+static inline AArch64Op aarch64_b17(void) { return aarch64_vecb(17); }
+static inline AArch64Op aarch64_b18(void) { return aarch64_vecb(18); }
+static inline AArch64Op aarch64_b19(void) { return aarch64_vecb(19); }
+static inline AArch64Op aarch64_b20(void) { return aarch64_vecb(20); }
+static inline AArch64Op aarch64_b21(void) { return aarch64_vecb(21); }
+static inline AArch64Op aarch64_b22(void) { return aarch64_vecb(22); }
+static inline AArch64Op aarch64_b23(void) { return aarch64_vecb(23); }
+static inline AArch64Op aarch64_b24(void) { return aarch64_vecb(24); }
+static inline AArch64Op aarch64_b25(void) { return aarch64_vecb(25); }
+static inline AArch64Op aarch64_b26(void) { return aarch64_vecb(26); }
+static inline AArch64Op aarch64_b27(void) { return aarch64_vecb(27); }
+static inline AArch64Op aarch64_b28(void) { return aarch64_vecb(28); }
+static inline AArch64Op aarch64_b29(void) { return aarch64_vecb(29); }
+static inline AArch64Op aarch64_b30(void) { return aarch64_vecb(30); }
+static inline AArch64Op aarch64_b31(void) { return aarch64_vecb(31); }
 
 /*********************************************************************/
-inline AArch64Op aarch64_s0 (void) { return aarch64_vecs( 0); }
-inline AArch64Op aarch64_s1 (void) { return aarch64_vecs( 1); }
-inline AArch64Op aarch64_s2 (void) { return aarch64_vecs( 2); }
-inline AArch64Op aarch64_s3 (void) { return aarch64_vecs( 3); }
-inline AArch64Op aarch64_s4 (void) { return aarch64_vecs( 4); }
-inline AArch64Op aarch64_s5 (void) { return aarch64_vecs( 5); }
-inline AArch64Op aarch64_s6 (void) { return aarch64_vecs( 6); }
-inline AArch64Op aarch64_s7 (void) { return aarch64_vecs( 7); }
-inline AArch64Op aarch64_s8 (void) { return aarch64_vecs( 8); }
-inline AArch64Op aarch64_s9 (void) { return aarch64_vecs( 9); }
-inline AArch64Op aarch64_s10(void) { return aarch64_vecs(10); }
-inline AArch64Op aarch64_s11(void) { return aarch64_vecs(11); }
-inline AArch64Op aarch64_s12(void) { return aarch64_vecs(12); }
-inline AArch64Op aarch64_s13(void) { return aarch64_vecs(13); }
-inline AArch64Op aarch64_s14(void) { return aarch64_vecs(14); }
-inline AArch64Op aarch64_s15(void) { return aarch64_vecs(15); }
-inline AArch64Op aarch64_s16(void) { return aarch64_vecs(16); }
-inline AArch64Op aarch64_s17(void) { return aarch64_vecs(17); }
-inline AArch64Op aarch64_s18(void) { return aarch64_vecs(18); }
-inline AArch64Op aarch64_s19(void) { return aarch64_vecs(19); }
-inline AArch64Op aarch64_s20(void) { return aarch64_vecs(20); }
-inline AArch64Op aarch64_s21(void) { return aarch64_vecs(21); }
-inline AArch64Op aarch64_s22(void) { return aarch64_vecs(22); }
-inline AArch64Op aarch64_s23(void) { return aarch64_vecs(23); }
-inline AArch64Op aarch64_s24(void) { return aarch64_vecs(24); }
-inline AArch64Op aarch64_s25(void) { return aarch64_vecs(25); }
-inline AArch64Op aarch64_s26(void) { return aarch64_vecs(26); }
-inline AArch64Op aarch64_s27(void) { return aarch64_vecs(27); }
-inline AArch64Op aarch64_s28(void) { return aarch64_vecs(28); }
-inline AArch64Op aarch64_s29(void) { return aarch64_vecs(29); }
-inline AArch64Op aarch64_s30(void) { return aarch64_vecs(30); }
-inline AArch64Op aarch64_s31(void) { return aarch64_vecs(31); }
+static inline AArch64Op aarch64_h0 (void) { return aarch64_vech( 0); }
+static inline AArch64Op aarch64_h1 (void) { return aarch64_vech( 1); }
+static inline AArch64Op aarch64_h2 (void) { return aarch64_vech( 2); }
+static inline AArch64Op aarch64_h3 (void) { return aarch64_vech( 3); }
+static inline AArch64Op aarch64_h4 (void) { return aarch64_vech( 4); }
+static inline AArch64Op aarch64_h5 (void) { return aarch64_vech( 5); }
+static inline AArch64Op aarch64_h6 (void) { return aarch64_vech( 6); }
+static inline AArch64Op aarch64_h7 (void) { return aarch64_vech( 7); }
+static inline AArch64Op aarch64_h8 (void) { return aarch64_vech( 8); }
+static inline AArch64Op aarch64_h9 (void) { return aarch64_vech( 9); }
+static inline AArch64Op aarch64_h10(void) { return aarch64_vech(10); }
+static inline AArch64Op aarch64_h11(void) { return aarch64_vech(11); }
+static inline AArch64Op aarch64_h12(void) { return aarch64_vech(12); }
+static inline AArch64Op aarch64_h13(void) { return aarch64_vech(13); }
+static inline AArch64Op aarch64_h14(void) { return aarch64_vech(14); }
+static inline AArch64Op aarch64_h15(void) { return aarch64_vech(15); }
+static inline AArch64Op aarch64_h16(void) { return aarch64_vech(16); }
+static inline AArch64Op aarch64_h17(void) { return aarch64_vech(17); }
+static inline AArch64Op aarch64_h18(void) { return aarch64_vech(18); }
+static inline AArch64Op aarch64_h19(void) { return aarch64_vech(19); }
+static inline AArch64Op aarch64_h20(void) { return aarch64_vech(20); }
+static inline AArch64Op aarch64_h21(void) { return aarch64_vech(21); }
+static inline AArch64Op aarch64_h22(void) { return aarch64_vech(22); }
+static inline AArch64Op aarch64_h23(void) { return aarch64_vech(23); }
+static inline AArch64Op aarch64_h24(void) { return aarch64_vech(24); }
+static inline AArch64Op aarch64_h25(void) { return aarch64_vech(25); }
+static inline AArch64Op aarch64_h26(void) { return aarch64_vech(26); }
+static inline AArch64Op aarch64_h27(void) { return aarch64_vech(27); }
+static inline AArch64Op aarch64_h28(void) { return aarch64_vech(28); }
+static inline AArch64Op aarch64_h29(void) { return aarch64_vech(29); }
+static inline AArch64Op aarch64_h30(void) { return aarch64_vech(30); }
+static inline AArch64Op aarch64_h31(void) { return aarch64_vech(31); }
 
 /*********************************************************************/
-inline AArch64Op aarch64_d0 (void) { return aarch64_vecd( 0); }
-inline AArch64Op aarch64_d1 (void) { return aarch64_vecd( 1); }
-inline AArch64Op aarch64_d2 (void) { return aarch64_vecd( 2); }
-inline AArch64Op aarch64_d3 (void) { return aarch64_vecd( 3); }
-inline AArch64Op aarch64_d4 (void) { return aarch64_vecd( 4); }
-inline AArch64Op aarch64_d5 (void) { return aarch64_vecd( 5); }
-inline AArch64Op aarch64_d6 (void) { return aarch64_vecd( 6); }
-inline AArch64Op aarch64_d7 (void) { return aarch64_vecd( 7); }
-inline AArch64Op aarch64_d8 (void) { return aarch64_vecd( 8); }
-inline AArch64Op aarch64_d9 (void) { return aarch64_vecd( 9); }
-inline AArch64Op aarch64_d10(void) { return aarch64_vecd(10); }
-inline AArch64Op aarch64_d11(void) { return aarch64_vecd(11); }
-inline AArch64Op aarch64_d12(void) { return aarch64_vecd(12); }
-inline AArch64Op aarch64_d13(void) { return aarch64_vecd(13); }
-inline AArch64Op aarch64_d14(void) { return aarch64_vecd(14); }
-inline AArch64Op aarch64_d15(void) { return aarch64_vecd(15); }
-inline AArch64Op aarch64_d16(void) { return aarch64_vecd(16); }
-inline AArch64Op aarch64_d17(void) { return aarch64_vecd(17); }
-inline AArch64Op aarch64_d18(void) { return aarch64_vecd(18); }
-inline AArch64Op aarch64_d19(void) { return aarch64_vecd(19); }
-inline AArch64Op aarch64_d20(void) { return aarch64_vecd(20); }
-inline AArch64Op aarch64_d21(void) { return aarch64_vecd(21); }
-inline AArch64Op aarch64_d22(void) { return aarch64_vecd(22); }
-inline AArch64Op aarch64_d23(void) { return aarch64_vecd(23); }
-inline AArch64Op aarch64_d24(void) { return aarch64_vecd(24); }
-inline AArch64Op aarch64_d25(void) { return aarch64_vecd(25); }
-inline AArch64Op aarch64_d26(void) { return aarch64_vecd(26); }
-inline AArch64Op aarch64_d27(void) { return aarch64_vecd(27); }
-inline AArch64Op aarch64_d28(void) { return aarch64_vecd(28); }
-inline AArch64Op aarch64_d29(void) { return aarch64_vecd(29); }
-inline AArch64Op aarch64_d30(void) { return aarch64_vecd(30); }
-inline AArch64Op aarch64_d31(void) { return aarch64_vecd(31); }
+static inline AArch64Op aarch64_s0 (void) { return aarch64_vecs( 0); }
+static inline AArch64Op aarch64_s1 (void) { return aarch64_vecs( 1); }
+static inline AArch64Op aarch64_s2 (void) { return aarch64_vecs( 2); }
+static inline AArch64Op aarch64_s3 (void) { return aarch64_vecs( 3); }
+static inline AArch64Op aarch64_s4 (void) { return aarch64_vecs( 4); }
+static inline AArch64Op aarch64_s5 (void) { return aarch64_vecs( 5); }
+static inline AArch64Op aarch64_s6 (void) { return aarch64_vecs( 6); }
+static inline AArch64Op aarch64_s7 (void) { return aarch64_vecs( 7); }
+static inline AArch64Op aarch64_s8 (void) { return aarch64_vecs( 8); }
+static inline AArch64Op aarch64_s9 (void) { return aarch64_vecs( 9); }
+static inline AArch64Op aarch64_s10(void) { return aarch64_vecs(10); }
+static inline AArch64Op aarch64_s11(void) { return aarch64_vecs(11); }
+static inline AArch64Op aarch64_s12(void) { return aarch64_vecs(12); }
+static inline AArch64Op aarch64_s13(void) { return aarch64_vecs(13); }
+static inline AArch64Op aarch64_s14(void) { return aarch64_vecs(14); }
+static inline AArch64Op aarch64_s15(void) { return aarch64_vecs(15); }
+static inline AArch64Op aarch64_s16(void) { return aarch64_vecs(16); }
+static inline AArch64Op aarch64_s17(void) { return aarch64_vecs(17); }
+static inline AArch64Op aarch64_s18(void) { return aarch64_vecs(18); }
+static inline AArch64Op aarch64_s19(void) { return aarch64_vecs(19); }
+static inline AArch64Op aarch64_s20(void) { return aarch64_vecs(20); }
+static inline AArch64Op aarch64_s21(void) { return aarch64_vecs(21); }
+static inline AArch64Op aarch64_s22(void) { return aarch64_vecs(22); }
+static inline AArch64Op aarch64_s23(void) { return aarch64_vecs(23); }
+static inline AArch64Op aarch64_s24(void) { return aarch64_vecs(24); }
+static inline AArch64Op aarch64_s25(void) { return aarch64_vecs(25); }
+static inline AArch64Op aarch64_s26(void) { return aarch64_vecs(26); }
+static inline AArch64Op aarch64_s27(void) { return aarch64_vecs(27); }
+static inline AArch64Op aarch64_s28(void) { return aarch64_vecs(28); }
+static inline AArch64Op aarch64_s29(void) { return aarch64_vecs(29); }
+static inline AArch64Op aarch64_s30(void) { return aarch64_vecs(30); }
+static inline AArch64Op aarch64_s31(void) { return aarch64_vecs(31); }
 
 /*********************************************************************/
-inline AArch64Op aarch64_q0 (void) { return aarch64_vecq( 0); }
-inline AArch64Op aarch64_q1 (void) { return aarch64_vecq( 1); }
-inline AArch64Op aarch64_q2 (void) { return aarch64_vecq( 2); }
-inline AArch64Op aarch64_q3 (void) { return aarch64_vecq( 3); }
-inline AArch64Op aarch64_q4 (void) { return aarch64_vecq( 4); }
-inline AArch64Op aarch64_q5 (void) { return aarch64_vecq( 5); }
-inline AArch64Op aarch64_q6 (void) { return aarch64_vecq( 6); }
-inline AArch64Op aarch64_q7 (void) { return aarch64_vecq( 7); }
-inline AArch64Op aarch64_q8 (void) { return aarch64_vecq( 8); }
-inline AArch64Op aarch64_q9 (void) { return aarch64_vecq( 9); }
-inline AArch64Op aarch64_q10(void) { return aarch64_vecq(10); }
-inline AArch64Op aarch64_q11(void) { return aarch64_vecq(11); }
-inline AArch64Op aarch64_q12(void) { return aarch64_vecq(12); }
-inline AArch64Op aarch64_q13(void) { return aarch64_vecq(13); }
-inline AArch64Op aarch64_q14(void) { return aarch64_vecq(14); }
-inline AArch64Op aarch64_q15(void) { return aarch64_vecq(15); }
-inline AArch64Op aarch64_q16(void) { return aarch64_vecq(16); }
-inline AArch64Op aarch64_q17(void) { return aarch64_vecq(17); }
-inline AArch64Op aarch64_q18(void) { return aarch64_vecq(18); }
-inline AArch64Op aarch64_q19(void) { return aarch64_vecq(19); }
-inline AArch64Op aarch64_q20(void) { return aarch64_vecq(20); }
-inline AArch64Op aarch64_q21(void) { return aarch64_vecq(21); }
-inline AArch64Op aarch64_q22(void) { return aarch64_vecq(22); }
-inline AArch64Op aarch64_q23(void) { return aarch64_vecq(23); }
-inline AArch64Op aarch64_q24(void) { return aarch64_vecq(24); }
-inline AArch64Op aarch64_q25(void) { return aarch64_vecq(25); }
-inline AArch64Op aarch64_q26(void) { return aarch64_vecq(26); }
-inline AArch64Op aarch64_q27(void) { return aarch64_vecq(27); }
-inline AArch64Op aarch64_q28(void) { return aarch64_vecq(28); }
-inline AArch64Op aarch64_q29(void) { return aarch64_vecq(29); }
-inline AArch64Op aarch64_q30(void) { return aarch64_vecq(30); }
-inline AArch64Op aarch64_q31(void) { return aarch64_vecq(31); }
+static inline AArch64Op aarch64_d0 (void) { return aarch64_vecd( 0); }
+static inline AArch64Op aarch64_d1 (void) { return aarch64_vecd( 1); }
+static inline AArch64Op aarch64_d2 (void) { return aarch64_vecd( 2); }
+static inline AArch64Op aarch64_d3 (void) { return aarch64_vecd( 3); }
+static inline AArch64Op aarch64_d4 (void) { return aarch64_vecd( 4); }
+static inline AArch64Op aarch64_d5 (void) { return aarch64_vecd( 5); }
+static inline AArch64Op aarch64_d6 (void) { return aarch64_vecd( 6); }
+static inline AArch64Op aarch64_d7 (void) { return aarch64_vecd( 7); }
+static inline AArch64Op aarch64_d8 (void) { return aarch64_vecd( 8); }
+static inline AArch64Op aarch64_d9 (void) { return aarch64_vecd( 9); }
+static inline AArch64Op aarch64_d10(void) { return aarch64_vecd(10); }
+static inline AArch64Op aarch64_d11(void) { return aarch64_vecd(11); }
+static inline AArch64Op aarch64_d12(void) { return aarch64_vecd(12); }
+static inline AArch64Op aarch64_d13(void) { return aarch64_vecd(13); }
+static inline AArch64Op aarch64_d14(void) { return aarch64_vecd(14); }
+static inline AArch64Op aarch64_d15(void) { return aarch64_vecd(15); }
+static inline AArch64Op aarch64_d16(void) { return aarch64_vecd(16); }
+static inline AArch64Op aarch64_d17(void) { return aarch64_vecd(17); }
+static inline AArch64Op aarch64_d18(void) { return aarch64_vecd(18); }
+static inline AArch64Op aarch64_d19(void) { return aarch64_vecd(19); }
+static inline AArch64Op aarch64_d20(void) { return aarch64_vecd(20); }
+static inline AArch64Op aarch64_d21(void) { return aarch64_vecd(21); }
+static inline AArch64Op aarch64_d22(void) { return aarch64_vecd(22); }
+static inline AArch64Op aarch64_d23(void) { return aarch64_vecd(23); }
+static inline AArch64Op aarch64_d24(void) { return aarch64_vecd(24); }
+static inline AArch64Op aarch64_d25(void) { return aarch64_vecd(25); }
+static inline AArch64Op aarch64_d26(void) { return aarch64_vecd(26); }
+static inline AArch64Op aarch64_d27(void) { return aarch64_vecd(27); }
+static inline AArch64Op aarch64_d28(void) { return aarch64_vecd(28); }
+static inline AArch64Op aarch64_d29(void) { return aarch64_vecd(29); }
+static inline AArch64Op aarch64_d30(void) { return aarch64_vecd(30); }
+static inline AArch64Op aarch64_d31(void) { return aarch64_vecd(31); }
+
+/*********************************************************************/
+static inline AArch64Op aarch64_q0 (void) { return aarch64_vecq( 0); }
+static inline AArch64Op aarch64_q1 (void) { return aarch64_vecq( 1); }
+static inline AArch64Op aarch64_q2 (void) { return aarch64_vecq( 2); }
+static inline AArch64Op aarch64_q3 (void) { return aarch64_vecq( 3); }
+static inline AArch64Op aarch64_q4 (void) { return aarch64_vecq( 4); }
+static inline AArch64Op aarch64_q5 (void) { return aarch64_vecq( 5); }
+static inline AArch64Op aarch64_q6 (void) { return aarch64_vecq( 6); }
+static inline AArch64Op aarch64_q7 (void) { return aarch64_vecq( 7); }
+static inline AArch64Op aarch64_q8 (void) { return aarch64_vecq( 8); }
+static inline AArch64Op aarch64_q9 (void) { return aarch64_vecq( 9); }
+static inline AArch64Op aarch64_q10(void) { return aarch64_vecq(10); }
+static inline AArch64Op aarch64_q11(void) { return aarch64_vecq(11); }
+static inline AArch64Op aarch64_q12(void) { return aarch64_vecq(12); }
+static inline AArch64Op aarch64_q13(void) { return aarch64_vecq(13); }
+static inline AArch64Op aarch64_q14(void) { return aarch64_vecq(14); }
+static inline AArch64Op aarch64_q15(void) { return aarch64_vecq(15); }
+static inline AArch64Op aarch64_q16(void) { return aarch64_vecq(16); }
+static inline AArch64Op aarch64_q17(void) { return aarch64_vecq(17); }
+static inline AArch64Op aarch64_q18(void) { return aarch64_vecq(18); }
+static inline AArch64Op aarch64_q19(void) { return aarch64_vecq(19); }
+static inline AArch64Op aarch64_q20(void) { return aarch64_vecq(20); }
+static inline AArch64Op aarch64_q21(void) { return aarch64_vecq(21); }
+static inline AArch64Op aarch64_q22(void) { return aarch64_vecq(22); }
+static inline AArch64Op aarch64_q23(void) { return aarch64_vecq(23); }
+static inline AArch64Op aarch64_q24(void) { return aarch64_vecq(24); }
+static inline AArch64Op aarch64_q25(void) { return aarch64_vecq(25); }
+static inline AArch64Op aarch64_q26(void) { return aarch64_vecq(26); }
+static inline AArch64Op aarch64_q27(void) { return aarch64_vecq(27); }
+static inline AArch64Op aarch64_q28(void) { return aarch64_vecq(28); }
+static inline AArch64Op aarch64_q29(void) { return aarch64_vecq(29); }
+static inline AArch64Op aarch64_q30(void) { return aarch64_vecq(30); }
+static inline AArch64Op aarch64_q31(void) { return aarch64_vecq(31); }
 
 /*********************************************************************/
 /* Helper functions to add instructions */
 
 #define OPN aarch64_opn()
+#define aarch64_none(actx                      ) aarch64_add_insn(actx, AARCH64_INSN_NONE,   OPN, OPN, OPN, OPN)
 
 #define aarch64_add(actx,    op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_ADD,    op0, op1, op2, OPN)
 #define aarch64_addv(actx,   op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_ADDV,   op0, op1, OPN, OPN)
@@ -530,5 +537,10 @@ inline AArch64Op aarch64_q31(void) { return aarch64_vecq(31); }
 #define aarch64_xtn(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_XTN,    op0, op1, OPN, OPN)
 #define aarch64_zip1(actx,   op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_ZIP1,   op0, op1, op2, OPN)
 #define aarch64_zip2(actx,   op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_ZIP2,   op0, op1, op2, OPN)
+
+#define aarch64_comment(actx, comment) do { \
+    aarch64_none(actx);                     \
+    aarch64_annotate(actx, comment);        \
+} while (0)
 
 #endif /* AARCH64_H */

@@ -20,21 +20,13 @@
 
 #include "../ops_chain.h"
 
+#include "libswscale/ffasm/aarch64.h"
+
 #include "libavutil/avstring.h"
 
-typedef struct FFAsmAArch64Context {
-};
-
-enum FFAsmAArch64Insn {
-    FFASM_AARCH64_NONE = 0,
-    FFASM_AARCH64_LDR,
-};
-
-#define ffasm_aarch64_ldr(ctx, Rt) ffasm_add_insn(ctx, FFASM_AARCH64_LDR, Rt, b, c, 0)
-
-typedef struct AArch64Context {
+typedef struct SwsAArch64Context {
     int block_size;
-} AArch64Context;
+} SwsAArch64Context;
 
 #define LOOP_ARRAY(idx, arr)          \
     for (int idx = 0; idx < 4; idx++) \
@@ -87,11 +79,12 @@ typedef struct VectorElementType {
 typedef struct VectorElementType {
     uint8_t e; /* element size */
     uint8_t v; /* vector size */
+    uint8_t c; /* element count */
 } VectorElementType;
-static void vet_init(VectorElementType *vet, const SwsOp *op, int block_size)
+static void aarch64_t_init(AArch64ArrangementSpecifier *t, const SwsOp *op, int block_size)
 {
-    vet->e = ff_sws_pixel_type_size(op->type);
-    vet->v = FFMIN(vet->e * block_size, 16);
+    t->s = ff_sws_pixel_type_size(op->type);
+    t->c = FFMIN(t->s * block_size, 16) / t->s;
 }
 #endif
 
@@ -148,7 +141,7 @@ static void buf_appendc(char **pbuf, size_t *prem, char c)
     *prem = rem - 1;
 }
 
-static int aarch64_sig_gen(AArch64Context *actx, const SwsOpList *ops, int n)
+static int aarch64_sig_gen(SwsAArch64Context *actx, const SwsOpList *ops, int n)
 {
     int block_size = actx->block_size;
 
@@ -159,25 +152,64 @@ static int aarch64_sig_gen(AArch64Context *actx, const SwsOpList *ops, int n)
                || ((op->type == SWS_PIXEL_U32) && block_size == 8)
                || ((op->type == SWS_PIXEL_F32) && block_size == 8);
 
-    VectorElementType vet;
-    vet_init(&vet, op, block_size);
+    AArch64ArrangementSpecifier t;
+    aarch64_t_init(&t, op, block_size);
     // int num_bytes = vet.v << (use_vh ? 1 : 0); // TODO check if we can use num_bytes instead of (use_vh ? 0x100 : 0) | vet.v
 
     char sig[128];
     char *p = sig;
     size_t rem = sizeof(sig);
 
+#if 0
     const char *op_type_name = ff_sws_op_type_name(op->op);
     size_t op_type_name_len = strlen(op_type_name);
     for (size_t i = 0; i < op_type_name_len; i++)
         buf_appendc(&p, &rem, av_tolower(op_type_name[i]));
+#endif
 
+#if 0
     buf_appendf(&p, &rem, "_%c", ff_sws_pixel_type_is_int(op->type) ? 'i' : 'f');
-    buf_appendf(&p, &rem, "_%s", USED_MASK(next));
-    buf_appendf(&p, &rem, "_%04x", ((use_vh ? 2 : 1) << 12) | (vet.v << 4) | vet.e);
+#endif
+
+    buf_appendf(&p, &rem, "ff_sws_aarch64");
 
     switch (op->op) {
     case SWS_OP_READ:
+        buf_appendf(&p, &rem, "_read_%s", USED_MASK(next));
+        buf_appendf(&p, &rem, "_%d", (use_vh ? 2 : 1));
+        buf_appendf(&p, &rem, "_%04x", (t.c << 8) | t.s);
+        if (op->rw.frac) {
+            buf_appendf(&p, &rem, "_frac_%d", op->rw.frac);
+        } else if (op->rw.packed) {
+            buf_appendf(&p, &rem, "_packed");
+        } else {
+            buf_appendf(&p, &rem, "_planar");
+        }
+#if 1
+{
+    AArch64Context *actx = aarch64_alloc();
+
+    AArch64Op in[4];
+    AArch64Op out[4];
+
+    for (int i = 0; i < 4; i++) {
+        in [i] = aarch64_gpx(i);
+        out[i] = aarch64_vec(i);
+    }
+
+    aarch64_mov(actx, in[0], in[2]);
+
+    AVBPrint bp;
+    av_bprint_init(&bp, 0, AV_BPRINT_SIZE_AUTOMATIC);
+    aarch64_print(actx, &bp);
+    printf("%s", bp.str);
+    av_bprint_finalize(&bp, NULL);
+
+    aarch64_free(&actx);
+    exit(1);
+}
+#endif
+        break;
     case SWS_OP_WRITE:
         if (op->rw.frac) {
             buf_appendf(&p, &rem, "_frac_%d", op->rw.frac);
@@ -275,7 +307,7 @@ static int aarch64_sig_gen(AArch64Context *actx, const SwsOpList *ops, int n)
 static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out,
                            int flags)
 {
-    AArch64Context actx;
+    SwsAArch64Context actx;
 
     /* Use at most two full vregs during the widest precision section */
     actx.block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
