@@ -88,18 +88,68 @@ static const char *insn_name(AArch64InsnId id)
     return insn_names[id];
 }
 
-static void aarch64_print_gpr(AVBPrint *bp, AArch64GPR gpr)
+static const char *cond_name(uint8_t cond)
 {
-    if (gpr.n == 31) {
-        av_bprintf(bp, "%s", gpr.s == sizeof(uint32_t) ? "wsp" : "sp");
+    static const char cond_names[16][3] = {
+        [AARCH64_EQ] = "eq",
+        [AARCH64_NE] = "ne",
+        [AARCH64_HS] = "hs",
+        [AARCH64_LO] = "lo",
+        [AARCH64_MI] = "mi",
+        [AARCH64_PL] = "pl",
+        [AARCH64_VS] = "vs",
+        [AARCH64_VC] = "vc",
+        [AARCH64_HI] = "hi",
+        [AARCH64_LS] = "ls",
+        [AARCH64_GE] = "ge",
+        [AARCH64_LT] = "lt",
+        [AARCH64_GT] = "gt",
+        [AARCH64_LE] = "le",
+        [AARCH64_AL] = "al",
+        [AARCH64_NV] = "nv",
+    };
+    return cond_names[cond & 0xf];
+}
+
+static const char *extend_name(uint8_t extend)
+{
+    switch (extend) {
+    case AARCH64_EXTEND_UXTB: return "uxtb";
+    case AARCH64_EXTEND_UXTH: return "uxth";
+    case AARCH64_EXTEND_UXTW: return "uxtw";
+    case AARCH64_EXTEND_UXTX: return "lsl";
+    case AARCH64_EXTEND_SXTB: return "sxtb";
+    case AARCH64_EXTEND_SXTH: return "sxth";
+    case AARCH64_EXTEND_SXTW: return "sxtw";
+    case AARCH64_EXTEND_SXTX: return "sxtx";
+    default:                  return NULL;
+    }
+}
+
+static void aarch64_print_gpr(AVBPrint *bp, AArch64Op op)
+{
+    uint8_t n = a64op_gpr_n(op);
+    uint8_t size = a64op_gpr_size(op);
+
+    if (n == 31) {
+        av_bprintf(bp, "%s", size == sizeof(uint32_t) ? "wsp" : "sp");
         return;
     }
 
-    switch (gpr.s) {
-    case sizeof(uint32_t): av_bprintf(bp, "w%d", gpr.n); break;
-    case sizeof(uint64_t): av_bprintf(bp, "x%d", gpr.n); break;
+    switch (size) {
+    case sizeof(uint32_t): av_bprintf(bp, "w%d", n); break;
+    case sizeof(uint64_t): av_bprintf(bp, "x%d", n); break;
+    default: av_assert0(!"Invalid GPR size!");
     }
-    av_unreachable("Invalid GPR size!");
+
+    uint8_t ext = a64op_gpr_ext(op);
+    if (ext != AARCH64_EXTEND_NONE) {
+        uint8_t sh = a64op_gpr_sh(op);
+        if (sh)
+            av_bprintf(bp, ", %s #%d", extend_name(ext), sh);
+        else
+            av_bprintf(bp, ", %s", extend_name(ext));
+    }
 }
 
 static char elem_type_char(uint8_t elem_size)
@@ -111,18 +161,71 @@ static char elem_type_char(uint8_t elem_size)
     case  8: return 'd';
     case 16: return 'q';
     }
-    av_unreachable("Invalid vector element type!");
+    av_assert0(!"Invalid vector element type!");
     return '\0';
 }
 
-static void aarch64_print_vec(AVBPrint *bp, AArch64Vec vec)
+static void aarch64_print_base(AVBPrint *bp, AArch64Op op)
 {
-    if (vec.t.s == 0) {
-        av_bprintf(bp, "v%d", vec.n);
-    } else if (vec.t.c == 0) {
-        av_bprintf(bp, "%c%d", elem_type_char(vec.t.s), vec.n);
+    uint8_t n = a64op_base_n(op);
+    uint8_t mode = a64op_base_mode(op);
+    int16_t imm = a64op_base_imm(op);
+
+    switch (mode) {
+    case AARCH64_BASE_OFFSET: {
+        if (imm)
+            av_bprintf(bp, "[x%d, #%d]", n, imm);
+        else
+            av_bprintf(bp, "[x%d]", n);
+        break;
+    }
+    case AARCH64_BASE_PRE:
+        av_bprintf(bp, "[x%d, #%d]!", n, imm);
+        break;
+    case AARCH64_BASE_POST:
+        av_bprintf(bp, "[x%d], #%d", n, imm);
+        break;
+    case AARCH64_BASE_REG: {
+        uint8_t m   = a64op_base_m(op);
+        uint8_t ext = a64op_base_ext(op);
+        uint8_t sh  = a64op_base_sh(op);
+        if (sh)
+            av_bprintf(bp, "[x%d, x%d, %s #%d]", n, m, extend_name(ext), sh);
+        else
+            av_bprintf(bp, "[x%d, x%d, %s]", n, m, extend_name(ext));
+        break;
+    }
+    }
+}
+
+static void aarch64_print_vec_single(AVBPrint *bp, uint8_t n,
+                                     uint8_t el_count, uint8_t el_size)
+{
+    if (el_size == 0)
+        av_bprintf(bp, "v%u", n);
+    else if (el_count == 0)
+        av_bprintf(bp, "%c%u", elem_type_char(el_size), n);
+    else
+        av_bprintf(bp, "v%u.%d%c", n, el_count, elem_type_char(el_size));
+}
+
+static void aarch64_print_vec(AVBPrint *bp, AArch64Op op)
+{
+    uint8_t n        = a64op_vec_n(op);
+    uint8_t el_count = a64op_vec_el_count(op);
+    uint8_t el_size  = a64op_vec_el_size(op);
+    uint8_t num_regs = a64op_vec_num_regs(op);
+
+    if (num_regs >= 2) {
+        av_bprintf(bp, "{");
+        for (int i = 0; i < num_regs; i++) {
+            if (i > 0)
+                av_bprintf(bp, ", ");
+            aarch64_print_vec_single(bp, (n + i) % 32, el_count, el_size);
+        }
+        av_bprintf(bp, "}");
     } else {
-        av_bprintf(bp, "v%d.%d%c", vec.n, vec.t.c, elem_type_char(vec.t.s));
+        aarch64_print_vec_single(bp, n, el_count, el_size);
     }
 }
 
@@ -139,88 +242,246 @@ void aarch64_free(AArch64Context **p_actx)
     if (!actx)
         return;
 
-    for (int i = 0; i < actx->insns.num_insns; i++)
-        av_freep(&actx->insns.insns[i].comment);
-    av_freep(&actx->insns.insns);
+    for (int i = 0; i < actx->nodes.num_nodes; i++) {
+        AArch64Node *node = &actx->nodes.nodes[i];
+        switch (node->type) {
+        case AARCH64_NODE_INSN:
+            av_freep(&node->insn.comment);
+            break;
+        case AARCH64_NODE_COMMENT:
+            av_freep(&node->comment.text);
+            break;
+        case AARCH64_NODE_LABEL:
+            /* name is owned by actx->labels, not the node */
+            break;
+        case AARCH64_NODE_FUNCTION:
+            av_freep(&node->func.name);
+            break;
+        case AARCH64_NODE_ENDFUNC:
+            break;
+        case AARCH64_NODE_DATA:
+            break;
+        }
+    }
+    av_freep(&actx->nodes.nodes);
+    for (int i = 0; i < actx->num_labels; i++)
+        av_freep(&actx->labels[i]);
+    av_freep(&actx->labels);
     av_freep(p_actx);
+}
+
+static AArch64Node *add_node(AArch64Context *actx, AArch64NodeType type)
+{
+    if (actx->error)
+        return NULL;
+
+    AArch64Node *node = av_dynarray2_add((void **) &actx->nodes.nodes,
+                                         &actx->nodes.num_nodes,
+                                         sizeof(*node), NULL);
+    if (!node) {
+        actx->error = AVERROR(ENOMEM);
+        return NULL;
+    }
+
+    node->type = type;
+
+    return node;
 }
 
 int aarch64_add_insn(AArch64Context *actx, AArch64InsnId id,
                      AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3)
 {
-    if (actx->error)
+    AArch64Node *node = add_node(actx, AARCH64_NODE_INSN);
+    if (!node)
         return actx->error;
 
-    AArch64Insn *insn = av_dynarray2_add((void **) &actx->insns.insns,
-                                         &actx->insns.num_insns,
-                                         sizeof(*insn), NULL);
-    if (!insn) {
+    node->insn.id      = id;
+    node->insn.op[0]   = op0;
+    node->insn.op[1]   = op1;
+    node->insn.op[2]   = op2;
+    node->insn.op[3]   = op3;
+    node->insn.comment = NULL;
+
+    return 0;
+}
+
+int aarch64_add_comment(AArch64Context *actx, const char *comment)
+{
+    AArch64Node *node = add_node(actx, AARCH64_NODE_COMMENT);
+    if (!node)
+        return actx->error;
+
+    node->comment.text = av_strdup(comment);
+    if (!node->comment.text) {
         actx->error = AVERROR(ENOMEM);
         return actx->error;
     }
-
-    insn->id      = id;
-    insn->op[0]   = op0;
-    insn->op[1]   = op1;
-    insn->op[2]   = op2;
-    insn->op[3]   = op3;
-    insn->comment = NULL;
 
     return 0;
 }
 
 void aarch64_annotate(AArch64Context *actx, const char *comment)
 {
-    if (actx->error || actx->insns.num_insns == 0)
+    if (actx->error || actx->nodes.num_nodes == 0)
         return;
-    AArch64Insn *insn = &actx->insns.insns[actx->insns.num_insns - 1];
-    av_freep(&insn->comment);
-    insn->comment = av_strdup(comment);
-    if (!insn->comment)
+    AArch64Node *node = &actx->nodes.nodes[actx->nodes.num_nodes - 1];
+    if (node->type != AARCH64_NODE_INSN)
+        return;
+    av_freep(&node->insn.comment);
+    node->insn.comment = av_strdup(comment);
+    if (!node->insn.comment)
         actx->error = AVERROR(ENOMEM);
 }
 
-static void print_op(AVBPrint *bp, const AArch64Op *op)
+int aarch64_new_label(AArch64Context *actx, const char *name)
 {
-    switch (op->type) {
+    if (actx->error)
+        return actx->error;
+
+    char *dup = av_strdup(name);
+    if (!dup) {
+        actx->error = AVERROR(ENOMEM);
+        return actx->error;
+    }
+
+    int id = actx->num_labels;
+    char **p = av_dynarray2_add((void **) &actx->labels, &actx->num_labels,
+                                sizeof(*actx->labels), NULL);
+    if (!p) {
+        av_free(dup);
+        actx->error = AVERROR(ENOMEM);
+        return actx->error;
+    }
+    *p = dup;
+
+    return id;
+}
+
+int aarch64_add_label(AArch64Context *actx, int id)
+{
+    AArch64Node *node = add_node(actx, AARCH64_NODE_LABEL);
+    if (!node)
+        return actx->error;
+
+    av_assert0(id >= 0 && id < actx->num_labels);
+    node->label.name = actx->labels[id];
+
+    return 0;
+}
+
+int aarch64_add_func(AArch64Context *actx, const char *name, bool export)
+{
+    AArch64Node *node = add_node(actx, AARCH64_NODE_FUNCTION);
+    if (!node)
+        return actx->error;
+
+    node->func.name = av_strdup(name);
+    if (!node->func.name) {
+        actx->error = AVERROR(ENOMEM);
+        return actx->error;
+    }
+    node->func.export = export;
+
+    return 0;
+}
+
+int aarch64_add_endfunc(AArch64Context *actx)
+{
+    AArch64Node *node = add_node(actx, AARCH64_NODE_ENDFUNC);
+    if (!node)
+        return actx->error;
+    return 0;
+}
+
+static void print_op(const AArch64Context *actx, AVBPrint *bp, AArch64Op op)
+{
+    switch (a64op_type(op)) {
     case AARCH64_OP_GPR:
-        aarch64_print_gpr(bp, op->gpr);
+        aarch64_print_gpr(bp, op);
         break;
     case AARCH64_OP_VEC:
-        aarch64_print_vec(bp, op->vec);
+        aarch64_print_vec(bp, op);
         break;
+    case AARCH64_OP_BASE:
+        aarch64_print_base(bp, op);
+        break;
+    case AARCH64_OP_IMM:
+        av_bprintf(bp, "#%d", a64op_imm_val(op));
+        break;
+    case AARCH64_OP_COND:
+        av_bprintf(bp, "%s", cond_name(a64op_cond_val(op)));
+        break;
+    case AARCH64_OP_LABEL: {
+        int id = a64op_label_id(op);
+        av_assert0(id >= 0 && id < actx->num_labels);
+        av_bprintf(bp, "%s", actx->labels[id]);
+        break;
+    }
     default:
         av_assert0(0);
     }
 }
 
-#define AARCH64_COMMENT_COL 56
+static void indent_to(AVBPrint *bp, int line_start, int col)
+{
+    int cur_col = bp->len - line_start;
+    av_bprintf(bp, "%*s", FFMAX(col - cur_col, 1), "");
+}
 
 int aarch64_print(AArch64Context *actx, AVBPrint *bp)
 {
-    for (int i = 0; i < actx->insns.num_insns; i++) {
-        const AArch64Insn *insn = &actx->insns.insns[i];
-        if (insn->id == AARCH64_INSN_NONE) {
-            av_bprintf(bp, "        // %s\n", insn->comment);
-            continue;
-        }
+    const int instr_indent = 8;
+    const int comment_col = 56;
+
+    for (int i = 0; i < actx->nodes.num_nodes; i++) {
+        const AArch64Node *node = &actx->nodes.nodes[i];
         size_t line_start = bp->len;
-        av_bprintf(bp, "        %-16s", insn_name(insn->id));
-        const char *sep = "";
-        for (int j = 0; j < 4; j++) {
-            const AArch64Op *op = &insn->op[j];
-            if (op->type == AARCH64_OP_NONE)
-                break;
-            av_bprintf(bp, "%s", sep);
-            sep = ", ";
-            print_op(bp, op);
+
+        switch (node->type) {
+        case AARCH64_NODE_COMMENT:
+            indent_to(bp, line_start, instr_indent);
+            av_bprintf(bp, "// %s\n", node->comment.text);
+            break;
+        case AARCH64_NODE_INSN: {
+            indent_to(bp, line_start, instr_indent);
+
+            int op_start = 0;
+            if (node->insn.id == AARCH64_INSN_B && a64op_type(node->insn.op[0]) == AARCH64_OP_COND) {
+                av_bprintf(bp, "b.%-14s", cond_name(a64op_cond_val(node->insn.op[0])));
+                op_start = 1;
+            } else {
+                av_bprintf(bp, "%-16s", insn_name(node->insn.id));
+            }
+
+            for (int j = op_start; j < 4; j++) {
+                AArch64Op op = node->insn.op[j];
+                if (a64op_type(op) == AARCH64_OP_NONE)
+                    break;
+                if (j != op_start)
+                    av_bprintf(bp, "%s", ", ");
+                print_op(actx, bp, op);
+            }
+
+            if (node->insn.comment) {
+                indent_to(bp, line_start, comment_col);
+                av_bprintf(bp, "// %s", node->insn.comment);
+            }
+            av_bprintf(bp, "\n");
+
+            break;
         }
-        if (insn->comment) {
-            int col = bp->len - line_start;
-            av_bprintf(bp, "%*s// %s", FFMAX(AARCH64_COMMENT_COL - col, 1), "",
-                       insn->comment);
+        case AARCH64_NODE_LABEL:
+            av_bprintf(bp, "%s:\n", node->label.name);
+            break;
+        case AARCH64_NODE_FUNCTION:
+            av_bprintf(bp, "function %s, export=%d\n", node->func.name, node->func.export);
+            break;
+        case AARCH64_NODE_ENDFUNC:
+            av_bprintf(bp, "endfunc\n");
+            break;
+        default:
+            break;
         }
-        av_bprintf(bp, "\n");
     }
 
     return 0;
