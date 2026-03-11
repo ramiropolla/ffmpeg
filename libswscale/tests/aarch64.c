@@ -10,8 +10,10 @@ int main(int argc, char *argv[])
     AArch64Op x1 = aarch64_x1();
     AArch64Op x2 = aarch64_x2();
 
+    aarch64_comment(actx, "apfelstrudel");
+
     /* GPR instructions */
-    aarch64_add(actx, x0, x1, x2);
+    aarch64_add(actx, x0, x1, x2); aarch64_annotate(actx, "something");
     aarch64_mov(actx, x0, x1);
 
     /* vector with arrangement specifier */

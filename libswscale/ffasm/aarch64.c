@@ -23,6 +23,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/bprint.h"
 #include "libavutil/error.h"
+#include "libavutil/macros.h"
 #include "libavutil/mem.h"
 
 /*********************************************************************/
@@ -87,20 +88,18 @@ static const char *insn_name(AArch64InsnId id)
     return insn_names[id];
 }
 
-static void print_gpr(AVBPrint *bp, AArch64GPR gpr)
+static void aarch64_print_gpr(AVBPrint *bp, AArch64GPR gpr)
 {
     if (gpr.n == 31) {
-        av_bprintf(bp, "%s", gpr.size == sizeof(uint32_t) ? "wsp" : "sp");
+        av_bprintf(bp, "%s", gpr.s == sizeof(uint32_t) ? "wsp" : "sp");
         return;
     }
 
-    char c;
-    switch (gpr.size) {
-    case sizeof(uint32_t): c = 'w'; break;
-    case sizeof(uint64_t): c = 'x'; break;
-    default: av_unreachable("Invalid GPR size!");
+    switch (gpr.s) {
+    case sizeof(uint32_t): av_bprintf(bp, "w%d", gpr.n); break;
+    case sizeof(uint64_t): av_bprintf(bp, "x%d", gpr.n); break;
     }
-    av_bprintf(bp, "%c%d", c, gpr.n);
+    av_unreachable("Invalid GPR size!");
 }
 
 static char elem_type_char(uint8_t elem_size)
@@ -113,16 +112,17 @@ static char elem_type_char(uint8_t elem_size)
     case 16: return 'q';
     }
     av_unreachable("Invalid vector element type!");
+    return '\0';
 }
 
-static void print_vec(AVBPrint *bp, AArch64Vec vec)
+static void aarch64_print_vec(AVBPrint *bp, AArch64Vec vec)
 {
-    if (vec.elem_size == 0) {
+    if (vec.t.s == 0) {
         av_bprintf(bp, "v%d", vec.n);
-    } else if (vec.elem_count == 0) {
-        av_bprintf(bp, "%c%d", elem_type_char(vec.elem_size), vec.n);
+    } else if (vec.t.c == 0) {
+        av_bprintf(bp, "%c%d", elem_type_char(vec.t.s), vec.n);
     } else {
-        av_bprintf(bp, "v%d.%d%c", vec.n, vec.elem_count, elem_type_char(vec.elem_size));
+        av_bprintf(bp, "v%d.%d%c", vec.n, vec.t.c, elem_type_char(vec.t.s));
     }
 }
 
@@ -139,6 +139,8 @@ void aarch64_free(AArch64Context **p_actx)
     if (!actx)
         return;
 
+    for (int i = 0; i < actx->insns.num_insns; i++)
+        av_freep(&actx->insns.insns[i].comment);
     av_freep(&actx->insns.insns);
     av_freep(p_actx);
 }
@@ -157,33 +159,52 @@ int aarch64_add_insn(AArch64Context *actx, AArch64InsnId id,
         return actx->error;
     }
 
-    insn->id    = id;
-    insn->op[0] = op0;
-    insn->op[1] = op1;
-    insn->op[2] = op2;
-    insn->op[3] = op3;
+    insn->id      = id;
+    insn->op[0]   = op0;
+    insn->op[1]   = op1;
+    insn->op[2]   = op2;
+    insn->op[3]   = op3;
+    insn->comment = NULL;
 
     return 0;
+}
+
+void aarch64_annotate(AArch64Context *actx, const char *comment)
+{
+    if (actx->error || actx->insns.num_insns == 0)
+        return;
+    AArch64Insn *insn = &actx->insns.insns[actx->insns.num_insns - 1];
+    av_freep(&insn->comment);
+    insn->comment = av_strdup(comment);
+    if (!insn->comment)
+        actx->error = AVERROR(ENOMEM);
 }
 
 static void print_op(AVBPrint *bp, const AArch64Op *op)
 {
     switch (op->type) {
     case AARCH64_OP_GPR:
-        print_gpr(bp, op->gpr);
+        aarch64_print_gpr(bp, op->gpr);
         break;
     case AARCH64_OP_VEC:
-        print_vec(bp, op->vec);
+        aarch64_print_vec(bp, op->vec);
         break;
     default:
         av_assert0(0);
     }
 }
 
+#define AARCH64_COMMENT_COL 56
+
 int aarch64_print(AArch64Context *actx, AVBPrint *bp)
 {
     for (int i = 0; i < actx->insns.num_insns; i++) {
         const AArch64Insn *insn = &actx->insns.insns[i];
+        if (insn->id == AARCH64_INSN_NONE) {
+            av_bprintf(bp, "        // %s\n", insn->comment);
+            continue;
+        }
+        size_t line_start = bp->len;
         av_bprintf(bp, "        %-16s", insn_name(insn->id));
         const char *sep = "";
         for (int j = 0; j < 4; j++) {
@@ -193,6 +214,11 @@ int aarch64_print(AArch64Context *actx, AVBPrint *bp)
             av_bprintf(bp, "%s", sep);
             sep = ", ";
             print_op(bp, op);
+        }
+        if (insn->comment) {
+            int col = bp->len - line_start;
+            av_bprintf(bp, "%*s// %s", FFMAX(AARCH64_COMMENT_COL - col, 1), "",
+                       insn->comment);
         }
         av_bprintf(bp, "\n");
     }
