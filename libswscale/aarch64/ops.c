@@ -166,7 +166,7 @@ static void parse_t(const char **pp, AArch64ArrangementSpecifier *t)
 
 static void aarch64_process_gen(AArch64Context *actx, const char *sig, uint8_t n)
 {
-    /* Input arguments */
+    /* Function arguments */
     AArch64Op exec     = a64op_gpx(0);
     AArch64Op priv     = a64op_gpx(1);
     AArch64Op bx_start = a64op_gpw(2);
@@ -210,6 +210,19 @@ static void aarch64_process_gen(AArch64Context *actx, const char *sig, uint8_t n
     aarch64_add_label(actx, loop);
 
     /* FUNCTION GOES HERE */
+
+#if 0
+// x86
+CONTINUE
+mov     r8, [rsi]
+add     r10, 10h
+add     rbx, 10h
+add     rsi, 20h ; ' '
+jmp     r8
+
+// aarch64
+// TODO
+#endif
 
     aarch64_add_comment(actx, "horizontal loop back");
     a64insn_add(actx, bx, bx, a64op_imm(1));
@@ -445,14 +458,6 @@ static void aarch64_func_gen(const char *sig)
                 }
             }
         }
-#if 0
-CONTINUE
-mov     r8, [rsi]
-add     r10, 10h
-add     rbx, 10h
-add     rsi, 20h ; ' '
-jmp     r8
-#endif
         break;
     }
     case SWS_OP_WRITE:
