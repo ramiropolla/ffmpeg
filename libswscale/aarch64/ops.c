@@ -97,35 +97,26 @@ static int aarch64_gen_sig(char **priv, const SwsOpList *ops, int block_size, in
             work_mask |= (1 << ((3 - i) * 4));
     }
 
-    uint64_t func_mask = 0;
-
     switch (op->op) {
     case SWS_OP_READ:
     case SWS_OP_WRITE:
         buf_appendf(&p, &rem, op->op == SWS_OP_READ ? "_read" : "_write");
         if (op->rw.frac) {
             buf_appendf(&p, &rem, "_frac%d", op->rw.frac);
-            func_mask = op->rw.frac;
         } else if (op->rw.packed) {
             buf_appendf(&p, &rem, "_packed");
-            func_mask = 0x10;
         } else {
             buf_appendf(&p, &rem, "_planar");
-            func_mask = 0x20;
         }
         buf_appendf(&p, &rem, "_%04x", work_mask);
         buf_appendf(&p, &rem, "_%04x", t);
-        func_mask |= ((uint64_t) work_mask <<  8)
-                   | ((uint64_t) t         << 24);
         break;
     case SWS_OP_SWAP_BYTES:
         buf_appendf(&p, &rem, "_bswap");
         buf_appendf(&p, &rem, "_%04x", work_mask);
         buf_appendf(&p, &rem, "_%04x", t);
-        func_mask |= ((uint64_t) work_mask <<  8)
-                   | ((uint64_t) t         << 24);
         break;
-    case SWS_OP_SWIZZLE:
+    case SWS_OP_SWIZZLE: {
         buf_appendf(&p, &rem, "_swizzle");
         buf_appendf(&p, &rem, "_%c%c%c%c",
                     op->swizzle.in[0] == 0 ? 'f' : op->swizzle.in[0] + '0',
@@ -133,6 +124,7 @@ static int aarch64_gen_sig(char **priv, const SwsOpList *ops, int block_size, in
                     op->swizzle.in[2] == 2 ? 'f' : op->swizzle.in[2] + '0',
                     op->swizzle.in[3] == 3 ? 'f' : op->swizzle.in[3] + '0');
         break;
+    }
     case SWS_OP_UNPACK:
     case SWS_OP_PACK:
         buf_appendf(&p, &rem, op->op == SWS_OP_UNPACK ? "_unpack" : "_pack");
@@ -229,8 +221,7 @@ static int aarch64_gen_sig(char **priv, const SwsOpList *ops, int block_size, in
     buf_appendc(&p, &rem, '\0');
     av_assert0(rem);
 
-    func_mask |= (uint64_t) op->op  << 56;
-    priv[n] = av_asprintf("%s 0x%016" PRIx64, name, func_mask);
+    priv[n] = av_strdup(name);
     if (!priv[n])
         return AVERROR(ENOMEM);
 
