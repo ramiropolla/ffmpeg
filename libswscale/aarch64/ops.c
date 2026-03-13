@@ -97,9 +97,12 @@ static int aarch64_gen_sig(char **priv, const SwsOpList *ops, int block_size, in
             work_mask |= (1 << ((3 - i) * 4));
     }
 
+    uint64_t func_mask = 0;
+
     switch (op->op) {
     case SWS_OP_READ:
     case SWS_OP_WRITE:
+#if 1
         buf_appendf(&p, &rem, op->op == SWS_OP_READ ? "_read" : "_write");
         if (op->rw.frac) {
             buf_appendf(&p, &rem, "_frac%d", op->rw.frac);
@@ -110,23 +113,43 @@ static int aarch64_gen_sig(char **priv, const SwsOpList *ops, int block_size, in
         }
         buf_appendf(&p, &rem, "_%04x", work_mask);
         buf_appendf(&p, &rem, "_%04x", t);
+#endif
+        func_mask |= work_mask;
+        func_mask |= (uint32_t) t << 16;
+        if (op->rw.frac) {
+            func_mask |= (uint64_t) op->rw.frac << 32;
+        } else if (op->rw.packed) {
+            func_mask |= (uint64_t) 0x10 << 32;
+        } else {
+            func_mask |= (uint64_t) 0x20 << 32;
+        }
         break;
     case SWS_OP_SWAP_BYTES:
+#if 1
         buf_appendf(&p, &rem, "_bswap");
         buf_appendf(&p, &rem, "_%04x", work_mask);
         buf_appendf(&p, &rem, "_%04x", t);
+#endif
+        func_mask |= work_mask;
+        func_mask |= (uint32_t) t << 16;
         break;
-    case SWS_OP_SWIZZLE: {
+    case SWS_OP_SWIZZLE:
+#if 1
         buf_appendf(&p, &rem, "_swizzle");
         buf_appendf(&p, &rem, "_%c%c%c%c",
                     op->swizzle.in[0] == 0 ? 'f' : op->swizzle.in[0] + '0',
                     op->swizzle.in[1] == 1 ? 'f' : op->swizzle.in[1] + '0',
                     op->swizzle.in[2] == 2 ? 'f' : op->swizzle.in[2] + '0',
                     op->swizzle.in[3] == 3 ? 'f' : op->swizzle.in[3] + '0');
+#endif
+        func_mask |= (op->swizzle.in[0] == 0 ? 0xf : op->swizzle.in[0]);
+        func_mask |= (op->swizzle.in[1] == 1 ? 0xf : op->swizzle.in[1]) << 4;
+        func_mask |= (op->swizzle.in[2] == 2 ? 0xf : op->swizzle.in[2]) << 8;
+        func_mask |= (op->swizzle.in[3] == 3 ? 0xf : op->swizzle.in[3]) << 12;
         break;
-    }
     case SWS_OP_UNPACK:
     case SWS_OP_PACK:
+#if 1
         buf_appendf(&p, &rem, op->op == SWS_OP_UNPACK ? "_unpack" : "_pack");
         buf_appendf(&p, &rem, "_%04x", work_mask);
         buf_appendf(&p, &rem, "_%x%x%x%x",
@@ -134,22 +157,39 @@ static int aarch64_gen_sig(char **priv, const SwsOpList *ops, int block_size, in
                     op->pack.pattern[1],
                     op->pack.pattern[2],
                     op->pack.pattern[3]);
+#endif
+        func_mask |= work_mask;
+        func_mask |= (uint32_t) op->pack.pattern[0] << 16;
+        func_mask |= (uint32_t) op->pack.pattern[1] << 20;
+        func_mask |= (uint32_t) op->pack.pattern[2] << 24;
+        func_mask |= (uint32_t) op->pack.pattern[3] << 28;
         break;
     case SWS_OP_LSHIFT:
     case SWS_OP_RSHIFT:
+#if 1
         buf_appendf(&p, &rem, op->op == SWS_OP_LSHIFT ? "_lshift" : "_rshift");
         buf_appendf(&p, &rem, "_%04x", work_mask);
         buf_appendf(&p, &rem, "_%02x", op->c.u);
+#endif
+        func_mask |= work_mask;
+        func_mask |= (uint32_t) op->c.u << 16;
         break;
     case SWS_OP_CLEAR:
+#if 1
         buf_appendf(&p, &rem, "_clear");
         buf_appendf(&p, &rem, "_%d%d%d%d",
                     !!op->c.q4[0].den,
                     !!op->c.q4[1].den,
                     !!op->c.q4[2].den,
                     !!op->c.q4[3].den);
+#endif
+        func_mask |= !!op->c.q4[0].den;
+        func_mask |= !!op->c.q4[1].den << 4;
+        func_mask |= !!op->c.q4[2].den << 8;
+        func_mask |= !!op->c.q4[3].den << 12;
         break;
     case SWS_OP_CONVERT:
+#if 1
         buf_appendf(&p, &rem, "_convert");
         buf_appendf(&p, &rem, "_%04x", work_mask);
         buf_appendf(&p, &rem, "_%04x", t);
@@ -157,21 +197,39 @@ static int aarch64_gen_sig(char **priv, const SwsOpList *ops, int block_size, in
         buf_appendf(&p, &rem, "_%d", ff_sws_pixel_type_is_int(op->type));
         buf_appendf(&p, &rem, "_%d", ff_sws_pixel_type_is_int(op->convert.to));
         buf_appendf(&p, &rem, "_%d", op->convert.expand);
+#endif
+        func_mask |= work_mask;
+        func_mask |= (uint32_t) t << 16;
+        func_mask |= (uint64_t) ff_sws_pixel_type_size(op->convert.to) << 32;
+        func_mask |= (uint64_t) ff_sws_pixel_type_is_int(op->type) << 36;
+        func_mask |= (uint64_t) ff_sws_pixel_type_is_int(op->convert.to) << 40;
+        func_mask |= (uint64_t) op->convert.expand << 44;
         break;
     case SWS_OP_MIN:
     case SWS_OP_MAX:
+#if 1
         buf_appendf(&p, &rem, op->op == SWS_OP_MIN ? "_min" : "_max");
         buf_appendf(&p, &rem, "_%04x", work_mask); // TODO check
         buf_appendf(&p, &rem, "_%d", ff_sws_pixel_type_is_int(op->type));
+#endif
+        func_mask |= work_mask;
+        func_mask |= (uint32_t) ff_sws_pixel_type_is_int(op->type) << 16;
         break;
     case SWS_OP_SCALE:
+#if 1
         buf_appendf(&p, &rem, "_scale");
         buf_appendf(&p, &rem, "_%04x", work_mask);
         buf_appendf(&p, &rem, "_%04x", t);
         buf_appendf(&p, &rem, "_%d", ff_sws_pixel_type_is_int(op->type));
+#endif
+        func_mask |= work_mask;
+        func_mask |= (uint32_t) t << 16;
+        func_mask |= (uint64_t) ff_sws_pixel_type_is_int(op->type) << 32;
         break;
     case SWS_OP_LINEAR: {
+#if 1
         buf_appendf(&p, &rem, "_linear");
+#endif
         uint64_t linear_mask = 0;
 
         /* Check which vectors are used after this operation */
@@ -206,22 +264,34 @@ static int aarch64_gen_sig(char **priv, const SwsOpList *ops, int block_size, in
                     linear_mask |= 3ULL << (2 * ((5 * i) + j));
             }
         }
+#if 1
         buf_appendf(&p, &rem, "_%010"PRIx64"", linear_mask);
+#endif
+        func_mask = linear_mask;
         break;
     }
     case SWS_OP_DITHER:
+#if 1
         buf_appendf(&p, &rem, "_dither");
         buf_appendf(&p, &rem, "_%04x", work_mask);
         buf_appendf(&p, &rem, "_%04x", t);
         buf_appendf(&p, &rem, "_%d", ff_sws_pixel_type_is_int(op->type));
+#endif
+        func_mask |= work_mask;
+        func_mask |= (uint32_t) t << 16;
+        func_mask |= (uint64_t) ff_sws_pixel_type_is_int(op->type) << 32;
         break;
     }
+#if 1
     buf_appendf(&p, &rem, "_%d", (use_vh ? 2 : 1));
     buf_appendf(&p, &rem, "_neon");
     buf_appendc(&p, &rem, '\0');
     av_assert0(rem);
+#endif
+    func_mask |= (uint64_t) !!use_vh << 52;
+    func_mask |= (uint64_t) op->op << 56;
 
-    priv[n] = av_strdup(name);
+    priv[n] = av_asprintf("0x%016" PRIx64 " %s", func_mask, name);
     if (!priv[n])
         return AVERROR(ENOMEM);
 
