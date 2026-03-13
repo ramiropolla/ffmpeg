@@ -39,6 +39,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_ADR,
     AARCH64_INSN_AND,
     AARCH64_INSN_B,
+    AARCH64_INSN_BR,
     AARCH64_INSN_CMP,
     AARCH64_INSN_CSEL,
     AARCH64_INSN_DUP,
@@ -61,6 +62,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_MOVI,
     AARCH64_INSN_MUL,
     AARCH64_INSN_ORR,
+    AARCH64_INSN_RET,
     AARCH64_INSN_REV16,
     AARCH64_INSN_REV32,
     AARCH64_INSN_SHL,
@@ -209,14 +211,16 @@ AArch64Context *aarch64_alloc(void);
 void aarch64_free(AArch64Context **p_actx);
 
 int aarch64_add_insn(AArch64Context *actx, AArch64InsnId id,
-                       AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3);
+                     AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3);
 
 int aarch64_add_comment(AArch64Context *actx, const char *comment);
 
 int aarch64_new_label(AArch64Context *actx, const char *name);
+#if 0
+int aarch64_new_labelf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...) av_printf_format(4, 5);
+#endif
 int aarch64_add_label(AArch64Context *actx, int id);
-
-int aarch64_add_func(AArch64Context *actx, const char *name, bool export);
+int aarch64_add_func(AArch64Context *actx, int id, bool export);
 
 int aarch64_add_endfunc(AArch64Context *actx);
 
@@ -315,6 +319,7 @@ static inline uint8_t a64op_gpr_sh  (AArch64Op op) { return op.u8[4]; }
 
 static inline AArch64Op a64op_gpw(uint8_t n) { return a64op_make_gpr(n, sizeof(uint32_t)); }
 static inline AArch64Op a64op_gpx(uint8_t n) { return a64op_make_gpr(n, sizeof(uint64_t)); }
+static inline AArch64Op a64op_sp (void)       { return a64op_make_gpr(31, sizeof(uint64_t)); }
 
 /* modifiers */
 static inline AArch64Op a64op_w(AArch64Op op) { return a64op_gpw(a64op_gpr_n(op)); }
@@ -453,6 +458,7 @@ static inline AArch64Op a64op_reg (AArch64Op base, AArch64Op off, uint8_t ext, u
 #define a64insn_adr(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_ADR,    op0, op1, OPN, OPN)
 #define a64insn_and(actx,    op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_AND,    op0, op1, op2, OPN)
 #define a64insn_b(actx,      op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_B,      op0, op1, OPN, OPN)
+#define a64insn_br(actx,     op0               ) aarch64_add_insn(actx, AARCH64_INSN_BR,     op0, OPN, OPN, OPN)
 #define a64insn_cmp(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_CMP,    op0, op1, OPN, OPN)
 #define a64insn_csel(actx,   op0, op1, op2, op3) aarch64_add_insn(actx, AARCH64_INSN_CSEL,   op0, op1, op2, op3)
 #define a64insn_dup(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_DUP,    op0, op1, OPN, OPN)
@@ -475,6 +481,7 @@ static inline AArch64Op a64op_reg (AArch64Op base, AArch64Op off, uint8_t ext, u
 #define a64insn_movi(actx,   op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_MOVI,   op0, op1, OPN, OPN)
 #define a64insn_mul(actx,    op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_MUL,    op0, op1, op2, OPN)
 #define a64insn_orr(actx,    op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_ORR,    op0, op1, op2, OPN)
+#define a64insn_ret(actx                       ) aarch64_add_insn(actx, AARCH64_INSN_RET,    OPN, OPN, OPN, OPN)
 #define a64insn_rev16(actx,  op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_REV16,  op0, op1, OPN, OPN)
 #define a64insn_rev32(actx,  op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_REV32,  op0, op1, OPN, OPN)
 #define a64insn_shl(actx,    op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_SHL,    op0, op1, op2, OPN)

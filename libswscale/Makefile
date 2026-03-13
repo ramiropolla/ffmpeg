@@ -51,3 +51,4 @@ TESTPROGS = colorspace                                                  \
             swscale                                                     \
             sws_ops                                                     \
             aarch64                                                     \
+            asmgen                                                      \

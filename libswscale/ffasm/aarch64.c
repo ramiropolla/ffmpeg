@@ -20,6 +20,8 @@
 
 #include "aarch64.h"
 
+#include <stdarg.h>
+
 #include "libavutil/avassert.h"
 #include "libavutil/bprint.h"
 #include "libavutil/error.h"
@@ -35,6 +37,7 @@ static const char *insn_name(AArch64InsnId id)
         [AARCH64_INSN_ADR   ] = "adr",
         [AARCH64_INSN_AND   ] = "and",
         [AARCH64_INSN_B     ] = "b",
+        [AARCH64_INSN_BR    ] = "br",
         [AARCH64_INSN_CMP   ] = "cmp",
         [AARCH64_INSN_CSEL  ] = "csel",
         [AARCH64_INSN_DUP   ] = "dup",
@@ -57,6 +60,7 @@ static const char *insn_name(AArch64InsnId id)
         [AARCH64_INSN_MOVI  ] = "movi",
         [AARCH64_INSN_MUL   ] = "mul",
         [AARCH64_INSN_ORR   ] = "orr",
+        [AARCH64_INSN_RET   ] = "ret",
         [AARCH64_INSN_REV16 ] = "rev16",
         [AARCH64_INSN_REV32 ] = "rev32",
         [AARCH64_INSN_SHL   ] = "shl",
@@ -165,6 +169,14 @@ static char elem_type_char(uint8_t elem_size)
     return '\0';
 }
 
+static void print_base_reg(AVBPrint *bp, uint8_t n)
+{
+    if (n == 31)
+        av_bprintf(bp, "sp");
+    else
+        av_bprintf(bp, "x%d", n);
+}
+
 static void aarch64_print_base(AVBPrint *bp, AArch64Op op)
 {
     uint8_t n = a64op_base_n(op);
@@ -173,26 +185,34 @@ static void aarch64_print_base(AVBPrint *bp, AArch64Op op)
 
     switch (mode) {
     case AARCH64_BASE_OFFSET: {
+        av_bprintf(bp, "[");
+        print_base_reg(bp, n);
         if (imm)
-            av_bprintf(bp, "[x%d, #%d]", n, imm);
+            av_bprintf(bp, ", #%d]", imm);
         else
-            av_bprintf(bp, "[x%d]", n);
+            av_bprintf(bp, "]");
         break;
     }
     case AARCH64_BASE_PRE:
-        av_bprintf(bp, "[x%d, #%d]!", n, imm);
+        av_bprintf(bp, "[");
+        print_base_reg(bp, n);
+        av_bprintf(bp, ", #%d]!", imm);
         break;
     case AARCH64_BASE_POST:
-        av_bprintf(bp, "[x%d], #%d", n, imm);
+        av_bprintf(bp, "[");
+        print_base_reg(bp, n);
+        av_bprintf(bp, "], #%d", imm);
         break;
     case AARCH64_BASE_REG: {
         uint8_t m   = a64op_base_m(op);
         uint8_t ext = a64op_base_ext(op);
         uint8_t sh  = a64op_base_sh(op);
+        av_bprintf(bp, "[");
+        print_base_reg(bp, n);
         if (sh)
-            av_bprintf(bp, "[x%d, x%d, %s #%d]", n, m, extend_name(ext), sh);
+            av_bprintf(bp, ", x%d, %s #%d]", m, extend_name(ext), sh);
         else
-            av_bprintf(bp, "[x%d, x%d, %s]", n, m, extend_name(ext));
+            av_bprintf(bp, ", x%d, %s]", m, extend_name(ext));
         break;
     }
     }
@@ -250,16 +270,6 @@ void aarch64_free(AArch64Context **p_actx)
             break;
         case AARCH64_NODE_COMMENT:
             av_freep(&node->comment.text);
-            break;
-        case AARCH64_NODE_LABEL:
-            /* name is owned by actx->labels, not the node */
-            break;
-        case AARCH64_NODE_FUNCTION:
-            av_freep(&node->func.name);
-            break;
-        case AARCH64_NODE_ENDFUNC:
-            break;
-        case AARCH64_NODE_DATA:
             break;
         }
     }
@@ -369,17 +379,25 @@ int aarch64_add_label(AArch64Context *actx, int id)
     return 0;
 }
 
-int aarch64_add_func(AArch64Context *actx, const char *name, bool export)
+#if 0
+int aarch64_new_labelf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(s, n, fmt, args);
+    va_end(args);
+    return aarch64_new_label(actx, s);
+}
+#endif
+
+int aarch64_add_func(AArch64Context *actx, int id, bool export)
 {
     AArch64Node *node = add_node(actx, AARCH64_NODE_FUNCTION);
     if (!node)
         return actx->error;
 
-    node->func.name = av_strdup(name);
-    if (!node->func.name) {
-        actx->error = AVERROR(ENOMEM);
-        return actx->error;
-    }
+    av_assert0(id >= 0 && id < actx->num_labels);
+    node->func.name   = actx->labels[id];
     node->func.export = export;
 
     return 0;

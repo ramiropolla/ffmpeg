@@ -36,7 +36,7 @@ extern const SwsOpBackend backend_vulkan;
 
 const SwsOpBackend * const ff_sws_op_backends[] = {
     &backend_murder,
-#if 1 /* ARCH_AARCH64 */
+#if 0 /* ARCH_AARCH64 */
     &backend_aarch64,
 #elif ARCH_X86_64 && HAVE_X86ASM
     &backend_x86,
