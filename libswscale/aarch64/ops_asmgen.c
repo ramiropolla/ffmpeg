@@ -532,41 +532,27 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     }
     if (s->block_size == 8) {
         if (src_el_size == 1 && dst_el_size > src_el_size) {
-            ctx->new_step();
-            LOOP_MASK(s, p, i) refresh_vector(ctx, &vet, i, 0x0f);
             LOOP_MASK(s, p, i) cc.uxtl(vl[i].h8(), src_vl[i].b8());
             src_el_size = 2;
         } else if (src_el_size == 4 && dst_el_size < src_el_size) {
-            ctx->new_step();
-            LOOP_MASK(s, p, i) refresh_vector(ctx, &vet, i);
             LOOP_MASK(s, p, i) cc.xtn(vl[i].h4(), src_vl[i].s4());
             LOOP_MASK(s, p, i) cc.xtn(vh[i].h4(), src_vh[i].s4());
             LOOP_MASK(s, p, i) cc.ins(vl[i].d(1), vh[i].d(0));
             src_el_size = 2;
         }
         if (src_el_size == 2 && dst_el_size == 4) {
-            ctx->new_step();
-            LOOP_MASK(s, p, i) save_vector(ctx, &vet, i, 0x0f);
-            LOOP_MASK(s, p, i) new_vector(ctx, &vet, i);
             LOOP_MASK(s, p, i) cc.uxtl (vl[i].s4(), src_vl[i].h4());
             LOOP_MASK(s, p, i) cc.uxtl2(vh[i].s4(), src_vl[i].h8());
             src_el_size = 4;
         } else if (src_el_size == 2 && dst_el_size == 1) {
-            ctx->new_step();
-            LOOP_MASK(s, p, i) refresh_vector(ctx, &vet, i, 0x0f);
             LOOP_MASK(s, p, i) cc.xtn(vl[i].b8(), src_vl[i].h8());
             src_el_size = 1;
         }
     } else /* if (s->block_size == 16) */ {
         if (src_el_size == 1 && dst_el_size == 2) {
-            ctx->new_step();
-            LOOP_MASK(s, p, i) save_vector(ctx, &vet, i, 0x0f);
-            LOOP_MASK(s, p, i) new_vector(ctx, &vet, i);
             LOOP_MASK(s, p, i) cc.uxtl (vl[i].h8(), src_vl[i].b8());
             LOOP_MASK(s, p, i) cc.uxtl2(vh[i].h8(), src_vl[i].b16());
         } else if (src_el_size == 2 && dst_el_size == 1) {
-            ctx->new_step();
-            LOOP_MASK(s, p, i) refresh_vector(ctx, &vet, i);
             LOOP_MASK(s, p, i) cc.xtn(vl[i].b8(), src_vl[i].h8());
             LOOP_MASK(s, p, i) cc.xtn(vh[i].b8(), src_vh[i].h8());
             LOOP_MASK(s, p, i) cc.ins(vl[i].d(1), vh[i].d(0));
