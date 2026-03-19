@@ -525,10 +525,8 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
 #endif
 
     if (p->type == AARCH64_PIXEL_F32) {
-        // TODO types are already 4s
-        LOOP_MASK(s, p, i) a64insn_fcvtzu(a, s->vl[i], s->vl[i]);
-        LOOP_MASK(s, p, i) a64insn_fcvtzu(a, s->vh[i], s->vh[i]);
-        // TODO u32 is still 4s
+        LOOP_MASK(s, p, i) a64insn_fcvtzu(a, a64op_4s(s->vl[i]), a64op_4s(s->vl[i]));
+        LOOP_MASK(s, p, i) a64insn_fcvtzu(a, a64op_4s(s->vh[i]), a64op_4s(s->vh[i]));
     }
     if (p->block_size == 8) {
         if (src_el_size == 1 && dst_el_size > src_el_size) {
@@ -548,7 +546,7 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             LOOP_MASK(s, p, i) a64insn_xtn  (a, a64op_8b(s->vl[i]), a64op_8h(s->vl[i]));
             src_el_size = 1;
         }
-    } else /* if (s->block_size == 16) */ {
+    } else /* if (p->block_size == 16) */ {
         if (src_el_size == 1 && dst_el_size == 2) {
             LOOP_MASK(s, p, i) a64insn_uxtl2(a, a64op_8h(s->vh[i]), a64op_16b(s->vl[i]));
             LOOP_MASK(s, p, i) a64insn_uxtl (a, a64op_8h(s->vl[i]), a64op_8b(s->vl[i]));
@@ -559,7 +557,6 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
         }
     }
     if (p->to_type == AARCH64_PIXEL_F32) {
-        // TODO types are already 4s because of the previous conversion to u32
         LOOP_MASK(s, p, i) a64insn_ucvtf(a, a64op_4s(s->vl[i]), a64op_4s(s->vl[i]));
         LOOP_MASK(s, p, i) a64insn_ucvtf(a, a64op_4s(s->vh[i]), a64op_4s(s->vh[i]));
     }
