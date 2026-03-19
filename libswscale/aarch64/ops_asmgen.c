@@ -532,30 +532,30 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     }
     if (s->block_size == 8) {
         if (src_el_size == 1 && dst_el_size > src_el_size) {
-            LOOP_MASK(s, p, i) a64insn_uxtl (a, vl[i].h8(), src_vl[i].b8());
+            LOOP_MASK(s, p, i) a64insn_uxtl (a, s->vl[i].h8(), src_vl[i].b8());
             src_el_size = 2;
         } else if (src_el_size == 4 && dst_el_size < src_el_size) {
-            LOOP_MASK(s, p, i) a64insn_xtn  (a, vl[i].h4(), src_vl[i].s4());
-            LOOP_MASK(s, p, i) a64insn_xtn  (a, vh[i].h4(), src_vh[i].s4());
-            LOOP_MASK(s, p, i) a64insn_ins  (a, vl[i].d(1), vh[i].d(0));
+            LOOP_MASK(s, p, i) a64insn_xtn  (a, s->vl[i].h4(), src_vl[i].s4());
+            LOOP_MASK(s, p, i) a64insn_xtn  (a, s->vh[i].h4(), src_vh[i].s4());
+            LOOP_MASK(s, p, i) a64insn_ins  (a, s->vl[i].d(1), s->vh[i].d(0));
             src_el_size = 2;
         }
         if (src_el_size == 2 && dst_el_size == 4) {
-            LOOP_MASK(s, p, i) a64insn_uxtl (a, vl[i].s4(), src_vl[i].h4());
-            LOOP_MASK(s, p, i) a64insn_uxtl2(a, vh[i].s4(), src_vl[i].h8());
+            LOOP_MASK(s, p, i) a64insn_uxtl (a, s->vl[i].s4(), src_vl[i].h4());
+            LOOP_MASK(s, p, i) a64insn_uxtl2(a, s->vh[i].s4(), src_vl[i].h8());
             src_el_size = 4;
         } else if (src_el_size == 2 && dst_el_size == 1) {
-            LOOP_MASK(s, p, i) a64insn_xtn  (a, vl[i].b8(), src_vl[i].h8());
+            LOOP_MASK(s, p, i) a64insn_xtn  (a, s->vl[i].b8(), src_vl[i].h8());
             src_el_size = 1;
         }
     } else /* if (s->block_size == 16) */ {
         if (src_el_size == 1 && dst_el_size == 2) {
-            LOOP_MASK(s, p, i) a64insn_uxtl (a, vl[i].h8(), src_vl[i].b8());
-            LOOP_MASK(s, p, i) a64insn_uxtl2(a, vh[i].h8(), src_vl[i].b16());
+            LOOP_MASK(s, p, i) a64insn_uxtl (a, s->vl[i].h8(), src_vl[i].b8());
+            LOOP_MASK(s, p, i) a64insn_uxtl2(a, s->vh[i].h8(), src_vl[i].b16());
         } else if (src_el_size == 2 && dst_el_size == 1) {
-            LOOP_MASK(s, p, i) a64insn_xtn  (a, vl[i].b8(), src_vl[i].h8());
-            LOOP_MASK(s, p, i) a64insn_xtn  (a, vh[i].b8(), src_vh[i].h8());
-            LOOP_MASK(s, p, i) a64insn_ins  (a, vl[i].d(1), vh[i].d(0));
+            LOOP_MASK(s, p, i) a64insn_xtn  (a, s->vl[i].b8(), src_vl[i].h8());
+            LOOP_MASK(s, p, i) a64insn_xtn  (a, s->vh[i].b8(), src_vh[i].h8());
+            LOOP_MASK(s, p, i) a64insn_ins  (a, s->vl[i].d(1), s->vh[i].d(0));
         }
     }
     // [...]
