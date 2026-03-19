@@ -513,7 +513,73 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
 static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+    size_t src_el_size = s->el_size;
+    size_t dst_el_size = sws_aarch64_pixel_size(p->to_type);
+
+#if 0
+    // TODO this function assumes block_size is either 8 or 16 and that we're
+    // always using at most two full vregs:
+    /* Use at most two full vregs during the widest precision section */
+    int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
+    // There will be no block_size 8 that does not use 2 full vregs.
+#endif
+
+    if (p->type == AARCH64_PIXEL_F32) {
+        // TODO types are already 4s
+        LOOP_MASK(s, p, i) a64insn_fcvtzu(a, s->vl[i], s->vl[i]);
+        LOOP_MASK(s, p, i) a64insn_fcvtzu(a, s->vh[i], s->vh[i]);
+        // TODO u32 is still 4s
+    }
+    if (s->block_size == 8) {
+        if (src_el_size == 1 && dst_el_size > src_el_size) {
+            ctx->new_step();
+            LOOP_OUT(i) refresh_vector(ctx, &vet, i, 0x0f);
+            LOOP_OUT(i) cc.uxtl(vl[i].h8(), src_vl[i].b8());
+            src_el_size = 2;
+        } else if (src_el_size == 4 && dst_el_size < src_el_size) {
+            ctx->new_step();
+            LOOP_OUT(i) refresh_vector(ctx, &vet, i);
+            LOOP_OUT(i) cc.xtn(vl[i].h4(), src_vl[i].s4());
+            LOOP_OUT(i) cc.xtn(vh[i].h4(), src_vh[i].s4());
+            LOOP_OUT(i) cc.ins(vl[i].d(1), vh[i].d(0));
+            src_el_size = 2;
+        }
+        if (src_el_size == 2 && dst_el_size == 4) {
+            ctx->new_step();
+            LOOP_OUT(i) save_vector(ctx, &vet, i, 0x0f);
+            LOOP_OUT(i) new_vector(ctx, &vet, i);
+            LOOP_OUT(i) cc.uxtl (vl[i].s4(), src_vl[i].h4());
+            LOOP_OUT(i) cc.uxtl2(vh[i].s4(), src_vl[i].h8());
+            src_el_size = 4;
+        } else if (src_el_size == 2 && dst_el_size == 1) {
+            ctx->new_step();
+            LOOP_OUT(i) refresh_vector(ctx, &vet, i, 0x0f);
+            LOOP_OUT(i) cc.xtn(vl[i].b8(), src_vl[i].h8());
+            src_el_size = 1;
+        }
+    } else /* if (s->block_size == 16) */ {
+        if (src_el_size == 1 && dst_el_size == 2) {
+            ctx->new_step();
+            LOOP_OUT(i) save_vector(ctx, &vet, i, 0x0f);
+            LOOP_OUT(i) new_vector(ctx, &vet, i);
+            LOOP_OUT(i) cc.uxtl (vl[i].h8(), src_vl[i].b8());
+            LOOP_OUT(i) cc.uxtl2(vh[i].h8(), src_vl[i].b16());
+        } else if (src_el_size == 2 && dst_el_size == 1) {
+            ctx->new_step();
+            LOOP_OUT(i) refresh_vector(ctx, &vet, i);
+            LOOP_OUT(i) cc.xtn(vl[i].b8(), src_vl[i].h8());
+            LOOP_OUT(i) cc.xtn(vh[i].b8(), src_vh[i].h8());
+            LOOP_OUT(i) cc.ins(vl[i].d(1), vh[i].d(0));
+        }
+    }
+    // [...]
+        LOOP_MASK_VH(s, p, i) s->vh[i] = a64op_4s(s->vh[i]);
+        LOOP_MASK   (s, p, i) s->vl[i] = a64op_4s(s->vl[i]);
+    if (p->type_to == AARCH64_PIXEL_F32) {
+        // TODO types are already 4s because of the previous conversion to u32
+        LOOP_MASK(s, p, i) a64insn_ucvtf(a, s->vl[i], s->vl[i]);
+        LOOP_MASK(s, p, i) a64insn_ucvtf(a, s->vh[i], s->vh[i]);
+    }
 }
 
 static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
