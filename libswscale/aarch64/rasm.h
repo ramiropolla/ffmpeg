@@ -338,6 +338,7 @@ static inline uint8_t a64op_vec_n       (AArch64Op op) { return op.u8[1]; }
 static inline uint8_t a64op_vec_el_count(AArch64Op op) { return op.u8[2]; }
 static inline uint8_t a64op_vec_el_size (AArch64Op op) { return op.u8[3]; }
 static inline uint8_t a64op_vec_num_regs(AArch64Op op) { return op.u8[4]; }
+static inline uint8_t a64op_vec_idx_p1  (AArch64Op op) { return op.u8[5]; }
 
 static inline AArch64Op a64op_vec   (uint8_t n) { return a64op_make_vec(n,  0,  0); }
 static inline AArch64Op a64op_vecb  (uint8_t n) { return a64op_make_vec(n,  0,  1); }
@@ -380,12 +381,27 @@ static inline AArch64Op a64op_veclist4(AArch64Op v0, AArch64Op v1, AArch64Op v2,
     return a64op_veclist(v0, 4);
 }
 
-/* modifiers */
-static inline AArch64Op a64op_b  (AArch64Op op) { return a64op_vecb  (a64op_vec_n(op)); }
-static inline AArch64Op a64op_h  (AArch64Op op) { return a64op_vech  (a64op_vec_n(op)); }
-static inline AArch64Op a64op_s  (AArch64Op op) { return a64op_vecs  (a64op_vec_n(op)); }
-static inline AArch64Op a64op_d  (AArch64Op op) { return a64op_vecd  (a64op_vec_n(op)); }
-static inline AArch64Op a64op_q  (AArch64Op op) { return a64op_vecq  (a64op_vec_n(op)); }
+static inline AArch64Op a64op_elem(AArch64Op op, uint8_t idx)
+{
+    op.u8[5] = idx + 1;
+    return op;
+}
+
+/* scalar modifiers */
+static inline AArch64Op a64op_b(AArch64Op op) { return a64op_vecb(a64op_vec_n(op)); }
+static inline AArch64Op a64op_h(AArch64Op op) { return a64op_vech(a64op_vec_n(op)); }
+static inline AArch64Op a64op_s(AArch64Op op) { return a64op_vecs(a64op_vec_n(op)); }
+static inline AArch64Op a64op_d(AArch64Op op) { return a64op_vecd(a64op_vec_n(op)); }
+static inline AArch64Op a64op_q(AArch64Op op) { return a64op_vecq(a64op_vec_n(op)); }
+
+/* scalar by element modifiers */
+static inline AArch64Op a64op_b_elem(AArch64Op op, uint8_t idx) { return a64op_elem(a64op_b(op), idx); }
+static inline AArch64Op a64op_h_elem(AArch64Op op, uint8_t idx) { return a64op_elem(a64op_h(op), idx); }
+static inline AArch64Op a64op_s_elem(AArch64Op op, uint8_t idx) { return a64op_elem(a64op_s(op), idx); }
+static inline AArch64Op a64op_d_elem(AArch64Op op, uint8_t idx) { return a64op_elem(a64op_d(op), idx); }
+static inline AArch64Op a64op_q_elem(AArch64Op op, uint8_t idx) { return a64op_elem(a64op_q(op), idx); }
+
+/* arrangement specifier modifiers */
 static inline AArch64Op a64op_8b (AArch64Op op) { return a64op_vec8b (a64op_vec_n(op)); }
 static inline AArch64Op a64op_16b(AArch64Op op) { return a64op_vec16b(a64op_vec_n(op)); }
 static inline AArch64Op a64op_4h (AArch64Op op) { return a64op_vec4h (a64op_vec_n(op)); }

@@ -133,7 +133,7 @@ static const char *extend_name(uint8_t extend)
     }
 }
 
-static void aarch64_print_gpr(FILE *fp, AArch64Op op)
+static void print_gpr(FILE *fp, AArch64Op op)
 {
     uint8_t n = a64op_gpr_n(op);
     uint8_t size = a64op_gpr_size(op);
@@ -180,7 +180,7 @@ static void print_base_reg(FILE *fp, uint8_t n)
         fprintf(fp, "x%d", n);
 }
 
-static void aarch64_print_base(FILE *fp, AArch64Op op)
+static void print_base(FILE *fp, AArch64Op op)
 {
     uint8_t n = a64op_base_n(op);
     uint8_t mode = a64op_base_mode(op);
@@ -221,18 +221,20 @@ static void aarch64_print_base(FILE *fp, AArch64Op op)
     }
 }
 
-static void aarch64_print_vec_single(FILE *fp, uint8_t n,
-                                     uint8_t el_count, uint8_t el_size)
+static void print_vec_reg(FILE *fp, uint8_t n, uint8_t el_count, uint8_t el_size, uint8_t idx_p1)
 {
-    if (el_size == 0)
+    if (el_size == 0) {
         fprintf(fp, "v%u", n);
-    else if (el_count == 0)
-        fprintf(fp, "%c%u", elem_type_char(el_size), n);
-    else
+    } else if (el_count != 0) {
         fprintf(fp, "v%u.%d%c", n, el_count, elem_type_char(el_size));
+    } else if (idx_p1) {
+        fprintf(fp, "v%u.%c[%u]", n, elem_type_char(el_size), idx_p1 - 1);
+    } else {
+        fprintf(fp, "%c%u", elem_type_char(el_size), n);
+    }
 }
 
-static void aarch64_print_vec(FILE *fp, AArch64Op op)
+static void print_vec(FILE *fp, AArch64Op op)
 {
     uint8_t n        = a64op_vec_n(op);
     uint8_t el_count = a64op_vec_el_count(op);
@@ -244,11 +246,12 @@ static void aarch64_print_vec(FILE *fp, AArch64Op op)
         for (int i = 0; i < num_regs; i++) {
             if (i > 0)
                 fprintf(fp, ", ");
-            aarch64_print_vec_single(fp, (n + i) % 32, el_count, el_size);
+            print_vec_reg(fp, (n + i) & 0x1f, el_count, el_size, 0);
         }
         fprintf(fp, "}");
     } else {
-        aarch64_print_vec_single(fp, n, el_count, el_size);
+        uint8_t idx_p1 = a64op_vec_idx_p1(op);
+        print_vec_reg(fp, n, el_count, el_size, idx_p1);
     }
 }
 
@@ -256,13 +259,13 @@ static void print_op(const AArch64Context *actx, FILE *fp, AArch64Op op)
 {
     switch (a64op_type(op)) {
     case AARCH64_OP_GPR:
-        aarch64_print_gpr(fp, op);
+        print_gpr(fp, op);
         break;
     case AARCH64_OP_VEC:
-        aarch64_print_vec(fp, op);
+        print_vec(fp, op);
         break;
     case AARCH64_OP_BASE:
-        aarch64_print_base(fp, op);
+        print_base(fp, op);
         break;
     case AARCH64_OP_IMM:
         fprintf(fp, "#%d", a64op_imm_val(op));
