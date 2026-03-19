@@ -225,6 +225,7 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
         SwsFuncPtr func = ff_sws_aarch64_find_op(&params);
         if (!func) {
             ff_sws_op_chain_free(chain);
+            // TODO print message to regenerate ops_entries
             return AVERROR(ENOTSUP);
         }
         ret = ff_sws_op_chain_append(chain, func, NULL, &(SwsOpPriv) {0});
@@ -248,6 +249,7 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
     SwsFuncPtr return_func  = ff_sws_aarch64_find_op(&return_params);
     if (!process_func || !return_func) {
         ff_sws_op_chain_free(chain);
+        // TODO print message to regenerate ops_entries
         return AVERROR(ENOTSUP);
     }
 

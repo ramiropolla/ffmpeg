@@ -529,10 +529,16 @@ static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         s->use_vh = (dst_vec_size != dst_total_size);
 
     if (src_el_size == 1) {
+        // TODO add comment for 16b for zip1/zip2 from u8
+        LOOP_MASK_VH(s, p, i) s->vh[i] = a64op_16b(s->vh[i]);
+        LOOP_MASK   (s, p, i) s->vl[i] = a64op_16b(s->vl[i]);
         LOOP_MASK_VH(s, p, i) a64insn_zip2(a, s->vh[i], s->vl[i], s->vl[i]);
         LOOP_MASK   (s, p, i) a64insn_zip1(a, s->vl[i], s->vl[i], s->vl[i]);
     }
     if (dst_el_size == 4) {
+        // TODO add comment for 8h for zip1/zip2 from u16 (is this even correct? we don't test this)
+        LOOP_MASK_VH(s, p, i) s->vh[i] = a64op_8h(s->vh[i]);
+        LOOP_MASK   (s, p, i) s->vl[i] = a64op_8h(s->vl[i]);
         LOOP_MASK_VH(s, p, i) a64insn_zip2(a, s->vh[i], s->vl[i], s->vl[i]);
         LOOP_MASK   (s, p, i) a64insn_zip1(a, s->vl[i], s->vl[i], s->vl[i]);
     }
