@@ -555,8 +555,8 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     AArch64Op *vh = s->vh;
     AArch64Op vt0 = a64op_make_vec(a64op_vec_n(s->vt[0]), 0, s->el_size);
 
+    aarch64_annotate_next(a, "vt0 = impl->priv;");
     i_ldr(a, v_q(vt0), a64op_off(s->impl, offsetof_impl_priv));
-    aarch64_annotate(a, "vt0 = impl->priv;");
 
     aarch64_add_comment(a, "broadcast elements from vt0");
     LOOP_MASK   (s, p, i) i_dup(a, vl[i], a64op_elem(vt0, i));
@@ -696,8 +696,8 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 
     aarch64_func_begin(a, func_name, true);
 
+    aarch64_annotate_next(a, "next_func = impl->cont;");
     i_ldr(a, s->next_func, a64op_off(s->impl, offsetof_impl_cont));
-    aarch64_annotate(a, "next_func = impl->cont;");
 
     size_t el_size = sws_aarch64_pixel_size(p->type);
     size_t total_size = p->block_size * el_size;
@@ -746,10 +746,10 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     case AARCH64_SWS_OP_DITHER:       asmgen_op_dither(s, p);       break;
     }
 
+    aarch64_annotate_next(a, "impl++;");
     i_add(a, s->impl, s->impl, a64op_imm(sizeof_impl));
-    aarch64_annotate(a, "impl++;");
+    aarch64_annotate_next(a, "goto next_func;");
     i_br (a, s->next_func);
-    aarch64_annotate(a, "goto next_func;");
 }
 
 /*********************************************************************/

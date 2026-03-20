@@ -129,7 +129,8 @@ AArch64Node *aarch64_add_insn(AArch64Context *actx, AArch64InsnId id,
         node->insn.op[1]   = op1;
         node->insn.op[2]   = op2;
         node->insn.op[3]   = op3;
-        node->insn.comment = NULL;
+        node->insn.comment = actx->next_comment;
+        actx->next_comment = NULL;
     }
     return node;
 }
@@ -184,6 +185,15 @@ void aarch64_annotate(AArch64Context *actx, const char *comment)
     av_freep(&node->insn.comment);
     node->insn.comment = av_strdup(comment);
     if (!node->insn.comment)
+        actx->error = AVERROR(ENOMEM);
+}
+
+void aarch64_annotate_next(AArch64Context *actx, const char *comment)
+{
+    if (actx->error)
+        return;
+    actx->next_comment = av_strdup(comment);
+    if (!actx->next_comment)
         actx->error = AVERROR(ENOMEM);
 }
 

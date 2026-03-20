@@ -220,6 +220,7 @@ typedef struct AArch64Context {
     char **labels;
     int num_labels;
     int *local_labels; // temporary buffer for op_print
+    char *next_comment;
 } AArch64Context;
 
 AArch64Context *aarch64_alloc(void);
@@ -239,6 +240,7 @@ int aarch64_new_label(AArch64Context *actx, const char *name);
 int aarch64_new_labelf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...) /* av_printf_format(4, 5) */;
 
 void aarch64_annotate(AArch64Context *actx, const char *comment);
+void aarch64_annotate_next(AArch64Context *actx, const char *comment);
 
 int aarch64_print(AArch64Context *actx, FILE *fp);
 
