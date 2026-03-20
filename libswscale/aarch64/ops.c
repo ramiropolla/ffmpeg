@@ -210,7 +210,8 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
 }
 
 /*********************************************************************/
-static void aarch64_setup(SwsOpList *ops, int block_size, int n, SwsImplResult *out)
+static int aarch64_setup(SwsOpList *ops, int block_size, int n,
+                         const SwsAArch64OpImplParams *p, SwsImplResult *out)
 {
     SwsOp *op = &ops->ops[n];
     switch (op->op) {
@@ -223,6 +224,7 @@ static void aarch64_setup(SwsOpList *ops, int block_size, int n, SwsImplResult *
         ff_sws_setup_q(&(const SwsImplParams) { .op = op }, out);
         break;
     }
+    return 0;
 }
 
 /*********************************************************************/
@@ -252,7 +254,11 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
             return AVERROR(ENOTSUP);
         }
         SwsImplResult res = { 0 };
-        aarch64_setup(ops, block_size, i, &res);
+        ret = aarch64_setup(ops, block_size, i, &params, &res);
+        if (ret < 0) {
+            ff_sws_op_chain_free(chain);
+            return ret;
+        }
         ret = ff_sws_op_chain_append(chain, func, NULL, &res.priv);
         if (ret < 0) {
             ff_sws_op_chain_free(chain);
