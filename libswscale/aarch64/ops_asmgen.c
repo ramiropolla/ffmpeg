@@ -81,6 +81,14 @@ static void *av_dynarray2_add(void **tab_ptr, int *nb_ptr, size_t elem_size,
     for (int idx = 0; idx < 4; idx++)       \
         if (s->use_vh && (p->mask) & (1 << (idx << 2)))
 
+#define LOOP_MASK_BWD(s, p, idx)            \
+    for (int idx = 3; idx >= 0; idx--)      \
+        if ((p->mask) & (1 << (idx << 2)))
+
+#define LOOP_MASK_BWD_VH(s, p, idx)         \
+    for (int idx = 3; idx >= 0; idx--)      \
+        if (s->use_vh && (p->mask) & (1 << (idx << 2)))
+
 /*********************************************************************/
 typedef struct SwsAArch64Context {
     AArch64Context *actx;
@@ -523,23 +531,34 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
             }
         }
         if (!mask_val[i]) {
-            i_movi(a, vt[cur_vt], a64op_imm(val));
+            /* All-one values in movi only work up to 8-bit, and then
+             * at full 16- or 32-bit, but not for intermediate values
+             * like 10. In those cases, we use mov + dup instead.
+             */
+            if (val <= 0xff || val == 0xffff) {
+                i_movi(a, vt[cur_vt], a64op_imm(val));
+            } else {
+                AArch64Op mask_gpr = a64op_w(s->tmp0);
+                i_mov (a, mask_gpr, a64op_imm(val));
+                i_dup (a, vt[cur_vt], mask_gpr);
+            }
             mask_val[i] = val;
             mask_idx[i] = cur_vt++;
         }
     }
 
     aarch64_add_comment(a, "shift right");
-    /* Loop backwards (3 - i) to avoid clobbering component 0. */
-    LOOP_MASK   (s, p, i) if (offsets[3 - i]) i_ushr(a, vl[3 - i], vl[0], a64op_imm(offsets[3 - i]));
-    LOOP_MASK_VH(s, p, i) if (offsets[3 - i]) i_ushr(a, vh[3 - i], vh[0], a64op_imm(offsets[3 - i]));
+    /* Loop backwards to avoid clobbering component 0. */
+    LOOP_MASK_BWD   (s, p, i) if (offsets[i]) i_ushr(a, vl[i], vl[0], a64op_imm(offsets[i]));
+    LOOP_MASK_BWD_VH(s, p, i) if (offsets[i]) i_ushr(a, vh[i], vh[0], a64op_imm(offsets[i]));
 
-    LOOP_MASK   (s, p, i) vl[i] = v_16b(vl[i]);
-    LOOP_MASK_VH(s, p, i) vh[i] = v_16b(vh[i]);
+    LOOP_MASK_BWD   (s, p, i) vt[mask_idx[i]] = v_16b(vt[mask_idx[i]]);
+    LOOP_MASK_BWD   (s, p, i) vl[i] = v_16b(vl[i]);
+    LOOP_MASK_BWD_VH(s, p, i) vh[i] = v_16b(vh[i]);
 
     aarch64_add_comment(a, "apply masks");
-    LOOP_MASK   (s, p, i) i_and(a, vl[3 - i], vl[3 - i], vt[mask_idx[i]]);
-    LOOP_MASK_VH(s, p, i) i_and(a, vh[3 - i], vh[3 - i], vt[mask_idx[i]]);
+    LOOP_MASK_BWD   (s, p, i) i_and(a, vl[i], vl[i], vt[mask_idx[i]]);
+    LOOP_MASK_BWD_VH(s, p, i) i_and(a, vh[i], vh[i], vt[mask_idx[i]]);
 }
 
 static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
