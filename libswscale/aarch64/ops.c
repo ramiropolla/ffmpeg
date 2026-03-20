@@ -190,10 +190,11 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
         break;
     }
     case AARCH64_SWS_OP_DITHER: {
-        out->dither = (op->dither.y_offset[0] & 0xf)
-                    | (op->dither.y_offset[1] & 0xf) << 4
-                    | (op->dither.y_offset[2] & 0xf) << 8
-                    | (op->dither.y_offset[3] & 0xf) << 12;
+        out->dither.y_offset = (op->dither.y_offset[0] & 0xf)
+                             | (op->dither.y_offset[1] & 0xf) << 4
+                             | (op->dither.y_offset[2] & 0xf) << 8
+                             | (op->dither.y_offset[3] & 0xf) << 12;
+        out->dither.size_log2 = op->dither.size_log2;
         break;
     }
     }

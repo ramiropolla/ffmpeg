@@ -186,7 +186,7 @@ void sws_aarch64_op_impl_func_name(char *buf, size_t size, const SwsAArch64OpImp
         buf_appendf(&buf, &size, "_%010"PRIx64"", params->linear);
         break;
     case AARCH64_SWS_OP_DITHER:
-        buf_appendf(&buf, &size, "_%04x", nswap16(params->dither));
+        buf_appendf(&buf, &size, "_%04x_%u", nswap16(params->dither.y_offset), params->dither.size_log2);
         break;
     default:
         break;
@@ -235,7 +235,7 @@ void sws_aarch64_op_impl_serialize(char *buf, size_t size, const SwsAArch64OpImp
         buf_appendf(&buf, &size, ", .linear = 0x%010"PRIx64"ULL", params->linear);
         break;
     case AARCH64_SWS_OP_DITHER:
-        buf_appendf(&buf, &size, ", .dither = 0x%04x", params->dither);
+        buf_appendf(&buf, &size, ", .dither = { .y_offset = 0x%04x, .size_log2 = %u }", params->dither.y_offset, params->dither.size_log2);
         break;
     default:
         break;
@@ -274,7 +274,7 @@ void sws_aarch64_op_impl_cond_str(char *buf, size_t size, const SwsAArch64OpImpl
         buf_appendf(&buf, &size, " && %slinear == 0x%010"PRIx64"ULL", p_str, params->linear);
         break;
     case AARCH64_SWS_OP_DITHER:
-        buf_appendf(&buf, &size, " && %sdither == 0x%04x", p_str, params->dither);
+        buf_appendf(&buf, &size, " && %sdither.y_offset == 0x%04x && %sdither.size_log2 == %u", p_str, params->dither.y_offset, p_str, params->dither.size_log2);
         break;
     default:
         break;
@@ -319,7 +319,8 @@ int sws_aarch64_op_impl_cmp(const void *a, const void *b)
         COMPARE_VAL(pa, pb, linear);
         break;
     case AARCH64_SWS_OP_DITHER:
-        COMPARE_VAL(pa, pb, dither);
+        COMPARE_VAL(pa, pb, dither.y_offset);
+        COMPARE_VAL(pa, pb, dither.size_log2);
         break;
     default:
         break;

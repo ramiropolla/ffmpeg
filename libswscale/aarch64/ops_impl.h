@@ -76,6 +76,11 @@ const char *sws_aarch64_op_type_name(SwsAArch64OpType op);
 typedef uint16_t SwsAArch64OpMask;
 typedef uint64_t SwsAArch64LinearOpMask;
 
+typedef struct SwsAArch64DitherOp {
+    uint16_t y_offset;
+    uint8_t size_log2;
+} SwsAArch64DitherOp;
+
 typedef struct SwsAArch64OpImplParams {
     SwsAArch64OpType    op;
     SwsAArch64OpMask    mask;
@@ -87,7 +92,7 @@ typedef struct SwsAArch64OpImplParams {
         SwsAArch64OpMask       pack;
         SwsAArch64PixelType    to_type;
         SwsAArch64LinearOpMask linear;
-        SwsAArch64OpMask       dither;
+        SwsAArch64DitherOp     dither;
     };
 } SwsAArch64OpImplParams;
 
