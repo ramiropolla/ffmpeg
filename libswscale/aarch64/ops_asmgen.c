@@ -492,7 +492,54 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
 static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+    AArch64Op *vl = s->vl;
+    AArch64Op *vh = s->vh;
+    AArch64Op *vt = s->vt;
+    uint32_t mask_val[4] = { 0 };
+    uint8_t mask_idx[4] = { 0 };
+    uint8_t cur_vt = 0;
+
+    uint8_t pattern[4] = {
+        (p->pack      ) & 0xf,
+        (p->pack >>  4) & 0xf,
+        (p->pack >>  8) & 0xf,
+        (p->pack >> 12) & 0xf,
+    };
+    int offsets[4] = {
+        pattern[3] + pattern[2] + pattern[1],
+        pattern[3] + pattern[2],
+        pattern[3],
+        0
+    };
+
+    aarch64_add_comment(a, "create masks");
+    LOOP_MASK(s, p, i) {
+        uint32_t val = (1u << pattern[i]) - 1;
+        for (int j = 0; j < 4; j++) {
+            if (mask_val[j] == val) {
+                mask_val[i] = mask_val[j];
+                mask_idx[i] = mask_idx[j];
+                break;
+            }
+        }
+        if (!mask_val[i]) {
+            i_movi(a, vt[cur_vt], a64op_imm(val));
+            mask_val[i] = val;
+            mask_idx[i] = cur_vt++;
+        }
+    }
+
+    aarch64_add_comment(a, "right shift");
+    /* Loop backwards (3 - i) to avoid clobbering component 0. */
+    LOOP_MASK   (s, p, i) if (offsets[3 - i]) i_ushr(a, vl[3 - i], vl[0], a64op_imm(offsets[3 - i]));
+    LOOP_MASK_VH(s, p, i) if (offsets[3 - i]) i_ushr(a, vh[3 - i], vh[0], a64op_imm(offsets[3 - i]));
+
+    LOOP_MASK   (s, p, i) vl[i] = v_16b(vl[i]);
+    LOOP_MASK_VH(s, p, i) vh[i] = v_16b(vh[i]);
+
+    aarch64_add_comment(a, "apply masks");
+    LOOP_MASK   (s, p, i) i_and(a, vl[3 - i], vl[3 - i], vt[mask_idx[i]]);
+    LOOP_MASK_VH(s, p, i) i_and(a, vh[3 - i], vh[3 - i], vt[mask_idx[i]]);
 }
 
 static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
@@ -515,8 +562,8 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
     };
     LOOP_MASK   (s, p, i) if (offsets[i]) i_shl(a, vl[i], vl[i], a64op_imm(offsets[i]));
     LOOP_MASK_VH(s, p, i) if (offsets[i]) i_shl(a, vh[i], vh[i], a64op_imm(offsets[i]));
-    LOOP_MASK_VH(s, p, i) vh[i] = v_16b(vh[i]);
     LOOP_MASK   (s, p, i) vl[i] = v_16b(vl[i]);
+    LOOP_MASK_VH(s, p, i) vh[i] = v_16b(vh[i]);
     LOOP_MASK   (s, p, i) {
         if (i != 0) {
             i_orr    (a, vl[0], vl[0], vl[i]);
