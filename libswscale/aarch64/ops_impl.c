@@ -185,6 +185,9 @@ void sws_aarch64_op_impl_func_name(char *buf, size_t size, const SwsAArch64OpImp
     case AARCH64_SWS_OP_LINEAR:
         buf_appendf(&buf, &size, "_%010"PRIx64"", params->linear);
         break;
+    case AARCH64_SWS_OP_DITHER:
+        buf_appendf(&buf, &size, "_%04x", nswap16(params->dither));
+        break;
     default:
         break;
     }
@@ -231,6 +234,9 @@ void sws_aarch64_op_impl_serialize(char *buf, size_t size, const SwsAArch64OpImp
     case AARCH64_SWS_OP_LINEAR:
         buf_appendf(&buf, &size, ", .linear = 0x%010"PRIx64"ULL", params->linear);
         break;
+    case AARCH64_SWS_OP_DITHER:
+        buf_appendf(&buf, &size, ", .dither = 0x%04x", params->dither);
+        break;
     default:
         break;
     }
@@ -266,6 +272,9 @@ void sws_aarch64_op_impl_cond_str(char *buf, size_t size, const SwsAArch64OpImpl
         break;
     case AARCH64_SWS_OP_LINEAR:
         buf_appendf(&buf, &size, " && %slinear == 0x%010"PRIx64"ULL", p_str, params->linear);
+        break;
+    case AARCH64_SWS_OP_DITHER:
+        buf_appendf(&buf, &size, " && %sdither == 0x%04x", p_str, params->dither);
         break;
     default:
         break;
@@ -308,6 +317,9 @@ int sws_aarch64_op_impl_cmp(const void *a, const void *b)
         break;
     case AARCH64_SWS_OP_LINEAR:
         COMPARE_VAL(pa, pb, linear);
+        break;
+    case AARCH64_SWS_OP_DITHER:
+        COMPARE_VAL(pa, pb, dither);
         break;
     default:
         break;

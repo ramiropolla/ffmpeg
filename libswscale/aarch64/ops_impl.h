@@ -87,6 +87,7 @@ typedef struct SwsAArch64OpImplParams {
         SwsAArch64OpMask       pack;
         SwsAArch64PixelType    to_type;
         SwsAArch64LinearOpMask linear;
+        SwsAArch64OpMask       dither;
     };
 } SwsAArch64OpImplParams;
 
