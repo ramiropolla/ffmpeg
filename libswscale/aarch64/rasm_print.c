@@ -20,6 +20,8 @@
 
 #include <stdarg.h>
 
+#include "libavutil/mem.h"
+
 #include "rasm.h"
 
 /*********************************************************************/
@@ -252,7 +254,7 @@ static void print_vec(FILE *fp, AArch64Op op)
     }
 }
 
-static void print_op(const AArch64Context *actx, FILE *fp, AArch64Op op)
+static void print_op(const AArch64Context *actx, const int *local_labels, FILE *fp, AArch64Op op)
 {
     switch (a64op_type(op)) {
     case AARCH64_OP_GPR:
@@ -276,7 +278,7 @@ static void print_op(const AArch64Context *actx, FILE *fp, AArch64Op op)
         if (actx->labels[id]) {
             fprintf(fp, "%s", actx->labels[id]);
         } else {
-            int local_id = actx->local_labels[id];
+            int local_id = local_labels[id];
             if (local_id < 0) {
                 fprintf(fp, "%db", -local_id);
             } else {
@@ -301,17 +303,24 @@ int aarch64_print(AArch64Context *actx, FILE *fp)
     const int instr_indent = 8;
     const int comment_col = 56;
 
+    int *local_labels = NULL;
+    if (actx->num_labels) {
+        local_labels = av_malloc(actx->num_labels * sizeof(int));
+        if (!local_labels)
+            return AVERROR(ENOMEM);
+    }
+
     for (int i = 0; i < actx->num_entries; i++) {
         const AArch64Entry *entry = &actx->entries[i];
 
         if (actx->num_labels) {
             int local_label = 1;
-            memset(actx->local_labels, 0x00, actx->num_labels);
+            memset(local_labels, 0x00, actx->num_labels * sizeof(int));
             for (const AArch64Node *node = entry->start; node != NULL; node = node->next) {
                 if (node->type == AARCH64_NODE_LABEL) {
                     int id = node->label.id;
                     if (!actx->labels[id])
-                        actx->local_labels[id] = local_label++;
+                        local_labels[id] = local_label++;
                 }
             }
         }
@@ -343,7 +352,7 @@ int aarch64_print(AArch64Context *actx, FILE *fp)
                         break;
                     if (j != op_start)
                         fprintf(fp, "%s", ", ");
-                    print_op(actx, fp, op);
+                    print_op(actx, local_labels, fp, op);
                 }
 
                 if (node->insn.comment) {
@@ -359,21 +368,13 @@ int aarch64_print(AArch64Context *actx, FILE *fp)
                 if (actx->labels[id]) {
                     fprintf(fp, "%s:\n", actx->labels[id]);
                 } else {
-#if 1
-                    int local_id = actx->local_labels[id];
-                    if (local_id < 0)
-                        local_id = -local_id;
-                    fprintf(fp, "%d:\n", local_id);
-                    actx->local_labels[id] = -local_id;
-#else
-                    int local_id = actx->local_labels[id];
+                    int local_id = local_labels[id];
                     if (local_id < 0) {
                         fprintf(fp, "%d:\n", -local_id);
                     } else {
                         fprintf(fp, "%d:\n",  local_id);
-                        actx->local_labels[id] = -local_id;
+                        local_labels[id] = -local_id;
                     }
-#endif
                 }
                 break;
             }
@@ -390,5 +391,6 @@ int aarch64_print(AArch64Context *actx, FILE *fp)
         }
     }
 
+    av_freep(&local_labels);
     return 0;
 }

@@ -221,7 +221,6 @@ typedef struct AArch64Context {
     int error;
     char **labels;
     int num_labels;
-    int *local_labels; // temporary buffer for op_print
     char *next_comment;
 } AArch64Context;
 

@@ -57,7 +57,6 @@ void aarch64_free(AArch64Context **p_actx)
     for (int i = 0; i < actx->num_labels; i++)
         av_freep(&actx->labels[i]);
     av_freep(&actx->labels);
-    av_freep(&actx->local_labels);
     av_freep(p_actx);
 }
 
@@ -220,13 +219,6 @@ int aarch64_new_label(AArch64Context *actx, const char *name)
         actx->error = AVERROR(ENOMEM);
         goto error;
     }
-    int *local_labels = av_realloc(actx->local_labels, actx->num_labels * sizeof(int));
-    if (!local_labels) {
-        actx->error = AVERROR(ENOMEM);
-        goto error;
-    }
-
-    actx->local_labels = local_labels;
     *p = dup;
 
 error:
