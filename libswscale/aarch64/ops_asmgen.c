@@ -297,13 +297,60 @@ static void asmgen_process_return(SwsAArch64Context *s, const SwsAArch64OpImplPa
 static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+    AArch64Op *vl = s->vl;
+    AArch64Op *vt = s->vt;
+
+    aarch64_annotate_next(a, "vt2 = shift vector { -7, -6, -5, -4, -3, -2, -1, 0 } x2");
+    i_ldr(a, v_q(vt[2]), a64op_off(s->impl, offsetof_impl_priv));
+
+    if (s->vec_size == 8) {
+        aarch64_add_comment(a, "broadcast input byte to all 8 lanes");
+        i_ldr (a, v_b (vl[0]), a64op_post(s->in[0], 1));
+        i_dup (a, v_8b(vl[0]), ve_b(vl[0], 0));
+        aarch64_add_comment(a, "shift each bit into lane 0, then mask");
+        i_movi(a, v_8b(vt[1]), a64op_imm(1));
+        i_ushl(a, v_8b(vl[0]), v_8b(vl[0]), v_8b(vt[2]));
+        i_and (a, v_8b(vl[0]), v_8b(vl[0]), v_8b(vt[1]));
+    } else {
+        aarch64_add_comment(a, "broadcast each input byte to its 8 lanes");
+        i_ldrh(a, a64op_w(s->tmp0), a64op_post(s->in[0], 2));
+        i_dup (a, v_8b(vl[0]),  a64op_w(s->tmp0));
+        i_lsr (a, s->tmp0,      s->tmp0,       a64op_imm(8));
+        i_dup (a, v_8b(vt[0]),  a64op_w(s->tmp0));
+        aarch64_annotate_next(a, "vl[0] = [ byte0 x8 | byte1 x8 ]");
+        i_ins (a, ve_d(vl[0], 1), ve_d(vt[0], 0));
+        aarch64_add_comment(a, "shift each bit into lane 0, then mask");
+        i_movi(a, v_16b(vt[1]), a64op_imm(1));
+        i_ushl(a, v_16b(vl[0]), v_16b(vl[0]), v_16b(vt[2]));
+        i_and (a, v_16b(vl[0]), v_16b(vl[0]), v_16b(vt[1]));
+    }
 }
 
 static void asmgen_op_read_nibble(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+    AArch64Op *vl = s->vl;
+    AArch64Op *vt = s->vt;
+
+    if (s->vec_size == 8) {
+        i_ldr (a, v_s(vl[0]), a64op_post(s->in[0], 4));
+        aarch64_annotate_next(a, "vt0 = high nibbles");
+        i_ushr(a, v_8b(vt[0]), v_8b(vl[0]), a64op_imm(4));
+        aarch64_annotate_next(a, "vl[0] = low nibbles");
+        i_movi(a, v_8b(vt[1]), a64op_imm(0x0f));
+        i_and (a, v_8b(vl[0]), v_8b(vl[0]), v_8b(vt[1]));
+        aarch64_annotate_next(a, "interleave: [ h0, l0, h1, l1, ... ]");
+        i_zip1(a, v_8b(vl[0]), v_8b(vt[0]), v_8b(vl[0]));
+    } else {
+        i_ldr (a, v_d(vl[0]), a64op_post(s->in[0], 8));
+        aarch64_annotate_next(a, "vt0 = high nibbles");
+        i_ushr(a, v_8b(vt[0]), v_8b(vl[0]), a64op_imm(4));
+        aarch64_annotate_next(a, "vl[0] = low nibbles");
+        i_movi(a, v_8b(vt[1]), a64op_imm(0x0f));
+        i_and (a, v_8b(vl[0]), v_8b(vl[0]), v_8b(vt[1]));
+        aarch64_annotate_next(a, "interleave: [ h0, l0, h1, l1, ... ]");
+        i_zip1(a, v_16b(vl[0]), v_16b(vt[0]), v_16b(vl[0]));
+    }
 }
 
 static void asmgen_op_read_packed(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
@@ -354,13 +401,59 @@ static void asmgen_op_read_planar(SwsAArch64Context *s, const SwsAArch64OpImplPa
 static void asmgen_op_write_bit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+    AArch64Op *vl = s->vl;
+    AArch64Op *vt = s->vt;
+
+    aarch64_annotate_next(a, "vt2 = shift vector { 7, 6, 5, 4, 3, 2, 1, 0 } x2");
+    i_ldr(a, v_q(vt[2]), a64op_off(s->impl, offsetof_impl_priv));
+
+    if (s->vec_size == 8) {
+        aarch64_annotate_next(a, "shift each bit into its output position");
+        i_ushl(a, v_8b(vl[0]), v_8b(vl[0]), v_8b(vt[2]));
+        aarch64_annotate_next(a, "OR all bits together into one byte");
+        i_addv(a, v_b(vt[0]), v_8b(vl[0]));
+        i_str (a, v_b(vt[0]), a64op_post(s->out[0], 1));
+    } else {
+        aarch64_annotate_next(a, "shift each bit into its output position");
+        i_ushl(a, v_16b(vl[0]), v_16b(vl[0]), v_16b(vt[2]));
+        aarch64_annotate_next(a, "OR lower 8 bits together into byte 0");
+        i_addv(a, v_b(vt[0]),    v_8b(vl[0]));
+        aarch64_annotate_next(a, "OR upper 8 bits together into byte 1");
+        i_ins (a, ve_d(vt[1], 0), ve_d(vl[0], 1));
+        i_addv(a, v_b(vt[1]),    v_8b(vt[1]));
+        aarch64_annotate_next(a, "combine byte 0 and byte 1");
+        i_ins (a, ve_b(vt[0], 1), ve_b(vt[1], 0));
+        i_str (a, v_h(vt[0]), a64op_post(s->out[0], 2));
+    }
 }
 
 static void asmgen_op_write_nibble(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+    AArch64Op *vl = s->vl;
+    AArch64Op *vt = s->vt;
+
+    /* Treat pixel pairs as halfwords: hw[i] = p[2i] | (p[2i+1] << 8).
+     * Pack into output byte: (p[2i] << 4) | p[2i+1].
+     *   shl hw by 4: p[2i] << 4 in the low byte
+     *   ushr hw by 8: p[2i+1] in the low byte
+     *   orr: (p[2i] << 4) | p[2i+1] in the low byte
+     *   xtn: narrow, keeping the low byte of each halfword */
+    if (s->vec_size == 8) {
+        i_shl (a, v_4h(vt[0]), v_4h(vl[0]), a64op_imm(4));
+        i_ushr(a, v_4h(vt[1]), v_4h(vl[0]), a64op_imm(8));
+        i_orr (a, v_8b(vl[0]), v_8b(vt[0]), v_8b(vt[1]));
+        aarch64_annotate_next(a, "narrow: keep low byte of each halfword");
+        i_xtn (a, v_8b(vt[0]), v_8h(vl[0]));
+        i_str (a, v_s(vt[0]), a64op_post(s->out[0], 4));
+    } else {
+        i_shl (a, v_8h(vt[0]), v_8h(vl[0]), a64op_imm(4));
+        i_ushr(a, v_8h(vt[1]), v_8h(vl[0]), a64op_imm(8));
+        i_orr (a, v_16b(vl[0]), v_16b(vt[0]), v_16b(vt[1]));
+        aarch64_annotate_next(a, "narrow: keep low byte of each halfword");
+        i_xtn (a, v_8b(vt[0]), v_8h(vl[0]));
+        i_str (a, v_d(vt[0]), a64op_post(s->out[0], 8));
+    }
 }
 
 static void asmgen_op_write_packed(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)

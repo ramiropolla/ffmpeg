@@ -70,9 +70,9 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
     switch (op->op) {
     case SWS_OP_READ:
         if (op->rw.frac == 1)
-            out->op = AARCH64_SWS_OP_READ_BIT;
-        else if (op->rw.frac == 3)
             out->op = AARCH64_SWS_OP_READ_NIBBLE;
+        else if (op->rw.frac == 3)
+            out->op = AARCH64_SWS_OP_READ_BIT;
         else if (op->rw.packed && op->rw.elems != 1)
             out->op = AARCH64_SWS_OP_READ_PACKED;
         else
@@ -80,9 +80,9 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
         break;
     case SWS_OP_WRITE:
         if (op->rw.frac == 1)
-            out->op = AARCH64_SWS_OP_WRITE_BIT;
-        else if (op->rw.frac == 3)
             out->op = AARCH64_SWS_OP_WRITE_NIBBLE;
+        else if (op->rw.frac == 3)
+            out->op = AARCH64_SWS_OP_WRITE_BIT;
         else if (op->rw.packed && op->rw.elems != 1)
             out->op = AARCH64_SWS_OP_WRITE_PACKED;
         else
@@ -245,6 +245,24 @@ static int aarch64_setup(SwsOpList *ops, int block_size, int n,
 {
     SwsOp *op = &ops->ops[n];
     switch (op->op) {
+    case SWS_OP_READ:
+        // TODO comment and cleanup
+        if (op->rw.frac == 3) {
+            out->priv = (SwsOpPriv){ .u8 = {
+                -7, -6, -5, -4, -3, -2, -1, 0,
+                -7, -6, -5, -4, -3, -2, -1, 0,
+            } };
+        }
+        break;
+    case SWS_OP_WRITE:
+        // TODO comment and cleanup
+        if (op->rw.frac == 3) {
+            out->priv = (SwsOpPriv){ .u8 = {
+                7, 6, 5, 4, 3, 2, 1, 0,
+                7, 6, 5, 4, 3, 2, 1, 0,
+            } };
+        }
+        break;
     case SWS_OP_CLEAR:
     case SWS_OP_MIN:
     case SWS_OP_MAX:
