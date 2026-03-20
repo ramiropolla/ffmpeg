@@ -384,6 +384,7 @@ static void asmgen_op_write_planar(SwsAArch64Context *s, const SwsAArch64OpImplP
     }
 }
 
+/* swap byte order (for differing endianness) */
 static void asmgen_op_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -563,6 +564,7 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     LOOP_MASK_VH(s, p, i) i_dup(a, vh[i], a64op_elem(vt0, i));
 }
 
+/* convert (cast) between formats */
 static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -572,47 +574,54 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     size_t src_el_size = s->el_size;
     size_t dst_el_size = sws_aarch64_pixel_size(p->to_type);
 
-#if 0
-    // TODO this function assumes block_size is either 8 or 16 and that we're
-    // always using at most two full vregs:
-    /* Use at most two full vregs during the widest precision section */
-    int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
-    // There will be no block_size 8 that does not use 2 full vregs.
-#endif
-
+    /* This function assumes block_size is either 8 or 16, and that
+     * we're always using the most amount of vector registers possible.
+     * Therefore, u32 always uses the high vector bank.
+     */
     if (p->type == AARCH64_PIXEL_F32) {
+        aarch64_add_comment(a, "f32 -> u32");
         LOOP_MASK(s, p, i) i_fcvtzu(a, v_4s(vl[i]), v_4s(vl[i]));
         LOOP_MASK(s, p, i) i_fcvtzu(a, v_4s(vh[i]), v_4s(vh[i]));
     }
+
     if (p->block_size == 8) {
         if (src_el_size == 1 && dst_el_size > src_el_size) {
+            aarch64_add_comment(a, "u8 -> u16");
             LOOP_MASK(s, p, i) i_uxtl (a, v_8h(vl[i]), v_8b(vl[i]));
             src_el_size = 2;
         } else if (src_el_size == 4 && dst_el_size < src_el_size) {
+            aarch64_add_comment(a, "u32 -> u16");
             LOOP_MASK(s, p, i) i_xtn  (a, v_4h(vl[i]), v_4s(vl[i]));
             LOOP_MASK(s, p, i) i_xtn  (a, v_4h(vh[i]), v_4s(vh[i]));
             LOOP_MASK(s, p, i) i_ins  (a, ve_d(vl[i], 1), ve_d(vh[i], 0));
             src_el_size = 2;
         }
         if (src_el_size == 2 && dst_el_size == 4) {
+            aarch64_add_comment(a, "u16 -> u32");
             LOOP_MASK(s, p, i) i_uxtl2(a, v_4s(vh[i]), v_8h(vl[i]));
             LOOP_MASK(s, p, i) i_uxtl (a, v_4s(vl[i]), v_4h(vl[i]));
             src_el_size = 4;
         } else if (src_el_size == 2 && dst_el_size == 1) {
+            aarch64_add_comment(a, "u16 -> u8");
             LOOP_MASK(s, p, i) i_xtn  (a, v_8b(vl[i]), v_8h(vl[i]));
             src_el_size = 1;
         }
     } else /* if (p->block_size == 16) */ {
         if (src_el_size == 1 && dst_el_size == 2) {
+            aarch64_add_comment(a, "u8 -> u16");
             LOOP_MASK(s, p, i) i_uxtl2(a, v_8h(vh[i]), v_16b(vl[i]));
             LOOP_MASK(s, p, i) i_uxtl (a, v_8h(vl[i]), v_8b(vl[i]));
         } else if (src_el_size == 2 && dst_el_size == 1) {
+            aarch64_add_comment(a, "u16 -> u8");
             LOOP_MASK(s, p, i) i_xtn  (a, v_8b(vl[i]), v_8h(vl[i]));
             LOOP_MASK(s, p, i) i_xtn  (a, v_8b(vh[i]), v_8h(vh[i]));
             LOOP_MASK(s, p, i) i_ins  (a, ve_d(vl[i], 1), ve_d(vh[i], 0));
         }
     }
+
+    /* See comment above for high vector bank usage for u32. */
     if (p->to_type == AARCH64_PIXEL_F32) {
+        aarch64_add_comment(a, "u32 -> f32");
         LOOP_MASK(s, p, i) i_ucvtf(a, v_4s(vl[i]), v_4s(vl[i]));
         LOOP_MASK(s, p, i) i_ucvtf(a, v_4s(vh[i]), v_4s(vh[i]));
     }
@@ -704,10 +713,11 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     AArch64Op *vh = s->vh;
     AArch64Op vt0 = s->vt[0]; // a64op_make_vec(a64op_vec_n(s->vt[0]), 0, s->el_size);
 
+    aarch64_annotate_next(a, "tmp0 = &impl->priv");
     AArch64Op impl_priv = s->tmp0;
     i_add(a, impl_priv, s->impl, a64op_imm(offsetof_impl_priv));
 
-    aarch64_annotate_next(a, "vt0 = impl->priv; // TODO size");
+    aarch64_annotate_next(a, "broadcast [tmp0] into vt0");
     switch (s->el_size) {
     case 1: i_ld1r(a, vv_1(vt0), a64op_base(impl_priv)); break;
     case 2: i_ld1r(a, vv_1(vt0), a64op_base(impl_priv)); break;
