@@ -240,6 +240,38 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     return 0;
 }
 
+static int aarch64_setup_dither(const SwsAArch64OpImplParams *p,
+                                const SwsOp *op, SwsImplResult *res)
+{
+    const int size_log2 = p->dither.size_log2;
+    const int size      = 1 << size_log2;
+
+    /* Find the largest y_offset among active components to determine
+     * how many extra rows to append so codegen never needs to mask y. */
+    int largest_y_off = 0;
+    for (int i = 0; i < 4; i++) {
+        if (op->dither.y_offset[i] >= 0)
+            largest_y_off = FFMAX(largest_y_off, (int)op->dither.y_offset[i]);
+    }
+
+    /* Allocate (size + largest_y_off) rows × size columns.
+     * The extra rows are filled by wrapping into the base matrix so that
+     * codegen can advance the pointer by a compile-time byte delta without
+     * any runtime masking. */
+    int total = (size + largest_y_off) * size;
+    float *matrix = av_malloc(total * sizeof(float));
+    if (!matrix)
+        return AVERROR(ENOMEM);
+
+    int mask = (size * size) - 1;
+    for (int i = 0; i < total; i++)
+        matrix[i] = (float)av_q2d(op->dither.matrix[i & mask]);
+
+    res->priv.ptr = matrix;
+    res->free = ff_op_priv_free;
+    return 0;
+}
+
 static int aarch64_setup(SwsOpList *ops, int block_size, int n,
                          const SwsAArch64OpImplParams *p, SwsImplResult *out)
 {
@@ -273,6 +305,8 @@ static int aarch64_setup(SwsOpList *ops, int block_size, int n,
         break;
     case SWS_OP_LINEAR:
         return aarch64_setup_linear(p, op, out);
+    case SWS_OP_DITHER:
+        return aarch64_setup_dither(p, op, out);
     }
     return 0;
 }
