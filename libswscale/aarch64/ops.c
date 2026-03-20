@@ -219,6 +219,9 @@ static void aarch64_setup(SwsOpList *ops, int block_size, int n, SwsImplResult *
     case SWS_OP_MAX:
         ff_sws_setup_q4(&(const SwsImplParams) { .op = op }, out);
         break;
+    case SWS_OP_SCALE:
+        ff_sws_setup_q(&(const SwsImplParams) { .op = op }, out);
+        break;
     }
 }
 

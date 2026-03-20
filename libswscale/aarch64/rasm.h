@@ -54,6 +54,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_FMUL,
     AARCH64_INSN_INS,
     AARCH64_INSN_LD1,
+    AARCH64_INSN_LD1R,
     AARCH64_INSN_LD2,
     AARCH64_INSN_LD3,
     AARCH64_INSN_LD4,
@@ -380,19 +381,22 @@ static inline AArch64Op a64op_vec2d (uint8_t n) { return a64op_make_vec(n,  2,  
 
 static inline AArch64Op a64op_veclist(AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3)
 {
-    assert(a64op_type(op0) != AARCH64_OP_NONE && a64op_type(op1) != AARCH64_OP_NONE);
+    assert(a64op_type(op0) != AARCH64_OP_NONE);
     uint8_t n0 = a64op_vec_n(op0);
-    uint8_t n1 = a64op_vec_n(op1);
-    uint8_t num_regs = 2;
-    assert(((n0 + 1) & 0x1f) == n1);
-    if (a64op_type(op2) != AARCH64_OP_NONE) {
-        uint8_t n2 = a64op_vec_n(op2);
-        assert(((n1 + 1) & 0x1f) == n2);
+    uint8_t num_regs = 1;
+    if (a64op_type(op1) != AARCH64_OP_NONE) {
+        uint8_t n1 = a64op_vec_n(op1);
+        assert(((n0 + 1) & 0x1f) == n1);
         num_regs++;
-        if (a64op_type(op3) != AARCH64_OP_NONE) {
-            uint8_t n3 = a64op_vec_n(op3);
-            assert(((n2 + 1) & 0x1f) == n3);
+        if (a64op_type(op2) != AARCH64_OP_NONE) {
+            uint8_t n2 = a64op_vec_n(op2);
+            assert(((n1 + 1) & 0x1f) == n2);
             num_regs++;
+            if (a64op_type(op3) != AARCH64_OP_NONE) {
+                uint8_t n3 = a64op_vec_n(op3);
+                assert(((n2 + 1) & 0x1f) == n3);
+                num_regs++;
+            }
         }
     }
     op0.u8[4] = num_regs;
@@ -429,6 +433,7 @@ static inline AArch64Op v_4s (AArch64Op op) { return a64op_vec4s (a64op_vec_n(op
 static inline AArch64Op v_2d (AArch64Op op) { return a64op_vec2d (a64op_vec_n(op)); }
 
 /* vector list modifiers */
+static inline AArch64Op vv_1(AArch64Op op0)                                              { return a64op_veclist(op0, OPN, OPN, OPN); }
 static inline AArch64Op vv_2(AArch64Op op0, AArch64Op op1)                               { return a64op_veclist(op0, op1, OPN, OPN); }
 static inline AArch64Op vv_3(AArch64Op op0, AArch64Op op1, AArch64Op op2)                { return a64op_veclist(op0, op1, op2, OPN); }
 static inline AArch64Op vv_4(AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3) { return a64op_veclist(op0, op1, op2, op3); }
@@ -503,6 +508,7 @@ static inline AArch64Op a64op_reg (AArch64Op base, AArch64Op off, uint8_t ext, u
 #define i_fmul(actx,   op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_FMUL,   op0, op1, op2, OPN)
 #define i_ins(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_INS,    op0, op1, OPN, OPN)
 #define i_ld1(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_LD1,    op0, op1, OPN, OPN)
+#define i_ld1r(actx,   op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_LD1R,   op0, op1, OPN, OPN)
 #define i_ld2(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_LD2,    op0, op1, OPN, OPN)
 #define i_ld3(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_LD3,    op0, op1, OPN, OPN)
 #define i_ld4(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_LD4,    op0, op1, OPN, OPN)

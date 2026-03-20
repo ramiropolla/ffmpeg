@@ -41,6 +41,7 @@ static const char insn_names[AARCH64_INSN_NB][8] = {
     [AARCH64_INSN_FMUL  ] = "fmul",
     [AARCH64_INSN_INS   ] = "ins",
     [AARCH64_INSN_LD1   ] = "ld1",
+    [AARCH64_INSN_LD1R  ] = "ld1r",
     [AARCH64_INSN_LD2   ] = "ld2",
     [AARCH64_INSN_LD3   ] = "ld3",
     [AARCH64_INSN_LD4   ] = "ld4",
@@ -237,7 +238,7 @@ static void print_vec(FILE *fp, AArch64Op op)
     uint8_t el_size  = a64op_vec_el_size(op);
     uint8_t num_regs = a64op_vec_num_regs(op);
 
-    if (num_regs >= 2) {
+    if (num_regs) {
         fprintf(fp, "{");
         for (int i = 0; i < num_regs; i++) {
             if (i > 0)

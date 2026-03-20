@@ -696,10 +696,31 @@ static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     }
 }
 
+/* multiplication by scalar (q) */
 static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+    AArch64Op *vl = s->vl;
+    AArch64Op *vh = s->vh;
+    AArch64Op vt0 = s->vt[0]; // a64op_make_vec(a64op_vec_n(s->vt[0]), 0, s->el_size);
+
+    AArch64Op impl_priv = s->tmp0;
+    i_add(a, impl_priv, s->impl, a64op_imm(offsetof_impl_priv));
+
+    aarch64_annotate_next(a, "vt0 = impl->priv; // TODO size");
+    switch (s->el_size) {
+    case 1: i_ld1r(a, vv_1(vt0), a64op_base(impl_priv)); break;
+    case 2: i_ld1r(a, vv_1(vt0), a64op_base(impl_priv)); break;
+    case 4: i_ld1r(a, vv_1(vt0), a64op_base(impl_priv)); break;
+    }
+
+    if (p->type == AARCH64_PIXEL_F32) {
+        LOOP_MASK   (s, p, i) i_fmul(a, vl[i], vl[i], vt0);
+        LOOP_MASK_VH(s, p, i) i_fmul(a, vh[i], vh[i], vt0);
+    } else {
+        LOOP_MASK   (s, p, i) i_mul (a, vl[i], vl[i], vt0);
+        LOOP_MASK_VH(s, p, i) i_mul (a, vh[i], vh[i], vt0);
+    }
 }
 
 static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
