@@ -512,7 +512,7 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         0
     };
 
-    aarch64_add_comment(a, "create masks");
+    aarch64_add_comment(a, "generate masks");
     LOOP_MASK(s, p, i) {
         uint32_t val = (1u << pattern[i]) - 1;
         for (int j = 0; j < 4; j++) {
@@ -529,7 +529,7 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         }
     }
 
-    aarch64_add_comment(a, "right shift");
+    aarch64_add_comment(a, "shift right");
     /* Loop backwards (3 - i) to avoid clobbering component 0. */
     LOOP_MASK   (s, p, i) if (offsets[3 - i]) i_ushr(a, vl[3 - i], vl[0], a64op_imm(offsets[3 - i]));
     LOOP_MASK_VH(s, p, i) if (offsets[3 - i]) i_ushr(a, vh[3 - i], vh[0], a64op_imm(offsets[3 - i]));
@@ -560,10 +560,13 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
         pattern[3],
         0
     };
+
+    aarch64_add_comment(a, "shift left");
     LOOP_MASK   (s, p, i) if (offsets[i]) i_shl(a, vl[i], vl[i], a64op_imm(offsets[i]));
     LOOP_MASK_VH(s, p, i) if (offsets[i]) i_shl(a, vh[i], vh[i], a64op_imm(offsets[i]));
     LOOP_MASK   (s, p, i) vl[i] = v_16b(vl[i]);
     LOOP_MASK_VH(s, p, i) vh[i] = v_16b(vh[i]);
+    aarch64_add_comment(a, "combine");
     LOOP_MASK   (s, p, i) {
         if (i != 0) {
             i_orr    (a, vl[0], vl[0], vl[i]);
