@@ -648,16 +648,52 @@ static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     }
 }
 
+/* numeric minimum (q4) */
 static void asmgen_op_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+    AArch64Op *vl = s->vl;
+    AArch64Op *vh = s->vh;
+    AArch64Op *vt = s->vt;
+
+    AArch64Op vt3 = a64op_make_vec(a64op_vec_n(s->vt[3]), 0, s->el_size);
+
+    aarch64_annotate_next(a, "vt3 = impl->priv;");
+    i_ldr(a, v_q(vt3), a64op_off(s->impl, offsetof_impl_priv));
+    aarch64_add_comment(a, "broadcast elements from vt3 into TODO");
+    LOOP_MASK   (s, p, i) i_dup(a, vt[i], a64op_elem(vt3, i));
+
+    if (p->type == AARCH64_PIXEL_F32) {
+        LOOP_MASK   (s, p, i) i_fmin(a, vl[i], vl[i], vt[i]);
+        LOOP_MASK_VH(s, p, i) i_fmin(a, vh[i], vh[i], vt[i]);
+    } else {
+        LOOP_MASK   (s, p, i) i_umin(a, vl[i], vl[i], vt[i]);
+        LOOP_MASK_VH(s, p, i) i_umin(a, vh[i], vh[i], vt[i]);
+    }
 }
 
+/* numeric maximum (q4) */
 static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+    AArch64Op *vl = s->vl;
+    AArch64Op *vh = s->vh;
+    AArch64Op *vt = s->vt;
+
+    AArch64Op vt3 = a64op_make_vec(a64op_vec_n(s->vt[3]), 0, s->el_size);
+
+    aarch64_annotate_next(a, "vt3 = impl->priv;");
+    i_ldr(a, v_q(vt3), a64op_off(s->impl, offsetof_impl_priv));
+    aarch64_add_comment(a, "broadcast elements from vt3 into TODO");
+    LOOP_MASK   (s, p, i) i_dup(a, vt[i], a64op_elem(vt3, i));
+
+    if (p->type == AARCH64_PIXEL_F32) {
+        LOOP_MASK   (s, p, i) i_fmax(a, vl[i], vl[i], vt[i]);
+        LOOP_MASK_VH(s, p, i) i_fmax(a, vh[i], vh[i], vt[i]);
+    } else {
+        LOOP_MASK   (s, p, i) i_umax(a, vl[i], vl[i], vt[i]);
+        LOOP_MASK_VH(s, p, i) i_umax(a, vh[i], vh[i], vt[i]);
+    }
 }
 
 static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)

@@ -80,6 +80,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_TBL,
     AARCH64_INSN_UBFIZ,
     AARCH64_INSN_UCVTF,
+    AARCH64_INSN_UMAX,
     AARCH64_INSN_UMIN,
     AARCH64_INSN_UQXTN,
     AARCH64_INSN_USHL,
@@ -528,6 +529,7 @@ static inline AArch64Op a64op_reg (AArch64Op base, AArch64Op off, uint8_t ext, u
 #define i_tbl(actx,    op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_TBL,    op0, op1, op2, OPN)
 #define i_ubfiz(actx,  op0, op1, op2, op3) aarch64_add_insn(actx, AARCH64_INSN_UBFIZ,  op0, op1, op2, op3)
 #define i_ucvtf(actx,  op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_UCVTF,  op0, op1, OPN, OPN)
+#define i_umax(actx,   op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_UMAX,   op0, op1, op2, OPN)
 #define i_umin(actx,   op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_UMIN,   op0, op1, op2, OPN)
 #define i_uqxtn(actx,  op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_UQXTN,  op0, op1, OPN, OPN)
 #define i_ushl(actx,   op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_USHL,   op0, op1, op2, OPN)

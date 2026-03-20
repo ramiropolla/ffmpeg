@@ -67,6 +67,7 @@ static const char insn_names[AARCH64_INSN_NB][8] = {
     [AARCH64_INSN_TBL   ] = "tbl",
     [AARCH64_INSN_UBFIZ ] = "ubfiz",
     [AARCH64_INSN_UCVTF ] = "ucvtf",
+    [AARCH64_INSN_UMAX  ] = "umax",
     [AARCH64_INSN_UMIN  ] = "umin",
     [AARCH64_INSN_UQXTN ] = "uqxtn",
     [AARCH64_INSN_USHL  ] = "ushl",
