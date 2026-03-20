@@ -124,6 +124,22 @@ typedef struct SwsAArch64Context {
     bool use_vh;
 } SwsAArch64Context;
 
+static void reshape_all_vectors(SwsAArch64Context *s, int el_count, int el_size)
+{
+    s->vl[0] = a64op_make_vec( 0, el_count, el_size);
+    s->vl[1] = a64op_make_vec( 1, el_count, el_size);
+    s->vl[2] = a64op_make_vec( 2, el_count, el_size);
+    s->vl[3] = a64op_make_vec( 3, el_count, el_size);
+    s->vh[0] = a64op_make_vec( 4, el_count, el_size);
+    s->vh[1] = a64op_make_vec( 5, el_count, el_size);
+    s->vh[2] = a64op_make_vec( 6, el_count, el_size);
+    s->vh[3] = a64op_make_vec( 7, el_count, el_size);
+    s->vt[0] = a64op_make_vec(16, el_count, el_size);
+    s->vt[1] = a64op_make_vec(17, el_count, el_size);
+    s->vt[2] = a64op_make_vec(18, el_count, el_size);
+    s->vt[3] = a64op_make_vec(19, el_count, el_size);
+}
+
 /*********************************************************************/
 static const SwsAArch64OpImplParams impl_params[] = {
 #include "ops_entries.c"
@@ -552,11 +568,8 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     LOOP_MASK_BWD   (s, p, i) if (offsets[i]) i_ushr(a, vl[i], vl[0], a64op_imm(offsets[i]));
     LOOP_MASK_BWD_VH(s, p, i) if (offsets[i]) i_ushr(a, vh[i], vh[0], a64op_imm(offsets[i]));
 
-    LOOP_MASK_BWD   (s, p, i) vt[mask_idx[i]] = v_16b(vt[mask_idx[i]]);
-    LOOP_MASK_BWD   (s, p, i) vl[i] = v_16b(vl[i]);
-    LOOP_MASK_BWD_VH(s, p, i) vh[i] = v_16b(vh[i]);
-
     aarch64_add_comment(a, "apply masks");
+    reshape_all_vectors(s, 16, 1);
     LOOP_MASK_BWD   (s, p, i) i_and(a, vl[i], vl[i], vt[mask_idx[i]]);
     LOOP_MASK_BWD_VH(s, p, i) i_and(a, vh[i], vh[i], vt[mask_idx[i]]);
 }
@@ -583,9 +596,9 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
     aarch64_add_comment(a, "shift left");
     LOOP_MASK   (s, p, i) if (offsets[i]) i_shl(a, vl[i], vl[i], a64op_imm(offsets[i]));
     LOOP_MASK_VH(s, p, i) if (offsets[i]) i_shl(a, vh[i], vh[i], a64op_imm(offsets[i]));
-    LOOP_MASK   (s, p, i) vl[i] = v_16b(vl[i]);
-    LOOP_MASK_VH(s, p, i) vh[i] = v_16b(vh[i]);
+
     aarch64_add_comment(a, "combine");
+    reshape_all_vectors(s, 16, 1);
     LOOP_MASK   (s, p, i) {
         if (i != 0) {
             i_orr    (a, vl[0], vl[0], vl[i]);
@@ -696,6 +709,7 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     }
 }
 
+/* expand integers to the full range */
 static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -711,16 +725,12 @@ static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         s->use_vh = (dst_vec_size != dst_total_size);
 
     if (src_el_size == 1) {
-        // TODO add comment for 16b for zip1/zip2 from u8
-        LOOP_MASK_VH(s, p, i) vh[i] = v_16b(vh[i]);
-        LOOP_MASK   (s, p, i) vl[i] = v_16b(vl[i]);
+        reshape_all_vectors(s, 16, 1);
         LOOP_MASK_VH(s, p, i) i_zip2(a, vh[i], vl[i], vl[i]);
         LOOP_MASK   (s, p, i) i_zip1(a, vl[i], vl[i], vl[i]);
     }
     if (dst_el_size == 4) {
-        // TODO add comment for 8h for zip1/zip2 from u16 (is this even correct? we don't test this)
-        LOOP_MASK_VH(s, p, i) vh[i] = v_8h(vh[i]);
-        LOOP_MASK   (s, p, i) vl[i] = v_8h(vl[i]);
+        reshape_all_vectors(s, 8, 2);
         LOOP_MASK_VH(s, p, i) i_zip2(a, vh[i], vl[i], vl[i]);
         LOOP_MASK   (s, p, i) i_zip1(a, vl[i], vl[i], vl[i]);
     }
@@ -844,18 +854,7 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     s->el_size = el_size;
     s->el_count = s->vec_size / el_size;
 
-    s->vl[0] = a64op_make_vec( 0, s->el_count, el_size);
-    s->vl[1] = a64op_make_vec( 1, s->el_count, el_size);
-    s->vl[2] = a64op_make_vec( 2, s->el_count, el_size);
-    s->vl[3] = a64op_make_vec( 3, s->el_count, el_size);
-    s->vh[0] = a64op_make_vec( 4, s->el_count, el_size);
-    s->vh[1] = a64op_make_vec( 5, s->el_count, el_size);
-    s->vh[2] = a64op_make_vec( 6, s->el_count, el_size);
-    s->vh[3] = a64op_make_vec( 7, s->el_count, el_size);
-    s->vt[0] = a64op_make_vec(16, s->el_count, el_size);
-    s->vt[1] = a64op_make_vec(17, s->el_count, el_size);
-    s->vt[2] = a64op_make_vec(18, s->el_count, el_size);
-    s->vt[3] = a64op_make_vec(19, s->el_count, el_size);
+    reshape_all_vectors(s, s->el_count, el_size);
 
     switch (p->op) {
     case AARCH64_SWS_OP_READ_BIT:     asmgen_op_read_bit(s, p);     break;
