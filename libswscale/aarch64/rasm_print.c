@@ -355,9 +355,9 @@ int aarch64_print(AArch64Context *actx, FILE *fp)
                     print_op(actx, fp, local_labels, op);
                 }
 
-                if (node->insn.comment) {
+                if (node->inline_comment) {
                     indent_to(fp, line_start, comment_col);
-                    fprintf(fp, "// %s", node->insn.comment);
+                    fprintf(fp, "// %s", node->inline_comment);
                 }
                 fprintf(fp, "\n");
 

@@ -166,7 +166,6 @@ typedef enum AArch64NodeType {
 typedef struct AArch64NodeInsn {
     AArch64InsnId id;
     AArch64Op op[4];
-    char *comment;
 } AArch64NodeInsn;
 
 typedef struct AArch64NodeComment {
@@ -190,6 +189,7 @@ typedef struct AArch64Node {
         AArch64NodeLabel   label;
         AArch64NodeFunc    func;
     };
+    char *inline_comment;
     struct AArch64Node *prev;
     struct AArch64Node *next;
 } AArch64Node;
@@ -197,6 +197,7 @@ typedef struct AArch64Node {
 /*********************************************************************/
 typedef struct AArch64Function {
     bool export;
+    int label_id;
 } AArch64Function;
 
 typedef enum AArch64EntryType {

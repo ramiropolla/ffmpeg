@@ -40,17 +40,18 @@ void aarch64_free(AArch64Context **p_actx)
         return;
 
     for (int i = 0; i < actx->num_entries; i++) {
-        const AArch64Entry *entry = &actx->entries[i];
-        for (const AArch64Node *node = entry->start; node != NULL; node = node->next) {
+        AArch64Entry *entry = &actx->entries[i];
+        AArch64Node *node = entry->start;
+        while (node != NULL) {
             switch (node->type) {
-            case AARCH64_NODE_INSN:
-                av_freep(&node->insn.comment);
-                break;
             case AARCH64_NODE_COMMENT:
                 av_freep(&node->comment.text);
                 break;
             }
-            av_free(node);
+            av_freep(&node->inline_comment);
+            AArch64Node *cur_node = node;
+            node = node->next;
+            av_free(cur_node);
         }
     }
     av_freep(&actx->entries);
@@ -83,7 +84,8 @@ int aarch64_func_begin(AArch64Context *actx, const char *name, bool export)
     aarch64_add_endfunc(actx);
     entry->end = actx->current_node;
 
-    entry->func.export = export;
+    entry->func.export   = export;
+    entry->func.label_id = id;
 
     actx->current_node = entry->start;
 
@@ -123,13 +125,13 @@ AArch64Node *aarch64_add_insn(AArch64Context *actx, AArch64InsnId id,
 {
     AArch64Node *node = add_node(actx, AARCH64_NODE_INSN);
     if (node) {
-        node->insn.id      = id;
-        node->insn.op[0]   = op0;
-        node->insn.op[1]   = op1;
-        node->insn.op[2]   = op2;
-        node->insn.op[3]   = op3;
-        node->insn.comment = actx->next_comment;
-        actx->next_comment = NULL;
+        node->insn.id        = id;
+        node->insn.op[0]     = op0;
+        node->insn.op[1]     = op1;
+        node->insn.op[2]     = op2;
+        node->insn.op[3]     = op3;
+        node->inline_comment = actx->next_comment;
+        actx->next_comment   = NULL;
     }
     return node;
 }
@@ -179,11 +181,9 @@ void aarch64_annotate(AArch64Context *actx, const char *comment)
     if (actx->error || !actx->current_node)
         return;
     AArch64Node *node = actx->current_node;
-    if (node->type != AARCH64_NODE_INSN)
-        return;
-    av_freep(&node->insn.comment);
-    node->insn.comment = av_strdup(comment);
-    if (!node->insn.comment)
+    av_freep(&node->inline_comment);
+    node->inline_comment = av_strdup(comment);
+    if (!node->inline_comment)
         actx->error = AVERROR(ENOMEM);
 }
 
