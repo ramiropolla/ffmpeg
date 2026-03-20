@@ -254,7 +254,7 @@ static void print_vec(FILE *fp, AArch64Op op)
     }
 }
 
-static void print_op(const AArch64Context *actx, const int *local_labels, FILE *fp, AArch64Op op)
+static void print_op(const AArch64Context *actx, FILE *fp, const int *local_labels, AArch64Op op)
 {
     switch (a64op_type(op)) {
     case AARCH64_OP_GPR:
@@ -352,7 +352,7 @@ int aarch64_print(AArch64Context *actx, FILE *fp)
                         break;
                     if (j != op_start)
                         fprintf(fp, "%s", ", ");
-                    print_op(actx, local_labels, fp, op);
+                    print_op(actx, fp, local_labels, op);
                 }
 
                 if (node->insn.comment) {
