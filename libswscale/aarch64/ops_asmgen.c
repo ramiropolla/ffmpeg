@@ -812,10 +812,126 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     }
 }
 
+/* One vl/vh pass of the generalized linear affine transform.
+ * v[]  is the working register array (vl or vh); vt[] holds saved sources.
+ * Coefficients are preloaded into v21-v24; k is the flat coefficient index
+ * at the start of this pass (always 0 — shared between passes). */
+static void asmgen_op_linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                  AArch64Op *v, AArch64Op *vt, AArch64Op *vc,
+                                  int save_needed, const int fdata_swizzle[5])
+{
+    AArch64Context *a = s->actx;
+    int k = 0;
+
+    if (save_needed)
+        aarch64_add_comment(a, "save input rows");
+    for (int sj = 0; sj < 4; sj++)
+        if (save_needed & (1 << sj))
+            i_mov(a, v_16b(vt[sj]), v_16b(v[sj]));
+
+    aarch64_add_comment(a, "affine transform");
+    LOOP_MASK(s, p, i) {
+        bool first = true;
+        for (int j = 0; j < 5; j++) {
+            int sj = fdata_swizzle[j];
+            if (!((p->linear >> (2 * (5 * i + sj))) & 3))
+                continue;
+            AArch64Op vcoeff = vc[k / 4];
+            int lane = k % 4;
+            k++;
+            AArch64Op vsrc = (sj < 4) ? ((save_needed & (1 << sj)) ? vt[sj] : v[sj])
+                                       : OPN;
+            if (first) {
+                if (sj == 4)
+                    i_dup(a, v[i], ve_s(vcoeff, lane));
+                else
+                    i_fmul(a, v[i], vsrc, ve_s(vcoeff, lane));
+                first = false;
+            } else {
+                i_fmla(a, v[i], vsrc, ve_s(vcoeff, lane));
+            }
+        }
+    }
+}
+
+/* generalized linear affine transform */
 static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    // TODO
+
+    /* Process offset first (column 4), then cross-row columns 0..3 */
+    const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
+
+    /*
+     * Count non-zero coefficients and preload them all into v20-v23
+     * (4 floats per register, 4 registers = up to 16 coefficients).
+     * v20-v23 are caller-saved and not used by vl (v0-v3), vh (v4-v7),
+     * or vt (v16-v19). The coefficient array is allocated with padding
+     * so the ld1 at the last register never reads past the allocation.
+     */
+    int count = 0;
+    LOOP_MASK(s, p, i) {
+        for (int j = 0; j < 5; j++) {
+            int sj = fdata_swizzle[j];
+            if ((p->linear >> (2 * (5 * i + sj))) & 3)
+                count++;
+        }
+    }
+    int num_regs = (count + 3) / 4;
+    assert(num_regs <= 4);
+
+    AArch64Op coeff_ptr = s->tmp0;
+    AArch64Op vc[4];
+    for (int i = 0; i < num_regs; i++)
+        vc[i] = a64op_make_vec(20 + i, s->el_count, s->el_size);
+
+    aarch64_add_comment(a, "preload coefficients");
+    i_ldr(a, coeff_ptr, a64op_off(s->impl, offsetof_impl_priv));
+    switch (num_regs) {
+    case 1: i_ld1(a, vv_1(vc[0]),                      a64op_base(coeff_ptr)); break;
+    case 2: i_ld1(a, vv_2(vc[0], vc[1]),               a64op_base(coeff_ptr)); break;
+    case 3: i_ld1(a, vv_3(vc[0], vc[1], vc[2]),        a64op_base(coeff_ptr)); break;
+    case 4: i_ld1(a, vv_4(vc[0], vc[1], vc[2], vc[3]), a64op_base(coeff_ptr)); break;
+    }
+
+    /*
+     * Determine which source columns need saving to vt[] before computation.
+     * A column sj needs saving if v[sj] may be overwritten before its last use:
+     *   1. Any row i > sj (processed later) reads column sj, so v[sj] will be
+     *      overwritten when row sj is computed before row i reads it.
+     *   2. Row sj itself reads column sj, but it is not the first non-zero term,
+     *      so v[sj] is overwritten by an earlier term before the diagonal read.
+     * If neither applies, v[sj] is still the original value when needed, and
+     * we can read it directly without a save.
+     */
+    int save_needed = 0;
+    for (int sj = 0; sj < 4; sj++) {
+        /* Condition 1: any row i > sj uses column sj */
+        for (int i = sj + 1; i < 4; i++) {
+            if ((p->mask & (1 << (i << 2))) &&
+                ((p->linear >> (2 * (5 * i + sj))) & 3)) {
+                save_needed |= (1 << sj);
+                break;
+            }
+        }
+        if (save_needed & (1 << sj))
+            continue;
+        /* Condition 2: diagonal entry exists but is not the first term for row sj */
+        if (!(p->mask & (1 << (sj << 2))))
+            continue;
+        if (!((p->linear >> (2 * (5 * sj + sj))) & 3))
+            continue;
+        for (int j = 0; fdata_swizzle[j] != sj; j++) {
+            if ((p->linear >> (2 * (5 * sj + fdata_swizzle[j]))) & 3) {
+                save_needed |= (1 << sj);
+                break;
+            }
+        }
+    }
+
+    asmgen_op_linear_pass(s, p, s->vl, s->vt, vc, save_needed, fdata_swizzle);
+    if (s->use_vh)
+        asmgen_op_linear_pass(s, p, s->vh, s->vt, vc, save_needed, fdata_swizzle);
 }
 
 static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)

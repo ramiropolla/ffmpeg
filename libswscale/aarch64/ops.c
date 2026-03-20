@@ -169,39 +169,22 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
         out->to_type = sws_pixel_to_aarch64(op->convert.to);
         break;
     case AARCH64_SWS_OP_LINEAR: {
-        /* Check which vectors are used after this operation */
-        bool used[4] = { false, false, false, false };
-        LOOP_IN(i) used[i] = true;
-        LOOP_ARRAY(i, used) {
-            bool is_identity = true;
-            for (int j = 0; j < 5; j++) {
-                if (i == j) {
-                    if (op->lin.m[i][j].num != 1 || op->lin.m[i][j].den != 1) {
-                        is_identity = false;
-                        break;
-                    }
-                } else {
-                    if (op->lin.m[i][j].num != 0) {
-                        is_identity = false;
-                        break;
-                    }
-                }
-            }
-            if (is_identity)
-                used[i] = false;
-        }
-
-        // TODO I'm sure something can be simplified here regarding out->mask (or not set at all and use only linear)
+        /* out->linear packs the 4x5 matrix as 2 bits per entry:
+         *   00: m[i][j] == 0
+         *   01: m[i][j] == 1
+         *   11: m[i][j] is any other coefficient
+         */
         out->mask = 0;
         for (int i = 0; i < 4; i++) {
-            if (!used[i])
+            /* skip unused or identity rows */
+            if (op->comps.unused[i] || !(op->lin.mask & SWS_MASK_ROW(i)))
                 continue;
             out->mask |= (1 << (i << 2));
             for (int j = 0; j < 5; j++) {
                 if (!av_cmp_q(op->lin.m[i][j], Q1))
-                    out->linear |= 1ULL << (2 * ((5 * i) + j));
+                    out->linear |= 1ULL << (2 * (5 * i + j));
                 else if (av_cmp_q(op->lin.m[i][j], Q0))
-                    out->linear |= 3ULL << (2 * ((5 * i) + j));
+                    out->linear |= 3ULL << (2 * (5 * i + j));
             }
         }
         break;
@@ -210,6 +193,45 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
 }
 
 /*********************************************************************/
+static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
+                                const SwsOp *op, SwsImplResult *res)
+{
+    const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
+
+    /* Count non-zero coefficients */
+    int count = 0;
+    for (int i = 0; i < 4; i++) {
+        if (!((p->mask) & (1 << (i << 2))))
+            continue;
+        for (int j = 0; j < 5; j++) {
+            int sj = fdata_swizzle[j];
+            if ((p->linear >> (2 * (5 * i + sj))) & 3)
+                count++;
+        }
+    }
+
+    /* Round up to multiple of 4 to allow safe 128-bit overread in codegen */
+    float *coeffs = av_malloc(((count + 3) & ~3) * sizeof(float));
+    if (!coeffs)
+        return AVERROR(ENOMEM);
+
+    /* Fill in the same fdata_swizzle order that asmgen_op_linear expects */
+    int k = 0;
+    for (int i = 0; i < 4; i++) {
+        if (!((p->mask) & (1 << (i << 2))))
+            continue;
+        for (int j = 0; j < 5; j++) {
+            int sj = fdata_swizzle[j];
+            if ((p->linear >> (2 * (5 * i + sj))) & 3)
+                coeffs[k++] = (float) av_q2d(op->lin.m[i][sj]);
+        }
+    }
+
+    res->priv.ptr = coeffs;
+    res->free = ff_op_priv_free;
+    return 0;
+}
+
 static int aarch64_setup(SwsOpList *ops, int block_size, int n,
                          const SwsAArch64OpImplParams *p, SwsImplResult *out)
 {
@@ -223,6 +245,8 @@ static int aarch64_setup(SwsOpList *ops, int block_size, int n,
     case SWS_OP_SCALE:
         ff_sws_setup_q(&(const SwsImplParams) { .op = op }, out);
         break;
+    case SWS_OP_LINEAR:
+        return aarch64_setup_linear(p, op, out);
     }
     return 0;
 }
