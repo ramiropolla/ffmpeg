@@ -209,22 +209,16 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
     }
 }
 
-#if 0
 /*********************************************************************/
-static void aarch64_setup(SwsOpList *ops, int block_size, int n, SwsOpPriv *out)
+static void aarch64_setup(SwsOpList *ops, int block_size, int n, SwsImplResult *out)
 {
     SwsOp *op = &ops->ops[n];
     switch (op->op) {
-    case SWS_OP_CLEAR: {
-        SwsOp copy = *op;
-        ff_sws_op_list_normalize_clear(&copy);
-        for (int i = 0; i < 4; i++)
-            out->u32[i] = (uint32_t) copy.c.q4[i].num;
+    case SWS_OP_CLEAR:
+        ff_sws_setup_q4(&(const SwsImplParams) { .op = op }, out);
         break;
     }
-    }
 }
-#endif
 
 /*********************************************************************/
 static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
@@ -252,9 +246,9 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
             // TODO print message to regenerate ops_entries
             return AVERROR(ENOTSUP);
         }
-        SwsOpPriv priv = { 0 };
-        // aarch64_setup(ops, block_size, i, &priv);
-        ret = ff_sws_op_chain_append(chain, func, NULL, &priv);
+        SwsImplResult res = { 0 };
+        aarch64_setup(ops, block_size, i, &res);
+        ret = ff_sws_op_chain_append(chain, func, NULL, &res.priv);
         if (ret < 0) {
             ff_sws_op_chain_free(chain);
             return ret;

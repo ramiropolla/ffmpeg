@@ -559,8 +559,8 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     aarch64_annotate(a, "vt0 = impl->priv;");
 
     aarch64_add_comment(a, "broadcast elements from vt0");
-    LOOP_MASK   (s, p, i) i_dup(a, vl[i], a64op_elem(vt0, i * (4 / s->el_size)));
-    LOOP_MASK_VH(s, p, i) i_dup(a, vh[i], a64op_elem(vt0, i * (4 / s->el_size)));
+    LOOP_MASK   (s, p, i) i_dup(a, vl[i], a64op_elem(vt0, i));
+    LOOP_MASK_VH(s, p, i) i_dup(a, vh[i], a64op_elem(vt0, i));
 }
 
 static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
