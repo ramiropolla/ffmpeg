@@ -656,8 +656,18 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 
     aarch64_add_comment(a, "shift right");
     /* Loop backwards to avoid clobbering component 0. */
-    LOOP_MASK_BWD   (s, p, i) if (offsets[i]) i_ushr(a, vl[i], vl[0], a64op_imm(offsets[i]));
-    LOOP_MASK_BWD_VH(s, p, i) if (offsets[i]) i_ushr(a, vh[i], vh[0], a64op_imm(offsets[i]));
+    LOOP_MASK_BWD   (s, p, i) {
+        if (offsets[i])
+            i_ushr(a, vl[i], vl[0], a64op_imm(offsets[i]));
+        else if (i)
+            i_mov (a, v_16b(vl[i]), v_16b(vl[0]));
+    }
+    LOOP_MASK_BWD_VH(s, p, i) {
+        if (offsets[i])
+            i_ushr(a, vh[i], vh[0], a64op_imm(offsets[i]));
+        else if (i)
+            i_mov (a, v_16b(vh[i]), v_16b(vh[0]));
+    }
 
     aarch64_add_comment(a, "apply masks");
     reshape_all_vectors(s, 16, 1);
