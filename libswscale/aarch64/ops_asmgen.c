@@ -75,19 +75,19 @@ static void *av_dynarray2_add(void **tab_ptr, int *nb_ptr, size_t elem_size,
 /*********************************************************************/
 #define LOOP_MASK(s, p, idx)                \
     for (int idx = 0; idx < 4; idx++)       \
-        if ((p->mask) & (1 << (idx << 2)))
+        if (MASK_GET(p->mask, idx))
 
 #define LOOP_MASK_VH(s, p, idx)             \
     for (int idx = 0; idx < 4; idx++)       \
-        if (s->use_vh && (p->mask) & (1 << (idx << 2)))
+        if (s->use_vh && MASK_GET(p->mask, idx))
 
 #define LOOP_MASK_BWD(s, p, idx)            \
     for (int idx = 3; idx >= 0; idx--)      \
-        if ((p->mask) & (1 << (idx << 2)))
+        if (MASK_GET(p->mask, idx))
 
 #define LOOP_MASK_BWD_VH(s, p, idx)         \
     for (int idx = 3; idx >= 0; idx--)      \
-        if (s->use_vh && (p->mask) & (1 << (idx << 2)))
+        if (s->use_vh && MASK_GET(p->mask, idx))
 
 /*********************************************************************/
 typedef struct SwsAArch64Context {
@@ -156,7 +156,7 @@ static const SwsAArch64OpImplParams impl_params[] = {
 
 static unsigned clobbered_frame_size(unsigned n)
 {
-    return ((n + 1) >> 1) << 4;
+    return ((n + 1) >> 1) * 16;
 }
 
 static void asmgen_prologue(SwsAArch64Context *s, const AArch64Op *regs, unsigned n)
@@ -583,7 +583,7 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
     uint8_t src_used[4] = { 0 };
     bool done[4] = { true, true, true, true };
     LOOP_MASK(s, p, dst) {
-        uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
+        uint8_t src = MASK_GET(p->swizzle, dst);
         src_used[src]++;
         done[dst] = false;
     }
@@ -595,7 +595,7 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
         for (int dst = 0; dst < 4; dst++) {
             if (done[dst] || src_used[dst])
                 continue;
-            uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
+            uint8_t src = MASK_GET(p->swizzle, dst);
             if (!comment) {
                 aarch64_add_comment(a, "unobstructed copies");
                 comment = true;
@@ -621,12 +621,12 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
         swizzle_emit(s, SWIZZLE_TMP, dst);
 
         uint8_t cur_dst = dst;
-        uint8_t src = (p->swizzle >> (cur_dst << 2)) & 0xf;
+        uint8_t src = MASK_GET(p->swizzle, cur_dst);
         while (src != dst) {
             swizzle_emit(s, cur_dst, src);
             done[cur_dst] = true;
             cur_dst = src;
-            src = (p->swizzle >> (cur_dst << 2)) & 0xf;
+            src = MASK_GET(p->swizzle, cur_dst);
         }
 
         swizzle_emit(s, cur_dst, SWIZZLE_TMP);
@@ -650,22 +650,16 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     uint8_t mask_idx[4] = { 0 };
     uint8_t cur_vt = 0;
 
-    uint8_t pattern[4] = {
-        (p->pack      ) & 0xf,
-        (p->pack >>  4) & 0xf,
-        (p->pack >>  8) & 0xf,
-        (p->pack >> 12) & 0xf,
-    };
-    int offsets[4] = {
-        pattern[3] + pattern[2] + pattern[1],
-        pattern[3] + pattern[2],
-        pattern[3],
+    const int offsets[4] = {
+        MASK_GET(p->pack, 3) + MASK_GET(p->pack, 2) + MASK_GET(p->pack, 1),
+        MASK_GET(p->pack, 3) + MASK_GET(p->pack, 2),
+        MASK_GET(p->pack, 3),
         0
     };
 
     aarch64_add_comment(a, "generate masks");
     LOOP_MASK(s, p, i) {
-        uint32_t val = (1u << pattern[i]) - 1;
+        uint32_t val = (1u << MASK_GET(p->pack, i)) - 1;
         for (int j = 0; j < 4; j++) {
             if (mask_val[j] == val) {
                 mask_val[i] = mask_val[j];
@@ -721,16 +715,10 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
     AArch64Op *vl = s->vl;
     AArch64Op *vh = s->vh;
 
-    uint8_t pattern[4] = {
-        (p->pack      ) & 0xf,
-        (p->pack >>  4) & 0xf,
-        (p->pack >>  8) & 0xf,
-        (p->pack >> 12) & 0xf,
-    };
-    int offsets[4] = {
-        pattern[3] + pattern[2] + pattern[1],
-        pattern[3] + pattern[2],
-        pattern[3],
+    const int offsets[4] = {
+        MASK_GET(p->pack, 3) + MASK_GET(p->pack, 2) + MASK_GET(p->pack, 1),
+        MASK_GET(p->pack, 3) + MASK_GET(p->pack, 2),
+        MASK_GET(p->pack, 3),
         0
     };
 
@@ -1081,7 +1069,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     for (int sj = 0; sj < 4; sj++) {
         /* Condition 1: any row i > sj uses column sj */
         for (int i = sj + 1; i < 4; i++) {
-            if ((p->mask & (1 << (i << 2))) &&
+            if (MASK_GET(p->mask, i) &&
                 ((p->linear >> (2 * (5 * i + sj))) & 3)) {
                 save_needed |= (1 << sj);
                 break;
@@ -1090,7 +1078,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         if (save_needed & (1 << sj))
             continue;
         /* Condition 2: diagonal entry exists but is not the first term for row sj */
-        if (!(p->mask & (1 << (sj << 2))))
+        if (!MASK_GET(p->mask, sj))
             continue;
         if (!((p->linear >> (2 * (5 * sj + sj))) & 3))
             continue;

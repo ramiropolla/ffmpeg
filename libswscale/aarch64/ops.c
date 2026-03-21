@@ -61,7 +61,7 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
      */
     for (int i = 0; i < 4; i++) {
         if (!next->comps.unused[i])
-            out->mask |= (1 << (i << 2));
+            MASK_SET(out->mask, i);
     }
 
     out->type = sws_pixel_to_aarch64(op->type);
@@ -127,42 +127,45 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
             out->type = AARCH64_PIXEL_U32;
         break;
     case AARCH64_SWS_OP_SWIZZLE:
-        out->mask = (op->swizzle.in[0] != 0)
-                  | (op->swizzle.in[1] != 1) << 4
-                  | (op->swizzle.in[2] != 2) << 8
-                  | (op->swizzle.in[3] != 3) << 12;
-        out->swizzle = op->swizzle.in[0]
-                     | op->swizzle.in[1] << 4
-                     | op->swizzle.in[2] << 8
-                     | op->swizzle.in[3] << 12;
+        out->mask = 0;
+        MASK_SETV(out->mask, 0, op->swizzle.in[0] != 0);
+        MASK_SETV(out->mask, 1, op->swizzle.in[1] != 1);
+        MASK_SETV(out->mask, 2, op->swizzle.in[2] != 2);
+        MASK_SETV(out->mask, 3, op->swizzle.in[3] != 3);
+        MASK_SETV(out->swizzle, 0, op->swizzle.in[0]);
+        MASK_SETV(out->swizzle, 1, op->swizzle.in[1]);
+        MASK_SETV(out->swizzle, 2, op->swizzle.in[2]);
+        MASK_SETV(out->swizzle, 3, op->swizzle.in[3]);
         out->block_size = block_size * ff_sws_pixel_type_size(op->type);
         out->type = AARCH64_PIXEL_U8;
         break;
     case AARCH64_SWS_OP_UNPACK:
-        out->pack = op->pack.pattern[0]
-                  | op->pack.pattern[1] << 4
-                  | op->pack.pattern[2] << 8
-                  | op->pack.pattern[3] << 12;
+        MASK_SETV(out->pack, 0, op->pack.pattern[0]);
+        MASK_SETV(out->pack, 1, op->pack.pattern[1]);
+        MASK_SETV(out->pack, 2, op->pack.pattern[2]);
+        MASK_SETV(out->pack, 3, op->pack.pattern[3]);
         break;
     case AARCH64_SWS_OP_PACK:
-        out->mask = (!op->comps.unused[0])
-                  | (!op->comps.unused[1]) << 4
-                  | (!op->comps.unused[2]) << 8
-                  | (!op->comps.unused[3]) << 12;
-        out->pack = op->pack.pattern[0]
-                  | op->pack.pattern[1] << 4
-                  | op->pack.pattern[2] << 8
-                  | op->pack.pattern[3] << 12;
+        out->mask = 0;
+        MASK_SETV(out->mask, 0, !op->comps.unused[0]);
+        MASK_SETV(out->mask, 1, !op->comps.unused[1]);
+        MASK_SETV(out->mask, 2, !op->comps.unused[2]);
+        MASK_SETV(out->mask, 3, !op->comps.unused[3]);
+        MASK_SETV(out->pack, 0, op->pack.pattern[0]);
+        MASK_SETV(out->pack, 1, op->pack.pattern[1]);
+        MASK_SETV(out->pack, 2, op->pack.pattern[2]);
+        MASK_SETV(out->pack, 3, op->pack.pattern[3]);
         break;
     case AARCH64_SWS_OP_LSHIFT:
     case AARCH64_SWS_OP_RSHIFT:
         out->shift = op->c.u;
         break;
     case AARCH64_SWS_OP_CLEAR:
-        out->mask = !!op->c.q4[0].den
-                  | !!op->c.q4[1].den << 4
-                  | !!op->c.q4[2].den << 8
-                  | !!op->c.q4[3].den << 12;
+        out->mask = 0;
+        MASK_SETV(out->mask, 0, !!op->c.q4[0].den);
+        MASK_SETV(out->mask, 1, !!op->c.q4[1].den);
+        MASK_SETV(out->mask, 2, !!op->c.q4[2].den);
+        MASK_SETV(out->mask, 3, !!op->c.q4[3].den);
         break;
     case AARCH64_SWS_OP_EXPAND:
     case AARCH64_SWS_OP_CONVERT:
@@ -179,7 +182,7 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
             /* skip unused or identity rows */
             if (op->comps.unused[i] || !(op->lin.mask & SWS_MASK_ROW(i)))
                 continue;
-            out->mask |= (1 << (i << 2));
+            MASK_SET(out->mask, i);
             for (int j = 0; j < 5; j++) {
                 if (!av_cmp_q(op->lin.m[i][j], Q1))
                     out->linear |= 1ULL << (2 * (5 * i + j));
@@ -190,10 +193,10 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
         break;
     }
     case AARCH64_SWS_OP_DITHER: {
-        out->dither.y_offset = (op->dither.y_offset[0] & 0xf)
-                             | (op->dither.y_offset[1] & 0xf) << 4
-                             | (op->dither.y_offset[2] & 0xf) << 8
-                             | (op->dither.y_offset[3] & 0xf) << 12;
+        MASK_SETV(out->dither.y_offset, 0, op->dither.y_offset[0]);
+        MASK_SETV(out->dither.y_offset, 1, op->dither.y_offset[1]);
+        MASK_SETV(out->dither.y_offset, 2, op->dither.y_offset[2]);
+        MASK_SETV(out->dither.y_offset, 3, op->dither.y_offset[3]);
         out->dither.size_log2 = op->dither.size_log2;
         break;
     }
@@ -209,7 +212,7 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     /* Count non-zero coefficients */
     int count = 0;
     for (int i = 0; i < 4; i++) {
-        if (!((p->mask) & (1 << (i << 2))))
+        if (!MASK_GET(p->mask, i))
             continue;
         for (int j = 0; j < 5; j++) {
             int sj = fdata_swizzle[j];
@@ -226,7 +229,7 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     /* Fill in the same fdata_swizzle order that asmgen_op_linear expects */
     int k = 0;
     for (int i = 0; i < 4; i++) {
-        if (!((p->mask) & (1 << (i << 2))))
+        if (!MASK_GET(p->mask, i))
             continue;
         for (int j = 0; j < 5; j++) {
             int sj = fdata_swizzle[j];
@@ -356,7 +359,7 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
     const int write_planes = write->rw.packed ? 1 : write->rw.elems;
     SwsAArch64OpMask mask = 0;
     for (int i = 0; i < FFMAX(read_planes, write_planes); i++)
-        mask |= (1 << (i << 2));
+        MASK_SET(mask, i);
 
     SwsAArch64OpImplParams process_params = { .op = AARCH64_SWS_OP_PROCESS,        .mask = mask };
     SwsAArch64OpImplParams return_params  = { .op = AARCH64_SWS_OP_PROCESS_RETURN, .mask = mask };
@@ -416,7 +419,7 @@ static int aarch64_collect_process(const SwsOpList *ops, struct AVTreeNode **roo
     const int write_planes = write->rw.packed ? 1 : write->rw.elems;
     SwsAArch64OpMask mask = 0;
     for (int i = 0; i < FFMAX(read_planes, write_planes); i++)
-        mask |= (1 << (i << 2));
+        MASK_SET(mask, i);
     SwsAArch64OpImplParams params = {
         .op   = AARCH64_SWS_OP_PROCESS,
         .mask = mask,
