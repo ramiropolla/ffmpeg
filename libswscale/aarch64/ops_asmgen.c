@@ -1331,15 +1331,22 @@ static int asmgen(void)
 /*********************************************************************/
 int main(int argc, char *argv[])
 {
-    int lookup = 0;
+    bool lookup = false;
+    bool ops = false;
 
 #ifdef _WIN32
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-lookup"))
-            lookup = 1;
+        if (!strcmp(argv[i], "-ops"))
+            ops = true;
+        else if (!strcmp(argv[i], "-lookup"))
+            lookup = true;
+    }
+    if ((lookup && ops) || (!lookup && !ops)) {
+        fprintf(stderr, "Exactly one of -ops or -lookup must be specified.\n");
+        return -1;
     }
 
     return lookup ? lookup_gen() : asmgen();

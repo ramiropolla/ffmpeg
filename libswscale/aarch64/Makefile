@@ -19,10 +19,10 @@ NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_neon.o
 HOSTPROGS = aarch64/ops_asmgen$(HOSTEXESUF)
 
 $(SUBDIR)aarch64/ops_neon.S: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
-	$(M)$< > $@
+	$(M)$< -ops > $@ || $(RM) $@
 
 $(SUBDIR)aarch64/ops_lookup.c: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
-	$(M)$< -lookup > $@
+	$(M)$< -lookup > $@ || $(RM) $@
 
 sws_ops_entries_aarch64: TAG = GEN
 sws_ops_entries_aarch64: $(SUBDIR)tests/sws_ops$(EXESUF)
