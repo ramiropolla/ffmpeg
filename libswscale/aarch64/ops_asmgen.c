@@ -995,7 +995,7 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
         bool first = true;
         for (int j = 0; j < 5; j++) {
             int sj = fdata_swizzle[j];
-            if (!((p->linear >> (2 * (5 * i + sj))) & 3))
+            if (!LINEAR_MASK_GET(p->linear, i, sj))
                 continue;
             AArch64Op vcoeff = vc[k / 4];
             int lane = k % 4;
@@ -1037,7 +1037,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     LOOP_MASK(s, p, i) {
         for (int j = 0; j < 5; j++) {
             int sj = fdata_swizzle[j];
-            if ((p->linear >> (2 * (5 * i + sj))) & 3)
+            if (LINEAR_MASK_GET(p->linear, i, sj))
                 count++;
         }
     }
@@ -1070,7 +1070,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         /* Condition 1: any row i > sj uses column sj */
         for (int i = sj + 1; i < 4; i++) {
             if (MASK_GET(p->mask, i) &&
-                ((p->linear >> (2 * (5 * i + sj))) & 3)) {
+                LINEAR_MASK_GET(p->linear, i, sj)) {
                 save_needed |= (1 << sj);
                 break;
             }
@@ -1080,10 +1080,10 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         /* Condition 2: diagonal entry exists but is not the first term for row sj */
         if (!MASK_GET(p->mask, sj))
             continue;
-        if (!((p->linear >> (2 * (5 * sj + sj))) & 3))
+        if (!LINEAR_MASK_GET(p->linear, sj, sj))
             continue;
         for (int j = 0; fdata_swizzle[j] != sj; j++) {
-            if ((p->linear >> (2 * (5 * sj + fdata_swizzle[j]))) & 3) {
+            if (LINEAR_MASK_GET(p->linear, sj, fdata_swizzle[j])) {
                 save_needed |= (1 << sj);
                 break;
             }
