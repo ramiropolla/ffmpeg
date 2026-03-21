@@ -944,8 +944,8 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
  * Coefficients are preloaded into v21-v24; k is the flat coefficient index
  * at the start of this pass (always 0 — shared between passes). */
 static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                        AArch64Op *v, AArch64Op *vt, AArch64Op *vc,
-                        int save_needed, const int fdata_swizzle[5],
+                        AArch64Op *vx, AArch64Op *vt, AArch64Op *vc,
+                        int save_mask, const int fdata_swizzle[5],
                         int vh)
 {
     AArch64Context *a = s->actx;
@@ -954,11 +954,11 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     if (vh && !s->use_vh)
         return;
 
-    if (save_needed)
+    if (save_mask)
         aarch64_add_comment(a, "save input rows");
     for (int sj = 0; sj < 4; sj++)
-        if (save_needed & (1 << sj))
-            i_mov(a, v_16b(vt[sj]), v_16b(v[sj]));
+        if (MASK_GET(save_mask, sj))
+            i_mov(a, v_16b(vt[sj]), v_16b(vx[sj]));
 
     aarch64_add_comment(a, "affine transform");
     LOOP_MASK(s, p, i) {
@@ -970,16 +970,16 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             AArch64Op vcoeff = vc[k / 4];
             int lane = k % 4;
             k++;
-            AArch64Op vsrc = (sj < 4) ? ((save_needed & (1 << sj)) ? vt[sj] : v[sj])
+            AArch64Op vsrc = (sj < 4) ? (MASK_GET(save_mask, sj) ? vt[sj] : vx[sj])
                                        : OPN;
             if (first) {
                 if (sj == 4)
-                    i_dup(a, v[i], ve_s(vcoeff, lane));
+                    i_dup(a, vx[i], ve_s(vcoeff, lane));
                 else
-                    i_fmul(a, v[i], vsrc, ve_s(vcoeff, lane));
+                    i_fmul(a, vx[i], vsrc, ve_s(vcoeff, lane));
                 first = false;
             } else {
-                i_fmla(a, v[i], vsrc, ve_s(vcoeff, lane));
+                i_fmla(a, vx[i], vsrc, ve_s(vcoeff, lane));
             }
         }
     }
@@ -992,7 +992,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     AArch64Op *vh = s->vh;
     AArch64Op *vt = s->vt;
     AArch64Op *vc = &vt[4];
-    AArch64Op ptr = s->tmp0;
+    AArch64Op vcoeff_ptr = s->tmp0;
 
     /* Process offset first (column 4), then cross-row columns 0..3 */
     const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
@@ -1017,13 +1017,13 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 
     aarch64_add_comment(a, "preload coefficients");
 
-    aarch64_annotate_next(a, "void *ptr = impl->priv.ptr;");
-    i_ldr(a, ptr, a64op_off(s->impl, offsetof_impl_priv));
+    aarch64_annotate_next(a, "v128 *vcoeff_ptr = impl->priv.ptr;");
+    i_ldr(a, vcoeff_ptr, a64op_off(s->impl, offsetof_impl_priv));
     switch (num_regs) {
-    case 1: i_ld1(a, vv_1(vc[0]),                      a64op_base(ptr)); break;
-    case 2: i_ld1(a, vv_2(vc[0], vc[1]),               a64op_base(ptr)); break;
-    case 3: i_ld1(a, vv_3(vc[0], vc[1], vc[2]),        a64op_base(ptr)); break;
-    case 4: i_ld1(a, vv_4(vc[0], vc[1], vc[2], vc[3]), a64op_base(ptr)); break;
+    case 1: i_ld1(a, vv_1(vc[0]),                      a64op_base(vcoeff_ptr)); break;
+    case 2: i_ld1(a, vv_2(vc[0], vc[1]),               a64op_base(vcoeff_ptr)); break;
+    case 3: i_ld1(a, vv_3(vc[0], vc[1], vc[2]),        a64op_base(vcoeff_ptr)); break;
+    case 4: i_ld1(a, vv_4(vc[0], vc[1], vc[2], vc[3]), a64op_base(vcoeff_ptr)); break;
     }
 
     /*
@@ -1036,17 +1036,16 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
      * If neither applies, v[sj] is still the original value when needed, and
      * we can read it directly without a save.
      */
-    int save_needed = 0;
+    uint16_t save_mask = 0;
     for (int sj = 0; sj < 4; sj++) {
         /* Condition 1: any row i > sj uses column sj */
         for (int i = sj + 1; i < 4; i++) {
-            if (MASK_GET(p->mask, i) &&
-                LINEAR_MASK_GET(p->linear, i, sj)) {
-                save_needed |= (1 << sj);
+            if (MASK_GET(p->mask, i) && LINEAR_MASK_GET(p->linear, i, sj)) {
+                MASK_SET(save_mask, sj, 1);
                 break;
             }
         }
-        if (save_needed & (1 << sj))
+        if (MASK_GET(save_mask, sj))
             continue;
         /* Condition 2: diagonal entry exists but is not the first term for row sj */
         if (!MASK_GET(p->mask, sj))
@@ -1055,14 +1054,14 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
             continue;
         for (int j = 0; fdata_swizzle[j] != sj; j++) {
             if (LINEAR_MASK_GET(p->linear, sj, fdata_swizzle[j])) {
-                save_needed |= (1 << sj);
+                MASK_SET(save_mask, sj, 1);
                 break;
             }
         }
     }
 
-    linear_pass(s, p, vl, vt, vc, save_needed, fdata_swizzle, 0);
-    linear_pass(s, p, vh, vt, vc, save_needed, fdata_swizzle, 1);
+    linear_pass(s, p, vl, vt, vc, save_mask, fdata_swizzle, 0);
+    linear_pass(s, p, vh, vt, vc, save_mask, fdata_swizzle, 1);
 }
 
 /*********************************************************************/

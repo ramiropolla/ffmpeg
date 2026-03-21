@@ -106,5 +106,8 @@ int sws_aarch64_op_impl_cmp(const void *a, const void *b);
 
 #define LINEAR_MASK_GET(mask, idx, jdx) (((mask) >> (2 * ((5 * (idx) + (jdx))))) & 3)
 #define LINEAR_MASK_SET(mask, idx, jdx, val) do { (mask) |= (((val) & 3) << (2 * ((5 * (idx) + (jdx))))); } while (0)
+#define LINEAR_MASK_0 0
+#define LINEAR_MASK_1 1
+#define LINEAR_MASK_X 3
 
 #endif /* AARCH64_OPS_IMPL_H */
