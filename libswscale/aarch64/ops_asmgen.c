@@ -433,7 +433,7 @@ static void asmgen_op_write_bit(SwsAArch64Context *s, const SwsAArch64OpImplPara
     AArch64Op *vt = s->vt;
     AArch64Op shift_vec = s->vt[2];
 
-    aarch64_annotate_next(a, "vt2 = shift vector { 7, 6, 5, 4, 3, 2, 1, 0 } x2");
+    aarch64_annotate_next(a, "shift_vec = impl->priv;");
     i_ldr(a, v_q(shift_vec), a64op_off(s->impl, offsetof_impl_priv));
 
     aarch64_annotate_next(a, "shift each bit into its output position");
@@ -779,14 +779,14 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     AArch64Context *a = s->actx;
     AArch64Op *vl = s->vl;
     AArch64Op *vh = s->vh;
-    AArch64Op vt0 = a64op_make_vec(a64op_vec_n(s->vt[0]), 0, s->el_size);
+    AArch64Op clear_vec = a64op_make_vec(a64op_vec_n(s->vt[0]), 0, s->el_size);
 
-    aarch64_annotate_next(a, "vtmp0 = impl->priv;");
-    i_ldr(a, v_q(vt0), a64op_off(s->impl, offsetof_impl_priv));
+    aarch64_annotate_next(a, "clear_vec = impl->priv;");
+    i_ldr(a, v_q(clear_vec), a64op_off(s->impl, offsetof_impl_priv));
 
-    aarch64_add_comment(a, "broadcast elements from vtmp0");
-    LOOP_MASK   (s, p, i) i_dup(a, vl[i], a64op_elem(vt0, i));
-    LOOP_MASK_VH(s, p, i) i_dup(a, vh[i], a64op_elem(vt0, i));
+    aarch64_add_comment(a, "broadcast elements from clear_vec");
+    LOOP_MASK   (s, p, i) i_dup(a, vl[i], a64op_elem(clear_vec, i));
+    LOOP_MASK_VH(s, p, i) i_dup(a, vh[i], a64op_elem(clear_vec, i));
 }
 
 /*********************************************************************/
@@ -896,12 +896,12 @@ static void asmgen_op_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     AArch64Op *vh = s->vh;
     AArch64Op *vt = s->vt;
 
-    AArch64Op vtmp0 = a64op_make_vec(a64op_vec_n(s->vt[3]), 0, s->el_size);
+    AArch64Op min_vec = a64op_make_vec(a64op_vec_n(s->vt[3]), 0, s->el_size);
 
-    aarch64_annotate_next(a, "vtmp0 = impl->priv;");
-    i_ldr(a, v_q(vtmp0), a64op_off(s->impl, offsetof_impl_priv));
-    aarch64_add_comment(a, "broadcast elements from vtmp0 into TODO");
-    LOOP_MASK(s, p, i) i_dup(a, vt[i], a64op_elem(vtmp0, i));
+    aarch64_annotate_next(a, "min_vec = impl->priv;");
+    i_ldr(a, v_q(min_vec), a64op_off(s->impl, offsetof_impl_priv));
+    aarch64_add_comment(a, "broadcast elements from min_vec into TODO");
+    LOOP_MASK(s, p, i) i_dup(a, vt[i], a64op_elem(min_vec, i));
 
     if (p->type == AARCH64_PIXEL_F32) {
         LOOP_MASK   (s, p, i) i_fmin(a, vl[i], vl[i], vt[i]);
@@ -923,12 +923,12 @@ static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     AArch64Op *vh = s->vh;
     AArch64Op *vt = s->vt;
 
-    AArch64Op vtmp0 = a64op_make_vec(a64op_vec_n(s->vt[3]), 0, s->el_size);
+    AArch64Op max_vec = a64op_make_vec(a64op_vec_n(s->vt[3]), 0, s->el_size);
 
-    aarch64_annotate_next(a, "vtmp0 = impl->priv;");
-    i_ldr(a, v_q(vtmp0), a64op_off(s->impl, offsetof_impl_priv));
-    aarch64_add_comment(a, "broadcast elements from vtmp0 into TODO");
-    LOOP_MASK   (s, p, i) i_dup(a, vt[i], a64op_elem(vtmp0, i));
+    aarch64_annotate_next(a, "max_vec = impl->priv;");
+    i_ldr(a, v_q(max_vec), a64op_off(s->impl, offsetof_impl_priv));
+    aarch64_add_comment(a, "broadcast elements from max_vec into TODO");
+    LOOP_MASK   (s, p, i) i_dup(a, vt[i], a64op_elem(max_vec, i));
 
     if (p->type == AARCH64_PIXEL_F32) {
         LOOP_MASK   (s, p, i) i_fmax(a, vl[i], vl[i], vt[i]);
@@ -948,25 +948,21 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     AArch64Context *a = s->actx;
     AArch64Op *vl = s->vl;
     AArch64Op *vh = s->vh;
-    AArch64Op vt0 = s->vt[0]; // a64op_make_vec(a64op_vec_n(s->vt[0]), 0, s->el_size);
-
-    aarch64_annotate_next(a, "tmp0 = &impl->priv");
     AArch64Op impl_priv = s->tmp0;
+    AArch64Op scale_vec = s->vt[0];
+
+    aarch64_annotate_next(a, "impl_priv = &impl->priv");
     i_add(a, impl_priv, s->impl, a64op_imm(offsetof_impl_priv));
 
-    aarch64_annotate_next(a, "broadcast [tmp0] into vt0");
-    switch (s->el_size) {
-    case 1: i_ld1r(a, vv_1(vt0), a64op_base(impl_priv)); break;
-    case 2: i_ld1r(a, vv_1(vt0), a64op_base(impl_priv)); break;
-    case 4: i_ld1r(a, vv_1(vt0), a64op_base(impl_priv)); break;
-    }
+    aarch64_annotate_next(a, "broadcast [impl_priv] into scale_vec");
+    i_ld1r(a, vv_1(scale_vec), a64op_base(impl_priv));
 
     if (p->type == AARCH64_PIXEL_F32) {
-        LOOP_MASK   (s, p, i) i_fmul(a, vl[i], vl[i], vt0);
-        LOOP_MASK_VH(s, p, i) i_fmul(a, vh[i], vh[i], vt0);
+        LOOP_MASK   (s, p, i) i_fmul(a, vl[i], vl[i], scale_vec);
+        LOOP_MASK_VH(s, p, i) i_fmul(a, vh[i], vh[i], scale_vec);
     } else {
-        LOOP_MASK   (s, p, i) i_mul (a, vl[i], vl[i], vt0);
-        LOOP_MASK_VH(s, p, i) i_mul (a, vh[i], vh[i], vt0);
+        LOOP_MASK   (s, p, i) i_mul (a, vl[i], vl[i], scale_vec);
+        LOOP_MASK_VH(s, p, i) i_mul (a, vh[i], vh[i], scale_vec);
     }
 }
 
@@ -1027,6 +1023,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     AArch64Op *vh = s->vh;
     AArch64Op *vt = s->vt;
     AArch64Op *vc = &vt[4];
+    AArch64Op impl_priv = s->tmp0;
 
     /* Process offset first (column 4), then cross-row columns 0..3 */
     const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
@@ -1049,15 +1046,14 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     int num_regs = (count + 3) / 4;
     assert(num_regs <= 4);
 
-    AArch64Op coeff_ptr = s->tmp0;
-
     aarch64_add_comment(a, "preload coefficients");
-    i_ldr(a, coeff_ptr, a64op_off(s->impl, offsetof_impl_priv));
+    aarch64_annotate_next(a, "impl_priv = &impl->priv");
+    i_ldr(a, impl_priv, a64op_off(s->impl, offsetof_impl_priv));
     switch (num_regs) {
-    case 1: i_ld1(a, vv_1(vc[0]),                      a64op_base(coeff_ptr)); break;
-    case 2: i_ld1(a, vv_2(vc[0], vc[1]),               a64op_base(coeff_ptr)); break;
-    case 3: i_ld1(a, vv_3(vc[0], vc[1], vc[2]),        a64op_base(coeff_ptr)); break;
-    case 4: i_ld1(a, vv_4(vc[0], vc[1], vc[2], vc[3]), a64op_base(coeff_ptr)); break;
+    case 1: i_ld1(a, vv_1(vc[0]),                      a64op_base(impl_priv)); break;
+    case 2: i_ld1(a, vv_2(vc[0], vc[1]),               a64op_base(impl_priv)); break;
+    case 3: i_ld1(a, vv_3(vc[0], vc[1], vc[2]),        a64op_base(impl_priv)); break;
+    case 4: i_ld1(a, vv_4(vc[0], vc[1], vc[2], vc[3]), a64op_base(impl_priv)); break;
     }
 
     /*
@@ -1141,6 +1137,7 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     AArch64Op w_tmp1 = a64op_w(s->tmp1);
 
     aarch64_add_comment(a, "load dither matrix pointer");
+    aarch64_annotate_next(a, "impl_priv = &impl->priv");
     i_ldr(a, ptr, a64op_off(s->impl, offsetof_impl_priv));
 
     if (x_log2 > 0) {
