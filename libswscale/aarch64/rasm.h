@@ -247,6 +247,8 @@ void aarch64_annotate(AArch64Context *actx, const char *comment);
 void aarch64_annotate_next(AArch64Context *actx, const char *comment);
 void aarch64_annotate_nextf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...);
 
+#define inlcmt(actx, comment) aarch64_annotate(actx, comment)
+
 int aarch64_print(AArch64Context *actx, FILE *fp);
 
 /*********************************************************************/

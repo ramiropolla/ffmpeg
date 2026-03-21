@@ -230,10 +230,8 @@ static void asmgen_process(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
         asmgen_prologue(s, saved_regs, nsaved);
     }
 
-    aarch64_annotate_next(a, "SwsFuncPtr op0_func = impl->cont;");
-    i_ldr(a, s->op0_func, a64op_off(s->impl, offsetof_impl_cont));
-    aarch64_annotate_next(a, "SwsOpImpl *op1_impl = impl + 1;");
-    i_add(a, s->op1_impl, s->impl, a64op_imm(sizeof_impl));
+    i_ldr(a, s->op0_func, a64op_off(s->impl, offsetof_impl_cont));  inlcmt(a, "SwsFuncPtr op0_func = impl->cont;");
+    i_add(a, s->op1_impl, s->impl, a64op_imm(sizeof_impl));         inlcmt(a, "SwsOpImpl *op1_impl = impl + 1;");
 
     aarch64_add_comment(a, "exec->in");
     LOOP_MASK(s, p, i) i_ldr(a, s->in[i],          a64op_off(s->exec, offsetof_exec_in       + (i * sizeof(uint8_t *))));
@@ -244,13 +242,9 @@ static void asmgen_process(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
     aarch64_add_comment(a, "exec->out_bump");
     LOOP_MASK(s, p, i) i_ldr(a, s->out_padding[i], a64op_off(s->exec, offsetof_exec_out_bump + (i * sizeof(ptrdiff_t))));
 
-    aarch64_add_comment(a, "bx = bx_start;");
-    i_mov(a, s->bx, s->bx_start);
-
-    aarch64_annotate_next(a, "impl = op1_impl;");
-    i_mov(a, s->impl, s->op1_impl);
-    aarch64_annotate_next(a, "jump to op0_func");
-    i_br (a, s->op0_func);
+    i_mov(a, s->bx, s->bx_start);   inlcmt(a, "bx = bx_start;");
+    i_mov(a, s->impl, s->op1_impl); inlcmt(a, "impl = op1_impl;");
+    i_br (a, s->op0_func);          inlcmt(a, "jump to op0_func");
 }
 
 static void asmgen_process_return(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
@@ -265,8 +259,7 @@ static void asmgen_process_return(SwsAArch64Context *s, const SwsAArch64OpImplPa
     int loop = aarch64_new_label(a, NULL);
     int end  = aarch64_new_label(a, NULL);
 
-    aarch64_annotate_next(a, "impl = op1_impl;");
-    i_mov(a, s->impl, s->op1_impl);
+    i_mov(a, s->impl, s->op1_impl); inlcmt(a, "impl = op1_impl;");
 
     aarch64_add_comment(a, "horizontal loop");
     i_add(a, s->bx, s->bx, a64op_imm(1));
@@ -286,8 +279,7 @@ static void asmgen_process_return(SwsAArch64Context *s, const SwsAArch64OpImplPa
     i_mov(a, s->bx, s->bx_start);
 
     aarch64_add_label(a, loop);
-    aarch64_annotate_next(a, "jump to op0_func");
-    i_br (a, s->op0_func);
+    i_br (a, s->op0_func);  inlcmt(a, "jump to op0_func");
 
     aarch64_add_label(a, end);
 
@@ -313,20 +305,18 @@ static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParam
 {
     AArch64Context *a = s->actx;
     AArch64Op *vl = s->vl;
-    AArch64Op shift_vec = s->vt[2];
+    AArch64Op shift_vec   = s->vt[0];
     AArch64Op bitmask_vec = s->vt[1];
-    AArch64Op vtmp0 = s->vt[0];
-    AArch64Op wtmp0 = a64op_w(s->tmp0);
+    AArch64Op vtmp        = s->vt[2];
+    AArch64Op wtmp        = a64op_w(s->tmp0);
 
     aarch64_annotate_next(a, "v128 shift_vec = impl->priv.v128;");
     i_ldr(a, v_q(shift_vec), a64op_off(s->impl, offsetof_impl_priv));
 
     if (p->block_size == 8) {
-        aarch64_annotate_next(a, "uint8_t tmp = *in[0]++;");
-        i_ldrb(a, wtmp0, a64op_post(s->in[0], 1));
+        i_ldrb(a, wtmp, a64op_post(s->in[0], 1)); inlcmt(a, "uint8_t tmp = *in[0]++;");
     } else {
-        aarch64_annotate_next(a, "uint16_t tmp = *in[0]++;");
-        i_ldrh(a, wtmp0, a64op_post(s->in[0], 2));
+        i_ldrh(a, wtmp, a64op_post(s->in[0], 2)); inlcmt(a, "uint16_t tmp = *in[0]++;");
     }
 
     if (p->block_size == 8)
@@ -335,30 +325,22 @@ static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParam
         aarch64_annotate_next(a, "v128 bitmask_vec = {1 <repeats 16 times>};");
     i_movi(a, bitmask_vec, a64op_imm(1));
 
-    aarch64_annotate_next(a, "vl[0].lo = broadcast(tmp);");
-    i_dup (a, v_8b(vl[0]), wtmp0);
-
+    i_dup (a, v_8b(vl[0]), wtmp);                       inlcmt(a, "vl[0].lo = broadcast(tmp);");
     if (p->block_size == 16) {
-        aarch64_annotate_next(a, "tmp >>= 8;");
-        i_lsr(a, wtmp0,       wtmp0,       a64op_imm(8));
-        aarch64_annotate_next(a, "vtmp.lo = broadcast(tmp);");
-        i_dup(a, v_8b(vtmp0), wtmp0);
-        aarch64_annotate_next(a, "vl[0].hi = vtmp.lo;");
-        i_ins(a, ve_d(vl[0], 1), ve_d(vtmp0, 0));
+        i_lsr(a,      wtmp,      wtmp, a64op_imm(8));   inlcmt(a, "tmp >>= 8;");
+        i_dup(a, v_8b(vtmp),     wtmp);                 inlcmt(a, "vtmp.lo = broadcast(tmp);");
+        i_ins(a, ve_d(vl[0], 1), ve_d(vtmp, 0));        inlcmt(a, "vl[0].hi = vtmp.lo;");
     }
-
-    aarch64_annotate_next(a, "vl[0] >>= shift_vec;");
-    i_ushl(a, vl[0], vl[0], shift_vec);
-    aarch64_annotate_next(a, "vl[0] &= bitmask_vec;");
-    i_and (a, vl[0], vl[0], bitmask_vec);
+    i_ushl(a, vl[0], vl[0], shift_vec);                 inlcmt(a, "vl[0] >>= shift_vec;");
+    i_and (a, vl[0], vl[0], bitmask_vec);               inlcmt(a, "vl[0] &= bitmask_vec;");
 }
 
 static void asmgen_op_read_nibble(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
     AArch64Op *vl = s->vl;
-    AArch64Op *vt = s->vt;
-    AArch64Op nibble_mask = s->vt[1];
+    AArch64Op nibble_mask = s->vt[0];
+    AArch64Op vtmp        = s->vt[1];
 
     aarch64_annotate_next(a, "v128 nibble_mask = {0xf <repeats 8 times>, 0x0 <repeats 8 times>};");
     i_movi(a, v_8b(nibble_mask), a64op_imm(0x0f));
@@ -368,12 +350,9 @@ static void asmgen_op_read_nibble(SwsAArch64Context *s, const SwsAArch64OpImplPa
         i_ldr (a, v_s(vl[0]), a64op_post(s->in[0], p->block_size / 2));
     else
         i_ldr (a, v_d(vl[0]), a64op_post(s->in[0], p->block_size / 2));
-    aarch64_annotate_next(a, "vtmp.lo = vl[0] >> 4;");
-    i_ushr(a, v_8b(vt[0]), v_8b(vl[0]), a64op_imm(4));
-    aarch64_annotate_next(a, "vl[0].lo &= nibble_mask;");
-    i_and (a, v_8b(vl[0]), v_8b(vl[0]), v_8b(nibble_mask));
-    aarch64_annotate_next(a, "interleave");
-    i_zip1(a, vl[0], vt[0], vl[0]);
+    i_ushr(a, v_8b(vtmp),  v_8b(vl[0]), a64op_imm(4));      inlcmt(a, "vtmp.lo = vl[0] >> 4;");
+    i_and (a, v_8b(vl[0]), v_8b(vl[0]), v_8b(nibble_mask)); inlcmt(a, "vl[0].lo &= nibble_mask;");
+    i_zip1(a,      vl[0],       vtmp,   vl[0]);             inlcmt(a, "interleave");
 }
 
 static void asmgen_op_read_packed(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
@@ -432,25 +411,24 @@ static void asmgen_op_write_bit(SwsAArch64Context *s, const SwsAArch64OpImplPara
 {
     AArch64Context *a = s->actx;
     AArch64Op *vl = s->vl;
-    AArch64Op *vt = s->vt;
-    AArch64Op shift_vec = s->vt[2];
+    AArch64Op shift_vec = s->vt[0];
+    AArch64Op vtmp0     = s->vt[1];
+    AArch64Op vtmp1     = s->vt[2];
 
     aarch64_annotate_next(a, "v128 shift_vec = impl->priv.v128;");
     i_ldr(a, v_q(shift_vec), a64op_off(s->impl, offsetof_impl_priv));
 
-    aarch64_annotate_next(a, "shift each bit into its output position");
-    i_ushl(a, vl[0], vl[0], shift_vec);
+    i_ushl(a, vl[0], vl[0], shift_vec); inlcmt(a, "vl[0] <<= shift_vec;");
 
-    aarch64_add_comment(a, "combine");
     if (s->vec_size == 8) {
-        i_addv(a, v_b(vt[0]),     vl[0]);
-        i_str (a, v_b(vt[0]),     a64op_post(s->out[0], 1));
+        i_addv(a, v_b (vtmp0), vl[0]);                       inlcmt(a, "vtmp0 = add_accross(vl[0]);");
+        i_str (a, v_b (vtmp0), a64op_post(s->out[0], 1));    inlcmt(a, "*out[0]++ = vl[0];");
     } else {
-        i_addv(a, v_b (vt[0]),    v_8b(vl[0]));
-        i_ins (a, ve_d(vt[1], 0), ve_d(vl[0], 1));
-        i_addv(a, v_b (vt[1]),    v_8b(vt[1]));
-        i_ins (a, ve_b(vt[0], 1), ve_b(vt[1], 0));
-        i_str (a, v_h (vt[0]),    a64op_post(s->out[0], 2));
+        i_addv(a, v_b (vtmp0), v_8b(vl[0]));                 inlcmt(a, "vtmp0 = add_accross(vl[0]);");
+        i_ins (a, ve_d(vtmp1, 0), ve_d(vl[0], 1));
+        i_addv(a, v_b (vtmp1), v_8b(vtmp1));
+        i_ins (a, ve_b(vtmp0, 1), ve_b(vtmp1, 0));
+        i_str (a, v_h (vtmp0), a64op_post(s->out[0], 2));    inlcmt(a, "*out[0]++ = vl[0];");
     }
 }
 
