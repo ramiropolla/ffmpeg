@@ -101,9 +101,20 @@ void sws_aarch64_op_impl_func_name(char *buf, size_t size, const SwsAArch64OpImp
 void sws_aarch64_op_impl_cond_str(char *buf, size_t size, const SwsAArch64OpImplParams *params, const char *p_str);
 int sws_aarch64_op_impl_cmp(const void *a, const void *b);
 
+/*********************************************************************/
 #define MASK_GET(mask, idx) (((mask) >> ((idx) << 2)) & 0xf)
 #define MASK_SET(mask, idx, val) do { (mask) |= (((val) & 0xf) << ((idx) << 2)); } while (0)
 
+/*********************************************************************/
+#define LOOP_MASK(p, idx)               \
+    for (int idx = 0; idx < 4; idx++)   \
+        if (MASK_GET(p->mask, idx))
+
+#define LOOP_MASK_BWD(p, idx)           \
+    for (int idx = 3; idx >= 0; idx--)  \
+        if (MASK_GET(p->mask, idx))
+
+/*********************************************************************/
 #define LINEAR_MASK_GET(mask, idx, jdx) (((mask) >> (2 * ((5 * (idx) + (jdx))))) & 3)
 #define LINEAR_MASK_SET(mask, idx, jdx, val) do { (mask) |= (((val) & 3) << (2 * ((5 * (idx) + (jdx))))); } while (0)
 #define LINEAR_MASK_0 0
