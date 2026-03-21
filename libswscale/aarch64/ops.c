@@ -314,12 +314,17 @@ static int aarch64_setup(SwsOpList *ops, int block_size, int n,
 /*********************************************************************/
 static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
 {
+    const int cpu_flags = av_get_cpu_flags();
+    if (!cpu_flags & AV_CPU_FLAG_NEON)
+        return AVERROR(ENOTSUP);
+
     int ret;
     int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)
         return AVERROR(ENOMEM);
+    chain->cpu_flags = AV_CPU_FLAG_NEON;
 
     *out = (SwsCompiledOp) {
         .priv        = chain,
