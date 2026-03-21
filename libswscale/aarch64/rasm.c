@@ -149,6 +149,15 @@ AArch64Node *aarch64_add_comment(AArch64Context *actx, const char *comment)
     return node;
 }
 
+AArch64Node *aarch64_add_commentf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(s, n, fmt, args);
+    va_end(args);
+    return aarch64_add_comment(actx, s);
+}
+
 AArch64Node *aarch64_add_label(AArch64Context *actx, int id)
 {
     AArch64Node *node = add_node(actx, AARCH64_NODE_LABEL);
@@ -194,6 +203,15 @@ void aarch64_annotate_next(AArch64Context *actx, const char *comment)
     actx->next_comment = av_strdup(comment);
     if (!actx->next_comment)
         actx->error = AVERROR(ENOMEM);
+}
+
+void aarch64_annotate_nextf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(s, n, fmt, args);
+    va_end(args);
+    return aarch64_annotate_next(actx, s);
 }
 
 int aarch64_new_label(AArch64Context *actx, const char *name)

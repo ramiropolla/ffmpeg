@@ -235,6 +235,7 @@ int aarch64_func_begin(AArch64Context *actx, const char *name, bool export);
 AArch64Node *aarch64_add_insn(AArch64Context *actx, AArch64InsnId id,
                               AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3);
 AArch64Node *aarch64_add_comment(AArch64Context *actx, const char *comment);
+AArch64Node *aarch64_add_commentf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...);
 AArch64Node *aarch64_add_label(AArch64Context *actx, int id);
 AArch64Node *aarch64_add_func(AArch64Context *actx, int id, bool export);
 AArch64Node *aarch64_add_endfunc(AArch64Context *actx);
@@ -244,6 +245,7 @@ int aarch64_new_labelf(AArch64Context *actx, char *s, size_t n, const char *fmt,
 
 void aarch64_annotate(AArch64Context *actx, const char *comment);
 void aarch64_annotate_next(AArch64Context *actx, const char *comment);
+void aarch64_annotate_nextf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...);
 
 int aarch64_print(AArch64Context *actx, FILE *fp);
 

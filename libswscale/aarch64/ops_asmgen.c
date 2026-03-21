@@ -518,8 +518,19 @@ static void asmgen_op_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImplPar
     }
 }
 
+static const char *print_v(char buf[8], uint8_t n, uint8_t vh)
+{
+    if (n == 0xf)
+        snprintf(buf, sizeof(char[8]), "vtmp%u", vh);
+    else
+        snprintf(buf, sizeof(char[8]), "v%c[%u]", vh ? 'h' : 'l', n);
+    return buf;
+}
+#define PRINT_V(n, vh) print_v((char[8]){ 0 }, n, vh)
+
 static void swizzle_emit(SwsAArch64Context *s, uint8_t dst, uint8_t src)
 {
+    char buf[32];
     const uint8_t tmpv = 0xf;
     AArch64Context *a = s->actx;
     AArch64Op src_op[2] = {
@@ -530,17 +541,20 @@ static void swizzle_emit(SwsAArch64Context *s, uint8_t dst, uint8_t src)
         (dst == tmpv) ? s->vt[0] : s->vl[dst],
         (dst == tmpv) ? s->vt[1] : s->vh[dst],
     };
+    aarch64_annotate_nextf(a, buf, sizeof(buf), "%s = %s;",
+                           PRINT_V(dst, 0), PRINT_V(src, 0));
     i_mov(a, dst_op[0], src_op[0]);
-    if (s->use_vh)
+    if (s->use_vh) {
+        aarch64_annotate_nextf(a, buf, sizeof(buf), "%s = %s;",
+                               PRINT_V(dst, 1), PRINT_V(src, 1));
         i_mov(a, dst_op[1], src_op[1]);
+    }
 }
 
 static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     const uint8_t tmpv = 0xf;
     AArch64Context *a = s->actx;
-    AArch64Op *vl = s->vl;
-    AArch64Op *vh = s->vh;
 
     /* Compute used vectors (src and dst) */
     uint8_t src_used[4] = { 0 };
@@ -551,9 +565,6 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
         done[dst] = false;
     }
 
-    /* Max ops count is 2 swaps of 3 ops each */
-    const int max_op_count = 6;
-    uint8_t ops[max_op_count];
     int prev_ops_count = 0;
     int ops_count = 0;
 
@@ -566,9 +577,12 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
         for (int dst = 0; dst < 4; dst++) {
             if (!done[dst] && !src_used[dst]) {
                 uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
-                if (unobstructed_copies < 0)
+                if (unobstructed_copies < 0) {
+                    aarch64_add_comment(a, "unobstructed copies");
                     unobstructed_copies = ops_count;
-                ops[ops_count++] = ((src) << 4) | (dst);
+                }
+                swizzle_emit(s, dst, src);
+                ops_count++;
                 src_used[src]--;
                 done[dst] = true;
             }
@@ -580,34 +594,27 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
         if (done[orig_dst])
             continue;
 
-        if (swap_and_rotate < 0)
+        if (swap_and_rotate < 0) {
+            aarch64_add_comment(a, "swap and rotate");
             swap_and_rotate = ops_count;
+        }
 
-        ops[ops_count++] = ((orig_dst) << 4) | tmpv;
+        swizzle_emit(s, tmpv, orig_dst);
+        ops_count++;
 
         uint8_t dst = orig_dst;
         uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
         while (src != orig_dst) {
-            ops[ops_count++] = ((src) << 4) | (dst);
+            swizzle_emit(s, dst, src);
+            ops_count++;
             done[dst] = true;
             dst = src;
             src = (p->swizzle >> (dst << 2)) & 0xf;
         }
 
-        ops[ops_count++] = (tmpv << 4) | (dst);
+        swizzle_emit(s, dst, tmpv);
+        ops_count++;
         done[dst] = true;
-    }
-
-    /* Emit operations */
-    for (int i = 0; i < ops_count; i++) {
-        uint8_t op = ops[i];
-        uint8_t src = op >> 4;
-        uint8_t dst = op & 0xf;
-        if (i == unobstructed_copies)
-            aarch64_add_comment(a, "Unobstructed copies");
-        else if (i == swap_and_rotate)
-            aarch64_add_comment(a, "Swap and rotate");
-        swizzle_emit(s, dst, src);
     }
 }
 
