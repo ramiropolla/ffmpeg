@@ -232,7 +232,7 @@ static void asmgen_process(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
 
     aarch64_annotate_next(a, "op0_func = impl->cont;");
     i_ldr(a, s->op0_func, a64op_off(s->impl, offsetof_impl_cont));
-    aarch64_annotate_next(a, "op1_impl = &impl[1];");
+    aarch64_annotate_next(a, "op1_impl = impl + 1;");
     i_add(a, s->op1_impl, s->impl, a64op_imm(sizeof_impl));
 
     aarch64_add_comment(a, "exec->in");
@@ -1246,7 +1246,7 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     case AARCH64_SWS_OP_DITHER:       asmgen_op_dither(s, p);       break;
     }
 
-    aarch64_annotate_next(a, "impl++;");
+    aarch64_annotate_next(a, "impl += 1;");
     i_add(a, s->impl, s->impl, a64op_imm(sizeof_impl));
     aarch64_annotate_next(a, "jump to next_func");
     i_br (a, s->next_func);
