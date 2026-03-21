@@ -172,11 +172,14 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
         out->to_type = sws_pixel_to_aarch64(op->convert.to);
         break;
     case AARCH64_SWS_OP_LINEAR: {
-        /* out->linear packs the 4x5 matrix as 2 bits per entry:
+        /*
+         * out->linear packs the 4x5 matrix as 2 bits per entry:
          *   00: m[i][j] == 0
          *   01: m[i][j] == 1
          *   11: m[i][j] is any other coefficient
+         * Columns are reordered so that the offset is at column 0.
          */
+        const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
         out->mask = 0;
         for (int i = 0; i < 4; i++) {
             /* skip unused or identity rows */
@@ -184,10 +187,11 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
                 continue;
             MASK_SET(out->mask, i, 1);
             for (int j = 0; j < 5; j++) {
+                int sj = fdata_swizzle[j];
                 if (!av_cmp_q(op->lin.m[i][j], Q1))
-                    LINEAR_MASK_SET(out->linear, i, j, 1ULL);
+                    LINEAR_MASK_SET(out->linear, i, sj, 1ULL);
                 else if (av_cmp_q(op->lin.m[i][j], Q0))
-                    LINEAR_MASK_SET(out->linear, i, j, 3ULL);
+                    LINEAR_MASK_SET(out->linear, i, sj, 3ULL);
             }
         }
         break;
@@ -207,15 +211,11 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
 static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
                                 const SwsOp *op, SwsImplResult *res)
 {
-    /* Start with offset and then the coefficients */
-    const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
-
     /* Count non-zero coefficients */
     int count = 0;
     LOOP_MASK(p, i) {
         for (int j = 0; j < 5; j++) {
-            int sj = fdata_swizzle[j];
-            if (LINEAR_MASK_GET(p->linear, i, sj))
+            if (LINEAR_MASK_GET(p->linear, i, j))
                 count++;
         }
     }
@@ -225,15 +225,12 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     if (!coeffs)
         return AVERROR(ENOMEM);
 
-    /* Fill in the same fdata_swizzle order that asmgen_op_linear expects */
+    /* j=0 is offset (m[i][4]), j=1..4 are source columns m[i][0..3] */
     int k = 0;
-    for (int i = 0; i < 4; i++) {
-        if (!MASK_GET(p->mask, i))
-            continue;
+    LOOP_MASK(p, i) {
         for (int j = 0; j < 5; j++) {
-            int sj = fdata_swizzle[j];
-            if (LINEAR_MASK_GET(p->linear, i, sj))
-                coeffs[k++] = (float) av_q2d(op->lin.m[i][sj]);
+            if (LINEAR_MASK_GET(p->linear, i, j))
+                coeffs[k++] = (float) av_q2d(op->lin.m[i][j ? j - 1 : 4]);
         }
     }
 
@@ -383,6 +380,7 @@ error:
         if (ret == AVERROR(ENOTSUP)){
             av_log(ctx, AV_LOG_DEBUG, "Unsupported SwsOp for aarch64.\n");
             av_log(ctx, AV_LOG_DEBUG, "Regenerate ops_entries.c with: make sws_ops_entries_aarch64\n");
+            exit(1);
         }
         ff_sws_op_chain_free(chain);
     }

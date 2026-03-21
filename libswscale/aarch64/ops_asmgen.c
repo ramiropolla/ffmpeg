@@ -933,8 +933,7 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
  * at the start of this pass (always 0 — shared between passes). */
 static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                         AArch64Op *vx, AArch64Op *vt, AArch64Op *vc,
-                        int save_mask, const int fdata_swizzle[5],
-                        int vh)
+                        int save_mask, int vh)
 {
     AArch64Context *a = s->actx;
     int k = 0;
@@ -952,16 +951,16 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     LOOP_MASK(p, i) {
         bool first = true;
         for (int j = 0; j < 5; j++) {
-            int sj = fdata_swizzle[j];
-            if (!LINEAR_MASK_GET(p->linear, i, sj))
+            /* j=0: offset (vsrc=OPN); j=1..4: source columns 0..3 */
+            if (!LINEAR_MASK_GET(p->linear, i, j))
                 continue;
             AArch64Op vcoeff = vc[k / 4];
             int lane = k % 4;
             k++;
-            AArch64Op vsrc = (sj < 4) ? (MASK_GET(save_mask, sj) ? vt[sj] : vx[sj])
-                                       : OPN;
+            AArch64Op vsrc = (j > 0) ? (MASK_GET(save_mask, j - 1) ? vt[j - 1] : vx[j - 1])
+                                      : OPN;
             if (first) {
-                if (sj == 4)
+                if (j == 0)
                     i_dup(a, vx[i], ve_s(vcoeff, lane));
                 else
                     i_fmul(a, vx[i], vsrc, ve_s(vcoeff, lane));
@@ -982,9 +981,6 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     AArch64Op *vc = &vt[4];
     AArch64Op vcoeff_ptr = s->tmp0;
 
-    /* Start with offset and then the coefficients */
-    const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
-
     /*
      * Count non-zero coefficients and preload them all into v20-v23
      * (4 floats per register, 4 registers = up to 16 coefficients).
@@ -995,8 +991,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     int count = 0;
     LOOP_MASK(p, i) {
         for (int j = 0; j < 5; j++) {
-            int sj = fdata_swizzle[j];
-            if (LINEAR_MASK_GET(p->linear, i, sj))
+            if (LINEAR_MASK_GET(p->linear, i, j))
                 count++;
         }
     }
@@ -1026,30 +1021,31 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
      */
     uint16_t save_mask = 0;
     for (int sj = 0; sj < 4; sj++) {
-        /* Condition 1: any row i > sj uses column sj */
+        /* Condition 1: any row i > sj uses column sj (stored at j=sj+1) */
         for (int i = sj + 1; i < 4; i++) {
-            if (MASK_GET(p->mask, i) && LINEAR_MASK_GET(p->linear, i, sj)) {
+            if (MASK_GET(p->mask, i) && LINEAR_MASK_GET(p->linear, i, sj + 1)) {
                 MASK_SET(save_mask, sj, 1);
                 break;
             }
         }
         if (MASK_GET(save_mask, sj))
             continue;
-        /* Condition 2: diagonal entry exists but is not the first term for row sj */
+        /* Condition 2: diagonal entry exists but is not the first term for row sj.
+         * Diagonal is at j=sj+1; earlier terms are j=0..sj. */
         if (!MASK_GET(p->mask, sj))
             continue;
-        if (!LINEAR_MASK_GET(p->linear, sj, sj))
+        if (!LINEAR_MASK_GET(p->linear, sj, sj + 1))
             continue;
-        for (int j = 0; fdata_swizzle[j] != sj; j++) {
-            if (LINEAR_MASK_GET(p->linear, sj, fdata_swizzle[j])) {
+        for (int j = 0; j <= sj; j++) {
+            if (LINEAR_MASK_GET(p->linear, sj, j)) {
                 MASK_SET(save_mask, sj, 1);
                 break;
             }
         }
     }
 
-    linear_pass(s, p, vl, vt, vc, save_mask, fdata_swizzle, 0);
-    linear_pass(s, p, vh, vt, vc, save_mask, fdata_swizzle, 1);
+    linear_pass(s, p, vl, vt, vc, save_mask, 0);
+    linear_pass(s, p, vh, vt, vc, save_mask, 1);
 }
 
 /*********************************************************************/
