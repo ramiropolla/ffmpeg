@@ -198,6 +198,15 @@ void aarch64_annotate(AArch64Context *actx, const char *comment)
         actx->error = AVERROR(ENOMEM);
 }
 
+void aarch64_annotatef(AArch64Context *actx, char *s, size_t n, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(s, n, fmt, args);
+    va_end(args);
+    return aarch64_annotate(actx, s);
+}
+
 void aarch64_annotate_next(AArch64Context *actx, const char *comment)
 {
     if (actx->error)

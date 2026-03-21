@@ -244,10 +244,12 @@ int aarch64_new_label(AArch64Context *actx, const char *name);
 int aarch64_new_labelf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...) /* av_printf_format(4, 5) */;
 
 void aarch64_annotate(AArch64Context *actx, const char *comment);
+void aarch64_annotatef(AArch64Context *actx, char *s, size_t n, const char *fmt, ...);
 void aarch64_annotate_next(AArch64Context *actx, const char *comment);
 void aarch64_annotate_nextf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...);
 
 #define inlcmt(actx, comment) aarch64_annotate(actx, comment)
+#define inlcmtf(actx, fmt, ...) aarch64_annotatef(actx, (char[128]){0}, 128, fmt, __VA_ARGS__)
 
 int aarch64_print(AArch64Context *actx, FILE *fp);
 

@@ -561,8 +561,6 @@ static void swizzle_emit(SwsAArch64Context *s, uint8_t dst, uint8_t src)
 
 static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
-    AArch64Context *a = s->actx;
-
     /* Compute used vectors (src and dst) */
     uint8_t src_used[4] = { 0 };
     bool done[4] = { true, true, true, true };
@@ -573,17 +571,12 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
     }
 
     /* Unobstructed copies */
-    bool comment = false;
     for (bool progress = true; progress; ) {
         progress = false;
         for (int dst = 0; dst < 4; dst++) {
             if (done[dst] || src_used[dst])
                 continue;
             uint8_t src = MASK_GET(p->swizzle, dst);
-            if (!comment) {
-                aarch64_add_comment(a, "unobstructed copies");
-                comment = true;
-            }
             swizzle_emit(s, dst, src);
             src_used[src]--;
             done[dst] = true;
@@ -592,15 +585,9 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
     }
 
     /* Swap and rotate */
-    comment = false;
     for (int dst = 0; dst < 4; dst++) {
         if (done[dst])
             continue;
-
-        if (!comment) {
-            aarch64_add_comment(a, "swap and rotate");
-            comment = true;
-        }
 
         swizzle_emit(s, SWIZZLE_TMP, dst);
 
@@ -731,8 +718,8 @@ static void asmgen_op_lshift(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     AArch64Op *vl = s->vl;
     AArch64Op *vh = s->vh;
 
-    LOOP_MASK   (s, p, i) i_shl(a, vl[i], vl[i], a64op_imm(p->shift));
-    LOOP_MASK_VH(s, p, i) i_shl(a, vh[i], vh[i], a64op_imm(p->shift));
+    LOOP_MASK   (s, p, i) { i_shl(a, vl[i], vl[i], a64op_imm(p->shift)); inlcmtf(a, "vl[%u] <<= %u;", i, p->shift); }
+    LOOP_MASK_VH(s, p, i) { i_shl(a, vh[i], vh[i], a64op_imm(p->shift)); inlcmtf(a, "vh[%u] <<= %u;", i, p->shift); }
 }
 
 /*********************************************************************/
@@ -745,8 +732,8 @@ static void asmgen_op_rshift(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     AArch64Op *vl = s->vl;
     AArch64Op *vh = s->vh;
 
-    LOOP_MASK   (s, p, i) i_ushr(a, vl[i], vl[i], a64op_imm(p->shift));
-    LOOP_MASK_VH(s, p, i) i_ushr(a, vh[i], vh[i], a64op_imm(p->shift));
+    LOOP_MASK   (s, p, i) { i_ushr(a, vl[i], vl[i], a64op_imm(p->shift)); inlcmtf(a, "vl[%u] >>= %u;", i, p->shift); }
+    LOOP_MASK_VH(s, p, i) { i_ushr(a, vh[i], vh[i], a64op_imm(p->shift)); inlcmtf(a, "vh[%u] >>= %u;", i, p->shift); }
 }
 
 /*********************************************************************/
@@ -763,9 +750,8 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     aarch64_annotate_next(a, "v128 clear_vec = impl->priv.v128;");
     i_ldr(a, v_q(clear_vec), a64op_off(s->impl, offsetof_impl_priv));
 
-    aarch64_add_comment(a, "broadcast elements from clear_vec");
-    LOOP_MASK   (s, p, i) i_dup(a, vl[i], a64op_elem(clear_vec, i));
-    LOOP_MASK_VH(s, p, i) i_dup(a, vh[i], a64op_elem(clear_vec, i));
+    LOOP_MASK   (s, p, i) { i_dup(a, vl[i], a64op_elem(clear_vec, i)); inlcmtf(a, "vl[%u] = broadcast(clear_vec[%u])", i, i); }
+    LOOP_MASK_VH(s, p, i) { i_dup(a, vh[i], a64op_elem(clear_vec, i)); inlcmtf(a, "vh[%u] = broadcast(clear_vec[%u])", i, i); }
 }
 
 /*********************************************************************/
@@ -853,11 +839,13 @@ static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         s->use_vh = (dst_vec_size != dst_total_size);
 
     if (src_el_size == 1) {
+        aarch64_add_comment(a, "u8 -> u16");
         reshape_all_vectors(s, 16, 1);
         LOOP_MASK_VH(s, p, i) i_zip2(a, vh[i], vl[i], vl[i]);
         LOOP_MASK   (s, p, i) i_zip1(a, vl[i], vl[i], vl[i]);
     }
     if (dst_el_size == 4) {
+        aarch64_add_comment(a, "u16 -> u32");
         reshape_all_vectors(s, 8, 2);
         LOOP_MASK_VH(s, p, i) i_zip2(a, vh[i], vl[i], vl[i]);
         LOOP_MASK   (s, p, i) i_zip1(a, vl[i], vl[i], vl[i]);
@@ -874,18 +862,19 @@ static void asmgen_op_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     AArch64Op *vl = s->vl;
     AArch64Op *vh = s->vh;
     AArch64Op *vt = s->vt;
-
-    AArch64Op min_vec = a64op_make_vec(a64op_vec_n(s->vt[3]), 0, s->el_size);
+    AArch64Op min_vec = a64op_make_vec(a64op_vec_n(s->vt[4]), 0, s->el_size);
 
     aarch64_annotate_next(a, "v128 min_vec = impl->priv.v128;");
     i_ldr(a, v_q(min_vec), a64op_off(s->impl, offsetof_impl_priv));
-    aarch64_add_comment(a, "broadcast elements from min_vec into TODO");
+    aarch64_add_comment(a, "broadcast each lane of min_vec into a full vector");
     LOOP_MASK(s, p, i) i_dup(a, vt[i], a64op_elem(min_vec, i));
 
     if (p->type == AARCH64_PIXEL_F32) {
+        aarch64_add_comment(a, "min (float)");
         LOOP_MASK   (s, p, i) i_fmin(a, vl[i], vl[i], vt[i]);
         LOOP_MASK_VH(s, p, i) i_fmin(a, vh[i], vh[i], vt[i]);
     } else {
+        aarch64_add_comment(a, "min (integer)");
         LOOP_MASK   (s, p, i) i_umin(a, vl[i], vl[i], vt[i]);
         LOOP_MASK_VH(s, p, i) i_umin(a, vh[i], vh[i], vt[i]);
     }
@@ -901,18 +890,19 @@ static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     AArch64Op *vl = s->vl;
     AArch64Op *vh = s->vh;
     AArch64Op *vt = s->vt;
-
-    AArch64Op max_vec = a64op_make_vec(a64op_vec_n(s->vt[3]), 0, s->el_size);
+    AArch64Op max_vec = a64op_make_vec(a64op_vec_n(s->vt[4]), 0, s->el_size);
 
     aarch64_annotate_next(a, "v128 max_vec = impl->priv.v128;");
     i_ldr(a, v_q(max_vec), a64op_off(s->impl, offsetof_impl_priv));
-    aarch64_add_comment(a, "broadcast elements from max_vec into TODO");
+    aarch64_add_comment(a, "broadcast each lane of max_vec into a full vector");
     LOOP_MASK   (s, p, i) i_dup(a, vt[i], a64op_elem(max_vec, i));
 
     if (p->type == AARCH64_PIXEL_F32) {
+        aarch64_add_comment(a, "max (float)");
         LOOP_MASK   (s, p, i) i_fmax(a, vl[i], vl[i], vt[i]);
         LOOP_MASK_VH(s, p, i) i_fmax(a, vh[i], vh[i], vt[i]);
     } else {
+        aarch64_add_comment(a, "max (integer)");
         LOOP_MASK   (s, p, i) i_umax(a, vl[i], vl[i], vt[i]);
         LOOP_MASK_VH(s, p, i) i_umax(a, vh[i], vh[i], vt[i]);
     }
@@ -930,18 +920,18 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     AArch64Op priv_ptr = s->tmp0;
     AArch64Op scale_vec = s->vt[0];
 
-    aarch64_annotate_next(a, "priv_ptr = &impl->priv");
+    aarch64_annotate_next(a, "v128 *scale_vec_ptr = &impl->priv");
     i_add(a, priv_ptr, s->impl, a64op_imm(offsetof_impl_priv));
 
-    aarch64_annotate_next(a, "broadcast [priv_ptr] into scale_vec");
+    aarch64_annotate_next(a, "v128 scale_vec = broadcast(*scale_vec_ptr);");
     i_ld1r(a, vv_1(scale_vec), a64op_base(priv_ptr));
 
     if (p->type == AARCH64_PIXEL_F32) {
-        LOOP_MASK   (s, p, i) i_fmul(a, vl[i], vl[i], scale_vec);
-        LOOP_MASK_VH(s, p, i) i_fmul(a, vh[i], vh[i], scale_vec);
+        LOOP_MASK   (s, p, i) { i_fmul(a, vl[i], vl[i], scale_vec); inlcmtf(a, "vl[%u] *= scale_vec;", i); }
+        LOOP_MASK_VH(s, p, i) { i_fmul(a, vh[i], vh[i], scale_vec); inlcmtf(a, "vh[%u] *= scale_vec;", i); }
     } else {
-        LOOP_MASK   (s, p, i) i_mul (a, vl[i], vl[i], scale_vec);
-        LOOP_MASK_VH(s, p, i) i_mul (a, vh[i], vh[i], scale_vec);
+        LOOP_MASK   (s, p, i) { i_mul (a, vl[i], vl[i], scale_vec); inlcmtf(a, "vl[%u] *= scale_vec;", i); }
+        LOOP_MASK_VH(s, p, i) { i_mul (a, vh[i], vh[i], scale_vec); inlcmtf(a, "vh[%u] *= scale_vec;", i); }
     }
 }
 
