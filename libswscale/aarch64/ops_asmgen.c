@@ -917,12 +917,16 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
  * v[]  is the working register array (vl or vh); vt[] holds saved sources.
  * Coefficients are preloaded into v21-v24; k is the flat coefficient index
  * at the start of this pass (always 0 — shared between passes). */
-static void asmgen_op_linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                                  AArch64Op *v, AArch64Op *vt, AArch64Op *vc,
-                                  int save_needed, const int fdata_swizzle[5])
+static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                        AArch64Op *v, AArch64Op *vt, AArch64Op *vc,
+                        int save_needed, const int fdata_swizzle[5],
+                        int vh)
 {
     AArch64Context *a = s->actx;
     int k = 0;
+
+    if (vh && !s->use_vh)
+        return;
 
     if (save_needed)
         aarch64_add_comment(a, "save input rows");
@@ -959,6 +963,10 @@ static void asmgen_op_linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplPa
 static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
+    AArch64Op *vl = s->vl;
+    AArch64Op *vh = s->vh;
+    AArch64Op *vt = s->vt;
+    AArch64Op *vc = &vt[4];
 
     /* Process offset first (column 4), then cross-row columns 0..3 */
     const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
@@ -982,9 +990,6 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     assert(num_regs <= 4);
 
     AArch64Op coeff_ptr = s->tmp0;
-    AArch64Op vc[4];
-    for (int i = 0; i < num_regs; i++)
-        vc[i] = a64op_make_vec(20 + i, s->el_count, s->el_size);
 
     aarch64_add_comment(a, "preload coefficients");
     i_ldr(a, coeff_ptr, a64op_off(s->impl, offsetof_impl_priv));
@@ -1030,9 +1035,8 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         }
     }
 
-    asmgen_op_linear_pass(s, p, s->vl, s->vt, vc, save_needed, fdata_swizzle);
-    if (s->use_vh)
-        asmgen_op_linear_pass(s, p, s->vh, s->vt, vc, save_needed, fdata_swizzle);
+    linear_pass(s, p, s->vl, vt, vc, save_needed, fdata_swizzle, 0);
+    linear_pass(s, p, s->vh, vt, vc, save_needed, fdata_swizzle, 1);
 }
 
 static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
