@@ -107,12 +107,4 @@ int sws_aarch64_op_impl_cmp(const void *a, const void *b);
         if ((mask) & (1 << (idx << 2)))
 #endif
 
-static inline uint16_t nswap16(uint16_t v)
-{
-    return ((v & 0x000f) << 12) |
-           ((v & 0x00f0) <<  4) |
-           ((v & 0x0f00) >>  4) |
-           ((v & 0xf000) >> 12);
-}
-
 #endif /* AARCH64_OPS_IMPL_H */
