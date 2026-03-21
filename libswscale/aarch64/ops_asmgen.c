@@ -330,9 +330,9 @@ static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParam
     }
 
     if (p->block_size == 8)
-        aarch64_annotate_next(a, "v128 bitmask_vec = { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 };");
+        aarch64_annotate_next(a, "v128 bitmask_vec = {1 <repeats 8 times>, 0 <repeats 8 times>};");
     else
-        aarch64_annotate_next(a, "v128 bitmask_vec = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 };");
+        aarch64_annotate_next(a, "v128 bitmask_vec = {1 <repeats 16 times>};");
     i_movi(a, bitmask_vec, a64op_imm(1));
 
     aarch64_annotate_next(a, "vl[0].lo = broadcast(tmp);");
@@ -340,11 +340,11 @@ static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParam
 
     if (p->block_size == 16) {
         aarch64_annotate_next(a, "tmp >>= 8;");
-        i_lsr (a, wtmp0,       wtmp0,       a64op_imm(8));
+        i_lsr(a, wtmp0,       wtmp0,       a64op_imm(8));
         aarch64_annotate_next(a, "vtmp.lo = broadcast(tmp);");
-        i_dup (a, v_8b(vtmp0), wtmp0);
+        i_dup(a, v_8b(vtmp0), wtmp0);
         aarch64_annotate_next(a, "vl[0].hi = vtmp.lo;");
-        i_ins (a, ve_d(vl[0], 1), ve_d(vtmp0, 0));
+        i_ins(a, ve_d(vl[0], 1), ve_d(vtmp0, 0));
     }
 
     aarch64_annotate_next(a, "vl[0] >>= shift_vec;");
@@ -360,21 +360,18 @@ static void asmgen_op_read_nibble(SwsAArch64Context *s, const SwsAArch64OpImplPa
     AArch64Op *vt = s->vt;
     AArch64Op nibble_mask = s->vt[1];
 
+    aarch64_annotate_next(a, "v128 nibble_mask = {0xf <repeats 8 times>, 0x0 <repeats 8 times>};");
     i_movi(a, v_8b(nibble_mask), a64op_imm(0x0f));
 
-    if (p->block_size == 8) {
-        i_ldr (a, v_s(vl[0]), a64op_post(s->in[0], 4));
-        aarch64_annotate_next(a, "vt0 = high nibbles");
-        i_ushr(a, vt[0], vl[0], a64op_imm(4));
-        aarch64_annotate_next(a, "vl[0] = low nibbles");
-        i_and (a, vl[0], vl[0], nibble_mask);
-    } else {
-        i_ldr (a, v_d(vl[0]), a64op_post(s->in[0], 8));
-        aarch64_annotate_next(a, "vt0 = high nibbles");
-        i_ushr(a, v_8b(vt[0]), v_8b(vl[0]), a64op_imm(4));
-        aarch64_annotate_next(a, "vl[0] = low nibbles");
-        i_and (a, v_8b(vl[0]), v_8b(vl[0]), v_8b(nibble_mask));
-    }
+    aarch64_annotate_next(a, "vl[0] = *in[0]++;");
+    if (p->block_size == 8)
+        i_ldr (a, v_s(vl[0]), a64op_post(s->in[0], p->block_size / 2));
+    else
+        i_ldr (a, v_d(vl[0]), a64op_post(s->in[0], p->block_size / 2));
+    aarch64_annotate_next(a, "vtmp.lo = vl[0] >> 4;");
+    i_ushr(a, v_8b(vt[0]), v_8b(vl[0]), a64op_imm(4));
+    aarch64_annotate_next(a, "vl[0].lo &= nibble_mask;");
+    i_and (a, v_8b(vl[0]), v_8b(vl[0]), v_8b(nibble_mask));
     aarch64_annotate_next(a, "interleave");
     i_zip1(a, vl[0], vt[0], vl[0]);
 }
