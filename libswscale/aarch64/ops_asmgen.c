@@ -518,17 +518,35 @@ static void asmgen_op_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImplPar
     }
 }
 
+static void swizzle_emit(SwsAArch64Context *s, uint8_t dst, uint8_t src)
+{
+    const uint8_t tmpv = 0xf;
+    AArch64Context *a = s->actx;
+    AArch64Op src_op[2] = {
+        (src == tmpv) ? s->vt[0] : s->vl[src],
+        (src == tmpv) ? s->vt[1] : s->vh[src],
+    };
+    AArch64Op dst_op[2] = {
+        (dst == tmpv) ? s->vt[0] : s->vl[dst],
+        (dst == tmpv) ? s->vt[1] : s->vh[dst],
+    };
+    i_mov(a, dst_op[0], src_op[0]);
+    if (s->use_vh)
+        i_mov(a, dst_op[1], src_op[1]);
+}
+
 static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
+    const uint8_t tmpv = 0xf;
     AArch64Context *a = s->actx;
     AArch64Op *vl = s->vl;
     AArch64Op *vh = s->vh;
 
     /* Compute used vectors (src and dst) */
-    unsigned src_used[4] = { 0 };
+    uint8_t src_used[4] = { 0 };
     bool done[4] = { true, true, true, true };
     LOOP_MASK(s, p, dst) {
-        unsigned src = (p->swizzle >> (dst << 2)) & 0xf;
+        uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
         src_used[src]++;
         done[dst] = false;
     }
@@ -547,7 +565,7 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
         prev_ops_count = ops_count;
         for (int dst = 0; dst < 4; dst++) {
             if (!done[dst] && !src_used[dst]) {
-                unsigned src = (p->swizzle >> (dst << 2)) & 0xf;
+                uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
                 if (unobstructed_copies < 0)
                     unobstructed_copies = ops_count;
                 ops[ops_count++] = ((src) << 4) | (dst);
@@ -558,7 +576,6 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
     } while (ops_count > prev_ops_count);
 
     /* Swap and rotate */
-    const unsigned tmpv = 0xf;
     for (int orig_dst = 0; orig_dst < 4; orig_dst++) {
         if (done[orig_dst])
             continue;
@@ -568,8 +585,8 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
 
         ops[ops_count++] = ((orig_dst) << 4) | tmpv;
 
-        unsigned dst = orig_dst;
-        unsigned src = (p->swizzle >> (dst << 2)) & 0xf;
+        uint8_t dst = orig_dst;
+        uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
         while (src != orig_dst) {
             ops[ops_count++] = ((src) << 4) | (dst);
             done[dst] = true;
@@ -586,21 +603,11 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
         uint8_t op = ops[i];
         uint8_t src = op >> 4;
         uint8_t dst = op & 0xf;
-        AArch64Op src_op[2] = {
-            (src == tmpv) ? s->vt[0] : vl[src],
-            (src == tmpv) ? s->vt[1] : vh[src],
-        };
-        AArch64Op dst_op[2] = {
-            (dst == tmpv) ? s->vt[0] : vl[dst],
-            (dst == tmpv) ? s->vt[1] : vh[dst],
-        };
         if (i == unobstructed_copies)
             aarch64_add_comment(a, "Unobstructed copies");
         else if (i == swap_and_rotate)
             aarch64_add_comment(a, "Swap and rotate");
-        i_mov(a, dst_op[0], src_op[0]);
-        if (s->use_vh)
-            i_mov(a, dst_op[1], src_op[1]);
+        swizzle_emit(s, dst, src);
     }
 }
 
