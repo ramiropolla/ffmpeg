@@ -418,17 +418,15 @@ static void asmgen_op_write_bit(SwsAArch64Context *s, const SwsAArch64OpImplPara
     aarch64_annotate_next(a, "v128 shift_vec = impl->priv.v128;");
     i_ldr(a, v_q(shift_vec), a64op_off(s->impl, offsetof_impl_priv));
 
-    i_ushl(a, vl[0], vl[0], shift_vec); inlcmt(a, "vl[0] <<= shift_vec;");
-
+    i_ushl(a, vl[0],      vl[0], shift_vec);                    inlcmt(a, "vl[0] <<= shift_vec;");
+    i_addv(a, v_b(vtmp0), v_8b(vl[0]));                         inlcmt(a, "vtmp0[0] = add_accross(vl[0].lo);");
     if (s->vec_size == 8) {
-        i_addv(a, v_b (vtmp0), vl[0]);                       inlcmt(a, "vtmp0 = add_accross(vl[0]);");
-        i_str (a, v_b (vtmp0), a64op_post(s->out[0], 1));    inlcmt(a, "*out[0]++ = vl[0];");
+        i_str (a, v_b (vtmp0),    a64op_post(s->out[0], 1));    inlcmt(a, "*out[0]++ = vtmp0;");
     } else {
-        i_addv(a, v_b (vtmp0), v_8b(vl[0]));                 inlcmt(a, "vtmp0 = add_accross(vl[0]);");
-        i_ins (a, ve_d(vtmp1, 0), ve_d(vl[0], 1));
-        i_addv(a, v_b (vtmp1), v_8b(vtmp1));
-        i_ins (a, ve_b(vtmp0, 1), ve_b(vtmp1, 0));
-        i_str (a, v_h (vtmp0), a64op_post(s->out[0], 2));    inlcmt(a, "*out[0]++ = vl[0];");
+        i_ins (a, ve_d(vtmp1, 0), ve_d(vl[0], 1));              inlcmt(a, "vtmp1.lo = vtmp0.hi;");
+        i_addv(a, v_b (vtmp1),    v_8b(vtmp1));                 inlcmt(a, "vtmp1[0] = add_accross(vtmp1);");
+        i_ins (a, ve_b(vtmp0, 1), ve_b(vtmp1, 0));              inlcmt(a, "vtmp0[1] = vtmp1[0];");
+        i_str (a, v_h (vtmp0),    a64op_post(s->out[0], 2));    inlcmt(a, "*out[0]++ = vtmp0;");
     }
 }
 
@@ -436,20 +434,21 @@ static void asmgen_op_write_nibble(SwsAArch64Context *s, const SwsAArch64OpImplP
 {
     AArch64Context *a = s->actx;
     AArch64Op *vl = s->vl;
-    AArch64Op *vt = s->vt;
+    AArch64Op vtmp0 = s->vt[0];
+    AArch64Op vtmp1 = s->vt[1];
 
     if (s->vec_size == 8) {
-        i_shl (a, v_4h(vt[0]), v_4h(vl[0]), a64op_imm(4));
-        i_ushr(a, v_4h(vt[1]), v_4h(vl[0]), a64op_imm(8));
-        i_orr (a, vl[0], vt[0], vt[1]);
-        i_xtn (a, vt[0], v_8h(vl[0]));
-        i_str (a, v_s(vt[0]), a64op_post(s->out[0], 4));
+        i_shl (a, v_4h(vtmp0), v_4h(vl[0]), a64op_imm(4));
+        i_ushr(a, v_4h(vtmp1), v_4h(vl[0]), a64op_imm(8));
+        i_orr (a, vl[0], vtmp0, vtmp1);
+        i_xtn (a, vtmp0, v_8h(vl[0]));
+        i_str (a, v_s(vtmp0), a64op_post(s->out[0], 4));
     } else {
-        i_shl (a, v_8h(vt[0]), v_8h(vl[0]), a64op_imm(4));
-        i_ushr(a, v_8h(vt[1]), v_8h(vl[0]), a64op_imm(8));
-        i_orr (a, vl[0], vt[0], vt[1]);
-        i_xtn (a, v_8b(vt[0]), v_8h(vl[0]));
-        i_str (a, v_d(vt[0]), a64op_post(s->out[0], 8));
+        i_shl (a, v_8h(vtmp0), v_8h(vl[0]), a64op_imm(4));
+        i_ushr(a, v_8h(vtmp1), v_8h(vl[0]), a64op_imm(8));
+        i_orr (a, vl[0], vtmp0, vtmp1);
+        i_xtn (a, v_8b(vtmp0), v_8h(vl[0]));
+        i_str (a, v_d(vtmp0), a64op_post(s->out[0], 8));
     }
 }
 
