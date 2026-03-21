@@ -212,27 +212,14 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
 static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
                                 const SwsOp *op, SwsImplResult *res)
 {
-    /* Count non-zero coefficients */
-    int count = 0;
-    LOOP_MASK(p, i) {
-        for (int j = 0; j < 5; j++) {
-            if (LINEAR_MASK_GET(p->linear, i, j))
-                count++;
-        }
-    }
-
-    /* Round up to multiple of 4 to allow safe 128-bit overread in codegen */
-    float *coeffs = av_malloc(((count + 3) & ~3) * sizeof(float));
+    float *coeffs = av_malloc(linear_num_vregs(p) * 4 * sizeof(float));
     if (!coeffs)
         return AVERROR(ENOMEM);
 
-    /* j=0 is offset (m[i][4]), j=1..4 are source columns m[i][0..3] */
-    int k = 0;
-    LOOP_MASK(p, i) {
-        for (int j = 0; j < 5; j++) {
-            if (LINEAR_MASK_GET(p->linear, i, j))
-                coeffs[k++] = (float) av_q2d(op->lin.m[i][j ? j - 1 : 4]);
-        }
+    /* Copy non-zero coefficients, reordered to match SwsAArch64LinearOpMask. */
+    int i_coeff = 0;
+    LOOP_LINEAR_MASK(p, i, j) {
+        coeffs[i_coeff++] = (float) av_q2d(op->lin.m[i][j ? j - 1 : 4]);
     }
 
     res->priv.ptr = coeffs;
@@ -240,6 +227,7 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     return 0;
 }
 
+/*********************************************************************/
 static int aarch64_setup_dither(const SwsAArch64OpImplParams *p,
                                 const SwsOp *op, SwsImplResult *res)
 {
@@ -272,6 +260,7 @@ static int aarch64_setup_dither(const SwsAArch64OpImplParams *p,
     return 0;
 }
 
+/*********************************************************************/
 static int aarch64_setup(SwsOpList *ops, int block_size, int n,
                          const SwsAArch64OpImplParams *p, SwsImplResult *out)
 {

@@ -121,4 +121,20 @@ int sws_aarch64_op_impl_cmp(const void *a, const void *b);
 #define LINEAR_MASK_1 1
 #define LINEAR_MASK_X 3
 
+#define LOOP_LINEAR_MASK(p, idx, jdx)       \
+    LOOP_MASK(p, idx)                       \
+        for (int jdx = 0; jdx < 5; jdx++)   \
+            if (LINEAR_MASK_GET(p->linear, idx, jdx))
+
+/* Compute number of vector registers needed to store all coefficients. */
+static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
+{
+    int count = 0;
+    LOOP_LINEAR_MASK(params, i, j)
+        count++;
+    int num_vregs = (count + 3) >> 2;
+    assert(num_vregs <= 4);
+    return num_vregs;
+}
+
 #endif /* AARCH64_OPS_IMPL_H */

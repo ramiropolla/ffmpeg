@@ -927,47 +927,52 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
 /* generalized linear affine transform */
 /* AARCH64_SWS_OP_LINEAR */
 
-/* One vl/vh pass of the generalized linear affine transform.
- * v[]  is the working register array (vl or vh); vt[] holds saved sources.
- * Coefficients are preloaded into v21-v24; k is the flat coefficient index
- * at the start of this pass (always 0 — shared between passes). */
+/* Performs one pass of the linear transform over a single vector bank
+ * (low or high). */
 static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                        AArch64Op *vx, AArch64Op *vt, AArch64Op *vc,
-                        int save_mask, int vh)
+                        AArch64Op *vt, AArch64Op *vc,
+                        int save_mask, bool vh_pass)
 {
     AArch64Context *a = s->actx;
-    int k = 0;
+    AArch64Op *vx = vh_pass ? s->vh : s->vl;
+    char cvh = vh_pass ? 'h' : 'l';
 
-    if (vh && !s->use_vh)
+    if (vh_pass && !s->use_vh)
         return;
 
-    if (save_mask)
+    AArch64Op src_vx[4] = { vx[0], vx[1], vx[2], vx[3] };
+    if (save_mask) {
         aarch64_add_comment(a, "save input rows");
-    for (int sj = 0; sj < 4; sj++)
-        if (MASK_GET(save_mask, sj))
-            i_mov(a, v_16b(vt[sj]), v_16b(vx[sj]));
+        for (int i = 0; i < 4; i++) {
+            if (MASK_GET(save_mask, i)) {
+                src_vx[i] = vt[i];
+                i_mov(a, v_16b(vt[i]), v_16b(vx[i]));
+            }
+        }
+    }
 
     aarch64_add_comment(a, "affine transform");
+    int i_coeff = 0;
     LOOP_MASK(p, i) {
         bool first = true;
         for (int j = 0; j < 5; j++) {
-            /* j=0: offset (vsrc=OPN); j=1..4: source columns 0..3 */
             if (!LINEAR_MASK_GET(p->linear, i, j))
                 continue;
-            AArch64Op vcoeff = vc[k / 4];
-            int lane = k % 4;
-            k++;
-            AArch64Op vsrc = (j > 0) ? (MASK_GET(save_mask, j - 1) ? vt[j - 1] : vx[j - 1])
-                                      : OPN;
-            if (first) {
-                if (j == 0)
-                    i_dup(a, vx[i], ve_s(vcoeff, lane));
-                else
-                    i_fmul(a, vx[i], vsrc, ve_s(vcoeff, lane));
-                first = false;
+            uint8_t vc_i = i_coeff / 4;
+            uint8_t vc_j = i_coeff & 3;
+            AArch64Op vcoeff = ve_s(vc[vc_i], vc_j);
+            i_coeff++;
+            bool is_offset = (j == 0);
+            int src_j = j - 1; // Map row index back to 0..3
+            AArch64Op vsrc = src_vx[src_j];
+            if (first && is_offset) {
+                i_dup (a, vx[i], vcoeff);       inlcmtf(a, "v%c[%u]  = broadcast(vc[%u][%u]);", cvh, i, vc_i, vc_j);
+            } else if (first && !is_offset) {
+                i_fmul(a, vx[i], vsrc, vcoeff); inlcmtf(a, "v%c[%u]  = vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
             } else {
-                i_fmla(a, vx[i], vsrc, ve_s(vcoeff, lane));
+                i_fmla(a, vx[i], vsrc, vcoeff); inlcmtf(a, "v%c[%u] += vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
             }
+            first = false;
         }
     }
 }
@@ -975,77 +980,42 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
-    AArch64Op *vl = s->vl;
-    AArch64Op *vh = s->vh;
     AArch64Op *vt = s->vt;
-    AArch64Op *vc = &vt[4];
+    AArch64Op *vc = &vt[4]; /* The coefficients are loaded starting from temp vector 4 */
     AArch64Op vcoeff_ptr = s->tmp0;
+    AArch64Op coeff_veclist;
 
-    /*
-     * Count non-zero coefficients and preload them all into v20-v23
-     * (4 floats per register, 4 registers = up to 16 coefficients).
-     * v20-v23 are caller-saved and not used by vl (v0-v3), vh (v4-v7),
-     * or vt (v16-v19). The coefficient array is allocated with padding
-     * so the ld1 at the last register never reads past the allocation.
-     */
-    int count = 0;
+    /* Preload coefficients from impl->priv. */
+    aarch64_add_comment(a, "preload coefficients");
+    i_ldr(a, vcoeff_ptr, a64op_off(s->impl, offsetof_impl_priv)); inlcmt(a, "v128 *vcoeff_ptr = impl->priv.ptr;");
+
+    switch (linear_num_vregs(p)) {
+    case 1: coeff_veclist = vv_1(vc[0]);                      break;
+    case 2: coeff_veclist = vv_2(vc[0], vc[1]);               break;
+    case 3: coeff_veclist = vv_3(vc[0], vc[1], vc[2]);        break;
+    case 4: coeff_veclist = vv_4(vc[0], vc[1], vc[2], vc[3]); break;
+    }
+
+    aarch64_annotate_next(a, "coeff_veclist = *vcoeff_ptr;");
+    i_ld1(a, coeff_veclist, a64op_base(vcoeff_ptr));
+
+    /* Compute mask for rows that must be saved before being overwritten. */
+    uint16_t save_mask = 0;
+    bool overwritten[4] = { false, false, false, false };
     LOOP_MASK(p, i) {
         for (int j = 0; j < 5; j++) {
-            if (LINEAR_MASK_GET(p->linear, i, j))
-                count++;
-        }
-    }
-    int num_regs = (count + 3) / 4;
-    assert(num_regs <= 4);
-
-    aarch64_add_comment(a, "preload coefficients");
-
-    aarch64_annotate_next(a, "v128 *vcoeff_ptr = impl->priv.ptr;");
-    i_ldr(a, vcoeff_ptr, a64op_off(s->impl, offsetof_impl_priv));
-    switch (num_regs) {
-    case 1: i_ld1(a, vv_1(vc[0]),                      a64op_base(vcoeff_ptr)); break;
-    case 2: i_ld1(a, vv_2(vc[0], vc[1]),               a64op_base(vcoeff_ptr)); break;
-    case 3: i_ld1(a, vv_3(vc[0], vc[1], vc[2]),        a64op_base(vcoeff_ptr)); break;
-    case 4: i_ld1(a, vv_4(vc[0], vc[1], vc[2], vc[3]), a64op_base(vcoeff_ptr)); break;
-    }
-
-    /*
-     * Determine which source columns need saving to vt[] before computation.
-     * A column sj needs saving if v[sj] may be overwritten before its last use:
-     *   1. Any row i > sj (processed later) reads column sj, so v[sj] will be
-     *      overwritten when row sj is computed before row i reads it.
-     *   2. Row sj itself reads column sj, but it is not the first non-zero term,
-     *      so v[sj] is overwritten by an earlier term before the diagonal read.
-     * If neither applies, v[sj] is still the original value when needed, and
-     * we can read it directly without a save.
-     */
-    uint16_t save_mask = 0;
-    for (int sj = 0; sj < 4; sj++) {
-        /* Condition 1: any row i > sj uses column sj (stored at j=sj+1) */
-        for (int i = sj + 1; i < 4; i++) {
-            if (MASK_GET(p->mask, i) && LINEAR_MASK_GET(p->linear, i, sj + 1)) {
-                MASK_SET(save_mask, sj, 1);
-                break;
-            }
-        }
-        if (MASK_GET(save_mask, sj))
-            continue;
-        /* Condition 2: diagonal entry exists but is not the first term for row sj.
-         * Diagonal is at j=sj+1; earlier terms are j=0..sj. */
-        if (!MASK_GET(p->mask, sj))
-            continue;
-        if (!LINEAR_MASK_GET(p->linear, sj, sj + 1))
-            continue;
-        for (int j = 0; j <= sj; j++) {
-            if (LINEAR_MASK_GET(p->linear, sj, j)) {
-                MASK_SET(save_mask, sj, 1);
-                break;
-            }
+            if (!LINEAR_MASK_GET(p->linear, i, j))
+                continue;
+            bool is_offset = (j == 0);
+            int src_j = j - 1; // Map row index back to 0..3
+            if (!is_offset && overwritten[src_j])
+                MASK_SET(save_mask, j - 1, 1);
+            overwritten[i] = true;
         }
     }
 
-    linear_pass(s, p, vl, vt, vc, save_mask, 0);
-    linear_pass(s, p, vh, vt, vc, save_mask, 1);
+    linear_pass(s, p, vt, vc, save_mask, false);
+    linear_pass(s, p, vt, vc, save_mask, true);
 }
 
 /*********************************************************************/
