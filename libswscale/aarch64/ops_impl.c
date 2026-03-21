@@ -164,14 +164,14 @@ void sws_aarch64_op_impl_func_name(char *buf, size_t size, const SwsAArch64OpImp
     switch (params->op) {
     case AARCH64_SWS_OP_PROCESS:
     case AARCH64_SWS_OP_PROCESS_RETURN:
-        buf_appendf(&buf, &size, "_%04x_neon", nswap16(params->mask));
+        buf_appendf(&buf, &size, "_%04x_neon", params->mask);
         return;
     case AARCH64_SWS_OP_SWIZZLE:
-        buf_appendf(&buf, &size, "_%04x", nswap16(params->swizzle));
+        buf_appendf(&buf, &size, "_%04x", params->swizzle);
         break;
     case AARCH64_SWS_OP_UNPACK:
     case AARCH64_SWS_OP_PACK:
-        buf_appendf(&buf, &size, "_%04x", nswap16(params->pack));
+        buf_appendf(&buf, &size, "_%04x", params->pack);
         break;
     case AARCH64_SWS_OP_LSHIFT:
     case AARCH64_SWS_OP_RSHIFT:
