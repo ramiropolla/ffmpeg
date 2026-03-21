@@ -338,21 +338,16 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
         aarch64_impl_params(ops, block_size, i, &params);
         SwsFuncPtr func = ff_sws_aarch64_find_op(&params);
         if (!func) {
-            ff_sws_op_chain_free(chain);
-            // TODO print message to regenerate ops_entries
-            return AVERROR(ENOTSUP);
+            ret = AVERROR(ENOTSUP);
+            goto error;
         }
         SwsImplResult res = { 0 };
         ret = aarch64_setup(ops, block_size, i, &params, &res);
-        if (ret < 0) {
-            ff_sws_op_chain_free(chain);
-            return ret;
-        }
+        if (ret < 0)
+            goto error;
         ret = ff_sws_op_chain_append(chain, func, NULL, &res.priv);
-        if (ret < 0) {
-            ff_sws_op_chain_free(chain);
-            return ret;
-        }
+        if (ret < 0)
+            goto error;
     }
 
     const SwsOp *read  = ff_sws_op_list_input(ops);
@@ -368,22 +363,28 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
     SwsFuncPtr process_func = ff_sws_aarch64_find_op(&process_params);
     SwsFuncPtr return_func  = ff_sws_aarch64_find_op(&return_params);
     if (!process_func || !return_func) {
-        ff_sws_op_chain_free(chain);
-        // TODO print message to regenerate ops_entries
-        return AVERROR(ENOTSUP);
+        ret = AVERROR(ENOTSUP);
+        goto error;
     }
 
     ret = ff_sws_op_chain_append(chain, return_func, NULL, &(SwsOpPriv) {0});
-    if (ret < 0) {
-        ff_sws_op_chain_free(chain);
-        return ret;
-    }
+    if (ret < 0)
+        goto error;
 
     out->func       = (SwsOpFunc) process_func;
     out->cpu_flags  = chain->cpu_flags;
     out->over_read  = chain->over_read;
     out->over_write = chain->over_write;
-    return 0;
+
+error:
+    if (ret < 0) {
+        if (ret == AVERROR(ENOTSUP)){
+            av_log(ctx, AV_LOG_DEBUG, "Unsupported SwsOp for aarch64.\n");
+            av_log(ctx, AV_LOG_DEBUG, "Regenerate ops_entries.c with: make sws_ops_entries_aarch64\n");
+        }
+        ff_sws_op_chain_free(chain);
+    }
+    return ret;
 }
 
 /*********************************************************************/
