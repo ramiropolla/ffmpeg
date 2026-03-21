@@ -111,7 +111,7 @@ typedef struct SwsAArch64Context {
 
     AArch64Op vl[4];
     AArch64Op vh[4];
-    AArch64Op vt[4];
+    AArch64Op vt[8];
 
     AArch64Op in[4];
     AArch64Op out[4];
@@ -138,6 +138,10 @@ static void reshape_all_vectors(SwsAArch64Context *s, int el_count, int el_size)
     s->vt[1] = a64op_make_vec(17, el_count, el_size);
     s->vt[2] = a64op_make_vec(18, el_count, el_size);
     s->vt[3] = a64op_make_vec(19, el_count, el_size);
+    s->vt[4] = a64op_make_vec(20, el_count, el_size);
+    s->vt[5] = a64op_make_vec(21, el_count, el_size);
+    s->vt[6] = a64op_make_vec(22, el_count, el_size);
+    s->vt[7] = a64op_make_vec(23, el_count, el_size);
 }
 
 /*********************************************************************/
