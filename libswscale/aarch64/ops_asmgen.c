@@ -1025,85 +1025,81 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
+    AArch64Op *vl = s->vl;
+    AArch64Op *vh = s->vh;
+    AArch64Op ptr = s->tmp0;
+    AArch64Op tmp1 = s->tmp1;
+    AArch64Op wtmp1 = a64op_w(s->tmp1);
+    AArch64Op dither_vl = s->vt[0];
+    AArch64Op dither_vh = s->vt[1];
 
-    const int size_log2   = p->dither.size_log2;
-    const int stride_log2 = size_log2 + 2; /* size floats × 4 bytes/float */
-    const int x_log2      = size_log2 - __builtin_ctz(p->block_size);
-
-    /* Collect active components (nibble != 0xf) sorted ascending by y_off.
-     * This is pure codegen-time work — no assembly emitted here. */
-    int y_offs[4];
-    for (int i = 0; i < 4; i++)
-        y_offs[i] = (p->dither.y_offset >> (i * 4)) & 0xf;
-
-    int sorted[4], nsorted = 0;
+    /* Sort y_offset so that we can safely always increment the pointers. */
+    int sorted[4];
+    int n_comps = 0;
     bool used[4] = { false };
     for (int pass = 0; pass < 4; pass++) {
         int best = -1;
-        for (int i = 0; i < 4; i++) {
-            if (used[i] || y_offs[i] == 0xf)
+        LOOP_MASK(p, i) {
+            uint8_t y_off = MASK_GET(p->dither.y_offset, i);
+            if (used[i] || y_off == 0xf)
                 continue;
-            if (best < 0 || y_offs[i] < y_offs[best])
+            if (best < 0 || y_off < MASK_GET(p->dither.y_offset, best))
                 best = i;
         }
         if (best < 0)
             break;
-        sorted[nsorted++] = best;
+        sorted[n_comps++] = best;
         used[best] = true;
     }
-
-    if (nsorted == 0)
-        return;
-
-    AArch64Op ptr    = s->tmp0;
-    AArch64Op tmp1   = s->tmp1;
-    AArch64Op w_tmp1 = a64op_w(s->tmp1);
-
-    aarch64_add_comment(a, "load dither matrix pointer");
 
     aarch64_annotate_next(a, "void *ptr = impl->priv.ptr;");
     i_ldr(a, ptr, a64op_off(s->impl, offsetof_impl_priv));
 
-    if (x_log2 > 0) {
-        /* ptr += (bx & x_mask) * block_size * sizeof(float)
-         * ubfiz extracts bits [x_log2-1:0] from bx and shifts left by 5
-         * (= log2(block_size * sizeof(float)) = log2(8*4) = 5). */
-        aarch64_add_comment(a, "add x offset");
-        i_ubfiz(a, tmp1, a64op_x(s->bx), a64op_imm(5), a64op_imm(x_log2));
+    /* Some helpful log2 values for ubfiz. */
+    /* TODO */
+    const int sizeof_float_log2 = 2;
+    const int block_size_log2 = (p->block_size == 16) ? 4: 3;
+    if (p->dither.size_log2 != block_size_log2) {
+        aarch64_annotate_next(a, "tmp1 = (bx & ((1 << size_log2) - 1)) * block_size * sizeof(float);");
+        const int lsb = block_size_log2 + sizeof_float_log2;
+        const int width = p->dither.size_log2 - block_size_log2;
+        i_ubfiz(a, tmp1, a64op_x(s->bx), a64op_imm(lsb), a64op_imm(width));
+        aarch64_annotate_next(a, "ptr += tmp1;");
         i_add(a, ptr, ptr, tmp1);
     }
 
     aarch64_add_comment(a, "dither");
     int last_y_off = -1;
-    for (int k = 0; k < nsorted; k++) {
-        int i     = sorted[k];
-        int y_off = y_offs[i];
+    for (int sorted_i = 0; sorted_i < n_comps; sorted_i++) {
+        int i = sorted[sorted_i];
+        uint8_t y_off = MASK_GET(p->dither.y_offset, i);
         bool do_load = (y_off != last_y_off);
 
-        if (k == 0) {
-            /* First component: compute row byte offset via ubfiz (mask+shift
-             * in one instruction: bits [size_log2-1:0] of (y+y_off), shifted
-             * left by stride_log2) and advance ptr. */
+        const int stride_log2 = p->dither.size_log2 + sizeof_float_log2;
+        if (last_y_off < 0) {
+            /* On the first run, calculate pointer inside dither_matrix */
             if (y_off == 0) {
-                i_ubfiz(a, tmp1, a64op_x(s->y), a64op_imm(stride_log2), a64op_imm(size_log2));
+                i_ubfiz(a, tmp1, a64op_x(s->y), a64op_imm(stride_log2), a64op_imm(p->dither.size_log2));
             } else {
-                i_add(a, w_tmp1, s->y, a64op_imm(y_off));
-                i_ubfiz(a, tmp1, tmp1, a64op_imm(stride_log2), a64op_imm(size_log2));
+                i_add(a, wtmp1, s->y, a64op_imm(y_off));
+                i_ubfiz(a, tmp1, tmp1, a64op_imm(stride_log2), a64op_imm(p->dither.size_log2));
             }
             i_add(a, ptr, ptr, tmp1);
         } else if (do_load) {
-            /* Subsequent component with different y_off: advance ptr by the
-             * compile-time byte delta between consecutive y offsets. */
+            /* On subsequent runs, just increment the pointer.
+             * The matrix repeats itself at the end, so we don't risk overreading.
+             */
             int delta = (y_off - last_y_off) << stride_log2;
             i_add(a, ptr, ptr, a64op_imm(delta));
         }
 
-        if (do_load)
-            i_ldp(a, v_q(s->vt[0]), v_q(s->vt[1]), a64op_base(ptr));
+        if (do_load) {
+            i_ldp(a, v_q(dither_vl), v_q(dither_vh), a64op_base(ptr));
+        }
 
-        i_fadd(a, s->vl[i], s->vl[i], s->vt[0]);
+        i_fadd    (a, vl[i], vl[i], dither_vl);
         if (s->use_vh)
-            i_fadd(a, s->vh[i], s->vh[i], s->vt[1]);
+            i_fadd(a, vh[i], vh[i], dither_vh);
 
         last_y_off = y_off;
     }
