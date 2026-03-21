@@ -383,19 +383,15 @@ static inline AArch64Op a64op_vec2d (uint8_t n) { return a64op_make_vec(n,  2,  
 static inline AArch64Op a64op_veclist(AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3)
 {
     assert(a64op_type(op0) != AARCH64_OP_NONE);
-    uint8_t n0 = a64op_vec_n(op0);
     uint8_t num_regs = 1;
     if (a64op_type(op1) != AARCH64_OP_NONE) {
-        uint8_t n1 = a64op_vec_n(op1);
-        assert(((n0 + 1) & 0x1f) == n1);
+        assert(((a64op_vec_n(op0) + 1) & 0x1f) == a64op_vec_n(op1));
         num_regs++;
         if (a64op_type(op2) != AARCH64_OP_NONE) {
-            uint8_t n2 = a64op_vec_n(op2);
-            assert(((n1 + 1) & 0x1f) == n2);
+            assert(((a64op_vec_n(op1) + 1) & 0x1f) == a64op_vec_n(op2));
             num_regs++;
             if (a64op_type(op3) != AARCH64_OP_NONE) {
-                uint8_t n3 = a64op_vec_n(op3);
-                assert(((n2 + 1) & 0x1f) == n3);
+                assert(((a64op_vec_n(op2) + 1) & 0x1f) == a64op_vec_n(op3));
                 num_regs++;
             }
         }
