@@ -173,13 +173,14 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
         break;
     case AARCH64_SWS_OP_LINEAR: {
         /*
-         * out->linear packs the 4x5 matrix as 2 bits per entry:
+         * The linear mask in out->linear packs the 4x5 matrix from SwsLinearOp
+         * as 2 bits per entry:
          *   00: m[i][j] == 0
          *   01: m[i][j] == 1
          *   11: m[i][j] is any other coefficient
-         * Columns are reordered so that the offset is at column 0.
+         * The columns are reordered so that the offset is at column 0.
          */
-        const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
+        const int reorder_col[5] = { 1, 2, 3, 4, 0 };
         out->mask = 0;
         for (int i = 0; i < 4; i++) {
             /* skip unused or identity rows */
@@ -187,11 +188,11 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
                 continue;
             MASK_SET(out->mask, i, 1);
             for (int j = 0; j < 5; j++) {
-                int sj = fdata_swizzle[j];
+                int reordered_j = reorder_col[j];
                 if (!av_cmp_q(op->lin.m[i][j], Q1))
-                    LINEAR_MASK_SET(out->linear, i, sj, 1ULL);
+                    LINEAR_MASK_SET(out->linear, i, reordered_j, 1ULL);
                 else if (av_cmp_q(op->lin.m[i][j], Q0))
-                    LINEAR_MASK_SET(out->linear, i, sj, 3ULL);
+                    LINEAR_MASK_SET(out->linear, i, reordered_j, 3ULL);
             }
         }
         break;
@@ -380,6 +381,7 @@ error:
         if (ret == AVERROR(ENOTSUP)){
             av_log(ctx, AV_LOG_DEBUG, "Unsupported SwsOp for aarch64.\n");
             av_log(ctx, AV_LOG_DEBUG, "Regenerate ops_entries.c with: make sws_ops_entries_aarch64\n");
+            // TODO remove this
             exit(1);
         }
         ff_sws_op_chain_free(chain);
