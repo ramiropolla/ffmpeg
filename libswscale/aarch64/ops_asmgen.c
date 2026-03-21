@@ -298,6 +298,12 @@ static void asmgen_process_return(SwsAArch64Context *s, const SwsAArch64OpImplPa
 }
 
 /*********************************************************************/
+/* gather raw pixels from planes */
+/* AARCH64_SWS_OP_READ_BIT */
+/* AARCH64_SWS_OP_READ_NIBBLE */
+/* AARCH64_SWS_OP_READ_PACKED */
+/* AARCH64_SWS_OP_READ_PLANAR */
+
 static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -310,7 +316,7 @@ static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParam
     aarch64_annotate_next(a, "shift_vec = impl->priv;");
     i_ldr(a, v_q(shift_vec), a64op_off(s->impl, offsetof_impl_priv));
 
-    if (s->vec_size == 8) {
+    if (p->block_size == 8) {
         aarch64_add_comment(a, "read byte");
         i_ldrb(a, wtmp0, a64op_post(s->in[0], 1));
     } else {
@@ -318,13 +324,14 @@ static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParam
         i_ldrh(a, wtmp0, a64op_post(s->in[0], 2));
     }
 
-    aarch64_annotate_next(a, "bit_mask = { 1, 1, 1, 1, ... };"); // TODO get gdb output print
+    char buf[64];
+    aarch64_annotate_nextf(a, buf, sizeof(buf), "bit_mask = { 1 <repeats %u times> };", p->block_size);
     i_movi(a, bit_mask, a64op_imm(1));
 
     aarch64_add_comment(a, "broadcast");
     i_dup (a, v_8b(vl[0]), wtmp0);
 
-    if (s->vec_size == 16) {
+    if (p->block_size == 16) {
         aarch64_add_comment(a, "broadcast second byte and merge");
         i_lsr (a, wtmp0,       wtmp0,       a64op_imm(8));
         i_dup (a, v_8b(vtmp0), wtmp0);
@@ -345,7 +352,7 @@ static void asmgen_op_read_nibble(SwsAArch64Context *s, const SwsAArch64OpImplPa
 
     i_movi(a, v_8b(nibble_mask), a64op_imm(0x0f));
 
-    if (s->vec_size == 8) {
+    if (p->block_size == 8) {
         i_ldr (a, v_s(vl[0]), a64op_post(s->in[0], 4));
         aarch64_annotate_next(a, "vt0 = high nibbles");
         i_ushr(a, vt[0], vl[0], a64op_imm(4));
@@ -406,6 +413,13 @@ static void asmgen_op_read_planar(SwsAArch64Context *s, const SwsAArch64OpImplPa
         }
     }
 }
+
+/*********************************************************************/
+/* write raw pixels to planes */
+/* AARCH64_SWS_OP_WRITE_BIT */
+/* AARCH64_SWS_OP_WRITE_NIBBLE */
+/* AARCH64_SWS_OP_WRITE_PACKED */
+/* AARCH64_SWS_OP_WRITE_PLANAR */
 
 static void asmgen_op_write_bit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
@@ -499,7 +513,10 @@ static void asmgen_op_write_planar(SwsAArch64Context *s, const SwsAArch64OpImplP
     }
 }
 
+/*********************************************************************/
 /* swap byte order (for differing endianness) */
+/* AARCH64_SWS_OP_SWAP_BYTES */
+
 static void asmgen_op_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -518,42 +535,48 @@ static void asmgen_op_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImplPar
     }
 }
 
-static const char *print_v(char buf[8], uint8_t n, uint8_t vh)
+/*********************************************************************/
+/* rearrange channel order, or duplicate channels */
+/* AARCH64_SWS_OP_SWIZZLE */
+
+#define SWIZZLE_TMP 0xf
+
+static const char *print_swizzle_v(char buf[8], uint8_t n, bool vh)
 {
-    if (n == 0xf)
-        snprintf(buf, sizeof(char[8]), "vtmp%u", vh);
+    if (n == SWIZZLE_TMP)
+        snprintf(buf, sizeof(char[8]), "vtmp%c", vh ? 'h' : 'l');
     else
         snprintf(buf, sizeof(char[8]), "v%c[%u]", vh ? 'h' : 'l', n);
     return buf;
 }
-#define PRINT_V(n, vh) print_v((char[8]){ 0 }, n, vh)
+#define PRINT_SWIZZLE_V(n, vh) print_swizzle_v((char[8]){ 0 }, n, vh)
 
 static void swizzle_emit(SwsAArch64Context *s, uint8_t dst, uint8_t src)
 {
-    char buf[32];
-    const uint8_t tmpv = 0xf;
     AArch64Context *a = s->actx;
     AArch64Op src_op[2] = {
-        (src == tmpv) ? s->vt[0] : s->vl[src],
-        (src == tmpv) ? s->vt[1] : s->vh[src],
+        (src == SWIZZLE_TMP) ? s->vt[0] : s->vl[src],
+        (src == SWIZZLE_TMP) ? s->vt[1] : s->vh[src],
     };
     AArch64Op dst_op[2] = {
-        (dst == tmpv) ? s->vt[0] : s->vl[dst],
-        (dst == tmpv) ? s->vt[1] : s->vh[dst],
+        (dst == SWIZZLE_TMP) ? s->vt[0] : s->vl[dst],
+        (dst == SWIZZLE_TMP) ? s->vt[1] : s->vh[dst],
     };
+    char buf[32];
     aarch64_annotate_nextf(a, buf, sizeof(buf), "%s = %s;",
-                           PRINT_V(dst, 0), PRINT_V(src, 0));
+                           PRINT_SWIZZLE_V(dst, false),
+                           PRINT_SWIZZLE_V(src, false));
     i_mov(a, dst_op[0], src_op[0]);
     if (s->use_vh) {
         aarch64_annotate_nextf(a, buf, sizeof(buf), "%s = %s;",
-                               PRINT_V(dst, 1), PRINT_V(src, 1));
+                               PRINT_SWIZZLE_V(dst, true),
+                               PRINT_SWIZZLE_V(src, true));
         i_mov(a, dst_op[1], src_op[1]);
     }
 }
 
 static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
-    const uint8_t tmpv = 0xf;
     AArch64Context *a = s->actx;
 
     /* Compute used vectors (src and dst) */
@@ -565,58 +588,57 @@ static void asmgen_op_swizzle(SwsAArch64Context *s, const SwsAArch64OpImplParams
         done[dst] = false;
     }
 
-    int prev_ops_count = 0;
-    int ops_count = 0;
-
-    int unobstructed_copies = -1;
-    int swap_and_rotate = -1;
-
     /* Unobstructed copies */
-    do {
-        prev_ops_count = ops_count;
+    bool comment = false;
+    for (bool progress = true; progress; ) {
+        progress = false;
         for (int dst = 0; dst < 4; dst++) {
-            if (!done[dst] && !src_used[dst]) {
-                uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
-                if (unobstructed_copies < 0) {
-                    aarch64_add_comment(a, "unobstructed copies");
-                    unobstructed_copies = ops_count;
-                }
-                swizzle_emit(s, dst, src);
-                ops_count++;
-                src_used[src]--;
-                done[dst] = true;
+            if (done[dst] || src_used[dst])
+                continue;
+            uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
+            if (!comment) {
+                aarch64_add_comment(a, "unobstructed copies");
+                comment = true;
             }
+            swizzle_emit(s, dst, src);
+            src_used[src]--;
+            done[dst] = true;
+            progress = true;
         }
-    } while (ops_count > prev_ops_count);
+    }
 
     /* Swap and rotate */
-    for (int orig_dst = 0; orig_dst < 4; orig_dst++) {
-        if (done[orig_dst])
+    comment = false;
+    for (int dst = 0; dst < 4; dst++) {
+        if (done[dst])
             continue;
 
-        if (swap_and_rotate < 0) {
+        if (!comment) {
             aarch64_add_comment(a, "swap and rotate");
-            swap_and_rotate = ops_count;
+            comment = true;
         }
 
-        swizzle_emit(s, tmpv, orig_dst);
-        ops_count++;
+        swizzle_emit(s, SWIZZLE_TMP, dst);
 
-        uint8_t dst = orig_dst;
-        uint8_t src = (p->swizzle >> (dst << 2)) & 0xf;
-        while (src != orig_dst) {
-            swizzle_emit(s, dst, src);
-            ops_count++;
-            done[dst] = true;
-            dst = src;
-            src = (p->swizzle >> (dst << 2)) & 0xf;
+        uint8_t cur_dst = dst;
+        uint8_t src = (p->swizzle >> (cur_dst << 2)) & 0xf;
+        while (src != dst) {
+            swizzle_emit(s, cur_dst, src);
+            done[cur_dst] = true;
+            cur_dst = src;
+            src = (p->swizzle >> (cur_dst << 2)) & 0xf;
         }
 
-        swizzle_emit(s, dst, tmpv);
-        ops_count++;
-        done[dst] = true;
+        swizzle_emit(s, cur_dst, SWIZZLE_TMP);
+        done[cur_dst] = true;
     }
 }
+
+#undef SWIZZLE_TMP
+
+/*********************************************************************/
+/* split tightly packed data into components */
+/* AARCH64_SWS_OP_UNPACK */
 
 static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
@@ -689,6 +711,10 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     LOOP_MASK_BWD_VH(s, p, i) i_and(a, vh[i], vh[i], vt[mask_idx[i]]);
 }
 
+/*********************************************************************/
+/* compress components into tightly packed data */
+/* AARCH64_SWS_OP_PACK */
+
 static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -723,7 +749,10 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
     }
 }
 
+/*********************************************************************/
 /* logical left shift of raw pixel values by (u8) */
+/* AARCH64_SWS_OP_LSHIFT */
+
 static void asmgen_op_lshift(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -734,7 +763,10 @@ static void asmgen_op_lshift(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     LOOP_MASK_VH(s, p, i) i_shl(a, vh[i], vh[i], a64op_imm(p->shift));
 }
 
+/*********************************************************************/
 /* right shift of raw pixel values by (u8) */
+/* AARCH64_SWS_OP_RSHIFT */
+
 static void asmgen_op_rshift(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -745,7 +777,10 @@ static void asmgen_op_rshift(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     LOOP_MASK_VH(s, p, i) i_ushr(a, vh[i], vh[i], a64op_imm(p->shift));
 }
 
+/*********************************************************************/
 /* clear pixel values */
+/* AARCH64_SWS_OP_CLEAR */
+
 static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -761,7 +796,10 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     LOOP_MASK_VH(s, p, i) i_dup(a, vh[i], a64op_elem(vt0, i));
 }
 
+/*********************************************************************/
 /* convert (cast) between formats */
+/* AARCH64_SWS_OP_CONVERT */
+
 static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -824,7 +862,10 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     }
 }
 
+/*********************************************************************/
 /* expand integers to the full range */
+/* AARCH64_SWS_OP_EXPAND */
+
 static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -851,7 +892,10 @@ static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     }
 }
 
+/*********************************************************************/
 /* numeric minimum (q4) */
+/* AARCH64_SWS_OP_MIN */
+
 static void asmgen_op_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -875,7 +919,10 @@ static void asmgen_op_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     }
 }
 
+/*********************************************************************/
 /* numeric maximum (q4) */
+/* AARCH64_SWS_OP_MAX */
+
 static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -899,7 +946,10 @@ static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     }
 }
 
+/*********************************************************************/
 /* multiplication by scalar (q) */
+/* AARCH64_SWS_OP_SCALE */
+
 static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -926,6 +976,10 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
         LOOP_MASK_VH(s, p, i) i_mul (a, vh[i], vh[i], vt0);
     }
 }
+
+/*********************************************************************/
+/* generalized linear affine transform */
+/* AARCH64_SWS_OP_LINEAR */
 
 /* One vl/vh pass of the generalized linear affine transform.
  * v[]  is the working register array (vl or vh); vt[] holds saved sources.
@@ -973,7 +1027,6 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     }
 }
 
-/* generalized linear affine transform */
 static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -1049,9 +1102,13 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         }
     }
 
-    linear_pass(s, p, s->vl, vt, vc, save_needed, fdata_swizzle, 0);
-    linear_pass(s, p, s->vh, vt, vc, save_needed, fdata_swizzle, 1);
+    linear_pass(s, p, vl, vt, vc, save_needed, fdata_swizzle, 0);
+    linear_pass(s, p, vh, vt, vc, save_needed, fdata_swizzle, 1);
 }
+
+/*********************************************************************/
+/* add dithering noise */
+/* AARCH64_SWS_OP_DITHER */
 
 static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
@@ -1138,6 +1195,7 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     }
 }
 
+/*********************************************************************/
 static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
     AArch64Context *a = s->actx;
@@ -1197,7 +1255,7 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 
     aarch64_annotate_next(a, "impl++;");
     i_add(a, s->impl, s->impl, a64op_imm(sizeof_impl));
-    aarch64_annotate_next(a, "goto next_func;");
+    aarch64_annotate_next(a, "jump to next_func");
     i_br (a, s->next_func);
 }
 
