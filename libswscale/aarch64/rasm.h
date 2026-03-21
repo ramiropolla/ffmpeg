@@ -60,6 +60,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_LD4,
     AARCH64_INSN_LDP,
     AARCH64_INSN_LDR,
+    AARCH64_INSN_LDRB,
     AARCH64_INSN_LDRH,
     AARCH64_INSN_LSR,
     AARCH64_INSN_MOV,
@@ -514,6 +515,7 @@ static inline AArch64Op a64op_reg (AArch64Op base, AArch64Op off, uint8_t ext, u
 #define i_ld4(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_LD4,    op0, op1, OPN, OPN)
 #define i_ldp(actx,    op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_LDP,    op0, op1, op2, OPN)
 #define i_ldr(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_LDR,    op0, op1, OPN, OPN)
+#define i_ldrb(actx,   op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_LDRB,   op0, op1, OPN, OPN)
 #define i_ldrh(actx,   op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_LDRH,   op0, op1, OPN, OPN)
 #define i_lsr(actx,    op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_LSR,    op0, op1, op2, OPN)
 #define i_mov(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_MOV,    op0, op1, OPN, OPN)
