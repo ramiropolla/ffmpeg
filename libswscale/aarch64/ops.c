@@ -207,13 +207,12 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
 static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
                                 const SwsOp *op, SwsImplResult *res)
 {
+    /* Start with offset and then the coefficients */
     const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
 
     /* Count non-zero coefficients */
     int count = 0;
-    for (int i = 0; i < 4; i++) {
-        if (!MASK_GET(p->mask, i))
-            continue;
+    LOOP_MASK(p, i) {
         for (int j = 0; j < 5; j++) {
             int sj = fdata_swizzle[j];
             if (LINEAR_MASK_GET(p->linear, i, sj))

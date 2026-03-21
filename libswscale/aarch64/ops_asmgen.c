@@ -982,7 +982,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     AArch64Op *vc = &vt[4];
     AArch64Op vcoeff_ptr = s->tmp0;
 
-    /* Process offset first (column 4), then cross-row columns 0..3 */
+    /* Start with offset and then the coefficients */
     const int fdata_swizzle[5] = { 4, 0, 1, 2, 3 };
 
     /*
