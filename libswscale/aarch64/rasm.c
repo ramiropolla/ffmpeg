@@ -47,6 +47,8 @@ void aarch64_free(AArch64Context **p_actx)
             case AARCH64_NODE_COMMENT:
                 av_freep(&node->comment.text);
                 break;
+            default:
+                break;
             }
             av_freep(&node->inline_comment);
             AArch64Node *cur_node = node;

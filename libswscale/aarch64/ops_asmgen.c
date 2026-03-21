@@ -1197,6 +1197,8 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     case AARCH64_SWS_OP_PROCESS_RETURN:
         asmgen_process_return(s, p);
         return;
+    default:
+        break;
     }
 
     char func_name[256];
@@ -1241,6 +1243,8 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     case AARCH64_SWS_OP_SCALE:        asmgen_op_scale(s, p);        break;
     case AARCH64_SWS_OP_LINEAR:       asmgen_op_linear(s, p);       break;
     case AARCH64_SWS_OP_DITHER:       asmgen_op_dither(s, p);       break;
+    default:
+        break;
     }
 
     aarch64_annotate_next(a, "impl += 1;");

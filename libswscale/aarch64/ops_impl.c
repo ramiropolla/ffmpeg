@@ -209,6 +209,8 @@ void sws_aarch64_op_impl_serialize(char *buf, size_t size, const SwsAArch64OpImp
     case AARCH64_SWS_OP_PROCESS:
     case AARCH64_SWS_OP_PROCESS_RETURN:
         goto end;
+    default:
+        break;
     }
 
     buf_appendf(&buf, &size, ", .block_size = %u, .type = %s",

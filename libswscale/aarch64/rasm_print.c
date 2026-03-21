@@ -129,7 +129,8 @@ static const char *extend_name(uint8_t extend)
     case AARCH64_EXTEND_SXTH: return "sxth";
     case AARCH64_EXTEND_SXTW: return "sxtw";
     case AARCH64_EXTEND_SXTX: return "sxtx";
-    default: return NULL;
+    default:
+        return NULL;
     }
 }
 
@@ -146,7 +147,8 @@ static void print_gpr(FILE *fp, AArch64Op op)
     switch (size) {
     case sizeof(uint32_t): fprintf(fp, "w%d", n); break;
     case sizeof(uint64_t): fprintf(fp, "x%d", n); break;
-    default: assert(!"Invalid GPR size!");
+    default:
+        assert(!"Invalid GPR size!");
     }
 
     uint8_t ext = a64op_gpr_ext(op);
