@@ -735,6 +735,8 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     AArch64Op *vh = s->vh;
     AArch64Op clear_vec = a64op_make_vec(a64op_vec_n(s->vt[0]), 0, s->el_size);
 
+    // TODO smaller clears
+    // clear with ld1r
     aarch64_annotate_next(a, "v128 clear_vec = impl->priv.v128;");
     i_ldr(a, v_q(clear_vec), a64op_off(s->impl, offsetof_impl_priv));
 
@@ -1163,6 +1165,7 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     case AARCH64_SWS_OP_SCALE:        asmgen_op_scale(s, p);        break;
     case AARCH64_SWS_OP_LINEAR:       asmgen_op_linear(s, p);       break;
     case AARCH64_SWS_OP_DITHER:       asmgen_op_dither(s, p);       break;
+    // TODO AARCH64_SWS_OP_SHUFFLE
     default:
         break;
     }
