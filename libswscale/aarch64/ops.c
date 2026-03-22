@@ -269,19 +269,23 @@ static int aarch64_setup(SwsOpList *ops, int block_size, int n,
     case SWS_OP_READ:
         /* Negative shift values to perform right shift using ushl. */
         if (op->rw.frac == 3) {
-            out->priv = (SwsOpPriv){ .u8 = {
-                -7, -6, -5, -4, -3, -2, -1, 0,
-                -7, -6, -5, -4, -3, -2, -1, 0,
-            } };
+            out->priv = (SwsOpPriv) {
+                .u8 = {
+                    -7, -6, -5, -4, -3, -2, -1, 0,
+                    -7, -6, -5, -4, -3, -2, -1, 0,
+                }
+            };
         }
         break;
     case SWS_OP_WRITE:
         /* Shift values for ushl. */
         if (op->rw.frac == 3) {
-            out->priv = (SwsOpPriv){ .u8 = {
-                7, 6, 5, 4, 3, 2, 1, 0,
-                7, 6, 5, 4, 3, 2, 1, 0,
-            } };
+            out->priv = (SwsOpPriv) {
+                .u8 = {
+                    7, 6, 5, 4, 3, 2, 1, 0,
+                    7, 6, 5, 4, 3, 2, 1, 0,
+                }
+            };
         }
         break;
     case SWS_OP_CLEAR:
