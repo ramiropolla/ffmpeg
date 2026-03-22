@@ -1210,19 +1210,16 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 
     aarch64_func_begin(a, func_name, true);
 
-    aarch64_annotate_next(a, "SwsFuncPtr cont = impl->cont;");
-    i_ldr(a, s->cont, a64op_off(s->impl, offsetof_impl_cont));
-
+    // TODO comments
     size_t el_size = sws_aarch64_pixel_size(p->type);
     size_t total_size = p->block_size * el_size;
     s->vec_size = FFMIN(total_size, 16);
-
     s->use_vh = (s->vec_size != total_size);
-
     s->el_size = el_size;
     s->el_count = s->vec_size / el_size;
-
     reshape_all_vectors(s, s->el_count, el_size);
+
+    i_ldr(a, s->cont, a64op_off(s->impl, offsetof_impl_cont));  CMT("SwsFuncPtr cont = impl->cont;");
 
     switch (p->op) {
     case AARCH64_SWS_OP_READ_BIT:     asmgen_op_read_bit(s, p);     break;
@@ -1252,10 +1249,8 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
         break;
     }
 
-    aarch64_annotate_next(a, "impl += 1;");
-    i_add(a, s->impl, s->impl, a64op_imm(sizeof_impl));
-    aarch64_annotate_next(a, "jump to cont");
-    i_br (a, s->cont);
+    i_add(a, s->impl, s->impl, a64op_imm(sizeof_impl)); CMT("impl += 1;");
+    i_br (a, s->cont);                                  CMT("jump to cont");
 }
 
 /*********************************************************************/
