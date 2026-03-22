@@ -27,6 +27,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "libavutil/attributes.h"
+
 // TODO prefixes:
 // i_:  instructions
 // v_:  vector operand modifiers
@@ -137,16 +139,6 @@ typedef enum AArch64OpType {
     AARCH64_OP_NB,
 } AArch64OpType;
 
-#define AARCH64_EXTEND_NONE 0
-#define AARCH64_EXTEND_UXTB 1
-#define AARCH64_EXTEND_UXTH 2
-#define AARCH64_EXTEND_UXTW 3
-#define AARCH64_EXTEND_UXTX 4
-#define AARCH64_EXTEND_SXTB 5
-#define AARCH64_EXTEND_SXTH 6
-#define AARCH64_EXTEND_SXTW 7
-#define AARCH64_EXTEND_SXTX 8
-
 typedef union AArch64Op {
     uint8_t  u8 [8];
     uint16_t u16[4];
@@ -229,7 +221,6 @@ typedef struct AArch64Context {
 } AArch64Context;
 
 AArch64Context *aarch64_alloc(void);
-
 void aarch64_free(AArch64Context **p_actx);
 
 int aarch64_func_begin(AArch64Context *actx, const char *name, bool export);
@@ -237,30 +228,45 @@ int aarch64_func_begin(AArch64Context *actx, const char *name, bool export);
 AArch64Node *aarch64_add_insn(AArch64Context *actx, AArch64InsnId id,
                               AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3);
 AArch64Node *aarch64_add_comment(AArch64Context *actx, const char *comment);
-AArch64Node *aarch64_add_commentf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...);
+AArch64Node *aarch64_add_commentf(AArch64Context *actx, char *s, size_t n,
+                                  const char *fmt, ...) av_printf_format(4, 5);
 AArch64Node *aarch64_add_label(AArch64Context *actx, int id);
 AArch64Node *aarch64_add_func(AArch64Context *actx, int id, bool export);
 AArch64Node *aarch64_add_endfunc(AArch64Context *actx);
 
 int aarch64_new_label(AArch64Context *actx, const char *name);
-int aarch64_new_labelf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...) /* av_printf_format(4, 5) */;
+int aarch64_new_labelf(AArch64Context *actx, char *s, size_t n,
+                       const char *fmt, ...) av_printf_format(4, 5);
 
 void aarch64_annotate(AArch64Context *actx, const char *comment);
-void aarch64_annotatef(AArch64Context *actx, char *s, size_t n, const char *fmt, ...);
+void aarch64_annotatef(AArch64Context *actx, char *s, size_t n,
+                       const char *fmt, ...) av_printf_format(4, 5);
 void aarch64_annotate_next(AArch64Context *actx, const char *comment);
-void aarch64_annotate_nextf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...);
+void aarch64_annotate_nextf(AArch64Context *actx, char *s, size_t n,
+                            const char *fmt, ...) av_printf_format(4, 5);
 
 int aarch64_print(AArch64Context *actx, FILE *fp);
 
 /*********************************************************************/
 /* Accessors */
 
-static inline uint8_t a64op_type(AArch64Op op) { return op.u8[0]; }
+static inline AArch64Op a64op_new(AArch64OpType type)
+{
+    AArch64Op op = { 0 };
+    op.u8[7] = type;
+    return op;
+}
+
+/* getters */
+static inline uint8_t a64op_type(AArch64Op op) { return op.u8[7]; }
 
 /*********************************************************************/
 /* AARCH64_OP_NONE */
 
-static inline AArch64Op a64op_none(void) { return (AArch64Op) { 0 }; }
+static inline AArch64Op a64op_none(void)
+{
+    return a64op_new(AARCH64_OP_NONE);
+}
 
 #define OPN a64op_none()
 
@@ -269,14 +275,13 @@ static inline AArch64Op a64op_none(void) { return (AArch64Op) { 0 }; }
 
 static inline AArch64Op a64op_cond(uint8_t cond)
 {
-    AArch64Op op = { 0 };
-    op.u8[0] = AARCH64_OP_COND;
-    op.u8[1] = cond;
+    AArch64Op op = a64op_new(AARCH64_OP_COND);
+    op.u8[0] = cond;
     return op;
 }
 
-/* getter */
-static inline uint8_t a64op_cond_val(AArch64Op op) { return op.u8[1]; }
+/* getters */
+static inline uint8_t a64op_cond_val(AArch64Op op) { return op.u8[0]; }
 
 static inline AArch64Op a64cond_eq(void) { return a64op_cond(AARCH64_EQ); }
 static inline AArch64Op a64cond_ne(void) { return a64op_cond(AARCH64_NE); }
@@ -302,44 +307,41 @@ static inline AArch64Op a64cond_nv(void) { return a64op_cond(AARCH64_NV); }
 
 static inline AArch64Op a64op_label(int id)
 {
-    AArch64Op op = { 0 };
-    op.u8[0]  = AARCH64_OP_LABEL;
-    op.u32[1] = (uint32_t)id;
+    AArch64Op op = a64op_new(AARCH64_OP_LABEL);
+    op.u16[0] = (uint16_t) id;
     return op;
 }
 
-/* getter */
-static inline int a64op_label_id(AArch64Op op) { return (int)op.u32[1]; }
+/* getters */
+static inline int a64op_label_id(AArch64Op op) { return (int) op.u16[0]; }
 
 /*********************************************************************/
 /* AARCH64_OP_IMM */
 
 static inline AArch64Op a64op_imm(int32_t imm)
 {
-    AArch64Op op = { 0 };
-    op.u8[0]  = AARCH64_OP_IMM;
-    op.u32[1] = (uint32_t)imm;
+    AArch64Op op = a64op_new(AARCH64_OP_IMM);
+    op.u32[0] = (uint32_t) imm;
     return op;
 }
 
-/* getter */
-static inline int32_t a64op_imm_val(AArch64Op op) { return (int32_t)op.u32[1]; }
+/* getters */
+static inline int32_t a64op_imm_val(AArch64Op op) { return (int32_t) op.u32[0]; }
 
 /*********************************************************************/
 /* AARCH64_OP_GPR */
 
 static inline AArch64Op a64op_make_gpr(uint8_t n, uint8_t size)
 {
-    AArch64Op op = { 0 };
-    op.u8[0] = AARCH64_OP_GPR;
-    op.u8[1] = n;
-    op.u8[2] = size;
+    AArch64Op op = a64op_new(AARCH64_OP_GPR);
+    op.u8[0] = n;
+    op.u8[1] = size;
     return op;
 }
 
 /* getters */
-static inline uint8_t a64op_gpr_n   (AArch64Op op) { return op.u8[1]; }
-static inline uint8_t a64op_gpr_size(AArch64Op op) { return op.u8[2]; }
+static inline uint8_t a64op_gpr_n   (AArch64Op op) { return op.u8[0]; }
+static inline uint8_t a64op_gpr_size(AArch64Op op) { return op.u8[1]; }
 
 static inline AArch64Op a64op_gpw(uint8_t n) { return a64op_make_gpr(n, sizeof(uint32_t)); }
 static inline AArch64Op a64op_gpx(uint8_t n) { return a64op_make_gpr(n, sizeof(uint64_t)); }
@@ -354,20 +356,21 @@ static inline AArch64Op a64op_x(AArch64Op op) { return a64op_gpx(a64op_gpr_n(op)
 
 static inline AArch64Op a64op_make_vec(uint8_t n, uint8_t el_count, uint8_t el_size)
 {
-    AArch64Op op = { 0 };
-    op.u8[0] = AARCH64_OP_VEC;
-    op.u8[1] = n;
-    op.u8[2] = el_count;
-    op.u8[3] = el_size;
+    AArch64Op op = a64op_new(AARCH64_OP_VEC);
+    op.u8[0] = n;
+    op.u8[1] = el_count;
+    op.u8[2] = el_size;
+    op.u8[3] = 0; /* num_regs */
+    op.u8[4] = 0; /* idx_p1 */
     return op;
 }
 
 /* getters */
-static inline uint8_t a64op_vec_n       (AArch64Op op) { return op.u8[1]; }
-static inline uint8_t a64op_vec_el_count(AArch64Op op) { return op.u8[2]; }
-static inline uint8_t a64op_vec_el_size (AArch64Op op) { return op.u8[3]; }
-static inline uint8_t a64op_vec_num_regs(AArch64Op op) { return op.u8[4]; }
-static inline uint8_t a64op_vec_idx_p1  (AArch64Op op) { return op.u8[5]; }
+static inline uint8_t a64op_vec_n       (AArch64Op op) { return op.u8[0]; }
+static inline uint8_t a64op_vec_el_count(AArch64Op op) { return op.u8[1]; }
+static inline uint8_t a64op_vec_el_size (AArch64Op op) { return op.u8[2]; }
+static inline uint8_t a64op_vec_num_regs(AArch64Op op) { return op.u8[3]; }
+static inline uint8_t a64op_vec_idx_p1  (AArch64Op op) { return op.u8[4]; }
 
 static inline AArch64Op a64op_vec   (uint8_t n) { return a64op_make_vec(n,  0,  0); }
 static inline AArch64Op a64op_vecb  (uint8_t n) { return a64op_make_vec(n,  0,  1); }
@@ -399,14 +402,14 @@ static inline AArch64Op a64op_veclist(AArch64Op op0, AArch64Op op1, AArch64Op op
             }
         }
     }
-    op0.u8[4] = num_regs;
+    op0.u8[3] = num_regs;
     return op0;
 }
 
 static inline AArch64Op a64op_elem(AArch64Op op, uint8_t idx)
 {
-    op.u8[2] = 0;
-    op.u8[5] = idx + 1;
+    op.u8[1] = 0;
+    op.u8[4] = idx + 1;
     return op;
 }
 
@@ -464,21 +467,17 @@ size_t a64op_vec_struct(AArch64Op op, AArch64OpVecOp *out);
 
 static inline AArch64Op a64op_make_base(uint8_t n, uint8_t mode, int16_t imm)
 {
-    AArch64Op op = { 0 };
-    op.u8[0]  = AARCH64_OP_BASE;
-    op.u8[1]  = n;
-    op.u8[2]  = mode;
-    op.u16[2] = (uint16_t) imm;
+    AArch64Op op = a64op_new(AARCH64_OP_BASE);
+    op.u16[0] = (uint16_t) imm;
+    op.u8[2]  = n;
+    op.u8[3]  = mode;
     return op;
 }
 
 /* getters */
-static inline uint8_t a64op_base_n   (AArch64Op op) { return op.u8[1]; }
-static inline uint8_t a64op_base_mode(AArch64Op op) { return op.u8[2]; }
-static inline int16_t a64op_base_imm (AArch64Op op) { return (int16_t)op.u16[2]; }
-static inline uint8_t a64op_base_m   (AArch64Op op) { return op.u8[3]; }
-static inline uint8_t a64op_base_ext (AArch64Op op) { return op.u8[4]; }
-static inline uint8_t a64op_base_sh  (AArch64Op op) { return op.u8[5]; }
+static inline int16_t a64op_base_imm (AArch64Op op) { return (int16_t) op.u16[0]; }
+static inline uint8_t a64op_base_n   (AArch64Op op) { return op.u8[2]; }
+static inline uint8_t a64op_base_mode(AArch64Op op) { return op.u8[3]; }
 
 static inline AArch64Op a64op_base(AArch64Op op)              { return a64op_make_base(a64op_gpr_n(op), AARCH64_BASE_OFFSET,   0); }
 static inline AArch64Op a64op_off (AArch64Op op, int16_t imm) { return a64op_make_base(a64op_gpr_n(op), AARCH64_BASE_OFFSET, imm); }

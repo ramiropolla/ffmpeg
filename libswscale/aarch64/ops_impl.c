@@ -28,28 +28,36 @@
 #include "ops_impl.h"
 
 /*********************************************************************/
+static const char pixel_types[AARCH64_SWS_OP_TYPE_NB][32] = {
+    [AARCH64_PIXEL_U8 ] = "AARCH64_PIXEL_U8",
+    [AARCH64_PIXEL_U16] = "AARCH64_PIXEL_U16",
+    [AARCH64_PIXEL_U32] = "AARCH64_PIXEL_U32",
+    [AARCH64_PIXEL_F32] = "AARCH64_PIXEL_F32",
+};
+
 const char *sws_aarch64_pixel_type(SwsAArch64PixelType fmt)
 {
-    switch (fmt) {
-    case AARCH64_PIXEL_U8:  return "AARCH64_PIXEL_U8";
-    case AARCH64_PIXEL_U16: return "AARCH64_PIXEL_U16";
-    case AARCH64_PIXEL_U32: return "AARCH64_PIXEL_U32";
-    case AARCH64_PIXEL_F32: return "AARCH64_PIXEL_F32";
+    if (fmt >= AARCH64_PIXEL_TYPE_NB) {
+        assert(!"Invalid pixel type!");
+        return NULL;
     }
-    assert(!"Invalid pixel type!");
-    return NULL;
+    return pixel_types[fmt];
 }
+
+static const char pixel_type_names[AARCH64_SWS_OP_TYPE_NB][4] = {
+    [AARCH64_PIXEL_U8 ] = "u8",
+    [AARCH64_PIXEL_U16] = "u16",
+    [AARCH64_PIXEL_U32] = "u32",
+    [AARCH64_PIXEL_F32] = "f32",
+};
 
 const char *sws_aarch64_pixel_type_name(SwsAArch64PixelType fmt)
 {
-    switch (fmt) {
-    case AARCH64_PIXEL_U8:  return "u8";
-    case AARCH64_PIXEL_U16: return "u16";
-    case AARCH64_PIXEL_U32: return "u32";
-    case AARCH64_PIXEL_F32: return "f32";
+    if (fmt >= AARCH64_PIXEL_TYPE_NB) {
+        assert(!"Invalid pixel type!");
+        return NULL;
     }
-    assert(!"Invalid pixel type!");
-    return NULL;
+    return pixel_type_names[fmt];
 }
 
 size_t sws_aarch64_pixel_size(SwsAArch64PixelType fmt)
@@ -59,76 +67,86 @@ size_t sws_aarch64_pixel_size(SwsAArch64PixelType fmt)
     case AARCH64_PIXEL_U16: return 2;
     case AARCH64_PIXEL_U32: return 4;
     case AARCH64_PIXEL_F32: return 4;
+    default:
+        assert(!"Invalid pixel type!");
+        break;
     }
-    assert(!"Invalid pixel type!");
     return 0;
 }
 
 /*********************************************************************/
+static const char op_types[AARCH64_SWS_OP_TYPE_NB][32] = {
+    [AARCH64_SWS_OP_NONE          ] = "AARCH64_SWS_OP_NONE",
+    [AARCH64_SWS_OP_PROCESS       ] = "AARCH64_SWS_OP_PROCESS",
+    [AARCH64_SWS_OP_PROCESS_RETURN] = "AARCH64_SWS_OP_PROCESS_RETURN",
+    [AARCH64_SWS_OP_READ_BIT      ] = "AARCH64_SWS_OP_READ_BIT",
+    [AARCH64_SWS_OP_READ_NIBBLE   ] = "AARCH64_SWS_OP_READ_NIBBLE",
+    [AARCH64_SWS_OP_READ_PACKED   ] = "AARCH64_SWS_OP_READ_PACKED",
+    [AARCH64_SWS_OP_READ_PLANAR   ] = "AARCH64_SWS_OP_READ_PLANAR",
+    [AARCH64_SWS_OP_WRITE_BIT     ] = "AARCH64_SWS_OP_WRITE_BIT",
+    [AARCH64_SWS_OP_WRITE_NIBBLE  ] = "AARCH64_SWS_OP_WRITE_NIBBLE",
+    [AARCH64_SWS_OP_WRITE_PACKED  ] = "AARCH64_SWS_OP_WRITE_PACKED",
+    [AARCH64_SWS_OP_WRITE_PLANAR  ] = "AARCH64_SWS_OP_WRITE_PLANAR",
+    [AARCH64_SWS_OP_SWAP_BYTES    ] = "AARCH64_SWS_OP_SWAP_BYTES",
+    [AARCH64_SWS_OP_SWIZZLE       ] = "AARCH64_SWS_OP_SWIZZLE",
+    [AARCH64_SWS_OP_UNPACK        ] = "AARCH64_SWS_OP_UNPACK",
+    [AARCH64_SWS_OP_PACK          ] = "AARCH64_SWS_OP_PACK",
+    [AARCH64_SWS_OP_LSHIFT        ] = "AARCH64_SWS_OP_LSHIFT",
+    [AARCH64_SWS_OP_RSHIFT        ] = "AARCH64_SWS_OP_RSHIFT",
+    [AARCH64_SWS_OP_CLEAR         ] = "AARCH64_SWS_OP_CLEAR",
+    [AARCH64_SWS_OP_CONVERT       ] = "AARCH64_SWS_OP_CONVERT",
+    [AARCH64_SWS_OP_EXPAND        ] = "AARCH64_SWS_OP_EXPAND",
+    [AARCH64_SWS_OP_MIN           ] = "AARCH64_SWS_OP_MIN",
+    [AARCH64_SWS_OP_MAX           ] = "AARCH64_SWS_OP_MAX",
+    [AARCH64_SWS_OP_SCALE         ] = "AARCH64_SWS_OP_SCALE",
+    [AARCH64_SWS_OP_LINEAR        ] = "AARCH64_SWS_OP_LINEAR",
+    [AARCH64_SWS_OP_DITHER        ] = "AARCH64_SWS_OP_DITHER",
+};
+
 const char *sws_aarch64_op_type(SwsAArch64OpType op)
 {
-    switch (op) {
-    case AARCH64_SWS_OP_NONE:           return "AARCH64_SWS_OP_NONE";
-    case AARCH64_SWS_OP_PROCESS:        return "AARCH64_SWS_OP_PROCESS";
-    case AARCH64_SWS_OP_PROCESS_RETURN: return "AARCH64_SWS_OP_PROCESS_RETURN";
-    case AARCH64_SWS_OP_READ_BIT:       return "AARCH64_SWS_OP_READ_BIT";
-    case AARCH64_SWS_OP_READ_NIBBLE:    return "AARCH64_SWS_OP_READ_NIBBLE";
-    case AARCH64_SWS_OP_READ_PACKED:    return "AARCH64_SWS_OP_READ_PACKED";
-    case AARCH64_SWS_OP_READ_PLANAR:    return "AARCH64_SWS_OP_READ_PLANAR";
-    case AARCH64_SWS_OP_WRITE_BIT:      return "AARCH64_SWS_OP_WRITE_BIT";
-    case AARCH64_SWS_OP_WRITE_NIBBLE:   return "AARCH64_SWS_OP_WRITE_NIBBLE";
-    case AARCH64_SWS_OP_WRITE_PACKED:   return "AARCH64_SWS_OP_WRITE_PACKED";
-    case AARCH64_SWS_OP_WRITE_PLANAR:   return "AARCH64_SWS_OP_WRITE_PLANAR";
-    case AARCH64_SWS_OP_SWAP_BYTES:     return "AARCH64_SWS_OP_SWAP_BYTES";
-    case AARCH64_SWS_OP_SWIZZLE:        return "AARCH64_SWS_OP_SWIZZLE";
-    case AARCH64_SWS_OP_UNPACK:         return "AARCH64_SWS_OP_UNPACK";
-    case AARCH64_SWS_OP_PACK:           return "AARCH64_SWS_OP_PACK";
-    case AARCH64_SWS_OP_LSHIFT:         return "AARCH64_SWS_OP_LSHIFT";
-    case AARCH64_SWS_OP_RSHIFT:         return "AARCH64_SWS_OP_RSHIFT";
-    case AARCH64_SWS_OP_CLEAR:          return "AARCH64_SWS_OP_CLEAR";
-    case AARCH64_SWS_OP_CONVERT:        return "AARCH64_SWS_OP_CONVERT";
-    case AARCH64_SWS_OP_EXPAND:         return "AARCH64_SWS_OP_EXPAND";
-    case AARCH64_SWS_OP_MIN:            return "AARCH64_SWS_OP_MIN";
-    case AARCH64_SWS_OP_MAX:            return "AARCH64_SWS_OP_MAX";
-    case AARCH64_SWS_OP_SCALE:          return "AARCH64_SWS_OP_SCALE";
-    case AARCH64_SWS_OP_LINEAR:         return "AARCH64_SWS_OP_LINEAR";
-    case AARCH64_SWS_OP_DITHER:         return "AARCH64_SWS_OP_DITHER";
+    if (op == AARCH64_SWS_OP_NONE || op >= AARCH64_SWS_OP_TYPE_NB) {
+        assert(!"Invalid op type!");
+        return NULL;
     }
-    assert(!"Invalid op type!");
-    return NULL;
+    return op_types[op];
 }
+
+static const char op_type_names[AARCH64_SWS_OP_TYPE_NB][16] = {
+    [AARCH64_SWS_OP_NONE          ] = "none",
+    [AARCH64_SWS_OP_PROCESS       ] = "process",
+    [AARCH64_SWS_OP_PROCESS_RETURN] = "process_return",
+    [AARCH64_SWS_OP_READ_BIT      ] = "read_bit",
+    [AARCH64_SWS_OP_READ_NIBBLE   ] = "read_nibble",
+    [AARCH64_SWS_OP_READ_PACKED   ] = "read_packed",
+    [AARCH64_SWS_OP_READ_PLANAR   ] = "read_planar",
+    [AARCH64_SWS_OP_WRITE_BIT     ] = "write_bit",
+    [AARCH64_SWS_OP_WRITE_NIBBLE  ] = "write_nibble",
+    [AARCH64_SWS_OP_WRITE_PACKED  ] = "write_packed",
+    [AARCH64_SWS_OP_WRITE_PLANAR  ] = "write_planar",
+    [AARCH64_SWS_OP_SWAP_BYTES    ] = "swap_bytes",
+    [AARCH64_SWS_OP_SWIZZLE       ] = "swizzle",
+    [AARCH64_SWS_OP_UNPACK        ] = "unpack",
+    [AARCH64_SWS_OP_PACK          ] = "pack",
+    [AARCH64_SWS_OP_LSHIFT        ] = "lshift",
+    [AARCH64_SWS_OP_RSHIFT        ] = "rshift",
+    [AARCH64_SWS_OP_CLEAR         ] = "clear",
+    [AARCH64_SWS_OP_CONVERT       ] = "convert",
+    [AARCH64_SWS_OP_EXPAND        ] = "expand",
+    [AARCH64_SWS_OP_MIN           ] = "min",
+    [AARCH64_SWS_OP_MAX           ] = "max",
+    [AARCH64_SWS_OP_SCALE         ] = "scale",
+    [AARCH64_SWS_OP_LINEAR        ] = "linear",
+    [AARCH64_SWS_OP_DITHER        ] = "dither",
+};
 
 const char *sws_aarch64_op_type_name(SwsAArch64OpType op)
 {
-    switch (op) {
-    case AARCH64_SWS_OP_NONE:           return "none";
-    case AARCH64_SWS_OP_PROCESS:        return "process";
-    case AARCH64_SWS_OP_PROCESS_RETURN: return "process_return";
-    case AARCH64_SWS_OP_READ_BIT:       return "read_bit";
-    case AARCH64_SWS_OP_READ_NIBBLE:    return "read_nibble";
-    case AARCH64_SWS_OP_READ_PACKED:    return "read_packed";
-    case AARCH64_SWS_OP_READ_PLANAR:    return "read_planar";
-    case AARCH64_SWS_OP_WRITE_BIT:      return "write_bit";
-    case AARCH64_SWS_OP_WRITE_NIBBLE:   return "write_nibble";
-    case AARCH64_SWS_OP_WRITE_PACKED:   return "write_packed";
-    case AARCH64_SWS_OP_WRITE_PLANAR:   return "write_planar";
-    case AARCH64_SWS_OP_SWAP_BYTES:     return "swap_bytes";
-    case AARCH64_SWS_OP_SWIZZLE:        return "swizzle";
-    case AARCH64_SWS_OP_UNPACK:         return "unpack";
-    case AARCH64_SWS_OP_PACK:           return "pack";
-    case AARCH64_SWS_OP_LSHIFT:         return "lshift";
-    case AARCH64_SWS_OP_RSHIFT:         return "rshift";
-    case AARCH64_SWS_OP_CLEAR:          return "clear";
-    case AARCH64_SWS_OP_CONVERT:        return "convert";
-    case AARCH64_SWS_OP_EXPAND:         return "expand";
-    case AARCH64_SWS_OP_MIN:            return "min";
-    case AARCH64_SWS_OP_MAX:            return "max";
-    case AARCH64_SWS_OP_SCALE:          return "scale";
-    case AARCH64_SWS_OP_LINEAR:         return "linear";
-    case AARCH64_SWS_OP_DITHER:         return "dither";
+    if (op == AARCH64_SWS_OP_NONE || op >= AARCH64_SWS_OP_TYPE_NB) {
+        assert(!"Invalid op type!");
+        return NULL;
     }
-    assert(!"Invalid op type!");
-    return NULL;
+    return op_type_names[op];
 }
 
 /*********************************************************************/

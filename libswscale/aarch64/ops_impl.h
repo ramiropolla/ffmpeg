@@ -32,6 +32,7 @@ typedef enum SwsAArch64PixelType {
     AARCH64_PIXEL_U16,
     AARCH64_PIXEL_U32,
     AARCH64_PIXEL_F32,
+    AARCH64_PIXEL_TYPE_NB,
 } SwsAArch64PixelType;
 
 const char *sws_aarch64_pixel_type(SwsAArch64PixelType fmt);
@@ -67,6 +68,7 @@ typedef enum SwsAArch64OpType {
     AARCH64_SWS_OP_SCALE,
     AARCH64_SWS_OP_LINEAR,
     AARCH64_SWS_OP_DITHER,
+    AARCH64_SWS_OP_TYPE_NB,
 } SwsAArch64OpType;
 
 const char *sws_aarch64_op_type(SwsAArch64OpType op);
@@ -102,10 +104,11 @@ void sws_aarch64_op_impl_cond_str(char *buf, size_t size, const SwsAArch64OpImpl
 int sws_aarch64_op_impl_cmp(const void *a, const void *b);
 
 /*********************************************************************/
+/* SwsAArch64OpMask-related helpers. */
+
 #define MASK_GET(mask, idx) (((mask) >> ((idx) << 2)) & 0xf)
 #define MASK_SET(mask, idx, val) do { (mask) |= (((val) & 0xf) << ((idx) << 2)); } while (0)
 
-/*********************************************************************/
 #define LOOP_MASK(p, idx)               \
     for (int idx = 0; idx < 4; idx++)   \
         if (MASK_GET(p->mask, idx))

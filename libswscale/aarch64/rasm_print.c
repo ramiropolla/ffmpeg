@@ -25,6 +25,213 @@
 #include "rasm.h"
 
 /*********************************************************************/
+/* Values from tools/indent_arm_assembly.pl */
+
+#define INSTR_INDENT  8
+#define COMMENT_COL  56
+
+static void indent_to(FILE *fp, int line_start, int col)
+{
+    int cur_col = ftell(fp) - line_start;
+    fprintf(fp, "%*s", FFMAX(col - cur_col, 1), "");
+}
+
+/*********************************************************************/
+static const char cond_names[16][4] = {
+    [AARCH64_EQ] = "eq",
+    [AARCH64_NE] = "ne",
+    [AARCH64_HS] = "hs",
+    [AARCH64_LO] = "lo",
+    [AARCH64_MI] = "mi",
+    [AARCH64_PL] = "pl",
+    [AARCH64_VS] = "vs",
+    [AARCH64_VC] = "vc",
+    [AARCH64_HI] = "hi",
+    [AARCH64_LS] = "ls",
+    [AARCH64_GE] = "ge",
+    [AARCH64_LT] = "lt",
+    [AARCH64_GT] = "gt",
+    [AARCH64_LE] = "le",
+    [AARCH64_AL] = "al",
+    [AARCH64_NV] = "nv",
+};
+
+static const char *cond_name(uint8_t cond)
+{
+    if (cond >= 16) {
+        assert(!"Invalid cond type!");
+        return NULL;
+    }
+    return cond_names[cond];
+}
+
+/*********************************************************************/
+/* AARCH64_OP_GPR */
+
+static void print_op_gpr(FILE *fp, AArch64Op op)
+{
+    uint8_t n = a64op_gpr_n(op);
+    uint8_t size = a64op_gpr_size(op);
+
+    if (n == 31) {
+        fprintf(fp, "%s", size == sizeof(uint32_t) ? "wsp" : "sp");
+        return;
+    }
+
+    switch (size) {
+    case sizeof(uint32_t): fprintf(fp, "w%d", n); break;
+    case sizeof(uint64_t): fprintf(fp, "x%d", n); break;
+    default:
+        assert(!"Invalid GPR size!");
+    }
+}
+
+/*********************************************************************/
+/* AARCH64_OP_VEC */
+
+static char elem_type_char(uint8_t elem_size)
+{
+    switch (elem_size) {
+    case  1: return 'b';
+    case  2: return 'h';
+    case  4: return 's';
+    case  8: return 'd';
+    case 16: return 'q';
+    }
+    assert(!"Invalid vector element type!");
+    return '\0';
+}
+
+static void print_vec_reg(FILE *fp, uint8_t n,
+                          uint8_t el_count, uint8_t el_size, uint8_t idx_p1)
+{
+    if (el_size == 0) {
+        fprintf(fp, "v%u", n);
+    } else if (el_count != 0) {
+        fprintf(fp, "v%u.%d%c", n, el_count, elem_type_char(el_size));
+    } else if (idx_p1) {
+        fprintf(fp, "v%u.%c[%u]", n, elem_type_char(el_size), idx_p1 - 1);
+    } else {
+        fprintf(fp, "%c%u", elem_type_char(el_size), n);
+    }
+}
+
+static void print_op_vec(FILE *fp, AArch64Op op)
+{
+    uint8_t n        = a64op_vec_n(op);
+    uint8_t el_count = a64op_vec_el_count(op);
+    uint8_t el_size  = a64op_vec_el_size(op);
+    uint8_t num_regs = a64op_vec_num_regs(op);
+
+    if (num_regs) {
+        fprintf(fp, "{");
+        for (int i = 0; i < num_regs; i++) {
+            if (i > 0)
+                fprintf(fp, ", ");
+            print_vec_reg(fp, (n + i) & 0x1f, el_count, el_size, 0);
+        }
+        fprintf(fp, "}");
+    } else {
+        uint8_t idx_p1 = a64op_vec_idx_p1(op);
+        print_vec_reg(fp, n, el_count, el_size, idx_p1);
+    }
+}
+
+/*********************************************************************/
+/* AARCH64_OP_IMM */
+
+static void print_op_imm(FILE *fp, AArch64Op op)
+{
+    fprintf(fp, "#%d", a64op_imm_val(op));
+}
+
+/*********************************************************************/
+/* AARCH64_OP_BASE */
+
+static void print_base_reg(FILE *fp, uint8_t n)
+{
+    if (n == 31)
+        fprintf(fp, "sp");
+    else
+        fprintf(fp, "x%d", n);
+}
+
+static void print_op_base(FILE *fp, AArch64Op op)
+{
+    uint8_t n = a64op_base_n(op);
+    uint8_t mode = a64op_base_mode(op);
+    int16_t imm = a64op_base_imm(op);
+
+    switch (mode) {
+    case AARCH64_BASE_OFFSET: {
+        fprintf(fp, "[");
+        print_base_reg(fp, n);
+        if (imm)
+            fprintf(fp, ", #%d]", imm);
+        else
+            fprintf(fp, "]");
+        break;
+    }
+    case AARCH64_BASE_PRE:
+        fprintf(fp, "[");
+        print_base_reg(fp, n);
+        fprintf(fp, ", #%d]!", imm);
+        break;
+    case AARCH64_BASE_POST:
+        fprintf(fp, "[");
+        print_base_reg(fp, n);
+        fprintf(fp, "], #%d", imm);
+        break;
+    }
+}
+
+/*********************************************************************/
+/* AARCH64_OP_LABEL */
+
+static void print_op_label(const AArch64Context *actx, FILE *fp,
+                           AArch64Op op, const int *local_labels)
+{
+    int id = a64op_label_id(op);
+    assert(id >= 0 && id < actx->num_labels);
+    if (actx->labels[id]) {
+        fprintf(fp, "%s", actx->labels[id]);
+    } else {
+        int local_id = local_labels[id];
+        if (local_id < 0) {
+            fprintf(fp, "%db", -local_id);
+        } else {
+            fprintf(fp, "%df",  local_id);
+        }
+    }
+}
+
+/*********************************************************************/
+/* AARCH64_OP_COND */
+
+static void print_op_cond(FILE *fp, AArch64Op op)
+{
+    fprintf(fp, "%s", cond_name(a64op_cond_val(op)));
+}
+
+/*********************************************************************/
+static void print_op(const AArch64Context *actx, FILE *fp,
+                     const int *local_labels, AArch64Op op)
+{
+    switch (a64op_type(op)) {
+    case AARCH64_OP_GPR:   return print_op_gpr(fp, op);
+    case AARCH64_OP_VEC:   return print_op_vec(fp, op);
+    case AARCH64_OP_IMM:   return print_op_imm(fp, op);
+    case AARCH64_OP_BASE:  return print_op_base(fp, op);
+    case AARCH64_OP_LABEL: return print_op_label(actx, fp, op, local_labels);
+    case AARCH64_OP_COND:  return print_op_cond(fp, op);
+    default:
+        assert(0);
+    }
+}
+
+/*********************************************************************/
+/* AARCH64_NODE_INSN */
+
 static const char insn_names[AARCH64_INSN_NB][8] = {
     [AARCH64_INSN_ADD   ] = "add",
     [AARCH64_INSN_ADDV  ] = "addv",
@@ -87,191 +294,96 @@ static const char insn_names[AARCH64_INSN_NB][8] = {
 
 static const char *insn_name(AArch64InsnId id)
 {
-    if (id == AARCH64_INSN_NONE || id >= AARCH64_INSN_NB)
+    if (id == AARCH64_INSN_NONE || id >= AARCH64_INSN_NB) {
+        assert(!"Invalid insn type!");
         return NULL;
+    }
     return insn_names[id];
 }
 
-/*********************************************************************/
-static const char cond_names[16][3] = {
-    [AARCH64_EQ] = "eq",
-    [AARCH64_NE] = "ne",
-    [AARCH64_HS] = "hs",
-    [AARCH64_LO] = "lo",
-    [AARCH64_MI] = "mi",
-    [AARCH64_PL] = "pl",
-    [AARCH64_VS] = "vs",
-    [AARCH64_VC] = "vc",
-    [AARCH64_HI] = "hi",
-    [AARCH64_LS] = "ls",
-    [AARCH64_GE] = "ge",
-    [AARCH64_LT] = "lt",
-    [AARCH64_GT] = "gt",
-    [AARCH64_LE] = "le",
-    [AARCH64_AL] = "al",
-    [AARCH64_NV] = "nv",
-};
-
-static const char *cond_name(uint8_t cond)
+static void print_node_insn(const AArch64Context *actx, FILE *fp,
+                            size_t line_start, const AArch64Node *node,
+                            const int *local_labels)
 {
-    return cond_names[cond & 0xf];
-}
+    indent_to(fp, line_start, INSTR_INDENT);
 
-/*********************************************************************/
-static void print_gpr(FILE *fp, AArch64Op op)
-{
-    uint8_t n = a64op_gpr_n(op);
-    uint8_t size = a64op_gpr_size(op);
-
-    if (n == 31) {
-        fprintf(fp, "%s", size == sizeof(uint32_t) ? "wsp" : "sp");
-        return;
-    }
-
-    switch (size) {
-    case sizeof(uint32_t): fprintf(fp, "w%d", n); break;
-    case sizeof(uint64_t): fprintf(fp, "x%d", n); break;
-    default:
-        assert(!"Invalid GPR size!");
-    }
-}
-
-static char elem_type_char(uint8_t elem_size)
-{
-    switch (elem_size) {
-    case  1: return 'b';
-    case  2: return 'h';
-    case  4: return 's';
-    case  8: return 'd';
-    case 16: return 'q';
-    }
-    assert(!"Invalid vector element type!");
-    return '\0';
-}
-
-static void print_base_reg(FILE *fp, uint8_t n)
-{
-    if (n == 31)
-        fprintf(fp, "sp");
-    else
-        fprintf(fp, "x%d", n);
-}
-
-static void print_base(FILE *fp, AArch64Op op)
-{
-    uint8_t n = a64op_base_n(op);
-    uint8_t mode = a64op_base_mode(op);
-    int16_t imm = a64op_base_imm(op);
-
-    switch (mode) {
-    case AARCH64_BASE_OFFSET: {
-        fprintf(fp, "[");
-        print_base_reg(fp, n);
-        if (imm)
-            fprintf(fp, ", #%d]", imm);
-        else
-            fprintf(fp, "]");
-        break;
-    }
-    case AARCH64_BASE_PRE:
-        fprintf(fp, "[");
-        print_base_reg(fp, n);
-        fprintf(fp, ", #%d]!", imm);
-        break;
-    case AARCH64_BASE_POST:
-        fprintf(fp, "[");
-        print_base_reg(fp, n);
-        fprintf(fp, "], #%d", imm);
-        break;
-    }
-}
-
-static void print_vec_reg(FILE *fp, uint8_t n, uint8_t el_count, uint8_t el_size, uint8_t idx_p1)
-{
-    if (el_size == 0) {
-        fprintf(fp, "v%u", n);
-    } else if (el_count != 0) {
-        fprintf(fp, "v%u.%d%c", n, el_count, elem_type_char(el_size));
-    } else if (idx_p1) {
-        fprintf(fp, "v%u.%c[%u]", n, elem_type_char(el_size), idx_p1 - 1);
+    int op_start = 0;
+    if (node->insn.id == AARCH64_INSN_B && a64op_type(node->insn.op[0]) == AARCH64_OP_COND) {
+        fprintf(fp, "b.%-14s", cond_name(a64op_cond_val(node->insn.op[0])));
+        op_start = 1;
+    } else if (a64op_type(node->insn.op[0]) == AARCH64_OP_NONE) {
+        fprintf(fp, "%s", insn_name(node->insn.id));
     } else {
-        fprintf(fp, "%c%u", elem_type_char(el_size), n);
+        fprintf(fp, "%-16s", insn_name(node->insn.id));
+    }
+
+    for (int j = op_start; j < 4; j++) {
+        AArch64Op op = node->insn.op[j];
+        if (a64op_type(op) == AARCH64_OP_NONE)
+            break;
+        if (j != op_start)
+            fprintf(fp, ", ");
+        print_op(actx, fp, local_labels, op);
     }
 }
 
-static void print_vec(FILE *fp, AArch64Op op)
-{
-    uint8_t n        = a64op_vec_n(op);
-    uint8_t el_count = a64op_vec_el_count(op);
-    uint8_t el_size  = a64op_vec_el_size(op);
-    uint8_t num_regs = a64op_vec_num_regs(op);
+/*********************************************************************/
+/* AARCH64_NODE_COMMENT */
 
-    if (num_regs) {
-        fprintf(fp, "{");
-        for (int i = 0; i < num_regs; i++) {
-            if (i > 0)
-                fprintf(fp, ", ");
-            print_vec_reg(fp, (n + i) & 0x1f, el_count, el_size, 0);
-        }
-        fprintf(fp, "}");
+static void print_node_comment(const AArch64Context *actx, FILE *fp,
+                               size_t line_start, const AArch64Node *node)
+{
+    indent_to(fp, line_start, INSTR_INDENT);
+    fprintf(fp, "// %s", node->comment.text);
+}
+
+/*********************************************************************/
+/* AARCH64_NODE_LABEL */
+
+static void print_node_label(const AArch64Context *actx, FILE *fp,
+                             size_t line_start, const AArch64Node *node,
+                             int *local_labels)
+{
+    int id = node->label.id;
+    if (actx->labels[id]) {
+        fprintf(fp, "%s:", actx->labels[id]);
     } else {
-        uint8_t idx_p1 = a64op_vec_idx_p1(op);
-        print_vec_reg(fp, n, el_count, el_size, idx_p1);
-    }
-}
-
-static void print_op(const AArch64Context *actx, FILE *fp, const int *local_labels, AArch64Op op)
-{
-    switch (a64op_type(op)) {
-    case AARCH64_OP_GPR:
-        print_gpr(fp, op);
-        break;
-    case AARCH64_OP_VEC:
-        print_vec(fp, op);
-        break;
-    case AARCH64_OP_BASE:
-        print_base(fp, op);
-        break;
-    case AARCH64_OP_IMM:
-        fprintf(fp, "#%d", a64op_imm_val(op));
-        break;
-    case AARCH64_OP_COND:
-        fprintf(fp, "%s", cond_name(a64op_cond_val(op)));
-        break;
-    case AARCH64_OP_LABEL: {
-        int id = a64op_label_id(op);
-        assert(id >= 0 && id < actx->num_labels);
-        if (actx->labels[id]) {
-            fprintf(fp, "%s", actx->labels[id]);
+        /* Local label */
+        int local_id = local_labels[id];
+        if (local_id < 0) {
+            fprintf(fp, "%d:", -local_id);
         } else {
-            int local_id = local_labels[id];
-            if (local_id < 0) {
-                fprintf(fp, "%db", -local_id);
-            } else {
-                fprintf(fp, "%df",  local_id);
-            }
+            fprintf(fp, "%d:",  local_id);
+            local_labels[id] = -local_id;
         }
-        break;
-    }
-    default:
-        assert(0);
     }
 }
 
-static void indent_to(FILE *fp, int line_start, int col)
+/*********************************************************************/
+/* AARCH64_NODE_FUNCTION */
+
+static void print_node_function(const AArch64Context *actx, FILE *fp,
+                                size_t line_start, const AArch64Node *node)
 {
-    int cur_col = ftell(fp) - line_start;
-    fprintf(fp, "%*s", FFMAX(col - cur_col, 1), "");
+    fprintf(fp, "function %s, export=%d", node->func.name, node->func.export);
 }
 
+/*********************************************************************/
+/* AARCH64_NODE_ENDFUNC */
+
+static void print_node_endfunc(const AArch64Context *actx, FILE *fp,
+                               size_t line_start, const AArch64Node *node)
+{
+    fprintf(fp, "endfunc");
+}
+
+/*********************************************************************/
 int aarch64_print(AArch64Context *actx, FILE *fp)
 {
-    const int instr_indent = 8;
-    const int comment_col = 56;
-
+    /* Helper array to assign numbers and track position of local labels. */
     int *local_labels = NULL;
     if (actx->num_labels) {
-        local_labels = av_malloc(actx->num_labels * sizeof(int));
+        local_labels = av_malloc(actx->num_labels * sizeof(*local_labels));
         if (!local_labels)
             return AVERROR(ENOMEM);
     }
@@ -279,9 +391,10 @@ int aarch64_print(AArch64Context *actx, FILE *fp)
     for (int i = 0; i < actx->num_entries; i++) {
         const AArch64Entry *entry = &actx->entries[i];
 
+        /* Assign numbers to local labels in this entry. */
         if (actx->num_labels) {
             int local_label = 1;
-            memset(local_labels, 0x00, actx->num_labels * sizeof(int));
+            memset(local_labels, 0x00, actx->num_labels * sizeof(*local_labels));
             for (const AArch64Node *node = entry->start; node != NULL; node = node->next) {
                 if (node->type == AARCH64_NODE_LABEL) {
                     int id = node->label.id;
@@ -295,70 +408,34 @@ int aarch64_print(AArch64Context *actx, FILE *fp)
             size_t line_start = ftell(fp);
 
             switch (node->type) {
+            case AARCH64_NODE_INSN:
+                print_node_insn(actx, fp, line_start, node, local_labels);
+                break;
             case AARCH64_NODE_COMMENT:
-                indent_to(fp, line_start, instr_indent);
-                fprintf(fp, "// %s\n", node->comment.text);
+                print_node_comment(actx, fp, line_start, node);
                 break;
-            case AARCH64_NODE_INSN: {
-                indent_to(fp, line_start, instr_indent);
-
-                int op_start = 0;
-                if (node->insn.id == AARCH64_INSN_B && a64op_type(node->insn.op[0]) == AARCH64_OP_COND) {
-                    fprintf(fp, "b.%-14s", cond_name(a64op_cond_val(node->insn.op[0])));
-                    op_start = 1;
-                } else if (node->insn.id == AARCH64_INSN_RET) {
-                    fprintf(fp, "%s", insn_name(node->insn.id));
-                } else {
-                    fprintf(fp, "%-16s", insn_name(node->insn.id));
-                }
-
-                for (int j = op_start; j < 4; j++) {
-                    AArch64Op op = node->insn.op[j];
-                    if (a64op_type(op) == AARCH64_OP_NONE)
-                        break;
-                    if (j != op_start)
-                        fprintf(fp, "%s", ", ");
-                    print_op(actx, fp, local_labels, op);
-                }
-
-                if (node->inline_comment) {
-                    indent_to(fp, line_start, comment_col);
-                    fprintf(fp, "// %s", node->inline_comment);
-                }
-                fprintf(fp, "\n");
-
+            case AARCH64_NODE_LABEL:
+                print_node_label(actx, fp, line_start, node, local_labels);
                 break;
-            }
-            case AARCH64_NODE_LABEL: {
-                int id = node->label.id;
-                if (actx->labels[id]) {
-                    fprintf(fp, "%s:", actx->labels[id]);
-                } else {
-                    int local_id = local_labels[id];
-                    if (local_id < 0) {
-                        fprintf(fp, "%d:", -local_id);
-                    } else {
-                        fprintf(fp, "%d:",  local_id);
-                        local_labels[id] = -local_id;
-                    }
-                }
-                if (node->inline_comment) {
-                    indent_to(fp, line_start, comment_col);
-                    fprintf(fp, "// %s", node->inline_comment);
-                }
-                fprintf(fp, "\n");
-                break;
-            }
             case AARCH64_NODE_FUNCTION:
-                fprintf(fp, "function %s, export=%d\n", node->func.name, node->func.export);
+                print_node_function(actx, fp, line_start, node);
                 break;
             case AARCH64_NODE_ENDFUNC:
-                fprintf(fp, "endfunc\n");
-                fprintf(fp, "\n");
+                print_node_endfunc(actx, fp, line_start, node);
                 break;
             default:
                 break;
             }
+
+            if (node->inline_comment) {
+                indent_to(fp, line_start, COMMENT_COL);
+                fprintf(fp, "// %s", node->inline_comment);
+            }
+            fprintf(fp, "\n");
+
+            /* Add extra line after end of functions. */
+            if (node->type == AARCH64_NODE_ENDFUNC)
+                fprintf(fp, "\n");
         }
     }
 
