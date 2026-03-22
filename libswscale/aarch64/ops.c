@@ -197,14 +197,13 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
         }
         break;
     }
-    case AARCH64_SWS_OP_DITHER: {
+    case AARCH64_SWS_OP_DITHER:
         MASK_SET(out->dither.y_offset, 0, op->dither.y_offset[0]);
         MASK_SET(out->dither.y_offset, 1, op->dither.y_offset[1]);
         MASK_SET(out->dither.y_offset, 2, op->dither.y_offset[2]);
         MASK_SET(out->dither.y_offset, 3, op->dither.y_offset[3]);
         out->dither.size_log2 = op->dither.size_log2;
         break;
-    }
     }
 }
 
