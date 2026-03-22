@@ -20,11 +20,13 @@ HOSTPROGS = aarch64/ops_asmgen$(HOSTEXESUF)
 
 $(SUBDIR)aarch64/ops_neon.S: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
 	$(M)$< -ops > $@.tmp
-	mv $@.tmp $@
+	$(CP) $@.tmp $@
+	$(RM) $@.tmp
 
 $(SUBDIR)aarch64/ops_lookup.c: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
 	$(M)$< -lookup > $@.tmp
-	mv $@.tmp $@
+	$(CP) $@.tmp $@
+	$(RM) $@.tmp
 
 sws_ops_entries_aarch64: TAG = GEN
 sws_ops_entries_aarch64: $(SUBDIR)tests/sws_ops$(EXESUF)
