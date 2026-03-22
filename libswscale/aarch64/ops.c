@@ -267,7 +267,7 @@ static int aarch64_setup(SwsOpList *ops, int block_size, int n,
     SwsOp *op = &ops->ops[n];
     switch (op->op) {
     case SWS_OP_READ:
-        // TODO comment and cleanup
+        /* Negative shift values to perform right shift using ushl. */
         if (op->rw.frac == 3) {
             out->priv = (SwsOpPriv){ .u8 = {
                 -7, -6, -5, -4, -3, -2, -1, 0,
@@ -276,7 +276,7 @@ static int aarch64_setup(SwsOpList *ops, int block_size, int n,
         }
         break;
     case SWS_OP_WRITE:
-        // TODO comment and cleanup
+        /* Shift values for ushl. */
         if (op->rw.frac == 3) {
             out->priv = (SwsOpPriv){ .u8 = {
                 7, 6, 5, 4, 3, 2, 1, 0,
@@ -370,8 +370,6 @@ error:
         if (ret == AVERROR(ENOTSUP)){
             av_log(ctx, AV_LOG_DEBUG, "Unsupported SwsOp for aarch64.\n");
             av_log(ctx, AV_LOG_DEBUG, "Regenerate ops_entries.c with: make sws_ops_entries_aarch64\n");
-            // TODO remove this
-            exit(1);
         }
         ff_sws_op_chain_free(chain);
     }
@@ -421,8 +419,6 @@ static int aarch64_collect_process(const SwsOpList *ops, struct AVTreeNode **roo
 static int aarch64_collect_ops(const SwsOpList *ops, struct AVTreeNode **root)
 {
     int ret = AVERROR(EINVAL);
-
-    // TODO optimize
 
     aarch64_collect_process(ops, root);
 

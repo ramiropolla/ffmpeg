@@ -305,12 +305,14 @@ static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParam
     AArch64OpVecOp vtmp;
     AArch64OpVecOp shift_vec;
     AArch64Op bitmask_vec = s->vt[1];
-    AArch64Op wtmp        = a64op_w(s->tmp0);
+    AArch64Op wtmp = a64op_w(s->tmp0);
 
     a64op_vec_struct(s->vt[0], &shift_vec);
     a64op_vec_struct(s->vl[0], &vl[0]);
     a64op_vec_struct(s->vt[2], &vtmp);
 
+    /* Note that shift_vec has negative values, so that using it with
+     * ushl actually performs a right shift. */
     aarch64_annotate_next(a, "v128 shift_vec = impl->priv.v128;");
     i_ldr(a, shift_vec.q, a64op_off(s->impl, offsetof_impl_priv));
 
@@ -321,13 +323,13 @@ static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParam
         i_lsr (a, wtmp,        wtmp, a64op_imm(8));         CMT("tmp >>= 8;");
         i_dup (a, vtmp.b8,     wtmp);                       CMT("vtmp.lo = broadcast(tmp);");
         i_ins (a, vl[0].de[1], vtmp.de[0]);                 CMT("vl[0].hi = vtmp.lo;");
-        i_ushl(a, vl[0].b16,   vl[0].b16, shift_vec.b16);   CMT("vl[0] >>= shift_vec;");
+        i_ushl(a, vl[0].b16,   vl[0].b16, shift_vec.b16);   CMT("vl[0] <<= shift_vec;");
         i_and (a, vl[0].b16,   vl[0].b16, bitmask_vec);     CMT("vl[0] &= bitmask_vec;");
     } else {
         i_ldrb(a, wtmp,        a64op_post(s->in[0], 1));    CMT("uint8_t tmp = *in[0]++;");
         i_movi(a, bitmask_vec, a64op_imm(1));               CMT("v128 bitmask_vec = {1 <repeats 8 times>, 0 <repeats 8 times>};");
         i_dup (a, vl[0].b8,    wtmp);                       CMT("vl[0].lo = broadcast(tmp);");
-        i_ushl(a, vl[0].b8,    vl[0].b8,  shift_vec.b8);    CMT("vl[0] >>= shift_vec;");
+        i_ushl(a, vl[0].b8,    vl[0].b8,  shift_vec.b8);    CMT("vl[0] <<= shift_vec;");
         i_and (a, vl[0].b8,    vl[0].b8,  bitmask_vec);     CMT("vl[0] &= bitmask_vec;");
     }
 }
@@ -1245,7 +1247,7 @@ static void asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
     case AARCH64_SWS_OP_SCALE:        asmgen_op_scale(s, p);        break;
     case AARCH64_SWS_OP_LINEAR:       asmgen_op_linear(s, p);       break;
     case AARCH64_SWS_OP_DITHER:       asmgen_op_dither(s, p);       break;
-    // TODO AARCH64_SWS_OP_SHUFFLE
+    /* TODO implement AARCH64_SWS_OP_SHUFFLE */
     default:
         break;
     }
