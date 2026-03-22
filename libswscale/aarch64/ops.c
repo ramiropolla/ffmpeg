@@ -238,7 +238,7 @@ static int aarch64_setup_dither(const SwsAArch64OpImplParams *p,
     int largest_y_off = 0;
     for (int i = 0; i < 4; i++) {
         if (op->dither.y_offset[i] >= 0)
-            largest_y_off = FFMAX(largest_y_off, (int)op->dither.y_offset[i]);
+            largest_y_off = FFMAX(largest_y_off, (int) op->dither.y_offset[i]);
     }
 
     /* Allocate (size + largest_y_off) rows × size columns.
@@ -252,7 +252,7 @@ static int aarch64_setup_dither(const SwsAArch64OpImplParams *p,
 
     int mask = (size * size) - 1;
     for (int i = 0; i < total; i++)
-        matrix[i] = (float)av_q2d(op->dither.matrix[i & mask]);
+        matrix[i] = (float) av_q2d(op->dither.matrix[i & mask]);
 
     res->priv.ptr = matrix;
     res->free = ff_op_priv_free;
@@ -370,7 +370,7 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
 
 error:
     if (ret < 0) {
-        if (ret == AVERROR(ENOTSUP)){
+        if (ret == AVERROR(ENOTSUP)) {
             av_log(ctx, AV_LOG_DEBUG, "Unsupported SwsOp for aarch64.\n");
             av_log(ctx, AV_LOG_DEBUG, "Regenerate ops_entries.c with: make sws_ops_entries_aarch64\n");
         }
