@@ -411,9 +411,9 @@ void sws_aarch64_op_impl_lookup_str(char *buf, size_t size, const SwsAArch64OpIm
 
     /* Walk back closing conditions. */
     if (prev) {
-        for (int i = prev_levels - 2; i >= first_diff; i--) {
-            buf_appendf(&buf, &size, "%*sreturn NULL;\n", 4 * (i + 2), "");
-            buf_appendf(&buf, &size, "%*s}\n", 4 * (i + 1), "");
+        for (int i = prev_levels - 1; i > first_diff; i--) {
+            buf_appendf(&buf, &size, "%*sreturn NULL;\n", 4 * (i + 1), "");
+            buf_appendf(&buf, &size, "%*s}\n", 4 * i, "");
         }
     }
 
