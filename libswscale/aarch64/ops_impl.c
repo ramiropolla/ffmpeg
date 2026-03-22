@@ -186,7 +186,7 @@ typedef struct ParamField {
     int (*cmp_val)(void *pa, void *pb);
 } ParamField;
 
-#define PARAM_FIELD(name) #name, offsetof(SwsAArch64OpImplParams, name), sizeof(((SwsAArch64OpImplParams *)0)->name)
+#define PARAM_FIELD(name) #name, offsetof(SwsAArch64OpImplParams, name), sizeof(((SwsAArch64OpImplParams *) 0)->name)
 
 static void print_op_name(char **pbuf, size_t *prem, void *p)
 {
@@ -312,29 +312,29 @@ static const ParamField field_dither_size_log2 = { PARAM_FIELD(dither.size_log2)
 
 #define MAX_LEVELS 8
 static const ParamField *op_fields[AARCH64_SWS_OP_TYPE_NB][MAX_LEVELS] = {
-    [AARCH64_SWS_OP_PROCESS       ] = { &field_op, &field_mask },
-    [AARCH64_SWS_OP_PROCESS_RETURN] = { &field_op, &field_mask },
-    [AARCH64_SWS_OP_READ_BIT      ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_READ_NIBBLE   ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_READ_PACKED   ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_READ_PLANAR   ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_WRITE_BIT     ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_WRITE_NIBBLE  ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_WRITE_PACKED  ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_WRITE_PLANAR  ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_SWAP_BYTES    ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_SWIZZLE       ] = { &field_op, &field_swizzle, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_UNPACK        ] = { &field_op, &field_pack, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_PACK          ] = { &field_op, &field_pack, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_LSHIFT        ] = { &field_op, &field_shift, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_RSHIFT        ] = { &field_op, &field_shift, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_CLEAR         ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_CONVERT       ] = { &field_op, &field_to_type, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_EXPAND        ] = { &field_op, &field_to_type, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_MIN           ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_MAX           ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_SCALE         ] = { &field_op, &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_LINEAR        ] = { &field_op, &field_linear, &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_PROCESS       ] = { &field_op,                                                                     &field_mask },
+    [AARCH64_SWS_OP_PROCESS_RETURN] = { &field_op,                                                                     &field_mask },
+    [AARCH64_SWS_OP_READ_BIT      ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_READ_NIBBLE   ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_READ_PACKED   ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_READ_PLANAR   ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_WRITE_BIT     ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_WRITE_NIBBLE  ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_WRITE_PACKED  ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_WRITE_PLANAR  ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_SWAP_BYTES    ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_SWIZZLE       ] = { &field_op, &field_swizzle,                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_UNPACK        ] = { &field_op, &field_pack,                                     &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_PACK          ] = { &field_op, &field_pack,                                     &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_LSHIFT        ] = { &field_op, &field_shift,                                    &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_RSHIFT        ] = { &field_op, &field_shift,                                    &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_CLEAR         ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_CONVERT       ] = { &field_op, &field_to_type,                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_EXPAND        ] = { &field_op, &field_to_type,                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_MIN           ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_MAX           ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_SCALE         ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
+    [AARCH64_SWS_OP_LINEAR        ] = { &field_op, &field_linear,                                   &field_block_size, &field_type, &field_mask },
     [AARCH64_SWS_OP_DITHER        ] = { &field_op, &field_dither_y_offset, &field_dither_size_log2, &field_block_size, &field_type, &field_mask },
 };
 
