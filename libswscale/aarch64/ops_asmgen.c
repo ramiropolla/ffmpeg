@@ -1277,11 +1277,11 @@ static int lookup_gen(void)
     printf("{\n");
     const SwsAArch64OpImplParams *prev = NULL;
     for (const SwsAArch64OpImplParams *p = impl_params; p->op; p++) {
-        sws_aarch64_op_impl_cond_str(buf, sizeof(buf), p, prev, "p->");
+        sws_aarch64_op_impl_lookup_str(buf, sizeof(buf), p, prev, "p->");
         printf("%s", buf);
         prev = p;
     }
-    sws_aarch64_op_impl_cond_str(buf, sizeof(buf), NULL, prev, "p->");
+    sws_aarch64_op_impl_lookup_str(buf, sizeof(buf), NULL, prev, "p->");
     printf("%s", buf);
     printf("    return NULL;\n");
     printf("}\n");

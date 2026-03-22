@@ -100,8 +100,8 @@ typedef struct SwsAArch64OpImplParams {
 
 void sws_aarch64_op_impl_serialize(char *buf, size_t size, const SwsAArch64OpImplParams *params);
 void sws_aarch64_op_impl_func_name(char *buf, size_t size, const SwsAArch64OpImplParams *params);
-void sws_aarch64_op_impl_cond_str(char *buf, size_t size, const SwsAArch64OpImplParams *params,
-                                  const SwsAArch64OpImplParams *prev, const char *p_str);
+void sws_aarch64_op_impl_lookup_str(char *buf, size_t size, const SwsAArch64OpImplParams *params,
+                                    const SwsAArch64OpImplParams *prev, const char *p_str);
 int sws_aarch64_op_impl_cmp(const void *a, const void *b);
 
 /*********************************************************************/

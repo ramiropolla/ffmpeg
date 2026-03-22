@@ -190,13 +190,13 @@ typedef struct ParamField {
 
 static void print_op_name(char **pbuf, size_t *prem, void *p)
 {
-    SwsAArch64OpType op = *(SwsAArch64OpType *)p;
+    SwsAArch64OpType op = *(SwsAArch64OpType *) p;
     buf_appendf(pbuf, prem, "_%s", sws_aarch64_op_type_name(op));
 }
 
 static void print_op_val(char **pbuf, size_t *prem, void *p)
 {
-    SwsAArch64OpType op = *(SwsAArch64OpType *)p;
+    SwsAArch64OpType op = *(SwsAArch64OpType *) p;
     buf_appendf(pbuf, prem, "%s", sws_aarch64_op_type(op));
 }
 
@@ -212,13 +212,13 @@ static int cmp_op(void *pa, void *pb)
 
 static void print_pixel_name(char **pbuf, size_t *prem, void *p)
 {
-    SwsAArch64PixelType type = *(SwsAArch64PixelType *)p;
+    SwsAArch64PixelType type = *(SwsAArch64PixelType *) p;
     buf_appendf(pbuf, prem, "_%s", sws_aarch64_pixel_type_name(type));
 }
 
 static void print_pixel_val(char **pbuf, size_t *prem, void *p)
 {
-    SwsAArch64PixelType type = *(SwsAArch64PixelType *)p;
+    SwsAArch64PixelType type = *(SwsAArch64PixelType *) p;
     buf_appendf(pbuf, prem, "%s", sws_aarch64_pixel_type(type));
 }
 
@@ -234,13 +234,13 @@ static int cmp_pixel(void *pa, void *pb)
 
 static void print_u8_name(char **pbuf, size_t *prem, void *p)
 {
-    uint8_t val = *(uint8_t *)p;
+    uint8_t val = *(uint8_t *) p;
     buf_appendf(pbuf, prem, "_%u", val);
 }
 
 static void print_u8_val(char **pbuf, size_t *prem, void *p)
 {
-    uint8_t val = *(uint8_t *)p;
+    uint8_t val = *(uint8_t *) p;
     buf_appendf(pbuf, prem, "%u", val);
 }
 
@@ -256,13 +256,13 @@ static int cmp_u8(void *pa, void *pb)
 
 static void print_u16_name(char **pbuf, size_t *prem, void *p)
 {
-    uint16_t val = *(uint16_t *)p;
+    uint16_t val = *(uint16_t *) p;
     buf_appendf(pbuf, prem, "_%04x", val);
 }
 
 static void print_u16_val(char **pbuf, size_t *prem, void *p)
 {
-    uint16_t val = *(uint16_t *)p;
+    uint16_t val = *(uint16_t *) p;
     buf_appendf(pbuf, prem, "0x%04x", val);
 }
 
@@ -278,13 +278,13 @@ static int cmp_u16(void *pa, void *pb)
 
 static void print_u40_name(char **pbuf, size_t *prem, void *p)
 {
-    uint64_t val = *(uint64_t *)p;
+    uint64_t val = *(uint64_t *) p;
     buf_appendf(pbuf, prem, "_%010" PRIx64, val);
 }
 
 static void print_u40_val(char **pbuf, size_t *prem, void *p)
 {
-    uint64_t val = *(uint64_t *)p;
+    uint64_t val = *(uint64_t *) p;
     buf_appendf(pbuf, prem, "0x%010" PRIx64 "ULL", val);
 }
 
@@ -373,8 +373,8 @@ void sws_aarch64_op_impl_serialize(char *buf, size_t size, const SwsAArch64OpImp
     assert(size);
 }
 
-void sws_aarch64_op_impl_cond_str(char *buf, size_t size, const SwsAArch64OpImplParams *params,
-                                  const SwsAArch64OpImplParams *prev, const char *p_str)
+void sws_aarch64_op_impl_lookup_str(char *buf, size_t size, const SwsAArch64OpImplParams *params,
+                                    const SwsAArch64OpImplParams *prev, const char *p_str)
 {
     int first_diff = 0;
     int prev_levels = 0;
