@@ -112,6 +112,7 @@ typedef struct SwsAArch64Context {
 } SwsAArch64Context;
 
 /*********************************************************************/
+#define LOOP_VH(s, mask, idx) if (s->use_vh) LOOP(mask, idx)
 #define LOOP_MASK_VH(s, p, idx) if (s->use_vh) LOOP_MASK(p, idx)
 #define LOOP_MASK_BWD_VH(s, p, idx) if (s->use_vh) LOOP_MASK_BWD(p, idx)
 
@@ -702,25 +703,25 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         }
     }
 
-    aarch64_add_comment(a, "shift right");
     /* Loop backwards to avoid clobbering component 0. */
     LOOP_MASK_BWD      (p, i) {
-        if (offsets[i])
-            i_ushr  (a, vl[i], vl[0], a64op_imm(offsets[i]));
-        else if (i)
-            i_mov16b(a, vl[i], vl[0]);
+        if (offsets[i]) {
+            i_ushr  (a, vl[i], vl[0], a64op_imm(offsets[i]));   CMTF("vl[%u] >>= %u;", i, offsets[i]);
+        } else if (i) {
+            i_mov16b(a, vl[i], vl[0]);                          CMTF("vl[%u] = vl[0];", i);
+        }
     }
     LOOP_MASK_BWD_VH(s, p, i) {
-        if (offsets[i])
-            i_ushr  (a, vh[i], vh[0], a64op_imm(offsets[i]));
-        else if (i)
-            i_mov16b(a, vh[i], vh[0]);
+        if (offsets[i]) {
+            i_ushr  (a, vh[i], vh[0], a64op_imm(offsets[i]));   CMTF("vh[%u] >>= %u;", i, offsets[i]);
+        } else if (i) {
+            i_mov16b(a, vh[i], vh[0]);                          CMTF("vh[%u] = vh[0];", i);
+        }
     }
 
-    aarch64_add_comment(a, "apply masks");
     reshape_all_vectors(s, 16, 1);
-    LOOP_MASK_BWD      (p, i) i_and(a, vl[i], vl[i], vt[mask_idx[i]]);
-    LOOP_MASK_BWD_VH(s, p, i) i_and(a, vh[i], vh[i], vt[mask_idx[i]]);
+    LOOP_MASK_BWD      (p, i) { i_and(a, vl[i], vl[i], vt[mask_idx[i]]); CMTF("vl[%u] &= 0x%x;", i, mask_val[i]); }
+    LOOP_MASK_BWD_VH(s, p, i) { i_and(a, vh[i], vh[i], vt[mask_idx[i]]); CMTF("vh[%u] &= 0x%x;", i, mask_val[i]); }
 }
 
 /*********************************************************************/
@@ -739,18 +740,22 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
         MASK_GET(p->pack, 3),
         0
     };
+    uint16_t offset_mask = 0;
+    LOOP_MASK(p, i) {
+        if (offsets[i])
+            MASK_SET(offset_mask, i, 1);
+    }
 
-    aarch64_add_comment(a, "shift left");
-    LOOP_MASK      (p, i) if (offsets[i]) i_shl(a, vl[i], vl[i], a64op_imm(offsets[i]));
-    LOOP_MASK_VH(s, p, i) if (offsets[i]) i_shl(a, vh[i], vh[i], a64op_imm(offsets[i]));
+    LOOP      (offset_mask, i) { i_shl(a, vl[i], vl[i], a64op_imm(offsets[i])); CMTF("vl[%u] <<= %u;", i, offsets[i]); }
+    LOOP_VH(s, offset_mask, i) { i_shl(a, vh[i], vh[i], a64op_imm(offsets[i])); CMTF("vh[%u] <<= %u;", i, offsets[i]); }
 
-    aarch64_add_comment(a, "combine");
     reshape_all_vectors(s, 16, 1);
     LOOP_MASK      (p, i) {
         if (i != 0) {
-            i_orr    (a, vl[0], vl[0], vl[i]);
-            if (s->use_vh)
-                i_orr(a, vh[0], vh[0], vh[i]);
+            i_orr    (a, vl[0], vl[0], vl[i]); CMTF("vl[0] |= vl[%u];", i);
+            if (s->use_vh) {
+                i_orr(a, vh[0], vh[0], vh[i]); CMTF("vh[0] |= vh[%u];", i);
+            }
         }
     }
 }
