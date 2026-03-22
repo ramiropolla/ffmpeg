@@ -118,22 +118,6 @@ static const char *cond_name(uint8_t cond)
 }
 
 /*********************************************************************/
-static const char *extend_name(uint8_t extend)
-{
-    switch (extend) {
-    case AARCH64_EXTEND_UXTB: return "uxtb";
-    case AARCH64_EXTEND_UXTH: return "uxth";
-    case AARCH64_EXTEND_UXTW: return "uxtw";
-    case AARCH64_EXTEND_UXTX: return "lsl";
-    case AARCH64_EXTEND_SXTB: return "sxtb";
-    case AARCH64_EXTEND_SXTH: return "sxth";
-    case AARCH64_EXTEND_SXTW: return "sxtw";
-    case AARCH64_EXTEND_SXTX: return "sxtx";
-    default:
-        return NULL;
-    }
-}
-
 static void print_gpr(FILE *fp, AArch64Op op)
 {
     uint8_t n = a64op_gpr_n(op);
@@ -149,15 +133,6 @@ static void print_gpr(FILE *fp, AArch64Op op)
     case sizeof(uint64_t): fprintf(fp, "x%d", n); break;
     default:
         assert(!"Invalid GPR size!");
-    }
-
-    uint8_t ext = a64op_gpr_ext(op);
-    if (ext != AARCH64_EXTEND_NONE) {
-        uint8_t sh = a64op_gpr_sh(op);
-        if (sh)
-            fprintf(fp, ", %s #%d", extend_name(ext), sh);
-        else
-            fprintf(fp, ", %s", extend_name(ext));
     }
 }
 
@@ -208,18 +183,6 @@ static void print_base(FILE *fp, AArch64Op op)
         print_base_reg(fp, n);
         fprintf(fp, "], #%d", imm);
         break;
-    case AARCH64_BASE_REG: {
-        uint8_t m   = a64op_base_m(op);
-        uint8_t ext = a64op_base_ext(op);
-        uint8_t sh  = a64op_base_sh(op);
-        fprintf(fp, "[");
-        print_base_reg(fp, n);
-        if (sh)
-            fprintf(fp, ", x%d, %s #%d]", m, extend_name(ext), sh);
-        else
-            fprintf(fp, ", x%d, %s]", m, extend_name(ext));
-        break;
-    }
     }
 }
 

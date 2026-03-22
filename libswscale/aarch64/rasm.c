@@ -266,3 +266,25 @@ int aarch64_new_labelf(AArch64Context *actx, char *s, size_t n, const char *fmt,
     va_end(args);
     return aarch64_new_label(actx, s);
 }
+
+size_t a64op_vec_struct(AArch64Op op, AArch64OpVecOp *restrict out)
+{
+    uint8_t n = a64op_vec_n(op);
+    out->b   = a64op_vecb  (n);
+    out->h   = a64op_vech  (n);
+    out->s   = a64op_vecs  (n);
+    out->d   = a64op_vecd  (n);
+    out->q   = a64op_vecq  (n);
+    out->b8  = a64op_vec8b (n);
+    out->b16 = a64op_vec16b(n);
+    out->h4  = a64op_vec4h (n);
+    out->h8  = a64op_vec8h (n);
+    out->s2  = a64op_vec2s (n);
+    out->s4  = a64op_vec4s (n);
+    out->d2  = a64op_vec2d (n);
+    for (int i = 0; i < 2; i++)
+        out->be[i] = a64op_elem(out->b, i);
+    for (int i = 0; i < 2; i++)
+        out->de[i] = a64op_elem(out->d, i);
+    return sizeof(*out);
+}

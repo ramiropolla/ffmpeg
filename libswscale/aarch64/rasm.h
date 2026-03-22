@@ -23,7 +23,9 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 // TODO prefixes:
 // i_:  instructions
@@ -248,9 +250,6 @@ void aarch64_annotatef(AArch64Context *actx, char *s, size_t n, const char *fmt,
 void aarch64_annotate_next(AArch64Context *actx, const char *comment);
 void aarch64_annotate_nextf(AArch64Context *actx, char *s, size_t n, const char *fmt, ...);
 
-#define inlcmt(actx, comment) aarch64_annotate(actx, comment)
-#define inlcmtf(actx, fmt, ...) aarch64_annotatef(actx, (char[128]){0}, 128, fmt, __VA_ARGS__)
-
 int aarch64_print(AArch64Context *actx, FILE *fp);
 
 /*********************************************************************/
@@ -341,12 +340,10 @@ static inline AArch64Op a64op_make_gpr(uint8_t n, uint8_t size)
 /* getters */
 static inline uint8_t a64op_gpr_n   (AArch64Op op) { return op.u8[1]; }
 static inline uint8_t a64op_gpr_size(AArch64Op op) { return op.u8[2]; }
-static inline uint8_t a64op_gpr_ext (AArch64Op op) { return op.u8[3]; }
-static inline uint8_t a64op_gpr_sh  (AArch64Op op) { return op.u8[4]; }
 
 static inline AArch64Op a64op_gpw(uint8_t n) { return a64op_make_gpr(n, sizeof(uint32_t)); }
 static inline AArch64Op a64op_gpx(uint8_t n) { return a64op_make_gpr(n, sizeof(uint64_t)); }
-static inline AArch64Op a64op_sp (void)       { return a64op_make_gpr(31, sizeof(uint64_t)); }
+static inline AArch64Op a64op_sp (void)      { return a64op_make_gpr(31, sizeof(uint64_t)); }
 
 /* modifiers */
 static inline AArch64Op a64op_w(AArch64Op op) { return a64op_gpw(a64op_gpr_n(op)); }
@@ -408,6 +405,7 @@ static inline AArch64Op a64op_veclist(AArch64Op op0, AArch64Op op1, AArch64Op op
 
 static inline AArch64Op a64op_elem(AArch64Op op, uint8_t idx)
 {
+    op.u8[2] = 0;
     op.u8[5] = idx + 1;
     return op;
 }
@@ -418,13 +416,6 @@ static inline AArch64Op v_h(AArch64Op op) { return a64op_vech(a64op_vec_n(op)); 
 static inline AArch64Op v_s(AArch64Op op) { return a64op_vecs(a64op_vec_n(op)); }
 static inline AArch64Op v_d(AArch64Op op) { return a64op_vecd(a64op_vec_n(op)); }
 static inline AArch64Op v_q(AArch64Op op) { return a64op_vecq(a64op_vec_n(op)); }
-
-/* scalar by element modifiers */
-static inline AArch64Op ve_b(AArch64Op op, uint8_t idx) { return a64op_elem(v_b(op), idx); }
-static inline AArch64Op ve_h(AArch64Op op, uint8_t idx) { return a64op_elem(v_h(op), idx); }
-static inline AArch64Op ve_s(AArch64Op op, uint8_t idx) { return a64op_elem(v_s(op), idx); }
-static inline AArch64Op ve_d(AArch64Op op, uint8_t idx) { return a64op_elem(v_d(op), idx); }
-static inline AArch64Op ve_q(AArch64Op op, uint8_t idx) { return a64op_elem(v_q(op), idx); }
 
 /* arrangement specifier modifiers */
 static inline AArch64Op v_8b (AArch64Op op) { return a64op_vec8b (a64op_vec_n(op)); }
@@ -441,13 +432,35 @@ static inline AArch64Op vv_2(AArch64Op op0, AArch64Op op1)                      
 static inline AArch64Op vv_3(AArch64Op op0, AArch64Op op1, AArch64Op op2)                { return a64op_veclist(op0, op1, op2, OPN); }
 static inline AArch64Op vv_4(AArch64Op op0, AArch64Op op1, AArch64Op op2, AArch64Op op3) { return a64op_veclist(op0, op1, op2, op3); }
 
+/* Helper structure to simplify acessing vectors in assembly. */
+typedef struct AArch64OpVecOp {
+    /* scalar */
+    AArch64Op b;
+    AArch64Op h;
+    AArch64Op s;
+    AArch64Op d;
+    AArch64Op q;
+    /* arrangement specifier */
+    AArch64Op b8;
+    AArch64Op b16;
+    AArch64Op h4;
+    AArch64Op h8;
+    AArch64Op s2;
+    AArch64Op s4;
+    AArch64Op d2;
+    /* by element */
+    AArch64Op be[2]; /* NOTE it should be 16 but we only use 2 so far. */
+    AArch64Op de[2];
+} AArch64OpVecOp;
+
+size_t a64op_vec_struct(AArch64Op op, AArch64OpVecOp *out);
+
 /*********************************************************************/
 /* AARCH64_OP_BASE */
 
 #define AARCH64_BASE_OFFSET 0
 #define AARCH64_BASE_PRE    1
 #define AARCH64_BASE_POST   2
-#define AARCH64_BASE_REG    3
 
 static inline AArch64Op a64op_make_base(uint8_t n, uint8_t mode, int16_t imm)
 {
@@ -456,19 +469,6 @@ static inline AArch64Op a64op_make_base(uint8_t n, uint8_t mode, int16_t imm)
     op.u8[1]  = n;
     op.u8[2]  = mode;
     op.u16[2] = (uint16_t) imm;
-    return op;
-}
-
-static inline AArch64Op a64op_make_base_reg(uint8_t n, uint8_t m,
-                                            uint8_t ext, uint8_t sh)
-{
-    AArch64Op op = { 0 };
-    op.u8[0] = AARCH64_OP_BASE;
-    op.u8[1] = n;
-    op.u8[2] = AARCH64_BASE_REG;
-    op.u8[3] = m;
-    op.u8[4] = ext;
-    op.u8[5] = sh;
     return op;
 }
 
@@ -484,10 +484,6 @@ static inline AArch64Op a64op_base(AArch64Op op)              { return a64op_mak
 static inline AArch64Op a64op_off (AArch64Op op, int16_t imm) { return a64op_make_base(a64op_gpr_n(op), AARCH64_BASE_OFFSET, imm); }
 static inline AArch64Op a64op_pre (AArch64Op op, int16_t imm) { return a64op_make_base(a64op_gpr_n(op), AARCH64_BASE_PRE,    imm); }
 static inline AArch64Op a64op_post(AArch64Op op, int16_t imm) { return a64op_make_base(a64op_gpr_n(op), AARCH64_BASE_POST,   imm); }
-static inline AArch64Op a64op_reg (AArch64Op base, AArch64Op off, uint8_t ext, uint8_t sh)
-{
-    return a64op_make_base_reg(a64op_gpr_n(base), a64op_gpr_n(off), ext, sh);
-}
 
 /*********************************************************************/
 /* Helper functions to add instructions */
@@ -551,6 +547,9 @@ static inline AArch64Op a64op_reg (AArch64Op base, AArch64Op off, uint8_t ext, u
 #define i_xtn(actx,    op0, op1          ) aarch64_add_insn(actx, AARCH64_INSN_XTN,    op0, op1, OPN, OPN)
 #define i_zip1(actx,   op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_ZIP1,   op0, op1, op2, OPN)
 #define i_zip2(actx,   op0, op1, op2     ) aarch64_add_insn(actx, AARCH64_INSN_ZIP2,   op0, op1, op2, OPN)
+
+/* extra helpers */
+#define i_mov16b(actx, op0, op1) i_mov(actx, v_16b(op0), v_16b(op1))
 
 /* branch helpers */
 #define i_beq(actx, id) i_b(actx, a64cond_eq(), a64op_label(id))
