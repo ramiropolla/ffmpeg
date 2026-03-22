@@ -18,12 +18,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef AARCH64_OPS_LOOKUP_H
-#define AARCH64_OPS_LOOKUP_H
+#ifndef SWSCALE_AARCH64_OPS_LOOKUP_H
+#define SWSCALE_AARCH64_OPS_LOOKUP_H
 
 #include "libswscale/ops_chain.h"
 #include "libswscale/aarch64/ops_impl.h"
 
 SwsFuncPtr ff_sws_aarch64_lookup(const SwsAArch64OpImplParams *p);
 
-#endif /* AARCH64_OPS_LOOKUP_H */
+#endif /* SWSCALE_AARCH64_OPS_LOOKUP_H */

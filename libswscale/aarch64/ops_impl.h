@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef AARCH64_OPS_IMPL_H
-#define AARCH64_OPS_IMPL_H
+#ifndef SWSCALE_AARCH64_OPS_IMPL_H
+#define SWSCALE_AARCH64_OPS_IMPL_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -141,4 +141,4 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
     return num_vregs;
 }
 
-#endif /* AARCH64_OPS_IMPL_H */
+#endif /* SWSCALE_AARCH64_OPS_IMPL_H */

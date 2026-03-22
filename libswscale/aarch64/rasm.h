@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef AARCH64_RASM_H
-#define AARCH64_RASM_H
+#ifndef SWSCALE_AARCH64_RASM_H
+#define SWSCALE_AARCH64_RASM_H
 
 #include <assert.h>
 #include <stdbool.h>
@@ -568,4 +568,4 @@ static inline AArch64Op a64op_post(AArch64Op op, int16_t imm) { return a64op_mak
 #define i_bgt(actx, id) i_b(actx, a64cond_gt(), a64op_label(id))
 #define i_ble(actx, id) i_b(actx, a64cond_le(), a64op_label(id))
 
-#endif /* AARCH64_RASM_H */
+#endif /* SWSCALE_AARCH64_RASM_H */
