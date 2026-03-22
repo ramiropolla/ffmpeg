@@ -311,7 +311,7 @@ static const ParamField field_dither_y_offset  = { PARAM_FIELD(dither.y_offset),
 static const ParamField field_dither_size_log2 = { PARAM_FIELD(dither.size_log2), print_u8_name,    print_u8_val,    cmp_u8 };
 
 #define MAX_LEVELS 8
-static const ParamField *op_fields[AARCH64_SWS_OP_TYPE_NB][8] = {
+static const ParamField *op_fields[AARCH64_SWS_OP_TYPE_NB][MAX_LEVELS] = {
     [AARCH64_SWS_OP_PROCESS       ] = { &field_op, &field_mask },
     [AARCH64_SWS_OP_PROCESS_RETURN] = { &field_op, &field_mask },
     [AARCH64_SWS_OP_READ_BIT      ] = { &field_op, &field_block_size, &field_type, &field_mask },
