@@ -302,7 +302,7 @@ static const char *insn_name(AArch64InsnId id)
 }
 
 static void print_node_insn(const AArch64Context *actx, FILE *fp,
-                            size_t line_start, const AArch64Node *node,
+                            const AArch64Node *node, size_t line_start,
                             const int *local_labels)
 {
     indent_to(fp, line_start, INSTR_INDENT);
@@ -331,7 +331,7 @@ static void print_node_insn(const AArch64Context *actx, FILE *fp,
 /* AARCH64_NODE_COMMENT */
 
 static void print_node_comment(const AArch64Context *actx, FILE *fp,
-                               size_t line_start, const AArch64Node *node)
+                               const AArch64Node *node, size_t line_start)
 {
     indent_to(fp, line_start, INSTR_INDENT);
     fprintf(fp, "// %s", node->comment.text);
@@ -341,7 +341,7 @@ static void print_node_comment(const AArch64Context *actx, FILE *fp,
 /* AARCH64_NODE_LABEL */
 
 static void print_node_label(const AArch64Context *actx, FILE *fp,
-                             size_t line_start, const AArch64Node *node,
+                             const AArch64Node *node, size_t line_start,
                              int *local_labels)
 {
     int id = node->label.id;
@@ -363,7 +363,7 @@ static void print_node_label(const AArch64Context *actx, FILE *fp,
 /* AARCH64_NODE_FUNCTION */
 
 static void print_node_function(const AArch64Context *actx, FILE *fp,
-                                size_t line_start, const AArch64Node *node)
+                                const AArch64Node *node, size_t line_start)
 {
     fprintf(fp, "function %s, export=%d", node->func.name, node->func.export);
 }
@@ -372,7 +372,7 @@ static void print_node_function(const AArch64Context *actx, FILE *fp,
 /* AARCH64_NODE_ENDFUNC */
 
 static void print_node_endfunc(const AArch64Context *actx, FILE *fp,
-                               size_t line_start, const AArch64Node *node)
+                               const AArch64Node *node, size_t line_start)
 {
     fprintf(fp, "endfunc");
 }
@@ -409,19 +409,19 @@ int aarch64_print(AArch64Context *actx, FILE *fp)
 
             switch (node->type) {
             case AARCH64_NODE_INSN:
-                print_node_insn(actx, fp, line_start, node, local_labels);
+                print_node_insn(actx, fp, node, line_start, local_labels);
                 break;
             case AARCH64_NODE_COMMENT:
-                print_node_comment(actx, fp, line_start, node);
+                print_node_comment(actx, fp, node, line_start);
                 break;
             case AARCH64_NODE_LABEL:
-                print_node_label(actx, fp, line_start, node, local_labels);
+                print_node_label(actx, fp, node, line_start, local_labels);
                 break;
             case AARCH64_NODE_FUNCTION:
-                print_node_function(actx, fp, line_start, node);
+                print_node_function(actx, fp, node, line_start);
                 break;
             case AARCH64_NODE_ENDFUNC:
-                print_node_endfunc(actx, fp, line_start, node);
+                print_node_endfunc(actx, fp, node, line_start);
                 break;
             default:
                 break;
