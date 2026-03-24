@@ -29,7 +29,8 @@
 
 static int run_test(SwsContext *const ctx, AVFrame *frame,
                     const AVPixFmtDescriptor *const src_desc,
-                    const AVPixFmtDescriptor *const dst_desc)
+                    const AVPixFmtDescriptor *const dst_desc,
+                    const SwsOpBackend *backend, struct AVTreeNode **root)
 {
     /* Reuse ff_fmt_from_frame() to ensure correctly sanitized metadata */
     frame->format = av_pix_fmt_desc_get_id(src_desc);
@@ -37,6 +38,7 @@ static int run_test(SwsContext *const ctx, AVFrame *frame,
     frame->format = av_pix_fmt_desc_get_id(dst_desc);
     SwsFormat dst = ff_fmt_from_frame(frame, 0);
     bool incomplete = ff_infer_colors(&src.color, &dst.color);
+    int ret = 0;
 
     SwsOpList *ops = ff_sws_op_list_alloc();
     if (!ops)
@@ -57,6 +59,13 @@ static int run_test(SwsContext *const ctx, AVFrame *frame,
            av_get_pix_fmt_name(src.format), av_get_pix_fmt_name(dst.format));
 
     ff_sws_op_list_optimize(ops);
+
+    if (backend) {
+        ret = ff_sws_backend_collect_ops(ctx, backend, ops, root);
+        if (ret < 0)
+            goto fail;
+    }
+
     if (ff_sws_op_list_is_noop(ops))
         av_log(NULL, AV_LOG_INFO, "  (no-op)\n");
     else
@@ -65,7 +74,7 @@ static int run_test(SwsContext *const ctx, AVFrame *frame,
 fail:
     /* silently skip unsupported formats */
     ff_sws_op_list_free(&ops);
-    return 0;
+    return ret;
 }
 
 static void log_stdout(void *avcl, int level, const char *fmt, va_list vl)
@@ -83,6 +92,9 @@ int main(int argc, char **argv)
     enum AVPixelFormat dst_fmt_min = 0;
     enum AVPixelFormat src_fmt_max = AV_PIX_FMT_NB - 1;
     enum AVPixelFormat dst_fmt_max = AV_PIX_FMT_NB - 1;
+    const SwsOpBackend *backend = NULL;
+    struct AVTreeNode *root = NULL;
+    FILE *fp_entries = NULL;
     int ret = 1;
 
 #ifdef _WIN32
@@ -101,6 +113,10 @@ int main(int argc, char **argv)
                     "       Only test the specified source pixel format\n"
                     "   -v <level>\n"
                     "       Enable log verbosity at given level\n"
+                    "   -backend <name>\n"
+                    "       Use specified backend to collect ops\n"
+                    "   -print_ops <file name>\n"
+                    "       Generate ops entry file for specified backend\n"
             );
             return 0;
         }
@@ -120,6 +136,18 @@ int main(int argc, char **argv)
             }
         } else if (!strcmp(argv[i], "-v")) {
             av_log_set_level(atoi(argv[i + 1]));
+        } else if (!strcmp(argv[i], "-backend")) {
+            backend = ff_sws_find_backend_by_name(argv[i + 1]);
+            if (!backend) {
+                fprintf(stderr, "Could not find backend %s\n", argv[i + 1]);
+                goto error;
+            }
+        } else if (!strcmp(argv[i], "-print_ops")) {
+            fp_entries = fopen(argv[i + 1], "w");
+            if (!fp_entries) {
+                fprintf(stderr, "Could not open file %s\n", argv[i + 1]);
+                goto error;
+            }
         } else {
 bad_option:
             fprintf(stderr, "bad option or argument missing (%s) see -help\n", argv[i]);
@@ -142,14 +170,21 @@ bad_option:
             enum AVPixelFormat dst_fmt = av_pix_fmt_desc_get_id(dst);
             if (dst_fmt < dst_fmt_min || dst_fmt > dst_fmt_max)
                 continue;
-            int err = run_test(ctx, frame, src, dst);
+            int err = run_test(ctx, frame, src, dst, backend, &root);
             if (err < 0)
                 goto fail;
         }
     }
 
+    if (root)
+        ff_sws_backend_print_ops(backend, &root, fp_entries);
+
     ret = 0;
 fail:
+    if (root)
+        av_tree_destroy(root);
+    if (fp_entries)
+        fclose(fp_entries);
     av_frame_free(&frame);
     sws_free_context(&ctx);
     return ret;
