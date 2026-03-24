@@ -64,6 +64,21 @@ typedef struct SwsOpBackend {
     int (*compile)(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out);
 
     /**
+     * Collect operations that would have been emitted for the given list
+     * into an AVTree.
+     *
+     * This is useful to collect the entire list of operations a backend is
+     * expected to implement.
+     */
+    int (*collect_ops)(SwsContext *ctx, const SwsOpList *ops,
+                       struct AVTreeNode **root);
+
+    /**
+     * Print the operations collected into the AVTree to fp.
+     */
+    int (*print_ops)(struct AVTreeNode **root, FILE *fp);
+
+    /**
      * If NONE, backend only supports software frames.
      * Otherwise, frame hardware format must match hw_format for the backend
      * to be used.

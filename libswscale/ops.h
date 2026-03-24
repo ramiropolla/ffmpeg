@@ -25,6 +25,8 @@
 #include <stdbool.h>
 #include <stdalign.h>
 
+#include "libavutil/tree.h"
+
 #include "graph.h"
 
 typedef enum SwsPixelType {
@@ -318,5 +320,26 @@ enum SwsOpCompileFlags {
  */
 int ff_sws_compile_pass(SwsGraph *graph, SwsOpList **ops, int flags,
                         SwsPass *input, SwsPass **output);
+
+/**
+ * Get a backend matching the given name or NULL if no such backend exists.
+ */
+typedef struct SwsOpBackend SwsOpBackend;
+const SwsOpBackend *ff_sws_find_backend_by_name(const char *name);
+
+/**
+ * Wrapper for SwsOpBackend->collect_ops().
+ */
+int ff_sws_backend_collect_ops(SwsContext *ctx,
+                               const SwsOpBackend *backend,
+                               const SwsOpList *ops,
+                               struct AVTreeNode **root);
+
+/**
+ * Wrapper for SwsOpBackend->print_ops().
+ */
+int ff_sws_backend_print_ops(const SwsOpBackend *backend,
+                             struct AVTreeNode **root,
+                             FILE *fp);
 
 #endif
