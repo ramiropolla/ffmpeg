@@ -248,7 +248,7 @@ void rasm_annotatef(RasmContext *actx, char *s, size_t n, const char *fmt, ...)
     va_start(args, fmt);
     vsnprintf(s, n, fmt, args);
     va_end(args);
-    return rasm_annotate(actx, s);
+    rasm_annotate(actx, s);
 }
 
 void rasm_annotate_next(RasmContext *actx, const char *comment)
@@ -267,7 +267,7 @@ void rasm_annotate_nextf(RasmContext *actx, char *s, size_t n, const char *fmt, 
     va_start(args, fmt);
     vsnprintf(s, n, fmt, args);
     va_end(args);
-    return rasm_annotate_next(actx, s);
+    rasm_annotate_next(actx, s);
 }
 
 int rasm_new_label(RasmContext *actx, const char *name)

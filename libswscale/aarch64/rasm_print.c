@@ -239,12 +239,24 @@ static void print_op(const RasmContext *actx,
                      const int *local_labels, RasmOp op)
 {
     switch (rasm_op_type(op)) {
-    case RASM_OP_IMM:     return print_op_imm(fp, pos, op);
-    case RASM_OP_LABEL:   return print_op_label(actx, fp, pos, op, local_labels);
-    case AARCH64_OP_GPR:  return print_op_gpr(fp, pos, op);
-    case AARCH64_OP_VEC:  return print_op_vec(fp, pos, op);
-    case AARCH64_OP_BASE: return print_op_base(fp, pos, op);
-    case AARCH64_OP_COND: return print_op_cond(fp, pos, op);
+    case RASM_OP_IMM:
+        print_op_imm(fp, pos, op);
+        break;
+    case RASM_OP_LABEL:
+        print_op_label(actx, fp, pos, op, local_labels);
+        break;
+    case AARCH64_OP_GPR:
+        print_op_gpr(fp, pos, op);
+        break;
+    case AARCH64_OP_VEC:
+        print_op_vec(fp, pos, op);
+        break;
+    case AARCH64_OP_BASE:
+        print_op_base(fp, pos, op);
+        break;
+    case AARCH64_OP_COND:
+        print_op_cond(fp, pos, op);
+        break;
     default:
         av_assert0(0);
     }
