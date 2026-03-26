@@ -205,6 +205,7 @@ RasmNode *rasm_add_func(RasmContext *actx, int id, bool export);
 RasmNode *rasm_add_endfunc(RasmContext *actx);
 RasmNode *rasm_add_directive(RasmContext *actx, const char *text);
 
+RasmNode *rasm_get_current_node(RasmContext *actx);
 RasmNode *rasm_set_current_node(RasmContext *actx, RasmNode *node);
 
 /* Top-level IR entries */
