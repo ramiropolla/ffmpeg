@@ -47,7 +47,8 @@ static uint8_t sws_pixel_to_aarch64(SwsPixelType type)
  * Convert SwsOp to a SwsAArch64OpImplParams. Read the comments regarding
  * SwsAArch64OpImplParams in ops_impl.h for more information.
  */
-static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, SwsAArch64OpImplParams *out)
+static void aarch64_impl_params(SwsContext *ctx, const SwsOpList *ops,
+                                int block_size, int n, SwsAArch64OpImplParams *out)
 {
     const SwsOp *op = &ops->ops[n];
     const SwsOp *next = n + 1 < ops->num_ops ? &ops->ops[n + 1] : op;
@@ -182,8 +183,8 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
         break;
     case AARCH64_SWS_OP_LINEAR:
         /**
-         * The linear mask in out->linear packs the 4x5 matrix from SwsLinearOp
-         * as 2 bits per element:
+         * The out->linear.mask field packs the 4x5 matrix from SwsLinearOp as
+         * 2 bits per element:
          *   00: m[i][j] == 0
          *   01: m[i][j] == 1
          *   11: m[i][j] is any other coefficient
@@ -197,11 +198,12 @@ static void aarch64_impl_params(const SwsOpList *ops, int block_size, int n, Sws
             for (int j = 0; j < 5; j++) {
                 int jj = linear_index_from_sws_op(j);
                 if (!av_cmp_q(op->lin.m[i][j], av_make_q(1, 1)))
-                    LINEAR_MASK_SET(out->linear, i, jj, 1ULL);
+                    LINEAR_MASK_SET(out->linear.mask, i, jj, 1ULL);
                 else if (av_cmp_q(op->lin.m[i][j], av_make_q(0, 1)))
-                    LINEAR_MASK_SET(out->linear, i, jj, 3ULL);
+                    LINEAR_MASK_SET(out->linear.mask, i, jj, 3ULL);
             }
         }
+        out->linear.fmla = !(ctx->flags & SWS_BITEXACT);
         break;
     case AARCH64_SWS_OP_DITHER:
         out->mask = 0;
@@ -239,7 +241,7 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     int i_coeff = 0;
     LOOP_LINEAR_MASK(p, i, j) {
         const int jj = linear_index_to_sws_op(j);
-        coeffs[i_coeff++] = (float) av_q2d(op->lin.m[i][jj]);
+        coeffs[i_coeff++] = (float) op->lin.m[i][jj].num / op->lin.m[i][jj].den;
     }
 
     res->priv.ptr = coeffs;
@@ -384,7 +386,7 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
     /* Look up kernel functions. */
     for (int i = 0; i < rest.num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        aarch64_impl_params(&rest, bctx.block_size, i, &params);
+        aarch64_impl_params(ctx, &rest, bctx.block_size, i, &params);
         SwsFuncPtr func = ff_sws_aarch64_lookup(&params);
         if (!func) {
             ret = AVERROR(ENOTSUP);
@@ -494,10 +496,20 @@ static int aarch64_collect_ops(SwsContext *ctx, const SwsOpList *ops, struct AVT
 
     for (int i = 0; i < rest.num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        aarch64_impl_params(&rest, bctx.block_size, i, &params);
+        aarch64_impl_params(ctx, &rest, bctx.block_size, i, &params);
         ret = aarch64_collect_op(&params, root);
         if (ret < 0)
             goto end;
+        if (params.op == AARCH64_SWS_OP_LINEAR) {
+            /**
+             * Generate both sets of linear op functions that do use
+             * and do not use fmla (selected by SWS_BITEXACT).
+             */
+            params.linear.fmla = !params.linear.fmla;
+            ret = aarch64_collect_op(&params, root);
+            if (ret < 0)
+                goto end;
+        }
     }
 
     ret = 0;

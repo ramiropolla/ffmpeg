@@ -84,6 +84,11 @@ typedef uint16_t SwsAArch64OpMask;
  */
 typedef uint64_t SwsAArch64LinearOpMask;
 
+typedef struct SwsAArch64LinearOp {
+    SwsAArch64LinearOpMask mask;
+    uint8_t fmla;
+} SwsAArch64LinearOp;
+
 typedef struct SwsAArch64DitherOp {
     uint16_t y_offset;
     uint8_t size_log2;
@@ -100,12 +105,12 @@ typedef struct SwsAArch64OpImplParams {
     SwsAArch64PixelType type;
     uint8_t block_size;
     union {
-        uint8_t                shift;
-        SwsAArch64OpMask       swizzle;
-        SwsAArch64OpMask       pack;
-        SwsAArch64PixelType    to_type;
-        SwsAArch64LinearOpMask linear;
-        SwsAArch64DitherOp     dither;
+        uint8_t             shift;
+        SwsAArch64OpMask    swizzle;
+        SwsAArch64OpMask    pack;
+        SwsAArch64PixelType to_type;
+        SwsAArch64LinearOp  linear;
+        SwsAArch64DitherOp  dither;
     };
 } SwsAArch64OpImplParams;
 
@@ -157,7 +162,7 @@ int sws_aarch64_op_impl_cmp(const void *a, const void *b);
 #define LOOP_LINEAR_MASK(p, idx, jdx)       \
     LOOP_MASK(p, idx)                       \
         for (int jdx = 0; jdx < 5; jdx++)   \
-            if (LINEAR_MASK_GET(p->linear, idx, jdx))
+            if (LINEAR_MASK_GET(p->linear.mask, idx, jdx))
 
 /* Compute number of vector registers needed to store all coefficients. */
 static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
