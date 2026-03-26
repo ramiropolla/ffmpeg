@@ -120,9 +120,9 @@ typedef struct SwsAArch64Context {
     RasmOp cont;
 
     /* Vector registers. Two banks (low and high) are used. */
-    RasmOp vl[4];
-    RasmOp vh[4];
-    RasmOp vt[8];
+    RasmOp vl[ 4];
+    RasmOp vh[ 4];
+    RasmOp vt[12];
 
     /* Read/Write data pointers and padding. */
     RasmOp in[4];
@@ -152,22 +152,26 @@ typedef struct SwsAArch64Context {
 /* Reshape all vector registers for current SwsOp. */
 static void reshape_all_vectors(SwsAArch64Context *s, int el_count, int el_size)
 {
-    s->vl[0] = a64op_make_vec( 0, el_count, el_size);
-    s->vl[1] = a64op_make_vec( 1, el_count, el_size);
-    s->vl[2] = a64op_make_vec( 2, el_count, el_size);
-    s->vl[3] = a64op_make_vec( 3, el_count, el_size);
-    s->vh[0] = a64op_make_vec( 4, el_count, el_size);
-    s->vh[1] = a64op_make_vec( 5, el_count, el_size);
-    s->vh[2] = a64op_make_vec( 6, el_count, el_size);
-    s->vh[3] = a64op_make_vec( 7, el_count, el_size);
-    s->vt[0] = a64op_make_vec(16, el_count, el_size);
-    s->vt[1] = a64op_make_vec(17, el_count, el_size);
-    s->vt[2] = a64op_make_vec(18, el_count, el_size);
-    s->vt[3] = a64op_make_vec(19, el_count, el_size);
-    s->vt[4] = a64op_make_vec(20, el_count, el_size);
-    s->vt[5] = a64op_make_vec(21, el_count, el_size);
-    s->vt[6] = a64op_make_vec(22, el_count, el_size);
-    s->vt[7] = a64op_make_vec(23, el_count, el_size);
+    s->vl[ 0] = a64op_make_vec( 0, el_count, el_size);
+    s->vl[ 1] = a64op_make_vec( 1, el_count, el_size);
+    s->vl[ 2] = a64op_make_vec( 2, el_count, el_size);
+    s->vl[ 3] = a64op_make_vec( 3, el_count, el_size);
+    s->vh[ 0] = a64op_make_vec( 4, el_count, el_size);
+    s->vh[ 1] = a64op_make_vec( 5, el_count, el_size);
+    s->vh[ 2] = a64op_make_vec( 6, el_count, el_size);
+    s->vh[ 3] = a64op_make_vec( 7, el_count, el_size);
+    s->vt[ 0] = a64op_make_vec(16, el_count, el_size);
+    s->vt[ 1] = a64op_make_vec(17, el_count, el_size);
+    s->vt[ 2] = a64op_make_vec(18, el_count, el_size);
+    s->vt[ 3] = a64op_make_vec(19, el_count, el_size);
+    s->vt[ 4] = a64op_make_vec(20, el_count, el_size);
+    s->vt[ 5] = a64op_make_vec(21, el_count, el_size);
+    s->vt[ 6] = a64op_make_vec(22, el_count, el_size);
+    s->vt[ 7] = a64op_make_vec(23, el_count, el_size);
+    s->vt[ 8] = a64op_make_vec(24, el_count, el_size);
+    s->vt[ 9] = a64op_make_vec(25, el_count, el_size);
+    s->vt[10] = a64op_make_vec(26, el_count, el_size);
+    s->vt[11] = a64op_make_vec(27, el_count, el_size);
 }
 
 /*********************************************************************/
@@ -1052,6 +1056,11 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                         int save_mask, bool vh_pass)
 {
     RasmContext *r = s->rctx;
+    /**
+     * The intermediate registers for fmul+fadd (for when SWS_BITEXACT
+     * is set) start from temp vector 4.
+     */
+    RasmOp *vtmp = &vt[4];
     RasmOp *vx = vh_pass ? s->vh : s->vl;
     char cvh = vh_pass ? 'h' : 'l';
 
@@ -1080,8 +1089,9 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     int i_coeff = 0;
     LOOP_MASK(p, i) {
         bool first = true;
+        RasmNode *pre_mul = rasm_get_current_node(r);
         for (int j = 0; j < 5; j++) {
-            if (!LINEAR_MASK_GET(p->linear, i, j))
+            if (!LINEAR_MASK_GET(p->linear.mask, i, j))
                 continue;
             bool is_offset = linear_index_is_offset(j);
             int  src_j     = linear_index_to_vx(j);
@@ -1091,11 +1101,16 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             RasmOp vcoeff = a64op_elem(vc[vc_i], vc_j);
             i_coeff++;
             if (first && is_offset) {
-                i_dup (r, vx[i], vcoeff);       CMTF("v%c[%u]  = broadcast(vc[%u][%u]);", cvh, i, vc_i, vc_j);
+                i_dup (r, vx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(vc[%u][%u]);", cvh, i, vc_i, vc_j);
             } else if (first && !is_offset) {
-                i_fmul(r, vx[i], vsrc, vcoeff); CMTF("v%c[%u]  = vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
+                i_fmul(r, vx[i], vsrc, vcoeff);         CMTF("v%c[%u]  = vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
+            } else if (!p->linear.fmla) {
+                pre_mul = rasm_set_current_node(r, pre_mul);
+                i_fmul(r, vtmp[vc_j], vsrc, vcoeff);    CMTF("vtmp[%u] = vsrc[%u] * vc[%u][%u];", vc_j, src_j, vc_i, vc_j);
+                pre_mul = rasm_set_current_node(r, pre_mul);
+                i_fadd(r, vx[i], vx[i], vtmp[vc_j]);    CMTF("v%c[%u] += vtmp[%u];", cvh, i, vc_j);
             } else {
-                i_fmla(r, vx[i], vsrc, vcoeff); CMTF("v%c[%u] += vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
+                i_fmla(r, vx[i], vsrc, vcoeff);         CMTF("v%c[%u] += vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
             }
             first = false;
         }
@@ -1106,7 +1121,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 {
     RasmContext *r = s->rctx;
     RasmOp *vt = s->vt;
-    RasmOp *vc = &vt[4]; /* The coefficients are loaded starting from temp vector 4 */
+    RasmOp *vc = &vt[8]; /* The coefficients are loaded starting from temp vector 8 */
     RasmOp ptr = s->tmp0;
     RasmOp coeff_veclist;
 
@@ -1125,7 +1140,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     bool overwritten[4] = { false, false, false, false };
     LOOP_MASK(p, i) {
         for (int j = 0; j < 5; j++) {
-            if (!LINEAR_MASK_GET(p->linear, i, j))
+            if (!LINEAR_MASK_GET(p->linear.mask, i, j))
                 continue;
             bool is_offset = linear_index_is_offset(j);
             int  src_j     = linear_index_to_vx(j);
