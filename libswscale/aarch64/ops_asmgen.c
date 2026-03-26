@@ -171,8 +171,7 @@ static void reshape_all_vectors(SwsAArch64Context *s, int el_count, int el_size)
 }
 
 /*********************************************************************/
-/* Save registers x19-x28, along with x29 (fp) and x30 (lr). */
-#define MAX_SAVED_REGS 12
+/* Function frame */
 
 static unsigned clobbered_frame_size(unsigned n)
 {
@@ -222,17 +221,29 @@ static void asmgen_epilogue(SwsAArch64Context *s, const RasmOp *regs, unsigned n
 }
 
 /*********************************************************************/
+/* Callee-saved registers (r19-r28). */
+#define MAX_SAVED_REGS 10
+
+static void clobber_gpr(RasmOp regs[MAX_SAVED_REGS], unsigned *count,
+                        RasmOp gpr)
+{
+    const int n = a64op_gpr_n(gpr);
+    if (n >= 19 && n <= 28)
+        regs[(*count)++] = gpr;
+}
+
 static unsigned clobbered_gprs(const SwsAArch64Context *s,
                                const SwsAArch64OpImplParams *p,
                                RasmOp regs[MAX_SAVED_REGS])
 {
-    unsigned n = 0;
-    regs[n++] = s->op1_impl;
+    unsigned count = 0;
     LOOP_MASK(p, i) {
-        regs[n++] = s->in_bump[i];
-        regs[n++] = s->out_bump[i];
+        clobber_gpr(regs, &count, s->in[i]);
+        clobber_gpr(regs, &count, s->out[i]);
+        clobber_gpr(regs, &count, s->in_bump[i]);
+        clobber_gpr(regs, &count, s->out_bump[i]);
     }
-    return n;
+    return count;
 }
 
 static void asmgen_process(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
@@ -1379,6 +1390,35 @@ static int asmgen(void)
     SwsAArch64Context s = { .rctx = rctx };
     int ret;
 
+    /**
+     * The entry point of the SwsOpFunc is the `process` function. The
+     * kernel functions are chained by directly branching to the next
+     * operation, using a continuation-passing style design. The exit
+     * point of the SwsOpFunc is the `process_return` function.
+     *
+     * The GPRs used by the entire call-chain are listed below.
+     *
+     * Function arguments are passed in r0-r5. After the parameters
+     * from `exec` have been read, r0 is reused to branch to the
+     * continuation functions. After the original parameters from
+     * `impl` have been computed, r1 is reused as the `impl` pointer
+     * for each operation.
+     *
+     * Loop iterators are r6 for `bx` and r3 for `y`, reused from
+     * `y_start`, which doesn't need to be preserved.
+     *
+     * The intra-procedure-call temporary registers (r16 and r17) are
+     * used as scratch regiters. They may be used by call veneers and
+     * PLT code inserted by the linker, so we cannot expect them to
+     * persist across branches between functions.
+     *
+     * The Platform Register (r18) is not used.
+     *
+     * The read/write data pointers and padding values first use up the
+     * remaining free caller-saved registers, and only then are the
+     * caller-saved registers (r19-r28) used.
+     */
+
     /* SwsOpFunc arguments. */
     s.exec      = a64op_gpx(0); // const SwsOpExec *exec
     s.impl      = a64op_gpx(1); // const void *priv
@@ -1389,33 +1429,33 @@ static int asmgen(void)
 
     /* Loop iterator variables. */
     s.bx        = a64op_gpw(6);
-    s.y         = s.y_start;    // Reused from SwsOpFunc argument.
+    s.y         = s.y_start;    /* Reused from SwsOpFunc argument. */
 
     /* Scratch registers. */
-    s.tmp0      = a64op_gpx(7);
-    s.tmp1      = a64op_gpx(8);
+    s.tmp0      = a64op_gpx(16); /* IP0 */
+    s.tmp1      = a64op_gpx(17); /* IP1 */
 
     /* CPS-related variables. */
-    s.op0_func  = a64op_gpx(9);
-    s.op1_impl  = a64op_gpx(28);
-    s.cont      = s.exec;       // Reused from SwsOpFunc argument.
+    s.op0_func  = a64op_gpx(7);
+    s.op1_impl  = a64op_gpx(8);
+    s.cont      = s.exec;       /* Reused from SwsOpFunc argument. */
 
     /* Read/Write data pointers and padding. */
-    s.in      [0] = a64op_gpx(10);
-    s.in      [1] = a64op_gpx(11);
-    s.in      [2] = a64op_gpx(12);
-    s.in      [3] = a64op_gpx(13);
-    s.out     [0] = a64op_gpx(14);
-    s.out     [1] = a64op_gpx(15);
-    s.out     [2] = a64op_gpx(16);
-    s.out     [3] = a64op_gpx(17);
-    s.in_bump [0] = a64op_gpx(20);
-    s.in_bump [1] = a64op_gpx(21);
+    s.in      [0] = a64op_gpx(9);
+    s.out     [0] = a64op_gpx(10);
+    s.in_bump [0] = a64op_gpx(11);
+    s.out_bump[0] = a64op_gpx(12);
+    s.in      [1] = a64op_gpx(13);
+    s.out     [1] = a64op_gpx(14);
+    s.in_bump [1] = a64op_gpx(15);
+    s.out_bump[1] = a64op_gpx(19);
+    s.in      [2] = a64op_gpx(20);
+    s.out     [2] = a64op_gpx(21);
     s.in_bump [2] = a64op_gpx(22);
-    s.in_bump [3] = a64op_gpx(23);
-    s.out_bump[0] = a64op_gpx(24);
-    s.out_bump[1] = a64op_gpx(25);
-    s.out_bump[2] = a64op_gpx(26);
+    s.out_bump[2] = a64op_gpx(23);
+    s.in      [3] = a64op_gpx(24);
+    s.out     [3] = a64op_gpx(25);
+    s.in_bump [3] = a64op_gpx(26);
     s.out_bump[3] = a64op_gpx(27);
 
     /* Generate all functions from ops_entries.c using rasm. */
