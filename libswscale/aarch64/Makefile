@@ -16,7 +16,7 @@ NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_impl.o
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_lookup.o
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_neon.o
 
-HOSTPROGS = aarch64/ops_asmgen$(HOSTEXESUF)
+HOSTPROGS = aarch64/ops_asmgen
 
 $(SUBDIR)aarch64/ops_neon.S: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
 	$(M)$< -ops > $@.tmp
