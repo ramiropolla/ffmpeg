@@ -1423,7 +1423,7 @@ static int asmgen(void)
      * `y_start`, which doesn't need to be preserved.
      *
      * The intra-procedure-call temporary registers (r16 and r17) are
-     * used as scratch regiters. They may be used by call veneers and
+     * used as scratch registers. They may be used by call veneers and
      * PLT code inserted by the linker, so we cannot expect them to
      * persist across branches between functions.
      *
