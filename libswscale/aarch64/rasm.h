@@ -610,4 +610,3 @@ static inline RasmOp a64cond_nv(void) { return a64op_cond(AARCH64_COND_NV); }
 #define i_mov16b(actx, op0, op1) i_mov(actx, v_16b(op0), v_16b(op1))
 
 #endif /* SWSCALE_AARCH64_RASM_H */
-
