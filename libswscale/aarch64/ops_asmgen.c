@@ -1389,7 +1389,7 @@ static int asmgen(void)
 
     /* Loop iterator variables. */
     s.bx        = a64op_gpw(6);
-    s.y         = s.y_start;    // Re-used from SwsOpFunc argument.
+    s.y         = s.y_start;    // Reused from SwsOpFunc argument.
 
     /* Scratch registers. */
     s.tmp0      = a64op_gpx(7);
@@ -1398,7 +1398,7 @@ static int asmgen(void)
     /* CPS-related variables. */
     s.op0_func  = a64op_gpx(9);
     s.op1_impl  = a64op_gpx(28);
-    s.cont      = s.exec;       // Re-used from SwsOpFunc argument.
+    s.cont      = s.exec;       // Reused from SwsOpFunc argument.
 
     /* Read/Write data pointers and padding. */
     s.in      [0] = a64op_gpx(10);

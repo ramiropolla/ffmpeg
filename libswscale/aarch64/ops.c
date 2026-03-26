@@ -265,7 +265,7 @@ static int aarch64_setup_dither(const SwsAArch64OpImplParams *p,
      * The y offset, on the other hand, may change per component, and
      * would therefore need to be masked for every y_offset value. To
      * simplify the execution, we over-allocate the number of rows of
-     * the output dither matrix by the largets y_offset value. This way,
+     * the output dither matrix by the largest y_offset value. This way,
      * we only need to mask y offset once, and can safely increment the
      * dither matrix pointer by fixed offsets for every y_offset change.
      */
