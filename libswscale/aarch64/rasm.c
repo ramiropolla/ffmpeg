@@ -188,6 +188,11 @@ RasmNode *rasm_add_directive(RasmContext *actx, const char *text)
     return node;
 }
 
+RasmNode *rasm_get_current_node(RasmContext *actx)
+{
+    return actx->current_node;
+}
+
 RasmNode *rasm_set_current_node(RasmContext *actx, RasmNode *node)
 {
     RasmNode *current_node = actx->current_node;
