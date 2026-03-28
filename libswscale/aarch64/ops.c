@@ -50,8 +50,8 @@ static uint8_t sws_pixel_to_aarch64(SwsPixelType type)
  * Convert SwsOp to a SwsAArch64OpImplParams. Read the comments regarding
  * SwsAArch64OpImplParams in ops_impl.h for more information.
  */
-static void aarch64_impl_params(SwsContext *ctx, const SwsOpList *ops,
-                                int block_size, int n, SwsAArch64OpImplParams *out)
+static int aarch64_impl_params(SwsContext *ctx, const SwsOpList *ops,
+                               int block_size, int n, SwsAArch64OpImplParams *out)
 {
     const SwsOp *op = &ops->ops[n];
     const SwsOp *next = n + 1 < ops->num_ops ? &ops->ops[n + 1] : op;
@@ -73,6 +73,8 @@ static void aarch64_impl_params(SwsContext *ctx, const SwsOpList *ops,
     /* Map SwsOpType to SwsAArch64OpType */
     switch (op->op) {
     case SWS_OP_READ:
+        if (op->rw.filter)
+            return AVERROR(ENOTSUP);
         /**
          * The different types of read operations have been split into
          * their own SwsAArch64OpType to simplify the implementation.
@@ -87,6 +89,8 @@ static void aarch64_impl_params(SwsContext *ctx, const SwsOpList *ops,
             out->op = AARCH64_SWS_OP_READ_PLANAR;
         break;
     case SWS_OP_WRITE:
+        if (op->rw.filter)
+            return AVERROR(ENOTSUP);
         /**
          * The different types of write operations have been split into
          * their own SwsAArch64OpType to simplify the implementation.
@@ -221,6 +225,8 @@ static void aarch64_impl_params(SwsContext *ctx, const SwsOpList *ops,
         out->dither.size_log2 = op->dither.size_log2;
         break;
     }
+
+    return 0;
 }
 
 /*********************************************************************/
@@ -390,7 +396,9 @@ static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
     /* Look up kernel functions. */
     for (int i = 0; i < rest.num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        aarch64_impl_params(ctx, &rest, bctx.block_size, i, &params);
+        ret = aarch64_impl_params(ctx, &rest, bctx.block_size, i, &params);
+        if (ret < 0)
+            goto error;
         SwsFuncPtr func = ff_sws_aarch64_lookup(&params);
         if (!func) {
             ret = AVERROR(ENOTSUP);
@@ -506,7 +514,9 @@ int ff_sws_collect_ops_aarch64(SwsContext *ctx, void *opaque, SwsOpList *ops)
 
     for (int i = 0; i < rest.num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        aarch64_impl_params(ctx, &rest, bctx.block_size, i, &params);
+        ret = aarch64_impl_params(ctx, &rest, bctx.block_size, i, &params);
+        if (ret < 0)
+            goto end;
         ret = aarch64_collect_op(&params, root);
         if (ret < 0)
             goto end;
