@@ -464,6 +464,8 @@ static int aarch64_collect_process(const SwsOpList *ops, struct AVTreeNode **roo
     const SwsOp *write = ff_sws_op_list_output(ops);
     const int read_planes  = read ? (read->rw.packed ? 1 : read->rw.elems) : 0;
     const int write_planes = write->rw.packed ? 1 : write->rw.elems;
+    int ret;
+
     SwsAArch64OpMask mask = 0;
     for (int i = 0; i < FFMAX(read_planes, write_planes); i++)
         MASK_SET(mask, i, 1);
@@ -471,9 +473,16 @@ static int aarch64_collect_process(const SwsOpList *ops, struct AVTreeNode **roo
         .op   = AARCH64_SWS_OP_PROCESS,
         .mask = mask,
     };
-    aarch64_collect_op(&params, root);
+
+    ret = aarch64_collect_op(&params, root);
+    if (ret < 0)
+        return ret;
+
     params.op = AARCH64_SWS_OP_PROCESS_RETURN;
-    aarch64_collect_op(&params, root);
+    ret = aarch64_collect_op(&params, root);
+    if (ret < 0)
+        return ret;
+
     return 0;
 }
 
@@ -490,7 +499,9 @@ int ff_sws_collect_ops_aarch64(SwsContext *ctx, void *opaque, SwsOpList *ops)
     if (ret < 0)
         return ret;
 
-    aarch64_collect_process(&rest, root);
+    ret = aarch64_collect_process(&rest, root);
+    if (ret < 0)
+        return ret;
 
     for (int i = 0; i < rest.num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
