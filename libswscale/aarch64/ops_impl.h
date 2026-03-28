@@ -173,7 +173,6 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
     LOOP_LINEAR_MASK(params, i, j)
         count++;
     int num_vregs = (count + 3) >> 2;
-    av_assert0(num_vregs <= 4);
     return num_vregs;
 }
 

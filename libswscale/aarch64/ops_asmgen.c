@@ -1124,10 +1124,12 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                  */
                 if (LINEAR_MASK_GET(p->linear.mask, i, j) != LINEAR_MASK_1) {
                     pre_mul = rasm_set_current_node(r, pre_mul);
-                    i_fmul(r, vtmp[vc_j], vsrc, vcoeff);CMTF("vtmp[%u] = vsrc[%u] * vc[%u][%u];", vc_j, src_j, vc_i, vc_j);
+                    i_fmul(r, vtmp[vc_j], vsrc, vcoeff);    CMTF("vtmp[%u] = vsrc[%u] * vc[%u][%u];", vc_j, src_j, vc_i, vc_j);
                     pre_mul = rasm_set_current_node(r, pre_mul);
+                    i_fadd(r, vx[i], vx[i], vtmp[vc_j]);    CMTF("v%c[%u] += vtmp[%u];", cvh, i, vc_j);
+                } else {
+                    i_fadd(r, vx[i], vx[i], vsrc);          CMTF("v%c[%u] += vsrc[%u];", cvh, i, vc_j);
                 }
-                i_fadd(r, vx[i], vx[i], vtmp[vc_j]);    CMTF("v%c[%u] += vtmp[%u];", cvh, i, vc_j);
             } else {
                 /**
                  * Most modern aarch64 cores have a fastpath for sequences
@@ -1150,7 +1152,9 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     RasmOp coeff_veclist;
 
     /* Preload coefficients from impl->priv. */
-    switch (linear_num_vregs(p)) {
+    const int num_vregs = linear_num_vregs(p);
+    av_assert0(num_vregs <= 4);
+    switch (num_vregs) {
     case 1: coeff_veclist = vv_1(vc[0]);                      break;
     case 2: coeff_veclist = vv_2(vc[0], vc[1]);               break;
     case 3: coeff_veclist = vv_3(vc[0], vc[1], vc[2]);        break;

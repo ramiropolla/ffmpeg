@@ -232,6 +232,7 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
      * coefficients.
      */
     const int num_vregs = linear_num_vregs(p);
+    av_assert0(num_vregs <= 4);
     float *coeffs = av_malloc(num_vregs * 4 * sizeof(float));
     if (!coeffs)
         return AVERROR(ENOMEM);
