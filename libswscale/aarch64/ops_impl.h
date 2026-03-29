@@ -176,12 +176,12 @@ static inline int linear_index_to_vx(int idx)
 #define sizeof_impl             32
 
 #if ARCH_AARCH64 && HAVE_NEON
-static_assert(offsetof_exec_in       == offsetof(SwsOpExec, in));
-static_assert(offsetof_exec_out      == offsetof(SwsOpExec, out));
-static_assert(offsetof_exec_in_bump  == offsetof(SwsOpExec, in_bump));
-static_assert(offsetof_exec_out_bump == offsetof(SwsOpExec, out_bump));
-static_assert(offsetof_impl_cont     == offsetof(SwsOpImpl, cont));
-static_assert(offsetof_impl_priv     == offsetof(SwsOpImpl, priv));
+static_assert(offsetof_exec_in       == offsetof(SwsOpExec, in),       "SwsOpExec layout mismatch");
+static_assert(offsetof_exec_out      == offsetof(SwsOpExec, out),      "SwsOpExec layout mismatch");
+static_assert(offsetof_exec_in_bump  == offsetof(SwsOpExec, in_bump),  "SwsOpExec layout mismatch");
+static_assert(offsetof_exec_out_bump == offsetof(SwsOpExec, out_bump), "SwsOpExec layout mismatch");
+static_assert(offsetof_impl_cont     == offsetof(SwsOpImpl, cont),     "SwsOpImpl layout mismatch");
+static_assert(offsetof_impl_priv     == offsetof(SwsOpImpl, priv),     "SwsOpImpl layout mismatch");
 #endif
 
 #endif /* SWSCALE_AARCH64_OPS_IMPL_H */
