@@ -20,6 +20,7 @@
 
 #include "libavutil/pixdesc.h"
 #include "libswscale/ops.h"
+#include "libswscale/ops_internal.h"
 #include "libswscale/format.h"
 
 #ifdef _WIN32
@@ -35,12 +36,36 @@ static int print_ops(SwsContext *const ctx, void *opaque, SwsOpList *ops)
            av_get_pix_fmt_name(ops->dst.format),
            ops->dst.width, ops->dst.height);
 
-    if (ff_sws_op_list_is_noop(ops))
+    if (ff_sws_op_list_is_noop(ops)) {
         av_log(opaque, AV_LOG_INFO, "  (no-op)\n");
-    else
-        ff_sws_op_list_print(opaque, AV_LOG_INFO, AV_LOG_INFO, ops);
+        return 0;
+    }
 
-    return 0;
+    ff_sws_op_list_print(opaque, AV_LOG_INFO, AV_LOG_INFO, ops);
+
+    SwsUOpList *uops = ff_sws_uop_list_alloc();
+    if (!uops)
+        return AVERROR(ENOMEM);
+
+    int ret = ff_sws_ops_translate(ops, uops);
+    if (ret == AVERROR(ENOTSUP)) {
+        ret = 0; /* not all op lists translate directly to uops */
+        goto fail;
+    } else if (ret < 0) {
+        fprintf(stderr, "Error translating ops: %s\n", av_err2str(ret));
+        goto fail;
+    }
+
+    av_log(opaque, AV_LOG_INFO, " translated micro-ops:\n");
+    for (int i = 0; i < uops->num_ops; i++) {
+        char name[SWS_UOP_NAME_MAX];
+        ff_sws_uop_name(&uops->ops[i], name);
+        av_log(opaque, AV_LOG_INFO, "    %s\n", name);
+    }
+
+fail:
+    ff_sws_uop_list_free(&uops);
+    return ret;
 }
 static void log_stdout(void *avcl, int level, const char *fmt, va_list vl)
 {
