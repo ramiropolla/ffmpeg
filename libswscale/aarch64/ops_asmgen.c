@@ -260,14 +260,14 @@ static void asmgen_epilogue(SwsAArch64Context *s, const RasmOp *regs, unsigned n
 }
 
 /*********************************************************************/
-/* Callee-saved registers (r19-r28). */
-#define MAX_SAVED_REGS 10
+/* Callee-saved registers (r19-r28, fp, and lr). */
+#define MAX_SAVED_REGS 12
 
 static void clobber_gpr(RasmOp regs[MAX_SAVED_REGS], unsigned *count,
                         RasmOp gpr)
 {
     const int n = a64op_gpr_n(gpr);
-    if (n >= 19 && n <= 28)
+    if (n >= 19 && n <= 30)
         regs[(*count)++] = gpr;
 }
 
