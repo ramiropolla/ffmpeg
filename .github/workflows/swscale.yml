@@ -28,10 +28,34 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build and test swscale
         run: |
-          sudo apt-get update && sudo apt-get install nasm
+          sudo apt-get update && sudo apt-get install nasm clang
           mkdir build
           cd build
           ../configure --cc=clang
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+
+  x86_64-linux-gcc-valgrind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test swscale
+        run: |
+          sudo apt-get update && sudo apt-get install nasm valgrind
+          mkdir build
+          cd build
+          ../configure --disable-memory-poisoning --target-exec="valgrind --error-exitcode=1 --malloc-fill=0xa2 --leak-check=full --vex-guest-max-insns=56 --gen-suppressions=all --suppressions=../tests/fate-valgrind.supp --undef-value-errors=no"
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+
+  x86_64-linux-clang-ubsan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test swscale
+        run: |
+          sudo apt-get update && sudo apt-get install nasm clang llvm libclang-rt-dev
+          mkdir build
+          cd build
+          ../configure --cc=clang --cxx=clang++ --ld=clang --extra-cflags='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined' --extra-ldflags='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined'
           make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-linux-gcc:
@@ -55,6 +79,30 @@ jobs:
           mkdir build
           cd build
           ../configure --cc=clang
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+
+  aarch64-linux-gcc-valgrind:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test swscale
+        run: |
+          sudo apt-get update && sudo apt-get install valgrind
+          mkdir build
+          cd build
+          ../configure --disable-memory-poisoning --target-exec="valgrind --error-exitcode=1 --malloc-fill=0xa2 --leak-check=full --vex-guest-max-insns=56 --gen-suppressions=all --suppressions=../tests/fate-valgrind.supp --undef-value-errors=no"
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+
+  aarch64-linux-clang-ubsan:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test swscale
+        run: |
+          sudo apt-get update && sudo apt-get install clang llvm libclang-rt-dev
+          mkdir build
+          cd build
+          ../configure --cc=clang --cxx=clang++ --ld=clang --extra-cflags='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined' --extra-ldflags='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined'
           make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-linux-pac-bti-gcs:
@@ -164,6 +212,20 @@ jobs:
           ../configure
           make -j$(sysctl -n hw.ncpu) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
+  x86_64-macos:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          brew install nasm
+      - name: Build and test swscale
+        run: |
+          mkdir build
+          cd build
+          ../configure
+          make -j$(sysctl -n hw.ncpu) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+
   aarch64-msvc-wine:
     runs-on: ubuntu-24.04-arm
     container: ghcr.io/mstorsjo/wine
@@ -247,4 +309,27 @@ jobs:
           cd build
           export PATH=$(pwd)/../gas-preprocessor:$PATH
           ../ffmpeg/configure --arch=arm64 --target-os=win32 --toolchain=msvc
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+
+  x86_64-msvc:
+    runs-on: windows-latest
+    steps:
+      - name: Set up the environment
+        uses: ilammy/msvc-dev-cmd@v1
+      - uses: actions/checkout@v6
+      - name: Install busybox
+        run: |
+          curl -LO https://frippery.org/files/busybox/busybox64.exe
+          ./busybox64.exe --install c:\busybox
+          echo "c:\busybox" | Out-File -FilePath $Env:GITHUB_PATH -Encoding utf8 -Append
+          echo "BB_OVERRIDE_APPLETS=link make" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          rm c:\busybox\link.exe
+          rm c:\busybox\make.exe
+          echo "C:\Program Files\NASM" | Out-File -FilePath $Env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build and test swscale
+        shell: sh
+        run: |
+          mkdir build
+          cd build
+          ../configure --arch=x86_64 --target-os=win32 --toolchain=msvc
           make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
