@@ -20,9 +20,9 @@ jobs:
           mkdir build
           cd build
           ../configure
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   x86_64-linux-clang:
     runs-on: ubuntu-latest
@@ -34,9 +34,9 @@ jobs:
           mkdir build
           cd build
           ../configure --cc=clang
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   x86_64-linux-gcc-valgrind:
     runs-on: ubuntu-latest
@@ -48,9 +48,9 @@ jobs:
           mkdir build
           cd build
           ../configure --disable-memory-poisoning --target-exec="valgrind --error-exitcode=1 --malloc-fill=0xa2 --leak-check=full --vex-guest-max-insns=56 --gen-suppressions=all --suppressions=../tests/fate-valgrind.supp --undef-value-errors=no"
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   x86_64-linux-clang-ubsan:
     runs-on: ubuntu-latest
@@ -62,9 +62,9 @@ jobs:
           mkdir build
           cd build
           ../configure --cc=clang --cxx=clang++ --ld=clang --extra-cflags='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined' --extra-ldflags='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined'
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-linux-gcc:
     runs-on: ubuntu-24.04-arm
@@ -75,9 +75,9 @@ jobs:
           mkdir build
           cd build
           ../configure
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-linux-clang:
     runs-on: ubuntu-24.04-arm
@@ -89,9 +89,9 @@ jobs:
           mkdir build
           cd build
           ../configure --cc=clang
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-linux-gcc-valgrind:
     runs-on: ubuntu-24.04-arm
@@ -103,9 +103,9 @@ jobs:
           mkdir build
           cd build
           ../configure --disable-memory-poisoning --target-exec="valgrind --error-exitcode=1 --malloc-fill=0xa2 --leak-check=full --vex-guest-max-insns=56 --gen-suppressions=all --suppressions=../tests/fate-valgrind.supp --undef-value-errors=no"
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-linux-clang-ubsan:
     runs-on: ubuntu-24.04-arm
@@ -117,9 +117,9 @@ jobs:
           mkdir build
           cd build
           ../configure --cc=clang --cxx=clang++ --ld=clang --extra-cflags='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined' --extra-ldflags='-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined'
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-linux-pac-bti-gcs:
     runs-on: ubuntu-24.04-arm
@@ -149,9 +149,9 @@ jobs:
           mkdir build
           cd build
           ../configure --cc=clang --sysroot=/opt/fedora-sysroot --extra-cflags="-mbranch-protection=standard" --extra-ldflags="-mbranch-protection=standard -fuse-ld=lld -Wl,-z,force-bti,-z,gcs=always,-z,gcs-report=warning -L/opt/fedora-sysroot/usr/lib64 -L/opt/fedora-sysroot/usr/lib/gcc/aarch64-redhat-linux/11" --target-exec="qemu-aarch64 -L /opt/fedora-sysroot -E GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=1"
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-linux-old-toolchain:
     runs-on: ubuntu-latest
@@ -170,9 +170,9 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=aarch64 --cross-prefix=aarch64-linux-gnu- --target-os=linux --target-exec="qemu-aarch64-static -L /usr/aarch64-linux-gnu"
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-android-old-ndk:
     runs-on: ubuntu-22.04 # libtinfo5 is not available in 24.04
@@ -194,9 +194,9 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=aarch64 --cc=aarch64-linux-android-gcc --cross-prefix=aarch64-linux-android- --target-os=android --sysroot=/opt/android-ndk/platforms/android-28/arch-arm64 --extra-cflags="-isystem /opt/android-ndk/sysroot/usr/include -isystem /opt/android-ndk/sysroot/usr/include/aarch64-linux-android"
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-android-new-ndk:
     runs-on: ubuntu-latest
@@ -214,9 +214,9 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=aarch64 --cc=aarch64-linux-android34-clang --cross-prefix=llvm- --target-os=android
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-macos:
     runs-on: macos-14
@@ -234,9 +234,9 @@ jobs:
           mkdir build
           cd build
           ../configure
-          make -j$(sysctl -n hw.ncpu) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -j$(sysctl -n hw.ncpu) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   x86_64-macos:
     runs-on: macos-latest
@@ -251,9 +251,9 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=x86_64 --extra-cflags="-arch x86_64" --extra-ldflags="-arch x86_64" --target-exec="arch -x86_64"
-          make -j$(sysctl -n hw.ncpu) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -j$(sysctl -n hw.ncpu) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-llvm-mingw:
     runs-on: ubuntu-24.04-arm
@@ -272,9 +272,9 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=aarch64 --target-os=mingw32 --cross-prefix=aarch64-w64-mingw32- --target-exec=wine
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   aarch64-msvc:
     runs-on: windows-11-arm
@@ -307,9 +307,9 @@ jobs:
           cd build
           export PATH=$(pwd)/../gas-preprocessor:$PATH
           ../ffmpeg/configure --arch=arm64 --target-os=win32 --toolchain=msvc
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
 
   x86_64-msvc:
     runs-on: windows-latest
@@ -333,6 +333,6 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=x86_64 --target-os=win32 --toolchain=msvc
-          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit $ret
+          exit ${ret:-0}
