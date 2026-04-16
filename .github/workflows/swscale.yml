@@ -10,7 +10,7 @@ on:
 #    - '*/aarch64/*'
 
 jobs:
-  linux-x86_64:
+  x86_64-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -25,7 +25,7 @@ jobs:
           make -j$(nproc) fate
           make -j$(nproc) run-checkasm
 
-  linux-gcc:
+  aarch64-linux-gcc:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
@@ -39,7 +39,7 @@ jobs:
           make -j$(nproc) fate
           make -j$(nproc) run-checkasm
 
-  linux-clang:
+  aarch64-linux-clang:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
@@ -54,7 +54,7 @@ jobs:
           make -j$(nproc) fate
           make -j$(nproc) run-checkasm
 
-  linux-pac-bti-gcs:
+  aarch64-linux-pac-bti-gcs:
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Set up Fedora cross sysroot
@@ -84,7 +84,7 @@ jobs:
           ../configure --cc=clang --sysroot=/opt/fedora-sysroot --extra-cflags="-mbranch-protection=standard" --extra-ldflags="-mbranch-protection=standard -fuse-ld=lld -Wl,-z,force-bti,-z,gcs=always,-z,gcs-report=warning -L/opt/fedora-sysroot/usr/lib64 -L/opt/fedora-sysroot/usr/lib/gcc/aarch64-redhat-linux/11" --enable-gpl --target-exec="qemu-aarch64 -L /opt/fedora-sysroot -E GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=1"
           make -j$(nproc) run-checkasm
 
-  linux-old-toolchain:
+  aarch64-linux-old-toolchain:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -103,7 +103,7 @@ jobs:
           ../configure --arch=aarch64 --cross-prefix=aarch64-linux-gnu- --target-os=linux --target-exec="qemu-aarch64-static -L /usr/aarch64-linux-gnu" --enable-gpl
           make -j$(nproc) run-checkasm
 
-  android-old-ndk:
+  aarch64-android-old-ndk:
     runs-on: ubuntu-22.04 # libtinfo5 is not available in 24.04
     steps:
       - uses: actions/checkout@v6
@@ -125,7 +125,7 @@ jobs:
           ../configure --arch=aarch64 --cc=aarch64-linux-android-gcc --cross-prefix=aarch64-linux-android- --target-os=android --enable-gpl --sysroot=/opt/android-ndk/platforms/android-28/arch-arm64 --extra-cflags="-isystem /opt/android-ndk/sysroot/usr/include -isystem /opt/android-ndk/sysroot/usr/include/aarch64-linux-android"
           make -j$(nproc) checkasm
 
-  android-new-ndk:
+  aarch64-android-new-ndk:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -143,7 +143,7 @@ jobs:
           ../configure --arch=aarch64 --cc=aarch64-linux-android34-clang --cross-prefix=llvm- --target-os=android --enable-gpl
           make -j$(nproc) checkasm
 
-  macos:
+  aarch64-macos:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
@@ -164,7 +164,7 @@ jobs:
           make -j$(sysctl -n hw.ncpu) fate
           make -j$(sysctl -n hw.ncpu) run-checkasm
 
-  msvc-wine:
+  aarch64-msvc-wine:
     runs-on: ubuntu-24.04-arm
     container: ghcr.io/mstorsjo/wine
     steps:
@@ -201,7 +201,7 @@ jobs:
           cd build
           make -j$(nproc) run-checkasm
 
-  llvm-mingw:
+  aarch64-llvm-mingw:
     runs-on: ubuntu-24.04-arm
     container: ghcr.io/mstorsjo/wine
     steps:
@@ -223,7 +223,7 @@ jobs:
           make -j$(nproc) fate
           make -j$(nproc) run-checkasm
 
-  msvc:
+  aarch64-msvc:
     runs-on: windows-11-arm
     steps:
       - name: Set up the environment
