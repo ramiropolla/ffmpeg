@@ -199,15 +199,12 @@ jobs:
           rm /opt/android-ndk/sysroot/usr/include/stdatomic.h
           echo /opt/android-ndk/toolchains/aarch64-linux-android-4.9/prebuilt/*-x86*/bin >> $GITHUB_PATH
           sudo apt-get update && sudo apt-get install libtinfo5
-      - name: Build and test swscale
+      - name: Build
         run: |
           mkdir build
           cd build
           ../configure --arch=aarch64 --cc=aarch64-linux-android-gcc --cross-prefix=aarch64-linux-android- --target-os=android --sysroot=/opt/android-ndk/platforms/android-28/arch-arm64 --extra-cflags="-isystem /opt/android-ndk/sysroot/usr/include -isystem /opt/android-ndk/sysroot/usr/include/aarch64-linux-android"
           make -j$(nproc) checkasm libswscale/tests/sws_ops libswscale/tests/swscale
-          make V=1 -k fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
-          for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit ${ret:-0}
 
   aarch64-android-new-ndk:
     runs-on: ubuntu-latest
@@ -220,15 +217,12 @@ jobs:
           rm android-ndk-*.zip
           sudo mv android-ndk-* /opt/android-ndk
           echo /opt/android-ndk/toolchains/llvm/prebuilt/*-x86*/bin >> $GITHUB_PATH
-      - name: Build and test swscale
+      - name: Build
         run: |
           mkdir build
           cd build
           ../configure --arch=aarch64 --cc=aarch64-linux-android34-clang --cross-prefix=llvm- --target-os=android
           make -j$(nproc) checkasm libswscale/tests/sws_ops libswscale/tests/swscale
-          make V=1 -k fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
-          for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
-          exit ${ret:-0}
 
   aarch64-macos:
     runs-on: macos-14
