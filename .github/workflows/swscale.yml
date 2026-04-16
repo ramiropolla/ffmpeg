@@ -120,7 +120,7 @@ jobs:
       - name: Install a new enough QEMU
         run: |
           # Download a version from Ubuntu 24.04
-          curl -LO https://ports.ubuntu.com/ubuntu-ports/pool/universe/q/qemu/qemu-user_10.2.1+ds-1ubuntu2_arm64.deb
+          curl -LO https://ports.ubuntu.com/ubuntu-ports/pool/universe/q/qemu/qemu-user_10.2.1+ds-1ubuntu3_arm64.deb
           # Installing the package depends on a package ubuntu-virt, which doesn't exist in 24.04
           #sudo dpkg -i qemu-user*.deb
           # Therefore, just unpack it manually
@@ -319,8 +319,9 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install busybox
         run: |
-          curl -LO https://frippery.org/files/busybox/busybox64.exe
-          ./busybox64.exe --install c:\busybox
+          New-Item -ItemType Directory -Force c:\busybox
+          curl -L -o c:\busybox\busybox64.exe https://frippery.org/files/busybox/busybox64.exe
+          c:\busybox\busybox64.exe --install c:\busybox
           echo "c:\busybox" | Out-File -FilePath $Env:GITHUB_PATH -Encoding utf8 -Append
           echo "BB_OVERRIDE_APPLETS=link make" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
           rm c:\busybox\link.exe
