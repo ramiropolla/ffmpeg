@@ -1,0 +1,29 @@
+name: Test swscale
+
+on:
+  push:
+
+jobs:
+  x86_64-msvc:
+    runs-on: windows-latest
+    steps:
+      - name: Set up the environment
+        uses: ilammy/msvc-dev-cmd@v1
+      - uses: actions/checkout@v6
+      - name: Install busybox
+        run: |
+          New-Item -ItemType Directory -Force c:\busybox
+          curl -L -o c:\busybox\busybox64.exe https://frippery.org/files/busybox/busybox64.exe
+          c:\busybox\busybox64.exe --install c:\busybox
+          echo "c:\busybox" | Out-File -FilePath $Env:GITHUB_PATH -Encoding utf8 -Append
+          echo "BB_OVERRIDE_APPLETS=link make" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          rm c:\busybox\link.exe
+          rm c:\busybox\make.exe
+          echo "C:\Program Files\NASM" | Out-File -FilePath $Env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build and test swscale
+        shell: sh
+        run: |
+          mkdir build
+          cd build
+          ../configure --arch=x86_64 --target-os=win32 --toolchain=msvc
+          make -j$(nproc) libswscale/x86/ops.o
