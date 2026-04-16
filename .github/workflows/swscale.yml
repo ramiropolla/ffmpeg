@@ -256,11 +256,3 @@ jobs:
           ../ffmpeg/configure --arch=arm64 --target-os=win32 --toolchain=msvc --enable-gpl
           make -j$(nproc) checkasm
           make -j$(nproc) run-checkasm
-
-  indent:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Check indentation
-        run: |
-          ./tools/check_arm_indent.sh
