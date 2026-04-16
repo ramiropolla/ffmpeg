@@ -20,7 +20,7 @@ jobs:
           mkdir build
           cd build
           ../configure
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-linux-gcc:
     runs-on: ubuntu-24.04-arm
@@ -31,7 +31,7 @@ jobs:
           mkdir build
           cd build
           ../configure
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-linux-clang:
     runs-on: ubuntu-24.04-arm
@@ -43,7 +43,7 @@ jobs:
           mkdir build
           cd build
           ../configure --cc=clang
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-linux-pac-bti-gcs:
     runs-on: ubuntu-24.04-arm
@@ -73,7 +73,7 @@ jobs:
           mkdir build
           cd build
           ../configure --cc=clang --sysroot=/opt/fedora-sysroot --extra-cflags="-mbranch-protection=standard" --extra-ldflags="-mbranch-protection=standard -fuse-ld=lld -Wl,-z,force-bti,-z,gcs=always,-z,gcs-report=warning -L/opt/fedora-sysroot/usr/lib64 -L/opt/fedora-sysroot/usr/lib/gcc/aarch64-redhat-linux/11" --target-exec="qemu-aarch64 -L /opt/fedora-sysroot -E GLIBC_TUNABLES=glibc.cpu.aarch64_gcs=1"
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-linux-old-toolchain:
     runs-on: ubuntu-latest
@@ -92,7 +92,7 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=aarch64 --cross-prefix=aarch64-linux-gnu- --target-os=linux --target-exec="qemu-aarch64-static -L /usr/aarch64-linux-gnu"
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-android-old-ndk:
     runs-on: ubuntu-22.04 # libtinfo5 is not available in 24.04
@@ -114,7 +114,7 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=aarch64 --cc=aarch64-linux-android-gcc --cross-prefix=aarch64-linux-android- --target-os=android --sysroot=/opt/android-ndk/platforms/android-28/arch-arm64 --extra-cflags="-isystem /opt/android-ndk/sysroot/usr/include -isystem /opt/android-ndk/sysroot/usr/include/aarch64-linux-android"
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-android-new-ndk:
     runs-on: ubuntu-latest
@@ -132,7 +132,7 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=aarch64 --cc=aarch64-linux-android34-clang --cross-prefix=llvm- --target-os=android
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-macos:
     runs-on: macos-14
@@ -183,7 +183,7 @@ jobs:
           cd build
           export PATH=$(pwd)/../gas-preprocessor:/opt/msvc/bin/arm64:$PATH
           ../ffmpeg/configure --arch=arm64 --target-os=win32 --toolchain=msvc --enable-cross-compile --target-exec=wine
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-llvm-mingw:
     runs-on: ubuntu-24.04-arm
@@ -202,7 +202,7 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=aarch64 --target-os=mingw32 --cross-prefix=aarch64-w64-mingw32- --target-exec=wine
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-msvc:
     runs-on: windows-11-arm
@@ -235,4 +235,4 @@ jobs:
           cd build
           export PATH=$(pwd)/../gas-preprocessor:$PATH
           ../ffmpeg/configure --arch=arm64 --target-os=win32 --toolchain=msvc
-          make -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
