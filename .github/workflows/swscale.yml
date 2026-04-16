@@ -280,7 +280,7 @@ jobs:
           mkdir build
           cd build
           ../configure --arch=aarch64 --target-os=mingw32 --cross-prefix=aarch64-w64-mingw32- --target-exec=wine
-          make -j$(nproc) checkasm libswscale/tests/sws_ops libswscale/tests/swscale
+          make -j$(nproc) checkasm libswscale/tests/sws_ops.exe libswscale/tests/swscale.exe
           make V=1 -k fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable || ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
           exit ${ret:-0}
