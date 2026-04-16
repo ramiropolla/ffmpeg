@@ -10,7 +10,7 @@ on:
 #    - '*/aarch64/*'
 
 jobs:
-  x86_64-linux:
+  x86_64-linux-gcc:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -20,6 +20,18 @@ jobs:
           mkdir build
           cd build
           ../configure
+          make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
+
+  x86_64-linux-clang:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test swscale
+        run: |
+          sudo apt-get update && sudo apt-get install nasm
+          mkdir build
+          cd build
+          ../configure --cc=clang
           make -k -j$(nproc) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable
 
   aarch64-linux-gcc:
