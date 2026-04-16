@@ -119,14 +119,14 @@ static int setup_swap_bytes(const SwsImplParams *params, SwsImplResult *out)
     DECL_ASM(U8, clear_alpha##IDX##EXT,                                         \
         .op = SWS_OP_CLEAR,                                                     \
         .clear.mask = SWS_COMP(IDX),                                            \
-        .clear.value[IDX] = Q(-1),                                              \
+        .clear.value[IDX] = { -1, 1 },                                          \
     );                                                                          \
 
 #define DECL_CLEAR_ZERO(EXT, IDX)                                               \
     DECL_ASM(U8, clear_zero##IDX##EXT,                                          \
         .op = SWS_OP_CLEAR,                                                     \
         .clear.mask = SWS_COMP(IDX),                                            \
-        .clear.value[IDX] = Q(0),                                               \
+        .clear.value[IDX] = { 0, 1 },                                           \
     );
 
 static int setup_clear(const SwsImplParams *params, SwsImplResult *out)
