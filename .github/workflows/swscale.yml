@@ -1,4 +1,4 @@
-name: Test aarch64 specific aspects
+name: Test swscale specific aspects
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
 # To enable this to run only on relevant pushes, we could add the
 # following:
 #    paths:
-#    - '.github/workflows/aarch64.yml'
+#    - '.github/workflows/swscale.yml'
 #    - '*/aarch64/*'
 
 jobs:
