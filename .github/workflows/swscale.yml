@@ -239,17 +239,18 @@ jobs:
           exit $ret
 
   x86_64-macos:
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
       - name: Install dependencies
         run: |
           brew install nasm
+          softwareupdate --install-rosetta --agree-to-license || true
       - name: Build and test swscale
         run: |
           mkdir build
           cd build
-          ../configure
+          ../configure --arch=x86_64 --extra-cflags="-arch x86_64" --extra-ldflags="-arch x86_64" --target-exec="arch -x86_64"
           make -j$(sysctl -n hw.ncpu) fate-checkasm-sw_ops fate-sws-unscaled fate-sws-unstable; ret=$?
           for f in tests/data/fate/*.err; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done
           exit $ret
