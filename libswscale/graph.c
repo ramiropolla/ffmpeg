@@ -845,14 +845,27 @@ static void sws_graph_worker(void *priv, int jobnr, int threadnr, int nb_jobs,
     pass->run(graph->exec.output, graph->exec.input, slice_y, slice_h, pass);
 }
 
-int ff_sws_graph_create(SwsContext *ctx, const SwsFormat *dst, const SwsFormat *src,
-                        int field, SwsGraph **out_graph)
+SwsGraph *ff_sws_graph_alloc(void)
+{
+    return av_mallocz(sizeof(SwsGraph));
+}
+
+static void graph_uninit(SwsGraph *graph)
+{
+    avpriv_slicethread_free(&graph->slicethread);
+
+    for (int i = 0; i < graph->num_passes; i++)
+        pass_free(graph->passes[i]);
+    av_free(graph->passes);
+
+    memset(graph, 0, sizeof(*graph));
+}
+
+int ff_sws_graph_init(SwsGraph *graph, SwsContext *ctx, const SwsFormat *dst,
+                      const SwsFormat *src, int field)
 {
     int ret;
-    SwsGraph *graph = av_mallocz(sizeof(*graph));
-    if (!graph)
-        return AVERROR(ENOMEM);
-
+    av_assert0(!graph->ctx);
     graph->ctx = ctx;
     graph->src = *src;
     graph->dst = *dst;
@@ -885,11 +898,10 @@ int ff_sws_graph_create(SwsContext *ctx, const SwsFormat *dst, const SwsFormat *
             goto error;
     }
 
-    *out_graph = graph;
     return 0;
 
 error:
-    ff_sws_graph_free(&graph);
+    graph_uninit(graph);
     return ret;
 }
 
@@ -906,12 +918,7 @@ void ff_sws_graph_free(SwsGraph **pgraph)
     if (!graph)
         return;
 
-    avpriv_slicethread_free(&graph->slicethread);
-
-    for (int i = 0; i < graph->num_passes; i++)
-        pass_free(graph->passes[i]);
-    av_free(graph->passes);
-
+    graph_uninit(graph);
     av_free(graph);
     *pgraph = NULL;
 }
@@ -935,20 +942,18 @@ static int opts_equal(const SwsContext *c1, const SwsContext *c2)
 
 }
 
-int ff_sws_graph_reinit(SwsContext *ctx, const SwsFormat *dst, const SwsFormat *src,
-                        int field, SwsGraph **out_graph)
+int ff_sws_graph_reinit(SwsGraph *graph, SwsContext *ctx, const SwsFormat *dst,
+                        const SwsFormat *src, int field)
 {
-    SwsGraph *graph = *out_graph;
-    if (graph && ff_fmt_equal(&graph->src, src) &&
-                 ff_fmt_equal(&graph->dst, dst) &&
-                 opts_equal(ctx, &graph->opts_copy))
+    if (ff_fmt_equal(&graph->src, src) && ff_fmt_equal(&graph->dst, dst) &&
+        opts_equal(ctx, &graph->opts_copy))
     {
         ff_sws_graph_update_metadata(graph, &src->color);
         return 0;
     }
 
-    ff_sws_graph_free(out_graph);
-    return ff_sws_graph_create(ctx, dst, src, field, out_graph);
+    graph_uninit(graph);
+    return ff_sws_graph_init(graph, ctx, dst, src, field);
 }
 
 void ff_sws_graph_update_metadata(SwsGraph *graph, const SwsColor *color)
