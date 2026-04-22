@@ -23,6 +23,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/mem.h"
 #include "libavutil/refstruct.h"
+#include "libavutil/tree.h"
 
 #include "ops.h"
 #include "ops_internal.h"
@@ -74,6 +75,17 @@ static const struct {
     UOP_NAME(CLEAR,             "clear"),
     UOP_NAME(DITHER,            "dither"),
 #undef UOP_NAME
+};
+
+static const struct {
+    char full[16];
+    char suffix[8];
+} pixel_types[SWS_PIXEL_TYPE_NB] = {
+    [SWS_PIXEL_NONE] = { "SWS_PIXEL_NONE", ""     },
+    [SWS_PIXEL_U8]   = { "SWS_PIXEL_U8",   "_U8"  },
+    [SWS_PIXEL_U16]  = { "SWS_PIXEL_U16",  "_U16" },
+    [SWS_PIXEL_U32]  = { "SWS_PIXEL_U32",  "_U32" },
+    [SWS_PIXEL_F32]  = { "SWS_PIXEL_F32",  "_F32" },
 };
 
 static SwsPixel pixel_from_q(SwsPixelType type, AVRational val)
@@ -182,6 +194,114 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
     }
 
     av_assert0(av_bprint_is_complete(&bp));
+}
+
+static int generate_entry_struct(void *opaque, void *key)
+{
+    const SwsUOp *ref = opaque;
+    const SwsUOp *uop = key;
+    if (ref->uop == SWS_UOP_CONVERT && ref->par.convert.to != SWS_PIXEL_NONE) {
+        if (ref->par.convert.to != uop->par.convert.to)
+            return 0;
+    }
+
+    char name[SWS_UOP_NAME_MAX];
+    ff_sws_uop_name(uop, name);
+    printf(" \\\n    MACRO(__VA_ARGS__, %-40s", name);
+    printf(", .uop = %-24s, .type = %-13s, .mask = 0x%x",
+           uop_names[uop->uop].full, pixel_types[uop->type].full, uop->mask);
+
+    const SwsUOpParams *par = &uop->par;
+    switch (uop->uop) {
+    case SWS_UOP_LSHIFT:
+    case SWS_UOP_RSHIFT:
+        printf(", .par.shift.amount = %u", par->shift.amount);
+        break;
+    case SWS_UOP_CONVERT:
+        printf(", .par.convert.to = %s", pixel_types[par->convert.to].full);
+        break;
+    case SWS_UOP_PERMUTE:
+    case SWS_UOP_COPY:
+        printf(", .par.swizzle.in = {%d, %d, %d, %d}",
+               par->swizzle.in[0], par->swizzle.in[1],
+               par->swizzle.in[2], par->swizzle.in[3]);
+        break;
+    case SWS_UOP_PACK:
+    case SWS_UOP_UNPACK:
+        printf(", .par.pack.pattern = {%d, %d, %d, %d}",
+               par->pack.pattern[0], par->pack.pattern[1],
+               par->pack.pattern[2], par->pack.pattern[3]);
+        break;
+    case SWS_UOP_CLEAR:
+        printf(", .par.clear.one = 0x%x, .par.clear.zero = 0x%x",
+               par->clear.one, par->clear.zero);
+        break;
+    case SWS_UOP_LINEAR:
+        printf(", .par.lin.one = 0x%x, .par.lin.zero = 0x%x",
+               par->lin.one, par->lin.zero);
+        break;
+    case SWS_UOP_DITHER:
+        printf(", .par.dither = { .size_log2 = %u, .y_offset = {%u, %u, %u, %u} }",
+               par->dither.size_log2,
+               par->dither.y_offset[0], par->dither.y_offset[1],
+               par->dither.y_offset[2], par->dither.y_offset[3]);
+        break;
+    }
+
+    printf(")");
+    return 0;
+}
+
+static int generate_entry_args(void *opaque, void *key)
+{
+    const SwsUOp *ref = opaque;
+    const SwsUOp *uop = key;
+    if (ref->uop == SWS_UOP_CONVERT && ref->par.convert.to != SWS_PIXEL_NONE) {
+        if (ref->par.convert.to != uop->par.convert.to)
+            return 0;
+    }
+
+    char name[SWS_UOP_NAME_MAX];
+    ff_sws_uop_name(uop, name);
+    printf(" \\\n    MACRO(__VA_ARGS__, %-40s, %-24s, %-13s, 0x%x",
+           name, uop_names[uop->uop].full, pixel_types[uop->type].full, uop->mask);
+
+    const SwsUOpParams *par = &uop->par;
+    switch (uop->uop) {
+    case SWS_UOP_LSHIFT:
+    case SWS_UOP_RSHIFT:
+        printf(", %u", par->shift.amount);
+        break;
+    case SWS_UOP_CONVERT:
+        printf(", %s", pixel_types[par->convert.to].full);
+        break;
+    case SWS_UOP_PERMUTE:
+    case SWS_UOP_COPY:
+        printf(", %d, %d, %d, %d",
+               par->swizzle.in[0], par->swizzle.in[1],
+               par->swizzle.in[2], par->swizzle.in[3]);
+        break;
+    case SWS_UOP_PACK:
+    case SWS_UOP_UNPACK:
+        printf(", %d, %d, %d, %d",
+               par->pack.pattern[0], par->pack.pattern[1],
+               par->pack.pattern[2], par->pack.pattern[3]);
+        break;
+    case SWS_UOP_CLEAR:
+        printf(", 0x%05x, 0x%05x", par->clear.one, par->clear.zero);
+        break;
+    case SWS_UOP_LINEAR:
+        printf(", 0x%05x, 0x%05x", par->lin.one, par->lin.zero);
+        break;
+    case SWS_UOP_DITHER:
+        printf(", %u, %u, %u, %u, %u", par->dither.size_log2,
+               par->dither.y_offset[0], par->dither.y_offset[1],
+               par->dither.y_offset[2], par->dither.y_offset[3]);
+        break;
+    }
+
+    printf(")");
+    return 0;
 }
 
 static void uop_uninit(SwsUOp *uop)
@@ -531,4 +651,205 @@ int ff_sws_ops_translate(const SwsOpList *ops, SwsUOpList *uops)
             return ret;
     }
     return 0;
+}
+
+static int register_uop(struct AVTreeNode **root, const SwsUOp *uop)
+{
+    SwsUOp *key = av_memdup(uop, sizeof(*uop));
+    if (!key)
+        return AVERROR(ENOMEM);
+    memset(&key->data, 0, sizeof(key->data));
+
+    struct AVTreeNode *node = av_tree_node_alloc();
+    if (!node) {
+        av_free(key);
+        return AVERROR(ENOMEM);
+    }
+
+    av_tree_insert(root, key, ff_sws_uop_cmp_v, &node);
+    if (node) {
+        av_free(node);
+        av_free(key);
+    }
+    return 0;
+}
+
+static int register_uops(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
+{
+    SwsUOpList *uops = ff_sws_uop_list_alloc();
+    if (!uops)
+        return AVERROR(ENOMEM);
+
+    int ret = ff_sws_ops_translate(ops, uops);
+    if (ret < 0)
+        goto fail;
+
+    struct AVTreeNode **root = ctx->opaque;
+    for (int i = 0; i < uops->num_ops; i++) {
+        ret = register_uop(root, &uops->ops[i]);
+        if (ret < 0)
+            goto fail;
+    }
+
+fail:
+    *out = (SwsCompiledOp) {0}; /* dummy value, will be immediately freed */
+    ff_sws_uop_list_free(&uops);
+    return ret;
+}
+
+/* Dummy backend that just registers all seen uops */
+static const SwsOpBackend backend_uops = {
+    .name    = "uops_gen",
+    .compile = register_uops,
+};
+
+static int register_all_uops(SwsContext *ctx, void *graph, SwsOpList *ops)
+{
+    /* ff_sws_compile_pass() takes over ownership of `ops` */
+    SwsOpList *copy = ff_sws_op_list_duplicate(ops);
+    if (!copy)
+        return AVERROR(ENOMEM);
+
+    return ff_sws_compile_pass(graph, &backend_uops, &copy, 0, NULL, NULL);
+}
+
+static const SwsFlags flags[] = {
+    0,
+
+    /* SWS_ACCURATE_RND may insert extra 1x1 dither ops (for accurate rounding) */
+    SWS_ACCURATE_RND,
+};
+
+/* Limit the range of av_tree_enumerate() to only matching uop and type */
+static int enum_type(void *opaque, void *elem)
+{
+    const SwsUOp *a = opaque, *b = elem;
+    if (a->uop != b->uop)
+        return (int) b->uop - a->uop;
+    if (a->type != b->type)
+        return (int) b->type - a->type;
+    return 0;
+}
+
+int ff_sws_uops_macros_gen(void)
+{
+    int ret;
+    struct AVTreeNode *root = NULL;
+    av_log_set_level(AV_LOG_ERROR);
+
+    /* Allocate dummy graph and context for ff_sws_compile_pass() */
+    SwsGraph *graph = ff_sws_graph_alloc();
+    if (!graph)
+        return AVERROR(ENOMEM);
+
+    SwsContext *ctx = graph->ctx = sws_alloc_context();
+    if (!ctx) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+
+    /* Use this to plumb the tree state through all the layers of abstraction */
+    ctx->opaque = &root;
+    ctx->scaler = SWS_SCALE_BILINEAR; /* cheaper to generate filter kernels */
+
+    /* Register all unique uops over every relevant combination of flags */
+    for (int i = 0; i < FF_ARRAY_ELEMS(flags); i++) {
+        ctx->flags = flags[i];
+        ret = ff_sws_enum_op_lists(ctx, graph, AV_PIX_FMT_NONE, AV_PIX_FMT_NONE,
+                                   register_all_uops);
+        if (ret < 0)
+            goto fail;
+    }
+
+    /**
+     * Additionally make sure planar reads/writes are always available for all
+     * formats, because checkasm depends on them to be able to verify the
+     * input/output of any other operations.
+     */
+    for (enum SwsPixelType type = SWS_PIXEL_NONE+1; type < SWS_PIXEL_TYPE_NB; type++) {
+        if (!ff_sws_pixel_type_is_int(type))
+            continue;
+        for (int elems = 1; elems <= 4; elems++) {
+            for (int rw = 0; rw < 2; rw++) {
+                SwsUOp uop = {
+                    .type = type,
+                    .uop  = rw ? SWS_UOP_WRITE_PLANAR : SWS_UOP_READ_PLANAR,
+                    .mask = SWS_COMP_ELEMS(elems),
+                };
+
+                int ret = register_uop(&root, &uop);
+                if (ret < 0)
+                    return ret;
+            }
+        }
+    }
+
+    printf("/**\n");
+    printf(" * This file is automatically generated. Do not edit manually.\n");
+    printf(" * To regenerate, run: make fate-sws-uops-macros GEN=1\n");
+    printf(" */\n");
+    printf("\n");
+    printf("#ifndef SWSCALE_UOPS_MACROS_H\n");
+    printf("#define SWSCALE_UOPS_MACROS_H\n");
+    printf("\n");
+    printf("/**\n");
+    printf(" * Boilerplate helper macros, for template-based backends. These\n");
+    printf(" * will be instantiated like this, with parameters in struct order:\n");
+    printf(" *   MACRO(__VA_ARGS__, NAME, UOP, TYPE, MASK, [PARAMS,])\n");
+    printf(" * The _STRUCT variants pass all arguments in C struct syntax, while\n");
+    printf(" * the plain variants give them as separate C values (for use\n");
+    printf(" * in functions or macros).\n");
+    printf(" */\n");
+    printf("#define SWS_GLUE3(x, y, z) x ## _ ## y ## _ ## z\n");
+    printf("#define SWS_FOR(UOP, TYPE, MACRO, ...) \\\n");
+    printf("    SWS_GLUE3(FOR_SWS_UOP, UOP, TYPE)(MACRO, __VA_ARGS__)\n");
+    printf("#define SWS_FOR_STRUCT(UOP, TYPE, MACRO, ...) \\\n");
+    printf("    SWS_GLUE3(FOR_STRUCT_SWS_UOP, UOP, TYPE)(MACRO, __VA_ARGS__)\n");
+    printf("\n");
+    printf("#define SWS_FOR_CONVERT(FROM, TO, MACRO, ...) \\\n");
+    printf("    SWS_GLUE3(FOR_SWS_UOP_CONVERT, FROM, TO)(MACRO, __VA_ARGS__)\n");
+    printf("#define SWS_FOR_STRUCT_CONVERT(FROM, TO, MACRO, ...) \\\n");
+    printf("    SWS_GLUE3(FOR_STRUCT_SWS_UOP_CONVERT, FROM, TO)(MACRO, __VA_ARGS__)\n");
+    printf("\n");
+
+    SwsUOp key = {0};
+    for (key.type = SWS_PIXEL_NONE + 1; key.type < SWS_PIXEL_TYPE_NB; key.type++) {
+        for (key.uop = SWS_UOP_INVALID + 1; key.uop < SWS_UOP_TYPE_NB; key.uop++) {
+            const char *uop    = uop_names[key.uop].full;
+            const char *suffix = pixel_types[key.type].suffix;
+            printf("#define FOR_%s%s(MACRO, ...)", uop, suffix);
+            av_tree_enumerate(root, &key, enum_type, generate_entry_args);
+            printf("\n");
+            printf("#define FOR_STRUCT_%s%s(MACRO, ...)", uop, suffix);
+            av_tree_enumerate(root, &key, enum_type, generate_entry_struct);
+            printf("\n");
+        }
+
+        /* Generate type-specific macros for SWS_UOP_CONVERT */
+        key.uop = SWS_UOP_CONVERT;
+        for (key.par.convert.to = SWS_PIXEL_NONE + 1;
+             key.par.convert.to < SWS_PIXEL_TYPE_NB;
+             key.par.convert.to++)
+        {
+            const char *uop  = uop_names[key.uop].full;
+            const char *from = pixel_types[key.type].suffix;
+            const char *to   = pixel_types[key.par.convert.to].suffix;
+            printf("#define FOR_%s%s%s(MACRO, ...)", uop, from, to);
+            av_tree_enumerate(root, &key, enum_type, generate_entry_args);
+            printf("\n");
+            printf("#define FOR_STRUCT_%s%s%s(MACRO, ...)", uop, from, to);
+            av_tree_enumerate(root, &key, enum_type, generate_entry_struct);
+            printf("\n");
+        }
+        key.par.convert.to = SWS_PIXEL_NONE;
+    }
+
+    printf("\n");
+    printf("#endif /* SWSCALE_UOPS_MACROS_H */\n");
+
+fail:
+    av_tree_destroy(root);
+    ff_sws_graph_free(&graph);
+    sws_free_context(&ctx);
+    return ret;
 }

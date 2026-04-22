@@ -80,6 +80,7 @@ int main(int argc, char **argv)
 {
     enum AVPixelFormat src_fmt = AV_PIX_FMT_NONE;
     enum AVPixelFormat dst_fmt = AV_PIX_FMT_NONE;
+    bool macros_gen = false;
     int ret = 1;
 
 #ifdef _WIN32
@@ -98,6 +99,8 @@ int main(int argc, char **argv)
                     "       Only test the specified source pixel format\n"
                     "   -v <level>\n"
                     "       Enable log verbosity at given level\n"
+                    "   -macros\n"
+                    "       Generate helper macros\n"
             );
             return 0;
         }
@@ -124,12 +127,17 @@ int main(int argc, char **argv)
                 goto bad_option;
             av_log_set_level(atoi(argv[i + 1]));
             i++;
+        } else if (!strcmp(argv[i], "-macros")) {
+            macros_gen = true;
         } else {
 bad_option:
             fprintf(stderr, "bad option or argument missing (%s) see -help\n", argv[i]);
             return AVERROR(EINVAL);
         }
     }
+
+    if (macros_gen)
+        return ff_sws_uops_macros_gen();
 
     SwsContext *ctx = sws_alloc_context();
     if (!ctx)
