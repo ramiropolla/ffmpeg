@@ -355,7 +355,6 @@ SWS_FOR_STRUCT(CLEAR,           U8, DECL_ENTRY, EXT, NULL, setup_clear)         
 static const SwsOpTable ops_u8##EXT = {                                         \
     .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
     .block_size = SIZE,                                                         \
-    .uops = true,                                                               \
     .entries = {                                                                \
         REF_OPS_COMMON(EXT, U8)                                                 \
         SWS_FOR(READ_PLANAR,    U8, REF_ENTRY, EXT)                             \
@@ -374,7 +373,6 @@ SWS_FOR_STRUCT(EXPAND_PAIR, U8, DECL_ENTRY, EXT, NULL, NULL)                    
 static const SwsOpTable ops_u16##EXT = {                                        \
     .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
     .block_size = SIZE,                                                         \
-    .uops = true,                                                               \
     .entries = {                                                                \
         REF_OPS_COMMON(EXT, U16)                                                \
         SWS_FOR_CONVERT(U8, U16, REF_ENTRY, EXT)                                \
@@ -395,7 +393,6 @@ SWS_FOR_STRUCT(EXPAND_QUAD,  U8, DECL_ENTRY, EXT, NULL, NULL)                   
 static const SwsOpTable ops_u32##EXT = {                                        \
     .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
     .block_size = SIZE,                                                         \
-    .uops = true,                                                               \
     .entries = {                                                                \
         REF_OPS_COMMON(EXT, U32)                                                \
         SWS_FOR_CONVERT(U8,  U32, REF_ENTRY, EXT)                               \
@@ -432,7 +429,6 @@ SWS_FOR_STRUCT(READ_PLANAR_FV_FMA, F32, DECL_ENTRY, EXT, NULL, setup_filter_v)  
 static const SwsOpTable ops_f32##EXT = {                                        \
     .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
     .block_size = SIZE,                                                         \
-    .uops = true,                                                               \
     .entries = {                                                                \
         REF_OPS_COMMON(EXT, F32)                                                \
         SWS_FOR_CONVERT(U8,  F32, REF_ENTRY, EXT)                               \
