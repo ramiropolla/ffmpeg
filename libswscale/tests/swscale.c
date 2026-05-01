@@ -643,9 +643,6 @@ static inline int fmt_is_subsampled(enum AVPixelFormat fmt)
 
 static inline int fmt_is_supported_by_hw(enum AVPixelFormat fmt)
 {
-    if (!hw_device_constr)
-        return 1;
-
     /* Semi-planar formats are only supported by the legacy path, which
      * does not support hardware frames. */
     if (fmt == AV_PIX_FMT_NV24 || fmt == AV_PIX_FMT_P410 ||
@@ -656,6 +653,17 @@ static inline int fmt_is_supported_by_hw(enum AVPixelFormat fmt)
         if (hw_device_constr->valid_sw_formats[i] == fmt)
             return 1;
     }
+    return 0;
+}
+
+static inline int skip_format(const struct options *opts, enum AVPixelFormat fmt)
+{
+    if (hw_device_constr && !fmt_is_supported_by_hw(fmt))
+        return 1;
+    if (opts->scaler_flags < 0 && fmt_is_subsampled(fmt))
+        return 1;
+    if (!sws_test_format(fmt, 0) || !sws_test_format(fmt, 1))
+        return 1;
     return 0;
 }
 
@@ -682,16 +690,10 @@ static int run_self_tests(const AVFrame *ref, const struct options *opts)
         dst_fmt_min = dst_fmt_max = opts->dst_fmt;
 
     for (src_fmt = src_fmt_min; src_fmt <= src_fmt_max; src_fmt++) {
-        if ((!fmt_is_supported_by_hw(src_fmt)) ||
-            (opts->scaler_flags < 0 && fmt_is_subsampled(src_fmt)))
-            continue;
-        if (!sws_test_format(src_fmt, 0) || !sws_test_format(src_fmt, 1))
+        if (skip_format(opts, src_fmt))
             continue;
         for (dst_fmt = dst_fmt_min; dst_fmt <= dst_fmt_max; dst_fmt++) {
-            if ((!fmt_is_supported_by_hw(dst_fmt)) ||
-                (opts->scaler_flags < 0 && fmt_is_subsampled(dst_fmt)))
-                continue;
-            if (!sws_test_format(dst_fmt, 0) || !sws_test_format(dst_fmt, 1))
+            if (skip_format(opts, dst_fmt))
                 continue;
             for (int h = 0; h < FF_ARRAY_ELEMS(dst_h); h++) {
                 for (int w = 0; w < FF_ARRAY_ELEMS(dst_w); w++) {
