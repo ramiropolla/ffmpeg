@@ -703,6 +703,11 @@ static int run_self_tests(const AVFrame *ref, const struct options *opts)
                         if (opts->scaler_flags > 0)
                             mode.flags |= opts->scaler_flags;
 
+                        if (!opts->legacy)
+                            mode.flags |=  SWS_UNSTABLE;
+                        else
+                            mode.flags &= ~SWS_UNSTABLE;
+
                         if (ff_sfc64_get(&prng_state) <= UINT64_MAX * opts->prob) {
                             ret = run_test(src_fmt, dst_fmt, dst_w[w], dst_h[h],
                                            &mode, opts, ref, src, NULL);
@@ -790,6 +795,11 @@ static int run_file_tests(const AVFrame *ref, FILE *fp, const struct options *op
         if (opts->src_fmt != AV_PIX_FMT_NONE && src_fmt != opts->src_fmt ||
             opts->dst_fmt != AV_PIX_FMT_NONE && dst_fmt != opts->dst_fmt)
             continue;
+
+        if (!opts->legacy)
+            mode.flags |=  SWS_UNSTABLE;
+        else
+            mode.flags &= ~SWS_UNSTABLE;
 
         ret = run_test(src_fmt, dst_fmt, dw, dh, &mode, opts, ref, src, &r);
         if (ret < 0)
@@ -884,7 +894,8 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
                     "   -dither <mode>\n"
                     "       Test with a specific dither mode\n"
                     "   -legacy <1 or 0>\n"
-                    "       If 1, force using legacy swscale for the main conversion\n"
+                    "       If 1, force using legacy swscale API for the main conversion\n"
+                    "       If 0, use new swscale API for the main conversion (default)\n"
                     "   -hw <device>\n"
                     "       Use Vulkan hardware acceleration on the specified device for the main conversion\n"
                     "   -threads <threads>\n"
