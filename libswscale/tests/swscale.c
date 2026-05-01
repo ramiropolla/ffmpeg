@@ -577,9 +577,9 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     if (ret < 0)
         goto error;
 
-    ret = opts->legacy  ? scale_legacy(dst, src, mode, opts, &r.time)
-        : hw_device_ctx ? scale_hw(dst, src, mode, opts, &r.time)
-                        : scale_new(dst, src, mode, opts, &r.time);
+    ret = opts->legacy > 0 ? scale_legacy(dst, src, mode, opts, &r.time)
+        : hw_device_ctx    ? scale_hw(dst, src, mode, opts, &r.time)
+                           : scale_new(dst, src, mode, opts, &r.time);
     if (ret < 0) {
         if (ret == AVERROR(ENOTSUP))
             ret = 0;
@@ -596,7 +596,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
 
     get_ssim(r.ssim, out, ref, comps);
 
-    if (opts->legacy) {
+    if (opts->legacy > 0) {
         /* Legacy swscale does not perform bit accurate upconversions of low
          * bit depth RGB. This artificially improves the SSIM score because the
          * resulting error deletes some of the input dither noise. This gives
@@ -610,7 +610,7 @@ static int run_test(enum AVPixelFormat src_fmt, enum AVPixelFormat dst_fmt,
     }
 
     r.loss = get_loss(r.ssim);
-    if (!opts->legacy && r.loss - expected_loss > 1e-2 && dst_w >= ref->width && dst_h >= ref->height) {
+    if (opts->legacy == 0 && r.loss - expected_loss > 1e-2 && dst_w >= ref->width && dst_h >= ref->height) {
         ret = -1;
         goto bad_loss;
     }
@@ -660,7 +660,7 @@ static inline int skip_format(const struct options *opts, enum AVPixelFormat fmt
 {
     if (hw_device_constr && !fmt_is_supported_by_hw(fmt))
         return 1;
-    if (opts->scaler_flags < 0 && fmt_is_subsampled(fmt))
+    if (opts->legacy < 0 && fmt_is_subsampled(fmt))
         return 1;
     if (!sws_test_format(fmt, 0) || !sws_test_format(fmt, 1))
         return 1;
@@ -705,7 +705,7 @@ static int run_self_tests(const AVFrame *ref, const struct options *opts)
                         if (opts->scaler_flags > 0)
                             mode.flags |= opts->scaler_flags;
 
-                        if (!opts->legacy)
+                        if (opts->legacy <= 0)
                             mode.flags |=  SWS_UNSTABLE;
                         else
                             mode.flags &= ~SWS_UNSTABLE;
@@ -798,7 +798,7 @@ static int run_file_tests(const AVFrame *ref, FILE *fp, const struct options *op
             opts->dst_fmt != AV_PIX_FMT_NONE && dst_fmt != opts->dst_fmt)
             continue;
 
-        if (!opts->legacy)
+        if (opts->legacy <= 0)
             mode.flags |=  SWS_UNSTABLE;
         else
             mode.flags &= ~SWS_UNSTABLE;
@@ -895,9 +895,10 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
                     "       If 'unscaled', test only conversions that do not involve scaling\n"
                     "   -dither <mode>\n"
                     "       Test with a specific dither mode\n"
-                    "   -legacy <1 or 0>\n"
+                    "   -legacy <1, 0, or -1>\n"
                     "       If 1, force using legacy swscale API for the main conversion\n"
                     "       If 0, use new swscale API for the main conversion (default)\n"
+                    "       If -1, use new swscale API for the main conversion and disable legacy fallback\n"
                     "   -hw <device>\n"
                     "       Use Vulkan hardware acceleration on the specified device for the main conversion\n"
                     "   -threads <threads>\n"
