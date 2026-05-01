@@ -635,12 +635,6 @@ bad_loss:
     return ret;
 }
 
-static inline int fmt_is_subsampled(enum AVPixelFormat fmt)
-{
-    return av_pix_fmt_desc_get(fmt)->log2_chroma_w != 0 ||
-           av_pix_fmt_desc_get(fmt)->log2_chroma_h != 0;
-}
-
 static inline int fmt_is_supported_by_hw(enum AVPixelFormat fmt)
 {
     /* Semi-planar formats are only supported by the legacy path, which
@@ -656,11 +650,45 @@ static inline int fmt_is_supported_by_hw(enum AVPixelFormat fmt)
     return 0;
 }
 
+static inline int fmt_is_supported_by_new_swscale(enum AVPixelFormat fmt)
+{
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
+
+    /* No support for subsampled formats at the moment */
+    if (desc->log2_chroma_w || desc->log2_chroma_h)
+        return 0;
+
+    /* No support for semi-planar formats at the moment */
+    if (desc->flags & AV_PIX_FMT_FLAG_PLANAR &&
+        av_pix_fmt_count_planes(fmt) < desc->nb_components)
+        return 0;
+
+    const int bits = FFALIGN(desc->comp[0].depth, 8);
+    if (desc->flags & AV_PIX_FMT_FLAG_FLOAT) {
+        /* TODO: no support for 16-bit float yet */
+        if (bits != 32)
+            return 0;
+    } else {
+        /* TODO: AVRational cannot represent UINT32_MAX */
+        if (bits != 8 && bits != 16)
+            return 0;
+    }
+
+    /* Unsupported irregular formats */
+    switch (fmt) {
+    case AV_PIX_FMT_XYZ12LE:
+    case AV_PIX_FMT_XYZ12BE:
+        return 0;
+    }
+
+    return 1;
+}
+
 static inline int skip_format(const struct options *opts, enum AVPixelFormat fmt)
 {
     if (hw_device_constr && !fmt_is_supported_by_hw(fmt))
         return 1;
-    if (opts->legacy < 0 && fmt_is_subsampled(fmt))
+    if (opts->legacy < 0 && !fmt_is_supported_by_new_swscale(fmt))
         return 1;
     if (!sws_test_format(fmt, 0) || !sws_test_format(fmt, 1))
         return 1;
