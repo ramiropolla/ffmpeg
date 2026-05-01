@@ -51,8 +51,8 @@ struct options {
     int iters;
     int bench;
     int flags;
+    int scaler_flags;
     int dither;
-    int unscaled;
     int legacy;
     int pretty;
 };
@@ -683,13 +683,13 @@ static int run_self_tests(const AVFrame *ref, const struct options *opts)
 
     for (src_fmt = src_fmt_min; src_fmt <= src_fmt_max; src_fmt++) {
         if ((!fmt_is_supported_by_hw(src_fmt)) ||
-            (opts->unscaled && fmt_is_subsampled(src_fmt)))
+            (opts->scaler_flags < 0 && fmt_is_subsampled(src_fmt)))
             continue;
         if (!sws_test_format(src_fmt, 0) || !sws_test_format(src_fmt, 1))
             continue;
         for (dst_fmt = dst_fmt_min; dst_fmt <= dst_fmt_max; dst_fmt++) {
             if ((!fmt_is_supported_by_hw(dst_fmt)) ||
-                (opts->unscaled && fmt_is_subsampled(dst_fmt)))
+                (opts->scaler_flags < 0 && fmt_is_subsampled(dst_fmt)))
                 continue;
             if (!sws_test_format(dst_fmt, 0) || !sws_test_format(dst_fmt, 1))
                 continue;
@@ -700,6 +700,8 @@ static int run_self_tests(const AVFrame *ref, const struct options *opts)
                             .flags  = opts->flags  >= 0 ? opts->flags  : flags[f],
                             .dither = opts->dither >= 0 ? opts->dither : SWS_DITHER_AUTO,
                         };
+                        if (opts->scaler_flags > 0)
+                            mode.flags |= opts->scaler_flags;
 
                         if (ff_sfc64_get(&prng_state) <= UINT64_MAX * opts->prob) {
                             ret = run_test(src_fmt, dst_fmt, dst_w[w], dst_h[h],
@@ -708,13 +710,13 @@ static int run_self_tests(const AVFrame *ref, const struct options *opts)
                                 goto error;
                         }
 
-                        if (opts->flags >= 0 || opts->unscaled)
+                        if (opts->flags >= 0 || opts->scaler_flags)
                             break;
                     }
-                    if (opts->unscaled)
+                    if (opts->scaler_flags < 0)
                         break;
                 }
-                if (opts->unscaled)
+                if (opts->scaler_flags < 0)
                     break;
             }
         }
@@ -835,8 +837,24 @@ error:
     return ret;
 }
 
+static int has_scaler_flag(int flags)
+{
+    return flags & (SWS_FAST_BILINEAR |
+                    SWS_BILINEAR |
+                    SWS_BICUBIC |
+                    SWS_X |
+                    SWS_POINT |
+                    SWS_AREA |
+                    SWS_BICUBLIN |
+                    SWS_GAUSS |
+                    SWS_SINC |
+                    SWS_LANCZOS |
+                    SWS_SPLINE);
+}
+
 static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
 {
+    SwsContext *dummy = sws_alloc_context();
     int ret;
 
     for (int i = 1; i < argc; i += 2) {
@@ -860,10 +878,11 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
                     "       Run benchmarks with the specified number of iterations. This mode also sets the frame size to 1920x1080 (unless -s is specified)\n"
                     "   -flags <flags>\n"
                     "       Test with a specific combination of flags\n"
+                    "   -scaler_flags <algorithm>\n"
+                    "       Test with a specified scaler algorithm\n"
+                    "       If 'unscaled', test only conversions that do not involve scaling\n"
                     "   -dither <mode>\n"
                     "       Test with a specific dither mode\n"
-                    "   -unscaled <1 or 0>\n"
-                    "       If 1, test only conversions that do not involve scaling\n"
                     "   -legacy <1 or 0>\n"
                     "       If 1, force using legacy swscale for the main conversion\n"
                     "   -hw <device>\n"
@@ -926,18 +945,35 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
                 opts->iters = iters;
             }
         } else if (!strcmp(argv[i], "-flags")) {
-            SwsContext *dummy = sws_alloc_context();
             const AVOption *flags_opt = av_opt_find(dummy, "sws_flags", NULL, 0, 0);
             ret = av_opt_eval_flags(dummy, flags_opt, argv[i + 1], &opts->flags);
-            sws_free_context(&dummy);
             if (ret < 0) {
                 fprintf(stderr, "invalid flags %s\n", argv[i + 1]);
                 goto end;
             }
+            if (has_scaler_flag(opts->flags)) {
+                fprintf(stderr, "use -scaler_flags to set scaling algorithm\n");
+                ret = AVERROR(EINVAL);
+                goto end;
+            }
+        } else if (!strcmp(argv[i], "-scaler_flags")) {
+            if (!strcmp(argv[i + 1], "unscaled")) {
+                opts->scaler_flags = -1;
+                continue;
+            }
+            const AVOption *flags_opt = av_opt_find(dummy, "sws_flags", NULL, 0, 0);
+            ret = av_opt_eval_flags(dummy, flags_opt, argv[i + 1], &opts->scaler_flags);
+            if (ret < 0) {
+                fprintf(stderr, "invalid scaler algorithm %s\n", argv[i + 1]);
+                goto end;
+            }
+            if (!has_scaler_flag(opts->scaler_flags)) {
+                fprintf(stderr, "invalid scaler flags %s\n", argv[i + 1]);
+                ret = AVERROR(EINVAL);
+                goto end;
+            }
         } else if (!strcmp(argv[i], "-dither")) {
             opts->dither = atoi(argv[i + 1]);
-        } else if (!strcmp(argv[i], "-unscaled")) {
-            opts->unscaled = atoi(argv[i + 1]);
         } else if (!strcmp(argv[i], "-legacy")) {
             opts->legacy = atoi(argv[i + 1]);
         } else if (!strcmp(argv[i], "-hw")) {
@@ -981,6 +1017,7 @@ bad_option:
     ret = 0;
 
 end:
+    sws_free_context(&dummy);
     return ret;
 }
 
@@ -995,6 +1032,7 @@ int main(int argc, char **argv)
         .iters   = 1,
         .prob    = 1.0,
         .flags   = -1,
+        .scaler_flags = 0,
         .dither  = -1,
     };
 
