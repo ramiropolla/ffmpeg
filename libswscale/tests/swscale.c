@@ -837,6 +837,8 @@ error:
 
 static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
 {
+    int ret;
+
     for (int i = 1; i < argc; i += 2) {
         if (!strcmp(argv[i], "-help") || !strcmp(argv[i], "--help")) {
             fprintf(stderr,
@@ -883,32 +885,36 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
             *fp = fopen(argv[i + 1], "r");
             if (!*fp) {
                 fprintf(stderr, "could not open '%s'\n", argv[i + 1]);
-                return -1;
+                ret = AVERROR(errno);
+                goto end;
             }
         } else if (!strcmp(argv[i], "-cpuflags")) {
             unsigned flags = av_get_cpu_flags();
-            int res = av_parse_cpu_caps(&flags, argv[i + 1]);
-            if (res < 0) {
+            ret = av_parse_cpu_caps(&flags, argv[i + 1]);
+            if (ret < 0) {
                 fprintf(stderr, "invalid cpu flags %s\n", argv[i + 1]);
-                return -1;
+                goto end;
             }
             av_force_cpu_flags(flags);
         } else if (!strcmp(argv[i], "-src")) {
             opts->src_fmt = av_get_pix_fmt(argv[i + 1]);
             if (opts->src_fmt == AV_PIX_FMT_NONE) {
                 fprintf(stderr, "invalid pixel format %s\n", argv[i + 1]);
-                return -1;
+                ret = AVERROR(EINVAL);
+                goto end;
             }
         } else if (!strcmp(argv[i], "-dst")) {
             opts->dst_fmt = av_get_pix_fmt(argv[i + 1]);
             if (opts->dst_fmt == AV_PIX_FMT_NONE) {
                 fprintf(stderr, "invalid pixel format %s\n", argv[i + 1]);
-                return -1;
+                ret = AVERROR(EINVAL);
+                goto end;
             }
         } else if (!strcmp(argv[i], "-s")) {
             if (av_parse_video_size(&opts->w, &opts->h, argv[i + 1]) < 0) {
                 fprintf(stderr, "invalid frame size %s\n", argv[i + 1]);
-                return -1;
+                ret = AVERROR(EINVAL);
+                goto end;
             }
         } else if (!strcmp(argv[i], "-bench")) {
             int iters = atoi(argv[i + 1]);
@@ -922,11 +928,11 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
         } else if (!strcmp(argv[i], "-flags")) {
             SwsContext *dummy = sws_alloc_context();
             const AVOption *flags_opt = av_opt_find(dummy, "sws_flags", NULL, 0, 0);
-            int ret = av_opt_eval_flags(dummy, flags_opt, argv[i + 1], &opts->flags);
+            ret = av_opt_eval_flags(dummy, flags_opt, argv[i + 1], &opts->flags);
             sws_free_context(&dummy);
             if (ret < 0) {
                 fprintf(stderr, "invalid flags %s\n", argv[i + 1]);
-                return -1;
+                goto end;
             }
         } else if (!strcmp(argv[i], "-dither")) {
             opts->dither = atoi(argv[i + 1]);
@@ -935,20 +941,21 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
         } else if (!strcmp(argv[i], "-legacy")) {
             opts->legacy = atoi(argv[i + 1]);
         } else if (!strcmp(argv[i], "-hw")) {
-            int ret = av_hwdevice_ctx_create(&hw_device_ctx,
+            ret = av_hwdevice_ctx_create(&hw_device_ctx,
                                              AV_HWDEVICE_TYPE_VULKAN,
                                              argv[i + 1], NULL, 0);
             if (ret < 0) {
                 fprintf(stderr, "Failed to create Vulkan device '%s'\n",
                         argv[i + 1]);
-                return -1;
+                goto end;
             }
             hw_device_constr = av_hwdevice_get_hwframe_constraints(hw_device_ctx,
                                                                    NULL);
             if (!hw_device_constr) {
                 fprintf(stderr, "Failed to retrieve Vulkan device constraints '%s'\n",
                         argv[i + 1]);
-                return -1;
+                ret = AVERROR(ENOMEM);
+                goto end;
             }
         } else if (!strcmp(argv[i], "-threads")) {
             opts->threads = atoi(argv[i + 1]);
@@ -961,7 +968,8 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
         } else {
 bad_option:
             fprintf(stderr, "bad option or argument missing (%s) see -help\n", argv[i]);
-            return -1;
+            ret = AVERROR(EINVAL);
+            goto end;
         }
     }
 
@@ -970,7 +978,10 @@ bad_option:
         opts->h = opts->bench ? 1080 : 96;
     }
 
-    return 0;
+    ret = 0;
+
+end:
+    return ret;
 }
 
 int main(int argc, char **argv)
