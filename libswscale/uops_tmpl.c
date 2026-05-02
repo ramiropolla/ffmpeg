@@ -767,14 +767,12 @@ DECL_FUNC(linear, const SwsCompMask mask, const uint32_t one, const uint32_t zer
         const pixel_t zz = z[i];
         const pixel_t ww = w[i];
 
-#define LIN_COEFF(I, J) ((zero & SWS_MASK(I, J)) ? 0 :                          \
-                         (one  & SWS_MASK(I, J)) ? 1 : c.m[I][J])
-
-#define LIN_ROW(I) (((zero & SWS_MASK_OFF(I)) ? 0 : c.k[I]) +                   \
-                    LIN_COEFF(I, 0) * xx +                                      \
-                    LIN_COEFF(I, 1) * yy +                                      \
-                    LIN_COEFF(I, 2) * zz +                                      \
-                    LIN_COEFF(I, 3) * ww)
+#define LIN_COEFF(I, J) ((one & SWS_MASK(I, J)) ? 1 : c.m[I][J])
+#define LIN_ROW(I) (((zero & SWS_MASK(I, 4)) ? 0 : c.k[I]) +                    \
+                    ((zero & SWS_MASK(I, 0)) ? 0 : LIN_COEFF(I, 0) * xx) +      \
+                    ((zero & SWS_MASK(I, 1)) ? 0 : LIN_COEFF(I, 1) * yy) +      \
+                    ((zero & SWS_MASK(I, 2)) ? 0 : LIN_COEFF(I, 2) * zz) +      \
+                    ((zero & SWS_MASK(I, 3)) ? 0 : LIN_COEFF(I, 3) * ww))
 
         if (X) x[i] = LIN_ROW(0);
         if (Y) y[i] = LIN_ROW(1);
