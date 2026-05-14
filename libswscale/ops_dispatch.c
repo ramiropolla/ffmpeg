@@ -553,7 +553,7 @@ static int compile(SwsGraph *graph, const SwsOpBackend *backend,
         const int sub_y = chroma ? indesc->log2_chroma_h : 0;
         p->exec_base.in_sub_x[i] = sub_x;
         p->exec_base.in_sub_y[i] = sub_y;
-        p->exec_base.block_size_in[i] = block_bits_in >> 3;
+        p->exec_base.block_size_in[i] = block_bits_in >> (3 + sub_x);
         p->idx_in[i] = idx;
     }
 
@@ -564,7 +564,7 @@ static int compile(SwsGraph *graph, const SwsOpBackend *backend,
         const int sub_y = chroma ? outdesc->log2_chroma_h : 0;
         p->exec_base.out_sub_x[i] = sub_x;
         p->exec_base.out_sub_y[i] = sub_y;
-        p->exec_base.block_size_out[i] = block_bits_out >> 3;
+        p->exec_base.block_size_out[i] = block_bits_out >> (3 + sub_x);
         p->idx_out[i] = idx;
     }
 
