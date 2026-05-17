@@ -49,6 +49,11 @@ fate-sws-ops-list: libswscale/tests/sws_ops$(EXESUF)
 fate-sws-ops-list: CMD = run libswscale/tests/sws_ops$(EXESUF) | do_md5sum | cut -d" " -f1
 endif
 
+FATE_LIBSWSCALE-$(CONFIG_UNSTABLE) += fate-sws-uops-macros
+fate-sws-uops-macros: libswscale/tests/sws_ops$(EXESUF)
+fate-sws-uops-macros: REF = $(SRC_PATH)/libswscale/uops_macros.h
+fate-sws-uops-macros: CMD = run libswscale/tests/sws_ops$(EXESUF) -macros
+
 FATE_LIBSWSCALE += $(FATE_LIBSWSCALE-yes)
 FATE_LIBSWSCALE_SAMPLES += $(FATE_LIBSWSCALE_SAMPLES-yes)
 FATE-$(CONFIG_SWSCALE) += $(FATE_LIBSWSCALE)
