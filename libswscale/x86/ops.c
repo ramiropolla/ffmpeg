@@ -430,7 +430,7 @@ static int setup_filter_h(const SwsImplParams *params, SwsImplResult *out)
 
 static bool check_filter_4x4_h(const SwsImplParams *params)
 {
-    return false;
+    // return false;
     SwsContext *ctx = params->ctx;
     const SwsOp *op = params->op;
     if ((ctx->flags & SWS_BITEXACT) && op->type == SWS_PIXEL_F32)
