@@ -1152,7 +1152,7 @@ static int add_ops_glsl(VulkanPriv *p, FFVulkanOpsCtx *s,
 }
 #endif
 
-static int compile(SwsContext *sws, SwsOpList *ops, SwsCompiledOp *out, int glsl)
+static int compile_vk(SwsContext *sws, SwsOpList *ops, SwsCompiledOp *out, int glsl)
 {
     int err;
     SwsInternal *c = sws_internal(sws);
@@ -1228,7 +1228,7 @@ fail:
 #if HAVE_SPIRV_HEADERS_SPIRV_H || HAVE_SPIRV_UNIFIED1_SPIRV_H
 static int compile_spirv(SwsContext *sws, SwsOpList *ops, SwsCompiledOp *out)
 {
-    return compile(sws, ops, out, 0);
+    return compile_vk(sws, ops, out, 0);
 }
 
 const SwsOpBackend backend_spirv = {
@@ -1241,7 +1241,7 @@ const SwsOpBackend backend_spirv = {
 #if CONFIG_LIBSHADERC || CONFIG_LIBGLSLANG
 static int compile_glsl(SwsContext *sws, SwsOpList *ops, SwsCompiledOp *out)
 {
-    return compile(sws, ops, out, 1);
+    return compile_vk(sws, ops, out, 1);
 }
 
 const SwsOpBackend backend_glsl = {

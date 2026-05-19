@@ -470,8 +470,8 @@ static void align_pass(SwsPass *pass, int block_size, int over_rw, int pixel_bit
     buf->width_pad = FFMAX(buf->width_pad, pad);
 }
 
-static int compile(SwsGraph *graph, const SwsOpBackend *backend,
-                   const SwsOpList *ops, SwsPass *input, SwsPass **output)
+static int compile_pass(SwsGraph *graph, const SwsOpBackend *backend,
+                        const SwsOpList *ops, SwsPass *input, SwsPass **output)
 {
     SwsContext *ctx = graph->ctx;
     SwsOpPass *p = av_mallocz(sizeof(*p));
@@ -615,7 +615,7 @@ int ff_sws_compile_pass(SwsGraph *graph, const SwsOpBackend *backend,
         ff_sws_op_list_print(ctx, AV_LOG_DEBUG, AV_LOG_TRACE, ops);
     }
 
-    ret = compile(graph, backend, ops, input, output);
+    ret = compile_pass(graph, backend, ops, input, output);
     if (ret != AVERROR(ENOTSUP))
         goto out;
 
@@ -634,7 +634,7 @@ int ff_sws_compile_pass(SwsGraph *graph, const SwsOpBackend *backend,
             goto out;
         }
 
-        ret = compile(graph, backend, ops, prev, output ? &prev : NULL);
+        ret = compile_pass(graph, backend, ops, prev, output ? &prev : NULL);
         if (ret < 0) {
             ff_sws_op_list_free(&rest);
             goto out;

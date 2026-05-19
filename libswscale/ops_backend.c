@@ -67,7 +67,7 @@ static const SwsOpTable *const tables[] = {
     &bitfn(op_table_float, f32),
 };
 
-static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
+static int compile_c(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
 {
     int ret;
 
@@ -111,6 +111,6 @@ static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
 
 const SwsOpBackend backend_c = {
     .name       = "c",
-    .compile    = compile,
+    .compile    = compile_c,
     .hw_format  = AV_PIX_FMT_NONE,
 };

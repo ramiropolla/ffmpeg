@@ -172,7 +172,7 @@ static int aarch64_optimize(SwsAArch64BackendContext *bctx, SwsOpList *ops)
 }
 
 /*********************************************************************/
-static int aarch64_compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
+static int compile_aarch64(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
 {
     SwsAArch64BackendContext bctx;
     int ret;
@@ -254,6 +254,6 @@ error:
 /*********************************************************************/
 const SwsOpBackend backend_aarch64 = {
     .name      = "aarch64",
-    .compile   = aarch64_compile,
+    .compile   = compile_aarch64,
     .hw_format = AV_PIX_FMT_NONE,
 };

@@ -978,7 +978,7 @@ static void normalize_clear(SwsOp *op)
     }
 }
 
-static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
+static int compile_x86(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
 {
     int ret;
     const int cpu_flags = av_get_cpu_flags();
@@ -1054,6 +1054,6 @@ static int compile(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
 
 const SwsOpBackend backend_x86 = {
     .name       = "x86",
-    .compile    = compile,
+    .compile    = compile_x86,
     .hw_format  = AV_PIX_FMT_NONE,
 };
