@@ -19,6 +19,7 @@
  */
 
 #include <float.h>
+#include <stdio.h>
 
 #include "libavutil/avassert.h"
 #include "libavutil/mem.h"
@@ -429,6 +430,7 @@ static int setup_filter_h(const SwsImplParams *params, SwsImplResult *out)
 
 static bool check_filter_4x4_h(const SwsImplParams *params)
 {
+    return false;
     SwsContext *ctx = params->ctx;
     const SwsOp *op = params->op;
     if ((ctx->flags & SWS_BITEXACT) && op->type == SWS_PIXEL_F32)
@@ -978,6 +980,12 @@ static void normalize_clear(SwsOp *op)
     }
 }
 
+static void free_debug(SwsOpPriv *priv)
+{
+    fclose(priv->ptr);
+}
+
+void ff_sws_debug_avx2(void);
 static int compile_x86(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
 {
     int ret;
@@ -1021,6 +1029,15 @@ static int compile_x86(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
             av_log(ctx, AV_LOG_TRACE, "Failed to compile op %d\n", i);
             ff_sws_op_chain_free(chain);
             return ret;
+        }
+
+        if (op->op == SWS_OP_READ && op->rw.filter == SWS_OP_FILTER_H) {
+            FILE *fp = fopen("sws_debug.bin", "ab");
+            if (fp) {
+                SwsOpPriv priv = { 0 };
+                priv.ptr = fp;
+                ff_sws_op_chain_append(chain, ff_sws_debug_avx2, free_debug, &priv);
+            }
         }
     }
 
