@@ -1023,6 +1023,15 @@ static int compile_x86(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
             op->type = SWS_PIXEL_U8;
         }
 
+        if (op->op == SWS_OP_READ && op->rw.filter == SWS_OP_FILTER_H) {
+            FILE *fp = fopen("sws_debug_input.bin", "ab");
+            if (fp) {
+                SwsOpPriv priv = { 0 };
+                priv.ptr = fp;
+                ff_sws_op_chain_append(chain, ff_sws_debug_avx2, free_debug, &priv);
+            }
+        }
+
         ret = ff_sws_op_compile_tables(ctx, tables, FF_ARRAY_ELEMS(tables),
                                        op, op_block_size, chain);
         if (ret < 0) {
@@ -1032,7 +1041,7 @@ static int compile_x86(SwsContext *ctx, SwsOpList *ops, SwsCompiledOp *out)
         }
 
         if (op->op == SWS_OP_READ && op->rw.filter == SWS_OP_FILTER_H) {
-            FILE *fp = fopen("sws_debug.bin", "ab");
+            FILE *fp = fopen("sws_debug_output.bin", "ab");
             if (fp) {
                 SwsOpPriv priv = { 0 };
                 priv.ptr = fp;
