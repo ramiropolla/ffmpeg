@@ -84,6 +84,11 @@ typedef struct SwsComps {
     AVRational min[4], max[4];
 } SwsComps;
 
+typedef enum SwsReadWriteMode {
+    SWS_RW_PLANAR,  /* one plane per component */
+    SWS_RW_PACKED,  /* all components on a single plane */
+} SwsReadWriteMode;
+
 typedef struct SwsReadWriteOp {
     /**
      * Examples:
@@ -93,9 +98,9 @@ typedef struct SwsReadWriteOp {
      *   monow     = 1x u8 (frac 3)
      *   rgb4      = 1x u8 (frac 1)
      */
+    SwsReadWriteMode mode; /* how data is laid out in memory */
     uint8_t elems; /* number of elements (of type `op.type`) to read/write */
     uint8_t frac;  /* fractional pixel step factor (log2) */
-    bool packed;   /* read multiple elements from a single plane */
 
     /**
      * Filter kernel to apply to each plane while sampling. Currently, only
