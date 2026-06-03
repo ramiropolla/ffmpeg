@@ -282,4 +282,16 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
  */
 int ff_sws_uops_macros_gen(char **out_str);
 
+/**
+ * Compute a shuffle mask for `pshufb`-style ASM functions, by repeating
+ * the shuffle pattern for a single pixel as many times as it will fit.
+ *
+ * @param uop         An operation of type SWS_UOP_RW_SHUFFLE.
+ * @param shuffle     The output shuffle index mask (or -1 to clear bytes).
+ * @param size        The maximum size (in bytes) of the output shuffle mask.
+ *
+ * @return the number of pixels on success, or a negative error code.
+ */
+int ff_sws_shuffle_mask(const SwsUOp *uop, int8_t shuffle[], int size);
+
 #endif
