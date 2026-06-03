@@ -481,19 +481,22 @@ SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx512, NULL, NULL)
 
 static int movsize(const int bytes, const int mmsize)
 {
-    return bytes <= 4 ? 4 : /* movd */
-           bytes <= 8 ? 8 : /* movq */
-           mmsize;          /* movu */
+    return bytes <= 4  ? 4  : /* movd */
+           bytes <= 8  ? 8  : /* movq */
+           bytes <= 16 ? 16 : /* xmm movu */
+           bytes <= 32 ? 32 : /* ymm movu */
+           mmsize;            /* zmm movu */
 }
 
 static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
 {
     /* We can't shuffle across lanes, so restrict the vector size to XMM
-     * whenever the read/write size would be a subset of the full vector */
+     * whenever the read/write size would be a subset of the full vector,
+     * unless we have access to AVX-512 vpermb */
     const SwsShuffleUOp *par = &uop->par.shuffle;
     const int lane_aligned = par->read_size == par->write_size &&
                              16 % par->read_size == 0;
-    if (!lane_aligned)
+    if (!lane_aligned && mmsize < 64)
         mmsize = 16;
 
     /* Generate the shuffle mask */
