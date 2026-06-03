@@ -78,8 +78,6 @@ static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
     /* Map SwsOpType to SwsAArch64OpType */
     switch (op->op) {
     case SWS_OP_READ:
-        if (op->rw.filter)
-            return AVERROR(ENOTSUP);
         /**
          * The different types of read operations have been split into
          * their own SwsAArch64OpType to simplify the implementation.
@@ -94,8 +92,6 @@ static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
             out->op = AARCH64_SWS_OP_READ_PLANAR;
         break;
     case SWS_OP_WRITE:
-        if (op->rw.filter)
-            return AVERROR(ENOTSUP);
         /**
          * The different types of write operations have been split into
          * their own SwsAArch64OpType to simplify the implementation.
@@ -124,6 +120,9 @@ static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
     case SWS_OP_SCALE:      out->op = AARCH64_SWS_OP_SCALE;      break;
     case SWS_OP_LINEAR:     out->op = AARCH64_SWS_OP_LINEAR;     break;
     case SWS_OP_DITHER:     out->op = AARCH64_SWS_OP_DITHER;     break;
+    case SWS_OP_FILTER_H:
+    case SWS_OP_FILTER_V:
+        return AVERROR(ENOTSUP);
     }
 
     switch (out->op) {
