@@ -309,8 +309,7 @@ SWS_FOR_STRUCT(WRITE_NIBBLE,    TYPE, DECL_ENTRY, EXT, NULL, NULL)              
 SWS_FOR_STRUCT(WRITE_BIT,       TYPE, DECL_ENTRY, EXT, NULL, NULL)              \
 SWS_FOR_STRUCT(SWAP_BYTES,      TYPE, DECL_ENTRY, EXT, NULL, NULL)              \
 SWS_FOR_STRUCT(EXPAND_BIT,      TYPE, DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(PERMUTE,         TYPE, DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(COPY,            TYPE, DECL_ENTRY, EXT, NULL, NULL)              \
+SWS_FOR_STRUCT(MOVE,            TYPE, DECL_ENTRY, EXT, NULL, NULL)              \
 SWS_FOR_STRUCT(SCALE,           TYPE, DECL_ENTRY, EXT, NULL, setup_scale)       \
 SWS_FOR_STRUCT(ADD,             TYPE, DECL_ENTRY, EXT, NULL, ff_sws_setup_vec4) \
 SWS_FOR_STRUCT(MIN,             TYPE, DECL_ENTRY, EXT, NULL, ff_sws_setup_vec4) \
@@ -332,8 +331,7 @@ SWS_FOR_STRUCT(DITHER,          TYPE, DECL_ENTRY, EXT, NULL, setup_dither)      
     SWS_FOR(WRITE_BIT,      TYPE, REF_ENTRY, EXT)                               \
     SWS_FOR(SWAP_BYTES,     TYPE, REF_ENTRY, EXT)                               \
     SWS_FOR(EXPAND_BIT,     TYPE, REF_ENTRY, EXT)                               \
-    SWS_FOR(PERMUTE,        TYPE, REF_ENTRY, EXT)                               \
-    SWS_FOR(COPY,           TYPE, REF_ENTRY, EXT)                               \
+    SWS_FOR(MOVE,           TYPE, REF_ENTRY, EXT)                               \
     SWS_FOR(SCALE,          TYPE, REF_ENTRY, EXT)                               \
     SWS_FOR(ADD,            TYPE, REF_ENTRY, EXT)                               \
     SWS_FOR(MIN,            TYPE, REF_ENTRY, EXT)                               \
@@ -593,7 +591,7 @@ static int compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
         goto fail;
     }
 
-    SwsUOpFlags flags = 0;
+    SwsUOpFlags flags = SWS_UOP_FLAG_MOVE;
     if (X86_FMA4(cpu_flags))
         flags |= SWS_UOP_FLAG_FMA;
 
