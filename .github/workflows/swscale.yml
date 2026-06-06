@@ -15,7 +15,7 @@ jobs:
       - name: Install llvm-mingw and wine
         run: |
           sudo dpkg --add-architecture i386
-          sudo apt-get update && sudo apt-get install wine wine32
+          sudo apt-get update && sudo apt-get install nasm wine wine32
           curl -LO https://github.com/mstorsjo/llvm-mingw/releases/download/20231128/llvm-mingw-20231128-ucrt-ubuntu-20.04-x86_64.tar.xz
           tar -Jxf llvm-mingw-*-ucrt-ubuntu-*-x86_64.tar.xz
           rm llvm-mingw-*.tar.xz
