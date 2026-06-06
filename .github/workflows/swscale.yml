@@ -299,16 +299,17 @@ jobs:
           exit ${ret:-0}
 
   x86-llvm-mingw:
-    runs-on: ubuntu-latest
-    container: ghcr.io/mstorsjo/wine
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
-      - name: Install llvm-mingw
+      - name: Install llvm-mingw and wine
         run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update && sudo apt-get install wine wine32
           curl -LO https://github.com/mstorsjo/llvm-mingw/releases/download/20231128/llvm-mingw-20231128-ucrt-ubuntu-20.04-x86_64.tar.xz
           tar -Jxf llvm-mingw-*-ucrt-ubuntu-*-x86_64.tar.xz
           rm llvm-mingw-*.tar.xz
-          mv llvm-mingw-* /opt/llvm-mingw
+          sudo mv llvm-mingw-* /opt/llvm-mingw
           echo /opt/llvm-mingw/bin >> $GITHUB_PATH
       - name: Build and test swscale
         run: |
