@@ -46,14 +46,14 @@ static const int dst_fmts[] = {
     AV_PIX_FMT_BGRA,
     AV_PIX_FMT_RGB24,
     AV_PIX_FMT_BGR24,
-    AV_PIX_FMT_RGB565,
-    AV_PIX_FMT_BGR565,
-    AV_PIX_FMT_RGB555,
-    AV_PIX_FMT_BGR555,
     AV_PIX_FMT_RGB565BE,
     AV_PIX_FMT_BGR565BE,
     AV_PIX_FMT_RGB555BE,
     AV_PIX_FMT_BGR555BE,
+    AV_PIX_FMT_RGB565LE,
+    AV_PIX_FMT_BGR565LE,
+    AV_PIX_FMT_RGB555LE,
+    AV_PIX_FMT_BGR555LE,
 //     AV_PIX_FMT_RGB444,
 //     AV_PIX_FMT_BGR444,
 //     AV_PIX_FMT_RGB8,
@@ -203,10 +203,10 @@ static void check_yuv2rgb(int src_pix_fmt)
                                          dst1_0 + row * dstStride[0],
                                          width * sample_size, 3))
                             fail();
-                } else if (dst_pix_fmt == AV_PIX_FMT_RGB565   ||
-                           dst_pix_fmt == AV_PIX_FMT_BGR565   ||
-                           dst_pix_fmt == AV_PIX_FMT_RGB565BE ||
-                           dst_pix_fmt == AV_PIX_FMT_BGR565BE) {
+                } else if (dst_pix_fmt == AV_PIX_FMT_RGB565BE ||
+                           dst_pix_fmt == AV_PIX_FMT_BGR565BE ||
+                           dst_pix_fmt == AV_PIX_FMT_RGB565LE ||
+                           dst_pix_fmt == AV_PIX_FMT_BGR565LE) {
                     int is_be = dst_pix_fmt == AV_PIX_FMT_RGB565BE ||
                                 dst_pix_fmt == AV_PIX_FMT_BGR565BE;
                     for (int row = 0; row < srcSliceH; row++)
@@ -214,10 +214,10 @@ static void check_yuv2rgb(int src_pix_fmt)
                                          dst1_0 + row * dstStride[0],
                                          width, 2, is_be))
                             fail();
-                } else if (dst_pix_fmt == AV_PIX_FMT_RGB555   ||
-                           dst_pix_fmt == AV_PIX_FMT_BGR555   ||
-                           dst_pix_fmt == AV_PIX_FMT_RGB555BE ||
-                           dst_pix_fmt == AV_PIX_FMT_BGR555BE) {
+                } else if (dst_pix_fmt == AV_PIX_FMT_RGB555BE ||
+                           dst_pix_fmt == AV_PIX_FMT_BGR555BE ||
+                           dst_pix_fmt == AV_PIX_FMT_RGB555LE ||
+                           dst_pix_fmt == AV_PIX_FMT_BGR555LE) {
                     int is_be = dst_pix_fmt == AV_PIX_FMT_RGB555BE ||
                                 dst_pix_fmt == AV_PIX_FMT_BGR555BE;
                     for (int row = 0; row < srcSliceH; row++)

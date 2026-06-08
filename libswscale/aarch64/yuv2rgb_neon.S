@@ -763,10 +763,10 @@
 // Pack 8 pixels of 16bpp output. The three channels are extracted via ushr,
 // widened to u16, then merged via shift-left-insert:
 //   dst = (high << high_shl) | (mid << 5) | low
-// For RGB565LE/BE  pass (B, G, R) as (low, mid, high), g_shr=2, high_shl=11.
-// For BGR565LE/BE  pass (R, G, B), g_shr=2, high_shl=11.
-// For RGB555LE/BE  pass (B, G, R), g_shr=3, high_shl=10.
-// For BGR555LE/BE  pass (R, G, B), g_shr=3, high_shl=10.
+// For RGB565  pass (B, G, R) as (low, mid, high), g_shr=2, high_shl=11.
+// For BGR565  pass (R, G, B), g_shr=2, high_shl=11.
+// For RGB555  pass (B, G, R), g_shr=3, high_shl=10.
+// For BGR555  pass (R, G, B), g_shr=3, high_shl=10.
 // Clobbers v20-v23.
 .macro pack_rgb16 dst, low_ch, mid_ch, high_ch, g_shr, high_shl
         ushr            v20.8b, \high_ch\().8b, #3
