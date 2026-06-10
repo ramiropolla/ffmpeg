@@ -58,6 +58,7 @@ static const struct {
     UOP_NAME(WRITE_PACKED,      "write_packed"),
     UOP_NAME(WRITE_NIBBLE,      "write_nibble"),
     UOP_NAME(WRITE_BIT,         "write_bit"),
+    UOP_NAME(RW_SHUFFLE,        "rw_shuffle"),
     UOP_NAME(PERMUTE,           "permute"),
     UOP_NAME(COPY,              "copy"),
     UOP_NAME(MOVE,              "move"),
@@ -150,6 +151,10 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
     case SWS_UOP_READ_PLANAR_FV_FMA:
         av_bprintf(&bp, "_%s", ff_sws_pixel_type_name(par->filter.type));
         break;
+    case SWS_UOP_RW_SHUFFLE:
+        av_bprintf(&bp, "_%x_%u_%u", par->shuffle.clear_value,
+                   par->shuffle.read_size, par->shuffle.write_size);
+        break;
     case SWS_UOP_LSHIFT:
     case SWS_UOP_RSHIFT:
         av_bprintf(&bp, "_%u", par->shift.amount);
@@ -238,6 +243,13 @@ static int generate_entry_struct(void *opaque, void *key)
     case SWS_UOP_READ_PLANAR_FV_FMA:
         av_bprintf(bp, ", .par.filter.type = %s", pixel_types[par->filter.type].full);
         break;
+    case SWS_UOP_RW_SHUFFLE:
+        av_bprintf(bp, ", .par.shuffle.clear_value = 0x%x"
+                       ", .par.shuffle.read_size = %u"
+                       ", .par.shuffle.write_size = %u",
+                   par->shuffle.clear_value,
+                   par->shuffle.read_size, par->shuffle.write_size);
+        break;
     case SWS_UOP_LSHIFT:
     case SWS_UOP_RSHIFT:
         av_bprintf(bp, ", .par.shift.amount = %u", par->shift.amount);
@@ -302,6 +314,10 @@ static int generate_entry_args(void *opaque, void *key)
     case SWS_UOP_READ_PLANAR_FV:
     case SWS_UOP_READ_PLANAR_FV_FMA:
         av_bprintf(bp, ", %s", pixel_types[par->filter.type].full);
+        break;
+    case SWS_UOP_RW_SHUFFLE:
+        av_bprintf(bp, ", 0x%x, %u, %u", par->shuffle.clear_value,
+                   par->shuffle.read_size, par->shuffle.write_size);
         break;
     case SWS_UOP_LSHIFT:
     case SWS_UOP_RSHIFT:

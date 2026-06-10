@@ -102,6 +102,9 @@ typedef enum SwsUOpType {
     SWS_UOP_WRITE_NIBBLE,    /* fractional write (4 bits) to single plane */
     SWS_UOP_WRITE_BIT,       /* fractional write (1 bit) to single plane */
 
+    /* Packed shuffle / gather uops */
+    SWS_UOP_RW_SHUFFLE,      /* in-place (packed) indexed shuffle/gather */
+
     /* Data rearrangement uops; mask = non-trivial and needed components */
     SWS_UOP_PERMUTE,         /* rearrange components (no duplicates) */
     SWS_UOP_COPY,            /* copy/duplicate components */
@@ -136,6 +139,12 @@ typedef enum SwsUOpType {
     /* Platform-specific uops would go here */
     SWS_UOP_TYPE_NB,
 } SwsUOpType;
+
+typedef struct SwsShuffleUOp {
+    uint8_t clear_value; /* value to clear elements with negative indices to */
+    uint8_t read_size;   /* input bytes per pixel */
+    uint8_t write_size;  /* output bytes per pixel */
+} SwsShuffleUOp;
 
 typedef struct SwsFilterUOp {
     SwsPixelType type; /* pixel type to store result as */
@@ -188,7 +197,8 @@ typedef struct SwsDitherUOp {
 int ff_sws_dither_height(const SwsDitherUOp *dither);
 
 typedef union SwsUOpParams {
-    SwsFilterUOp    filter; /* for SWS_UOP_READ_*_FV/FH */
+    SwsShuffleUOp   shuffle; /* for SWS_UOP_RW_SHUFFLE */
+    SwsFilterUOp    filter;  /* for SWS_UOP_READ_*_FV/FH */
     SwsShiftUOp     shift;
     SwsSwizzleUOp   swizzle;
     SwsMoveUOp      move;
@@ -212,6 +222,7 @@ typedef struct SwsUOp {
         SwsPixel scalar;
         SwsPixel vec4[4];
         SwsPixel mat4[4][5];        /* row major */
+        int8_t shuffle[16];         /* mask for SWS_UOP_RW_PACKED_SHUFB */
         void *opaque;               /* reserved for internal use */
     } data;
 } SwsUOp;
