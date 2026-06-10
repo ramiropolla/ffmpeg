@@ -474,6 +474,11 @@ SWS_DECL_FUNC(ff_sws_process2_x86);
 SWS_DECL_FUNC(ff_sws_process3_x86);
 SWS_DECL_FUNC(ff_sws_process4_x86);
 
+/* Declare packed shuffle functions */
+SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _sse4,   NULL, NULL)
+SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx2,   NULL, NULL)
+SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx512, NULL, NULL)
+
 static int movsize(const int bytes, const int mmsize)
 {
     return bytes <= 4 ? 4 : /* movd */
@@ -481,28 +486,30 @@ static int movsize(const int bytes, const int mmsize)
            mmsize;          /* movu */
 }
 
-static int solve_shuffle(const SwsOpList *ops, int mmsize, SwsCompiledOp *out)
+static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
 {
-    uint8_t shuffle[16];
-    int read_bytes, write_bytes;
-    int pixels;
-
-    /* Solve the shuffle mask for one 128-bit lane only */
-    pixels = ff_sws_solve_shuffle(ops, shuffle, 16, 0x80, &read_bytes, &write_bytes);
-    if (pixels < 0)
-        return pixels;
-
     /* We can't shuffle across lanes, so restrict the vector size to XMM
      * whenever the read/write size would be a subset of the full vector */
-    if (read_bytes < 16 || write_bytes < 16)
+    const SwsShuffleUOp *par = &uop->par.shuffle;
+    const int lane_aligned = par->read_size == par->write_size &&
+                             16 % par->read_size == 0;
+    if (!lane_aligned)
         mmsize = 16;
 
-    const int num_lanes = mmsize / 16;
-    const int in_total  = num_lanes * read_bytes;
-    const int out_total = num_lanes * write_bytes;
+    /* Generate the shuffle mask */
+    const int mask_size = lane_aligned ? 16 : mmsize;
+    int8_t *mask = av_malloc(mask_size);
+    if (!mask)
+        return AVERROR(ENOMEM);
 
+    const int pixels = ff_sws_shuffle_mask(uop, mask, mask_size);
+    const int read_chunk  = pixels * par->read_size;
+    const int write_chunk = pixels * par->write_size;
+    const int num_lanes   = lane_aligned ? mmsize / 16 : 1;
+    const int in_total    = num_lanes * read_chunk;
+    const int out_total   = num_lanes * write_chunk;
     *out = (SwsCompiledOp) {
-        .priv        = av_memdup(shuffle, sizeof(shuffle)),
+        .priv        = mask,
         .free        = av_free,
         .slice_align = 1,
         .block_size  = pixels * num_lanes,
@@ -513,36 +520,20 @@ static int solve_shuffle(const SwsOpList *ops, int mmsize, SwsCompiledOp *out)
                                      AV_CPU_FLAG_SSE4,
     };
 
-    if (!out->priv)
-        return AVERROR(ENOMEM);
-
-#define ASSIGN_SHUFFLE_FUNC(IN, OUT, EXT)                                       \
+#define ASSIGN_SHUFFLE_FUNC(EXT, NAME, ...)                                     \
 do {                                                                            \
-    SWS_DECL_FUNC(ff_packed_shuffle##IN##_##OUT##_##EXT);                       \
-    if (in_total == IN && out_total == OUT)                                     \
-        out->func = ff_packed_shuffle##IN##_##OUT##_##EXT;                      \
-} while (0)
+    const SwsOpEntry *entry = &op_##NAME##EXT;                                  \
+    if (!memcmp(&uop->par, &entry->par, sizeof(uop->par)))                      \
+        out->func = (SwsOpFunc) entry->func;                                    \
+} while (0);
 
-    ASSIGN_SHUFFLE_FUNC( 5, 15, sse4);
-    ASSIGN_SHUFFLE_FUNC( 4, 16, sse4);
-    ASSIGN_SHUFFLE_FUNC( 2, 12, sse4);
-    ASSIGN_SHUFFLE_FUNC(16,  8, sse4);
-    ASSIGN_SHUFFLE_FUNC(10, 15, sse4);
-    ASSIGN_SHUFFLE_FUNC( 8, 16, sse4);
-    ASSIGN_SHUFFLE_FUNC( 4, 12, sse4);
-    ASSIGN_SHUFFLE_FUNC(15,  5, sse4);
-    ASSIGN_SHUFFLE_FUNC(15, 15, sse4);
-    ASSIGN_SHUFFLE_FUNC(12, 16, sse4);
-    ASSIGN_SHUFFLE_FUNC( 6, 12, sse4);
-    ASSIGN_SHUFFLE_FUNC(16,  4, sse4);
-    ASSIGN_SHUFFLE_FUNC(16, 12, sse4);
-    ASSIGN_SHUFFLE_FUNC(16, 16, sse4);
-    ASSIGN_SHUFFLE_FUNC( 8, 12, sse4);
-    ASSIGN_SHUFFLE_FUNC(12, 12, sse4);
-    ASSIGN_SHUFFLE_FUNC(32, 32, avx2);
-    ASSIGN_SHUFFLE_FUNC(64, 64, avx512);
-    av_assert1(out->func);
-    return 0;
+    switch (mmsize) {
+    case 16: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, _sse4);   break;
+    case 32: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, _avx2);   break;
+    case 64: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, _avx512); break;
+    }
+
+    return out->func ? 0 : AVERROR(ENOTSUP);
 }
 
 /* Expand pixel value to 32-bits by repeating as necessary */
@@ -576,15 +567,7 @@ static int compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
     else
         return AVERROR(ENOTSUP);
 
-    /* Special fast path for in-place packed shuffle */
-    ret = solve_shuffle(ops, mmsize, out);
-    if (ret != AVERROR(ENOTSUP))
-        return ret;
-
-    SwsOpChain *chain = ff_sws_op_chain_alloc();
-    if (!chain)
-        return AVERROR(ENOMEM);
-
+    SwsOpChain *chain = NULL;
     SwsUOpList *uops = ff_sws_uop_list_alloc();
     if (!uops) {
         ret = AVERROR(ENOMEM);
@@ -598,6 +581,21 @@ static int compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
     ret = ff_sws_ops_translate(ctx, ops, flags, uops);
     if (ret < 0)
         goto fail;
+
+    if (uops->num_ops == 1 && uops->ops[0].uop == SWS_UOP_RW_SHUFFLE) {
+        const SwsUOp *uop = &uops->ops[0];
+        char name[SWS_UOP_NAME_MAX];
+        ff_sws_uop_name(uop, name);
+        ret = translate_shuffle(uop, mmsize, out);
+        if (ret >= 0)
+            av_log(ctx, AV_LOG_VERBOSE, "Using x86 packed shuffle fast path: %s\n", name);
+        ff_sws_uop_list_free(&uops);
+        return ret;
+    }
+
+    chain = ff_sws_op_chain_alloc();
+    if (!chain)
+        return AVERROR(ENOMEM);
 
     *out = (SwsCompiledOp) {
         /* Use at most two full YMM regs during the widest precision section */
