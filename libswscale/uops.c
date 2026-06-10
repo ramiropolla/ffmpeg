@@ -933,7 +933,7 @@ fail:
 
 static const SwsUOpFlags uop_flags[] = {
     0,
-    SWS_UOP_FLAG_FMA | SWS_UOP_FLAG_MOVE, /* x86 backend */
+    SWS_UOP_FLAG_FMA | SWS_UOP_FLAG_MOVE | SWS_UOP_FLAG_PSHUFB, /* x86 backend */
 };
 
 static int register_uops(SwsContext *ctx, const SwsOpList *ops,

@@ -591,7 +591,7 @@ static int compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
         goto fail;
     }
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_MOVE;
+    SwsUOpFlags flags = SWS_UOP_FLAG_MOVE | SWS_UOP_FLAG_PSHUFB;
     if (X86_FMA4(cpu_flags))
         flags |= SWS_UOP_FLAG_FMA;
 
