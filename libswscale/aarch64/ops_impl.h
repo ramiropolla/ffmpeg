@@ -52,8 +52,12 @@ typedef enum SwsAArch64OpType {
     AARCH64_SWS_OP_LSHIFT,
     AARCH64_SWS_OP_RSHIFT,
     AARCH64_SWS_OP_CLEAR,
-    AARCH64_SWS_OP_CONVERT,
-    AARCH64_SWS_OP_EXPAND,
+    AARCH64_SWS_OP_TO_U8,
+    AARCH64_SWS_OP_TO_U16,
+    AARCH64_SWS_OP_TO_U32,
+    AARCH64_SWS_OP_TO_F32,
+    AARCH64_SWS_OP_EXPAND_PAIR,
+    AARCH64_SWS_OP_EXPAND_QUAD,
     AARCH64_SWS_OP_MIN,
     AARCH64_SWS_OP_MAX,
     AARCH64_SWS_OP_SCALE,
@@ -102,7 +106,6 @@ typedef struct SwsAArch64OpImplParams {
         uint8_t             shift;
         SwsAArch64MoveOp    move;
         SwsAArch64OpMask    pack;
-        SwsAArch64PixelType to_type;
         SwsAArch64LinearOp  linear;
         SwsAArch64DitherOp  dither;
     };
