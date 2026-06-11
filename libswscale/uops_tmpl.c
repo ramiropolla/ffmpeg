@@ -30,6 +30,7 @@
 #  define PIXEL_TYPE SWS_PIXEL_F32
 #  define pixel_t    float
 #  define inter_t    float
+#  define uinter_t   float
 #  define PX         F32
 #  define px         f32
 #elif BIT_DEPTH == 32
@@ -37,6 +38,7 @@
 #  define PIXEL_SWAP av_bswap32
 #  define pixel_t    uint32_t
 #  define inter_t    int64_t
+#  define uinter_t   uint64_t
 #  define PX         U32
 #  define px         u32
 #elif BIT_DEPTH == 16
@@ -44,12 +46,14 @@
 #  define PIXEL_SWAP av_bswap16
 #  define pixel_t    uint16_t
 #  define inter_t    int64_t
+#  define uinter_t   uint64_t
 #  define PX         U16
 #  define px         u16
 #elif BIT_DEPTH == 8
 #  define PIXEL_MAX  0xFFu
 #  define pixel_t    uint8_t
 #  define inter_t    int32_t
+#  define uinter_t   uint32_t
 #  define PX         U8
 #  define px         u8
 #else
@@ -817,7 +821,7 @@ DECL_FUNC(linear, const SwsCompMask mask, const uint32_t one, const uint32_t zer
         const pixel_t ww = w[i];
 
 #define LIN_VAL(I, J, val) \
-    ((one & SWS_MASK(I, J)) ? (val) : c.m[I][J] * (val))
+    ((one & SWS_MASK(I, J)) ? (val) : (uinter_t) c.m[I][J] * (val))
 
 #define LIN_ROW(I, var) do {                                    \
     pixel_t tmp = (zero & SWS_MASK(I, 4)) ? 0 : c.k[I];         \
@@ -844,6 +848,7 @@ SWS_FOR_STRUCT(PX, LINEAR, DECL_ENTRY, .setup = fn(setup_linear) )
 #undef PIXEL_SWAP
 #undef pixel_t
 #undef inter_t
+#undef uinter_t
 #undef block_t
 #undef PX
 #undef px
