@@ -181,7 +181,19 @@ static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
     case SWS_OP_RSHIFT:     out->op = AARCH64_SWS_OP_RSHIFT;     break;
     case SWS_OP_CLEAR:      out->op = AARCH64_SWS_OP_CLEAR;      break;
     case SWS_OP_CONVERT:
-        out->op = op->convert.expand ? AARCH64_SWS_OP_EXPAND : AARCH64_SWS_OP_CONVERT;
+        if (op->convert.expand) {
+            switch (op->convert.to) {
+            case SWS_PIXEL_U16: out->op = AARCH64_SWS_OP_EXPAND_PAIR; break;
+            case SWS_PIXEL_U32: out->op = AARCH64_SWS_OP_EXPAND_QUAD; break;
+            }
+        } else {
+            switch (op->convert.to) {
+            case SWS_PIXEL_U8:  out->op = AARCH64_SWS_OP_TO_U8;  break;
+            case SWS_PIXEL_U16: out->op = AARCH64_SWS_OP_TO_U16; break;
+            case SWS_PIXEL_U32: out->op = AARCH64_SWS_OP_TO_U32; break;
+            case SWS_PIXEL_F32: out->op = AARCH64_SWS_OP_TO_F32; break;
+            }
+        }
         break;
     case SWS_OP_MIN:        out->op = AARCH64_SWS_OP_MIN;        break;
     case SWS_OP_MAX:        out->op = AARCH64_SWS_OP_MAX;        break;
@@ -246,10 +258,6 @@ static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
             if (SWS_OP_NEEDED(op, i) && op->clear.value[i].den)
                 MASK_SET(out->mask, i, 1);
         }
-        break;
-    case AARCH64_SWS_OP_EXPAND:
-    case AARCH64_SWS_OP_CONVERT:
-        out->to_type = sws_pixel_to_aarch64(op->convert.to);
         break;
     case AARCH64_SWS_OP_LINEAR:
         /**
