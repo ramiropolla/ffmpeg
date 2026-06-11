@@ -41,32 +41,32 @@
 #include "ops_impl.h"
 
 /*********************************************************************/
-static const char pixel_types[AARCH64_PIXEL_TYPE_NB][32] = {
-    [AARCH64_PIXEL_U8 ] = "AARCH64_PIXEL_U8",
-    [AARCH64_PIXEL_U16] = "AARCH64_PIXEL_U16",
-    [AARCH64_PIXEL_U32] = "AARCH64_PIXEL_U32",
-    [AARCH64_PIXEL_F32] = "AARCH64_PIXEL_F32",
+static const char pixel_types[SWS_PIXEL_TYPE_NB][32] = {
+    [SWS_PIXEL_U8 ] = "SWS_PIXEL_U8",
+    [SWS_PIXEL_U16] = "SWS_PIXEL_U16",
+    [SWS_PIXEL_U32] = "SWS_PIXEL_U32",
+    [SWS_PIXEL_F32] = "SWS_PIXEL_F32",
 };
 
-static const char *aarch64_pixel_type(SwsAArch64PixelType fmt)
+static const char *aarch64_pixel_type(SwsPixelType fmt)
 {
-    if (fmt >= AARCH64_PIXEL_TYPE_NB) {
+    if (fmt >= SWS_PIXEL_TYPE_NB) {
         av_assert0(!"Invalid pixel type!");
         return NULL;
     }
     return pixel_types[fmt];
 }
 
-static const char pixel_type_names[AARCH64_PIXEL_TYPE_NB][4] = {
-    [AARCH64_PIXEL_U8 ] = "u8",
-    [AARCH64_PIXEL_U16] = "u16",
-    [AARCH64_PIXEL_U32] = "u32",
-    [AARCH64_PIXEL_F32] = "f32",
+static const char pixel_type_names[SWS_PIXEL_TYPE_NB][4] = {
+    [SWS_PIXEL_U8 ] = "u8",
+    [SWS_PIXEL_U16] = "u16",
+    [SWS_PIXEL_U32] = "u32",
+    [SWS_PIXEL_F32] = "f32",
 };
 
-static const char *aarch64_pixel_type_name(SwsAArch64PixelType fmt)
+static const char *aarch64_pixel_type_name(SwsPixelType fmt)
 {
-    if (fmt >= AARCH64_PIXEL_TYPE_NB) {
+    if (fmt >= SWS_PIXEL_TYPE_NB) {
         av_assert0(!"Invalid pixel type!");
         return NULL;
     }
@@ -74,80 +74,78 @@ static const char *aarch64_pixel_type_name(SwsAArch64PixelType fmt)
 }
 
 /*********************************************************************/
-static const char op_types[AARCH64_SWS_OP_TYPE_NB][32] = {
-    [AARCH64_SWS_OP_NONE          ] = "AARCH64_SWS_OP_NONE",
-    [AARCH64_SWS_OP_READ_BIT      ] = "AARCH64_SWS_OP_READ_BIT",
-    [AARCH64_SWS_OP_READ_NIBBLE   ] = "AARCH64_SWS_OP_READ_NIBBLE",
-    [AARCH64_SWS_OP_READ_PACKED   ] = "AARCH64_SWS_OP_READ_PACKED",
-    [AARCH64_SWS_OP_READ_PLANAR   ] = "AARCH64_SWS_OP_READ_PLANAR",
-    [AARCH64_SWS_OP_WRITE_BIT     ] = "AARCH64_SWS_OP_WRITE_BIT",
-    [AARCH64_SWS_OP_WRITE_NIBBLE  ] = "AARCH64_SWS_OP_WRITE_NIBBLE",
-    [AARCH64_SWS_OP_WRITE_PACKED  ] = "AARCH64_SWS_OP_WRITE_PACKED",
-    [AARCH64_SWS_OP_WRITE_PLANAR  ] = "AARCH64_SWS_OP_WRITE_PLANAR",
-    [AARCH64_SWS_OP_SWAP_BYTES    ] = "AARCH64_SWS_OP_SWAP_BYTES",
-    [AARCH64_SWS_OP_MOVE          ] = "AARCH64_SWS_OP_MOVE",
-    [AARCH64_SWS_OP_UNPACK        ] = "AARCH64_SWS_OP_UNPACK",
-    [AARCH64_SWS_OP_PACK          ] = "AARCH64_SWS_OP_PACK",
-    [AARCH64_SWS_OP_LSHIFT        ] = "AARCH64_SWS_OP_LSHIFT",
-    [AARCH64_SWS_OP_RSHIFT        ] = "AARCH64_SWS_OP_RSHIFT",
-    [AARCH64_SWS_OP_CLEAR         ] = "AARCH64_SWS_OP_CLEAR",
-    [AARCH64_SWS_OP_TO_U8         ] = "AARCH64_SWS_OP_TO_U8",
-    [AARCH64_SWS_OP_TO_U16        ] = "AARCH64_SWS_OP_TO_U16",
-    [AARCH64_SWS_OP_TO_U32        ] = "AARCH64_SWS_OP_TO_U32",
-    [AARCH64_SWS_OP_TO_F32        ] = "AARCH64_SWS_OP_TO_F32",
-    [AARCH64_SWS_OP_EXPAND_PAIR   ] = "AARCH64_SWS_OP_EXPAND_PAIR",
-    [AARCH64_SWS_OP_EXPAND_QUAD   ] = "AARCH64_SWS_OP_EXPAND_QUAD",
-    [AARCH64_SWS_OP_MIN           ] = "AARCH64_SWS_OP_MIN",
-    [AARCH64_SWS_OP_MAX           ] = "AARCH64_SWS_OP_MAX",
-    [AARCH64_SWS_OP_SCALE         ] = "AARCH64_SWS_OP_SCALE",
-    [AARCH64_SWS_OP_LINEAR        ] = "AARCH64_SWS_OP_LINEAR",
-    [AARCH64_SWS_OP_LINEAR_FMA    ] = "AARCH64_SWS_OP_LINEAR_FMA",
-    [AARCH64_SWS_OP_DITHER        ] = "AARCH64_SWS_OP_DITHER",
+static const char op_types[SWS_UOP_TYPE_NB][32] = {
+    [SWS_UOP_READ_BIT      ] = "SWS_UOP_READ_BIT",
+    [SWS_UOP_READ_NIBBLE   ] = "SWS_UOP_READ_NIBBLE",
+    [SWS_UOP_READ_PACKED   ] = "SWS_UOP_READ_PACKED",
+    [SWS_UOP_READ_PLANAR   ] = "SWS_UOP_READ_PLANAR",
+    [SWS_UOP_WRITE_BIT     ] = "SWS_UOP_WRITE_BIT",
+    [SWS_UOP_WRITE_NIBBLE  ] = "SWS_UOP_WRITE_NIBBLE",
+    [SWS_UOP_WRITE_PACKED  ] = "SWS_UOP_WRITE_PACKED",
+    [SWS_UOP_WRITE_PLANAR  ] = "SWS_UOP_WRITE_PLANAR",
+    [SWS_UOP_SWAP_BYTES    ] = "SWS_UOP_SWAP_BYTES",
+    [SWS_UOP_MOVE          ] = "SWS_UOP_MOVE",
+    [SWS_UOP_UNPACK        ] = "SWS_UOP_UNPACK",
+    [SWS_UOP_PACK          ] = "SWS_UOP_PACK",
+    [SWS_UOP_LSHIFT        ] = "SWS_UOP_LSHIFT",
+    [SWS_UOP_RSHIFT        ] = "SWS_UOP_RSHIFT",
+    [SWS_UOP_CLEAR         ] = "SWS_UOP_CLEAR",
+    [SWS_UOP_TO_U8         ] = "SWS_UOP_TO_U8",
+    [SWS_UOP_TO_U16        ] = "SWS_UOP_TO_U16",
+    [SWS_UOP_TO_U32        ] = "SWS_UOP_TO_U32",
+    [SWS_UOP_TO_F32        ] = "SWS_UOP_TO_F32",
+    [SWS_UOP_EXPAND_PAIR   ] = "SWS_UOP_EXPAND_PAIR",
+    [SWS_UOP_EXPAND_QUAD   ] = "SWS_UOP_EXPAND_QUAD",
+    [SWS_UOP_MIN           ] = "SWS_UOP_MIN",
+    [SWS_UOP_MAX           ] = "SWS_UOP_MAX",
+    [SWS_UOP_SCALE         ] = "SWS_UOP_SCALE",
+    [SWS_UOP_LINEAR        ] = "SWS_UOP_LINEAR",
+    [SWS_UOP_LINEAR_FMA    ] = "SWS_UOP_LINEAR_FMA",
+    [SWS_UOP_DITHER        ] = "SWS_UOP_DITHER",
 };
 
-static const char *aarch64_op_type(SwsAArch64OpType op)
+static const char *aarch64_op_type(SwsUOpType op)
 {
-    if (op == AARCH64_SWS_OP_NONE || op >= AARCH64_SWS_OP_TYPE_NB) {
+    if (op == SWS_UOP_INVALID || op >= SWS_UOP_TYPE_NB) {
         av_assert0(!"Invalid op type!");
         return NULL;
     }
     return op_types[op];
 }
 
-static const char op_type_names[AARCH64_SWS_OP_TYPE_NB][16] = {
-    [AARCH64_SWS_OP_NONE          ] = "none",
-    [AARCH64_SWS_OP_READ_BIT      ] = "read_bit",
-    [AARCH64_SWS_OP_READ_NIBBLE   ] = "read_nibble",
-    [AARCH64_SWS_OP_READ_PACKED   ] = "read_packed",
-    [AARCH64_SWS_OP_READ_PLANAR   ] = "read_planar",
-    [AARCH64_SWS_OP_WRITE_BIT     ] = "write_bit",
-    [AARCH64_SWS_OP_WRITE_NIBBLE  ] = "write_nibble",
-    [AARCH64_SWS_OP_WRITE_PACKED  ] = "write_packed",
-    [AARCH64_SWS_OP_WRITE_PLANAR  ] = "write_planar",
-    [AARCH64_SWS_OP_SWAP_BYTES    ] = "swap_bytes",
-    [AARCH64_SWS_OP_MOVE          ] = "move",
-    [AARCH64_SWS_OP_UNPACK        ] = "unpack",
-    [AARCH64_SWS_OP_PACK          ] = "pack",
-    [AARCH64_SWS_OP_LSHIFT        ] = "lshift",
-    [AARCH64_SWS_OP_RSHIFT        ] = "rshift",
-    [AARCH64_SWS_OP_CLEAR         ] = "clear",
-    [AARCH64_SWS_OP_TO_U8         ] = "to_u8",
-    [AARCH64_SWS_OP_TO_U16        ] = "to_u16",
-    [AARCH64_SWS_OP_TO_U32        ] = "to_u32",
-    [AARCH64_SWS_OP_TO_F32        ] = "to_f32",
-    [AARCH64_SWS_OP_EXPAND_PAIR   ] = "expand_pair",
-    [AARCH64_SWS_OP_EXPAND_QUAD   ] = "expand_quad",
-    [AARCH64_SWS_OP_MIN           ] = "min",
-    [AARCH64_SWS_OP_MAX           ] = "max",
-    [AARCH64_SWS_OP_SCALE         ] = "scale",
-    [AARCH64_SWS_OP_LINEAR        ] = "linear",
-    [AARCH64_SWS_OP_LINEAR_FMA    ] = "linear_fma",
-    [AARCH64_SWS_OP_DITHER        ] = "dither",
+static const char op_type_names[SWS_UOP_TYPE_NB][16] = {
+    [SWS_UOP_READ_BIT      ] = "read_bit",
+    [SWS_UOP_READ_NIBBLE   ] = "read_nibble",
+    [SWS_UOP_READ_PACKED   ] = "read_packed",
+    [SWS_UOP_READ_PLANAR   ] = "read_planar",
+    [SWS_UOP_WRITE_BIT     ] = "write_bit",
+    [SWS_UOP_WRITE_NIBBLE  ] = "write_nibble",
+    [SWS_UOP_WRITE_PACKED  ] = "write_packed",
+    [SWS_UOP_WRITE_PLANAR  ] = "write_planar",
+    [SWS_UOP_SWAP_BYTES    ] = "swap_bytes",
+    [SWS_UOP_MOVE          ] = "move",
+    [SWS_UOP_UNPACK        ] = "unpack",
+    [SWS_UOP_PACK          ] = "pack",
+    [SWS_UOP_LSHIFT        ] = "lshift",
+    [SWS_UOP_RSHIFT        ] = "rshift",
+    [SWS_UOP_CLEAR         ] = "clear",
+    [SWS_UOP_TO_U8         ] = "to_u8",
+    [SWS_UOP_TO_U16        ] = "to_u16",
+    [SWS_UOP_TO_U32        ] = "to_u32",
+    [SWS_UOP_TO_F32        ] = "to_f32",
+    [SWS_UOP_EXPAND_PAIR   ] = "expand_pair",
+    [SWS_UOP_EXPAND_QUAD   ] = "expand_quad",
+    [SWS_UOP_MIN           ] = "min",
+    [SWS_UOP_MAX           ] = "max",
+    [SWS_UOP_SCALE         ] = "scale",
+    [SWS_UOP_LINEAR        ] = "linear",
+    [SWS_UOP_LINEAR_FMA    ] = "linear_fma",
+    [SWS_UOP_DITHER        ] = "dither",
 };
 
-static const char *aarch64_op_type_name(SwsAArch64OpType op)
+static const char *aarch64_op_type_name(SwsUOpType op)
 {
-    if (op == AARCH64_SWS_OP_NONE || op >= AARCH64_SWS_OP_TYPE_NB) {
+    if (op == SWS_UOP_INVALID || op >= SWS_UOP_TYPE_NB) {
         av_assert0(!"Invalid op type!");
         return NULL;
     }
@@ -204,22 +202,22 @@ typedef struct ParamField {
 
 #define PARAM_FIELD(name) #name, offsetof(SwsAArch64OpImplParams, name), sizeof(((SwsAArch64OpImplParams *) 0)->name)
 
-static void print_op_name(char **pbuf, size_t *prem, void *p)
+static void print_uop_name(char **pbuf, size_t *prem, void *p)
 {
-    SwsAArch64OpType op = *(SwsAArch64OpType *) p;
+    SwsUOpType op = *(SwsUOpType *) p;
     buf_appendf(pbuf, prem, "_%s", aarch64_op_type_name(op));
 }
 
-static void print_op_val(char **pbuf, size_t *prem, void *p)
+static void print_uop_val(char **pbuf, size_t *prem, void *p)
 {
-    SwsAArch64OpType op = *(SwsAArch64OpType *) p;
+    SwsUOpType op = *(SwsUOpType *) p;
     buf_appendf(pbuf, prem, "%s", aarch64_op_type(op));
 }
 
-static int cmp_op(void *pa, void *pb)
+static int cmp_uop(void *pa, void *pb)
 {
-    int64_t ia = (int64_t) *((SwsAArch64OpType *) pa);
-    int64_t ib = (int64_t) *((SwsAArch64OpType *) pb);
+    int64_t ia = (int64_t) *((SwsUOpType *) pa);
+    int64_t ib = (int64_t) *((SwsUOpType *) pb);
     int64_t diff = ia - ib;
     if (diff)
         return diff < 0 ? -1 : 1;
@@ -228,20 +226,20 @@ static int cmp_op(void *pa, void *pb)
 
 static void print_pixel_name(char **pbuf, size_t *prem, void *p)
 {
-    SwsAArch64PixelType type = *(SwsAArch64PixelType *) p;
+    SwsPixelType type = *(SwsPixelType *) p;
     buf_appendf(pbuf, prem, "_%s", aarch64_pixel_type_name(type));
 }
 
 static void print_pixel_val(char **pbuf, size_t *prem, void *p)
 {
-    SwsAArch64PixelType type = *(SwsAArch64PixelType *) p;
+    SwsPixelType type = *(SwsPixelType *) p;
     buf_appendf(pbuf, prem, "%s", aarch64_pixel_type(type));
 }
 
 static int cmp_pixel(void *pa, void *pb)
 {
-    int64_t ia = (int64_t) *((SwsAArch64PixelType *) pa);
-    int64_t ib = (int64_t) *((SwsAArch64PixelType *) pb);
+    int64_t ia = (int64_t) *((SwsPixelType *) pa);
+    int64_t ib = (int64_t) *((SwsPixelType *) pb);
     int64_t diff = ia - ib;
     if (diff)
         return diff < 0 ? -1 : 1;
@@ -337,7 +335,7 @@ static int cmp_u40(void *pa, void *pb)
 }
 
 /*********************************************************************/
-static const ParamField field_op               = { PARAM_FIELD(op),               print_op_name,    print_op_val,    cmp_op };
+static const ParamField field_uop              = { PARAM_FIELD(uop),              print_uop_name,   print_uop_val,   cmp_uop };
 static const ParamField field_mask             = { PARAM_FIELD(mask),             print_u16_name,   print_u16_val,   cmp_u16 };
 static const ParamField field_type             = { PARAM_FIELD(type),             print_pixel_name, print_pixel_val, cmp_pixel };
 static const ParamField field_block_size       = { PARAM_FIELD(block_size),       print_u8_name,    print_u8_val,    cmp_u8 };
@@ -350,34 +348,34 @@ static const ParamField field_linear_fmla      = { PARAM_FIELD(linear.fmla),    
 static const ParamField field_dither_y_offset  = { PARAM_FIELD(dither.y_offset),  print_u16_name,   print_u16_val,   cmp_u16 };
 static const ParamField field_dither_size_log2 = { PARAM_FIELD(dither.size_log2), print_u8_name,    print_u8_val,    cmp_u8 };
 
-/* Fields needed to uniquely identify each SwsAArch64OpType. */
+/* Fields needed to uniquely identify each SwsUOpType. */
 #define MAX_LEVELS 8
-static const ParamField *op_fields[AARCH64_SWS_OP_TYPE_NB][MAX_LEVELS] = {
-    [AARCH64_SWS_OP_READ_BIT      ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_READ_NIBBLE   ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_READ_PACKED   ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_READ_PLANAR   ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_WRITE_BIT     ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_WRITE_NIBBLE  ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_WRITE_PACKED  ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_WRITE_PLANAR  ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_SWAP_BYTES    ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_MOVE          ] = { &field_op, &field_move,                                     &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_UNPACK        ] = { &field_op, &field_pack,                                     &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_PACK          ] = { &field_op, &field_pack,                                     &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_LSHIFT        ] = { &field_op, &field_shift,                                    &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_RSHIFT        ] = { &field_op, &field_shift,                                    &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_CLEAR         ] = { &field_op, &field_clear,                                    &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_TO_U8         ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_TO_U16        ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_TO_U32        ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_TO_F32        ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_EXPAND_PAIR   ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_EXPAND_QUAD   ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_MIN           ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_MAX           ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_SCALE         ] = { &field_op,                                                  &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_LINEAR        ] = { &field_op, &field_linear_mask,     &field_linear_fmla,      &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_LINEAR_FMA    ] = { &field_op, &field_linear_mask,     &field_linear_fmla,      &field_block_size, &field_type, &field_mask },
-    [AARCH64_SWS_OP_DITHER        ] = { &field_op, &field_dither_y_offset, &field_dither_size_log2, &field_block_size, &field_type, &field_mask },
+static const ParamField *op_fields[SWS_UOP_TYPE_NB][MAX_LEVELS] = {
+    [SWS_UOP_READ_BIT      ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_READ_NIBBLE   ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_READ_PACKED   ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_READ_PLANAR   ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_WRITE_BIT     ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_WRITE_NIBBLE  ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_WRITE_PACKED  ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_WRITE_PLANAR  ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_SWAP_BYTES    ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_MOVE          ] = { &field_uop, &field_move,                                     &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_UNPACK        ] = { &field_uop, &field_pack,                                     &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_PACK          ] = { &field_uop, &field_pack,                                     &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_LSHIFT        ] = { &field_uop, &field_shift,                                    &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_RSHIFT        ] = { &field_uop, &field_shift,                                    &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_CLEAR         ] = { &field_uop, &field_clear,                                    &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_TO_U8         ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_TO_U16        ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_TO_U32        ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_TO_F32        ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_EXPAND_PAIR   ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_EXPAND_QUAD   ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_MIN           ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_MAX           ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_SCALE         ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_LINEAR        ] = { &field_uop, &field_linear_mask,     &field_linear_fmla,      &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_LINEAR_FMA    ] = { &field_uop, &field_linear_mask,     &field_linear_fmla,      &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_DITHER        ] = { &field_uop, &field_dither_y_offset, &field_dither_size_log2, &field_block_size, &field_type, &field_mask },
 };
