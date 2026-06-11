@@ -24,8 +24,6 @@
 #include "libavutil/avstring.h"
 #include "libavutil/tree.h"
 
-#include "ops_lookup.h"
-
 #include "ops_impl_conv.c"
 
 /*********************************************************************/
@@ -33,6 +31,30 @@ typedef struct SwsAArch64BackendContext {
     SwsContext *sws;
     int block_size;
 } SwsAArch64BackendContext;
+
+/*********************************************************************/
+/* Forward-declare exported functions. */
+#define ENTRY(fname, ...) extern void fname(void);
+#include "ops_entries.c"
+#undef ENTRY
+
+static const struct {
+    void (*func)(void);
+    SwsAArch64OpImplParams params;
+} ops_entries[] = {
+#define ENTRY(fname, ...) { .func = fname, .params = __VA_ARGS__ },
+#include "ops_entries.c"
+#undef ENTRY
+};
+
+/* Look up the exported function pointer for the given parameters. */
+static SwsFuncPtr aarch64_lookup(const SwsAArch64OpImplParams *p)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(ops_entries); i++)
+        if (!memcmp(p, &ops_entries[i].params, sizeof(SwsAArch64OpImplParams)))
+            return ops_entries[i].func;
+    return NULL;
+}
 
 /*********************************************************************/
 static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
@@ -207,7 +229,7 @@ static int aarch64_compile(SwsContext *ctx, const SwsOpList *ops,
         ret = convert_to_aarch64_impl(ctx, &rest, i, bctx.block_size, &params);
         if (ret < 0)
             goto error;
-        SwsFuncPtr func = ff_sws_aarch64_lookup(&params);
+        SwsFuncPtr func = aarch64_lookup(&params);
         if (!func) {
             ret = AVERROR(ENOTSUP);
             goto error;
