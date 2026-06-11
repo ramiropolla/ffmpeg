@@ -39,7 +39,7 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
     const SwsAArch64OpImplParams *pa = (const SwsAArch64OpImplParams *) a;
     const SwsAArch64OpImplParams *pb = (const SwsAArch64OpImplParams *) b;
 
-    const ParamField **fields = op_fields[pa->op];
+    const ParamField **fields = op_fields[pa->uop];
     for (int i = 0; fields[i]; i++) {
         const ParamField *field = fields[i];
         int diff = field->cmp_val((void  *) (((uintptr_t) pa) + field->offset),
@@ -92,12 +92,12 @@ static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
         ret = aarch64_collect_op(&params, root);
         if (ret < 0)
             goto end;
-        if (params.op == AARCH64_SWS_OP_LINEAR_FMA) {
+        if (params.uop == SWS_UOP_LINEAR_FMA) {
             /**
              * Generate both sets of linear op functions that do use
              * and do not use fmla (selected by SWS_BITEXACT).
              */
-            params.op = AARCH64_SWS_OP_LINEAR;
+            params.uop = SWS_UOP_LINEAR;
             params.linear.fmla = !params.linear.fmla;
             ret = aarch64_collect_op(&params, root);
             if (ret < 0)
@@ -115,7 +115,7 @@ end:
 static void impl_func_name(char **buf, size_t *size, const SwsAArch64OpImplParams *params)
 {
     buf_appendf(buf, size, "ff_sws");
-    const ParamField **fields = op_fields[params->op];
+    const ParamField **fields = op_fields[params->uop];
     for (int i = 0; fields[i]; i++) {
         const ParamField *field = fields[i];
         void *p = (void *) (((uintptr_t) params) + field->offset);
@@ -129,7 +129,7 @@ static void serialize_op(char *buf, size_t size, const SwsAArch64OpImplParams *p
     buf_appendf(&buf, &size, "ENTRY(");
     impl_func_name(&buf, &size, params);
     buf_appendf(&buf, &size, ", {");
-    const ParamField **fields = op_fields[params->op];
+    const ParamField **fields = op_fields[params->uop];
     for (int i = 0; fields[i]; i++) {
         const ParamField *field = fields[i];
         void *p = (void *) (((uintptr_t) params) + field->offset);
