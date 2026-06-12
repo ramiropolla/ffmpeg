@@ -1067,6 +1067,7 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
 /*********************************************************************/
 /* generalized linear affine transform */
 /* AARCH64_SWS_OP_LINEAR */
+/* AARCH64_SWS_OP_LINEAR_FMA */
 
 /**
  * Performs one pass of the linear transform over a single vector bank
@@ -1129,7 +1130,14 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                 } else {
                     i_fmul  (r, vx[i], vsrc, vcoeff);   CMTF("v%c[%u]  = vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
                 }
-            } else if (!p->linear.fmla) {
+            } else if (p->op == AARCH64_SWS_OP_LINEAR_FMA) {
+                /**
+                 * Most modern aarch64 cores have a fastpath for sequences
+                 * of fmla instructions. This means that even if the coefficient
+                 * is 1, it is still faster to use fmla by 1 instead of fadd.
+                 */
+                i_fmla(r, vx[i], vsrc, vcoeff);         CMTF("v%c[%u] += vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
+            } else {
                 /**
                  * Split the multiply-accumulate into fmul+fadd. All
                  * multiplications are performed first into temporary
@@ -1145,13 +1153,6 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                 } else {
                     i_fadd(r, vx[i], vx[i], vsrc);          CMTF("v%c[%u] += vsrc[%u];", cvh, i, vc_j);
                 }
-            } else {
-                /**
-                 * Most modern aarch64 cores have a fastpath for sequences
-                 * of fmla instructions. This means that even if the coefficient
-                 * is 1, it is still faster to use fmla by 1 instead of fadd.
-                 */
-                i_fmla(r, vx[i], vsrc, vcoeff);         CMTF("v%c[%u] += vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
             }
             first = false;
         }
@@ -1394,6 +1395,7 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     case AARCH64_SWS_OP_MAX:          asmgen_op_max(s, p);          break;
     case AARCH64_SWS_OP_SCALE:        asmgen_op_scale(s, p);        break;
     case AARCH64_SWS_OP_LINEAR:       asmgen_op_linear(s, p);       break;
+    case AARCH64_SWS_OP_LINEAR_FMA:   asmgen_op_linear(s, p);       break;
     case AARCH64_SWS_OP_DITHER:       asmgen_op_dither(s, p);       break;
     /* TODO implement AARCH64_SWS_OP_SHUFFLE */
     default:

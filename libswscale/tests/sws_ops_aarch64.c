@@ -92,11 +92,12 @@ static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
         ret = aarch64_collect_op(&params, root);
         if (ret < 0)
             goto end;
-        if (params.op == AARCH64_SWS_OP_LINEAR) {
+        if (params.op == AARCH64_SWS_OP_LINEAR_FMA) {
             /**
              * Generate both sets of linear op functions that do use
              * and do not use fmla (selected by SWS_BITEXACT).
              */
+            params.op = AARCH64_SWS_OP_LINEAR;
             params.linear.fmla = !params.linear.fmla;
             ret = aarch64_collect_op(&params, root);
             if (ret < 0)
