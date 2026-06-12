@@ -33,6 +33,16 @@
 #include <fcntl.h>
 #endif
 
+typedef struct roots_t {
+    struct AVTreeNode *op;
+    struct AVTreeNode *uop;
+} roots_t;
+
+typedef struct SwsUOpWithBlockSize {
+    SwsUOp uop;
+    int block_size;
+} SwsUOpWithBlockSize;
+
 /*********************************************************************/
 static int aarch64_op_impl_cmp(const void *a, const void *b)
 {
@@ -72,9 +82,45 @@ error:
     return ret;
 }
 
+/*********************************************************************/
+/* Insert the SwsUOp structure into the AVTreeNode. */
+
+static int ff_sws_uopbs_cmp(const void *a, const void *b)
+{
+    SwsUOpWithBlockSize *pa = (SwsUOpWithBlockSize *) a;
+    SwsUOpWithBlockSize *pb = (SwsUOpWithBlockSize *) b;
+    if (pa->block_size != pb->block_size)
+        return pa->block_size - pb->block_size;
+    return ff_sws_uop_cmp(&pa->uop, &pb->uop);
+}
+
+static int aarch64_collect_uop(const SwsUOp *uop, struct AVTreeNode **root, int block_size)
+{
+    int ret = 0;
+
+    struct AVTreeNode *node = av_tree_node_alloc();
+    SwsUOpWithBlockSize *copy = av_malloc(sizeof(SwsUOpWithBlockSize));
+    if (!node || !copy) {
+        ret = AVERROR(ENOMEM);
+        goto error;
+    }
+    memcpy(&copy->uop, uop, sizeof(SwsUOp));
+    copy->block_size = block_size;
+    av_tree_insert(root, copy, ff_sws_uopbs_cmp, &node);
+    if (!node)
+        copy = NULL;
+
+error:
+    av_free(node);
+    av_free(copy);
+    return ret;
+}
+
 static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
 {
-    struct AVTreeNode **root = (struct AVTreeNode **) opaque;
+    roots_t *roots = (roots_t *) opaque;
+    struct AVTreeNode **root = &roots->op;
+    struct AVTreeNode **root_uop = &roots->uop;
     int ret;
 
     /* Skip ops lists which include filtering, since this is still not
@@ -117,6 +163,36 @@ static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
             if (ret < 0)
                 goto end;
         }
+    }
+
+    SwsUOpFlags flags[] = {
+        SWS_UOP_FLAG_MOVE,
+        SWS_UOP_FLAG_MOVE | SWS_UOP_FLAG_FMA,
+    };
+
+    for (int f = 0; f < FF_ARRAY_ELEMS(flags); f++) {
+        SwsUOpList *uops = ff_sws_uop_list_alloc();
+        if (!uops) {
+            ret = AVERROR(ENOMEM);
+            goto end;
+        }
+        ret = ff_sws_ops_translate(ctx, ops, flags[f], uops);
+        if (ret == AVERROR(ENOTSUP)) {
+            ff_sws_uop_list_free(&uops);
+            continue;
+        }
+        if (ret < 0) {
+            ff_sws_uop_list_free(&uops);
+            goto end;
+        }
+
+        for (int i = 0; i < uops->num_ops; i++) {
+            ret = aarch64_collect_uop(&uops->ops[i], root_uop, block_size);
+            if (ret < 0)
+                goto end;
+        }
+
+        ff_sws_uop_list_free(&uops);
     }
 
     ret = 0;
@@ -172,9 +248,25 @@ static int print_op(void *opaque, void *elem)
 }
 
 /*********************************************************************/
+/* Serialize SwsUOp for one uop. */
+static int print_uop(void *opaque, void *elem)
+{
+    SwsUOpWithBlockSize *uopbs = (SwsUOpWithBlockSize *) elem;
+    FILE *fp = (FILE *) opaque;
+
+    char buf[SWS_UOP_NAME_MAX];
+    ff_sws_uop_name(&uopbs->uop, buf);
+    fprintf(fp, "%s_%d\n", buf, uopbs->block_size);
+
+    av_free(uopbs);
+
+    return 0;
+}
+
+/*********************************************************************/
 int main(int argc, char *argv[])
 {
-    struct AVTreeNode *root = NULL;
+    roots_t roots = { 0 };
     int ret = 1;
 
 #ifdef _WIN32
@@ -185,7 +277,7 @@ int main(int argc, char *argv[])
     if (!ctx)
         goto fail;
 
-    ret = ff_sws_enum_op_lists(ctx, &root, AV_PIX_FMT_NONE, AV_PIX_FMT_NONE,
+    ret = ff_sws_enum_op_lists(ctx, &roots, AV_PIX_FMT_NONE, AV_PIX_FMT_NONE,
                                register_op);
 
     /**
@@ -197,10 +289,12 @@ int main(int argc, char *argv[])
     printf(" * To regenerate, run: make sws_ops_entries_aarch64\n");
     printf(" */\n");
     printf("\n");
-    av_tree_enumerate(root, stdout, NULL, print_op);
+    av_tree_enumerate(roots.op, stdout, NULL, print_op);
+    av_tree_enumerate(roots.uop, stdout, NULL, print_uop);
 
 fail:
-    av_tree_destroy(root);
+    av_tree_destroy(roots.op);
+    av_tree_destroy(roots.uop);
     sws_free_context(&ctx);
     return ret;
 }
