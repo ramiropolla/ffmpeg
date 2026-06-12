@@ -266,6 +266,21 @@ static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
         MASK_SET(out->mask, 1, !!op->clear.value[1].den);
         MASK_SET(out->mask, 2, !!op->clear.value[2].den);
         MASK_SET(out->mask, 3, !!op->clear.value[3].den);
+        out->clear = 0;
+        for (int i = 0; i < 4; i++) {
+            int mask_val = 0xf;
+            if (MASK_GET(out->mask, i)) {
+                uint32_t val = op->clear.value[i].num / op->clear.value[i].den;
+                if (val == 0) {
+                    mask_val = 0;
+                } else if ((op->type == SWS_PIXEL_U8  && val == UINT8_MAX)  ||
+                        (op->type == SWS_PIXEL_U16 && val == UINT16_MAX) ||
+                        (op->type == SWS_PIXEL_U32 && val == UINT32_MAX)) {
+                    mask_val = 1;
+                }
+            }
+            MASK_SET(out->clear, i, mask_val);
+        }
         break;
     case AARCH64_SWS_OP_LINEAR:
     case AARCH64_SWS_OP_LINEAR_FMA:
