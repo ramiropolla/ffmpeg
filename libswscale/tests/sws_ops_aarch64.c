@@ -33,6 +33,8 @@
 #include <fcntl.h>
 #endif
 
+#define UOPSIE 0
+
 typedef struct roots_t {
     struct AVTreeNode *op;
     struct AVTreeNode *uop;
@@ -165,6 +167,7 @@ static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
         }
     }
 
+#if UOPSIE
     SwsUOpFlags flags[] = {
         SWS_UOP_FLAG_MOVE,
         SWS_UOP_FLAG_MOVE | SWS_UOP_FLAG_FMA,
@@ -194,6 +197,7 @@ static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
 
         ff_sws_uop_list_free(&uops);
     }
+#endif
 
     ret = 0;
 
@@ -214,8 +218,32 @@ static void impl_func_name(char **buf, size_t *size, const SwsAArch64OpImplParam
     buf_appendf(buf, size, "_neon");
 }
 
+#if 0
+typedef struct SwsAArch64OpImplParams {
+    SwsUOpType          uop;
+    SwsAArch64OpMask    mask;
+    SwsPixelType        type;
+    uint8_t block_size;
+    union {
+        uint8_t             shift;
+        SwsAArch64MoveOp    move;
+        SwsAArch64OpMask    pack;
+        SwsAArch64LinearOp  linear;
+        SwsAArch64DitherOp  dither;
+    };
+} SwsAArch64OpImplParams;
+typedef enum SwsPixelType {
+    SWS_PIXEL_NONE = 0,
+    SWS_PIXEL_U8,
+    SWS_PIXEL_U16,
+    SWS_PIXEL_U32,
+    SWS_PIXEL_F32,
+    SWS_PIXEL_TYPE_NB
+} SwsPixelType;
+#endif
 static void serialize_op(char *buf, size_t size, const SwsAArch64OpImplParams *params)
 {
+#if 0
     buf_appendf(&buf, &size, "ENTRY(");
     impl_func_name(&buf, &size, params);
     buf_appendf(&buf, &size, ", {");
@@ -229,8 +257,266 @@ static void serialize_op(char *buf, size_t size, const SwsAArch64OpImplParams *p
         field->print_val(&buf, &size, p);
     }
     buf_appendf(&buf, &size, " })");
+#else
+    // f32_linear_xyzw_xxx0x_xxx0x_xxx0x_000x0_8
+    const SwsAArch64OpImplParams *p = params;
+    switch (p->type) {
+    case SWS_PIXEL_U8:  buf_appendf(&buf, &size, "u8_");  break;
+    case SWS_PIXEL_U16: buf_appendf(&buf, &size, "u16_"); break;
+    case SWS_PIXEL_U32: buf_appendf(&buf, &size, "u32_"); break;
+    case SWS_PIXEL_F32: buf_appendf(&buf, &size, "f32_"); break;
+    }
+    switch (p->uop) {
+    case SWS_UOP_READ_PLANAR:        buf_appendf(&buf, &size, "read_planar");        break;
+    case SWS_UOP_READ_PLANAR_FH:     buf_appendf(&buf, &size, "read_planar_fh");     break;
+    case SWS_UOP_READ_PLANAR_FV:     buf_appendf(&buf, &size, "read_planar_fv");     break;
+    case SWS_UOP_READ_PLANAR_FV_FMA: buf_appendf(&buf, &size, "read_planar_fv_fma"); break;
+    case SWS_UOP_READ_PACKED:        buf_appendf(&buf, &size, "read_packed");        break;
+    case SWS_UOP_READ_NIBBLE:        buf_appendf(&buf, &size, "read_nibble");        break;
+    case SWS_UOP_READ_BIT:           buf_appendf(&buf, &size, "read_bit");           break;
+    case SWS_UOP_WRITE_PLANAR:       buf_appendf(&buf, &size, "write_planar");       break;
+    case SWS_UOP_WRITE_PACKED:       buf_appendf(&buf, &size, "write_packed");       break;
+    case SWS_UOP_WRITE_NIBBLE:       buf_appendf(&buf, &size, "write_nibble");       break;
+    case SWS_UOP_WRITE_BIT:          buf_appendf(&buf, &size, "write_bit");          break;
+    case SWS_UOP_PERMUTE:            buf_appendf(&buf, &size, "permute");            break;
+    case SWS_UOP_COPY:               buf_appendf(&buf, &size, "copy");               break;
+    case SWS_UOP_MOVE:               buf_appendf(&buf, &size, "move");               break;
+    case SWS_UOP_SWAP_BYTES:         buf_appendf(&buf, &size, "swap_bytes");         break;
+    case SWS_UOP_EXPAND_BIT:         buf_appendf(&buf, &size, "expand_bit");         break;
+    case SWS_UOP_EXPAND_PAIR:        buf_appendf(&buf, &size, "expand_pair");        break;
+    case SWS_UOP_EXPAND_QUAD:        buf_appendf(&buf, &size, "expand_quad");        break;
+    case SWS_UOP_TO_U8:              buf_appendf(&buf, &size, "to_u8");              break;
+    case SWS_UOP_TO_U16:             buf_appendf(&buf, &size, "to_u16");             break;
+    case SWS_UOP_TO_U32:             buf_appendf(&buf, &size, "to_u32");             break;
+    case SWS_UOP_TO_F32:             buf_appendf(&buf, &size, "to_f32");             break;
+    case SWS_UOP_SCALE:              buf_appendf(&buf, &size, "scale");              break;
+    case SWS_UOP_ADD:                buf_appendf(&buf, &size, "add");                break;
+    case SWS_UOP_MIN:                buf_appendf(&buf, &size, "min");                break;
+    case SWS_UOP_MAX:                buf_appendf(&buf, &size, "max");                break;
+    case SWS_UOP_UNPACK:             buf_appendf(&buf, &size, "unpack");             break;
+    case SWS_UOP_PACK:               buf_appendf(&buf, &size, "pack");               break;
+    case SWS_UOP_LSHIFT:             buf_appendf(&buf, &size, "lshift");             break;
+    case SWS_UOP_RSHIFT:             buf_appendf(&buf, &size, "rshift");             break;
+    case SWS_UOP_CLEAR:              buf_appendf(&buf, &size, "clear");              break;
+    case SWS_UOP_LINEAR:             buf_appendf(&buf, &size, "linear");             break;
+    case SWS_UOP_LINEAR_FMA:         buf_appendf(&buf, &size, "linear_fma");         break;
+    case SWS_UOP_DITHER:             buf_appendf(&buf, &size, "dither");             break;
+    }
+    if (p->mask) {
+        buf_appendf(&buf, &size, "_");
+        LOOP(p->mask, i) {
+            buf_appendf(&buf, &size, "%c", "xyzw"[i]);
+        }
+    }
+    switch (p->uop) {
+    case SWS_UOP_READ_PLANAR:
+        break;
+    case SWS_UOP_READ_PLANAR_FH:
+        break;
+    case SWS_UOP_READ_PLANAR_FV:
+        break;
+    case SWS_UOP_READ_PLANAR_FV_FMA:
+        break;
+    case SWS_UOP_READ_PACKED:
+        break;
+    case SWS_UOP_READ_NIBBLE:
+        break;
+    case SWS_UOP_READ_BIT:
+        break;
+    case SWS_UOP_WRITE_PLANAR:
+        break;
+    case SWS_UOP_WRITE_PACKED:
+        break;
+    case SWS_UOP_WRITE_NIBBLE:
+        break;
+    case SWS_UOP_WRITE_BIT:
+        break;
+    case SWS_UOP_PERMUTE:
+        break;
+    case SWS_UOP_COPY:
+        break;
+    case SWS_UOP_MOVE:
+        break;
+    case SWS_UOP_SWAP_BYTES:
+        break;
+    case SWS_UOP_EXPAND_BIT:
+        break;
+    case SWS_UOP_EXPAND_PAIR:
+        break;
+    case SWS_UOP_EXPAND_QUAD:
+        break;
+    case SWS_UOP_TO_U8:
+        break;
+    case SWS_UOP_TO_U16:
+        break;
+    case SWS_UOP_TO_U32:
+        break;
+    case SWS_UOP_TO_F32:
+        break;
+    case SWS_UOP_SCALE:
+        break;
+    case SWS_UOP_ADD:
+        break;
+    case SWS_UOP_MIN:
+        break;
+    case SWS_UOP_MAX:
+        break;
+    case SWS_UOP_UNPACK:
+    case SWS_UOP_PACK:
+        buf_appendf(&buf, &size, "_");
+        for (int i = 0; i < 4 && MASK_GET(p->pack, i); i++)
+            buf_appendf(&buf, &size, "%x", MASK_GET(p->pack, i));
+        break;
+    case SWS_UOP_LSHIFT:
+    case SWS_UOP_RSHIFT:
+        buf_appendf(&buf, &size, "_%d", p->shift);
+        break;
+    case SWS_UOP_CLEAR:
+        break;
+    case SWS_UOP_LINEAR:
+    case SWS_UOP_LINEAR_FMA:
+#if 1
+        LOOP(p->mask, i) {
+            buf_appendf(&buf, &size, "_");
+            for (int j = 0; j < 5; j++) {
+                int val = LINEAR_MASK_GET(p->linear.mask, i, j);
+                if (val == 1)
+                    buf_appendf(&buf, &size, "1");
+                else if (val == 0)
+                    buf_appendf(&buf, &size, "0");
+#if 0
+                else if (par->lin.exact & SWS_MASK(i, j))
+                    buf_appendf(&buf, &size, "X");
+#endif
+                else
+                    buf_appendf(&buf, &size, "x");
+            }
+        }
+#else
+        for (int i = 0; i < 4; i++) {
+            if (!SWS_COMP_TEST(op->mask, i))
+                continue;
+            av_bprint_chars(&bp, '_', 1);
+            for (int j = 0; j < 5; j++) {
+                if (par->lin.one & SWS_MASK(i, j))
+                    av_bprint_chars(&bp, '1', 1);
+                else if (par->lin.zero & SWS_MASK(i, j))
+                    av_bprint_chars(&bp, '0', 1);
+                else if (par->lin.exact & SWS_MASK(i, j))
+                    av_bprint_chars(&bp, 'X', 1);
+                else
+                    av_bprint_chars(&bp, 'x', 1);
+            }
+        }
+#endif
+        break;
+    case SWS_UOP_DITHER:
+        LOOP(p->mask, i) {
+            buf_appendf(&buf, &size, "_%d", MASK_GET(p->dither.y_offset, i));
+        }
+        buf_appendf(&buf, &size, "_16x16");
+        break;
+    }
+    buf_appendf(&buf, &size, "_%d", p->block_size);
+#endif
     av_assert0(size && "string buffer exhausted");
 }
+
+#if 0
+void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
+{
+    AVBPrint bp;
+    av_bprint_init_for_buffer(&bp, buf, SWS_UOP_NAME_MAX);
+
+    if (op->type != SWS_PIXEL_NONE)
+        av_bprintf(&bp, "%s_", ff_sws_pixel_type_name(op->type));
+    av_bprintf(&bp, "%s", uop_names[op->uop].abbr);
+
+    if (op->mask) {
+        av_bprint_chars(&bp, '_', 1);
+        for (int i = 0; i < 4; i++) {
+            if (SWS_COMP_TEST(op->mask, i))
+                av_bprint_chars(&bp, "xyzw"[i], 1);
+        }
+    }
+
+    const SwsUOpParams *par = &op->par;
+    switch (op->uop) {
+    case SWS_UOP_READ_PLANAR_FH:
+    case SWS_UOP_READ_PLANAR_FV:
+    case SWS_UOP_READ_PLANAR_FV_FMA:
+        av_bprintf(&bp, "_%s", ff_sws_pixel_type_name(par->filter.type));
+        break;
+    case SWS_UOP_LSHIFT:
+    case SWS_UOP_RSHIFT:
+        av_bprintf(&bp, "_%u", par->shift.amount);
+        break;
+    case SWS_UOP_PERMUTE:
+    case SWS_UOP_COPY:
+        av_bprint_chars(&bp, '_', 1);
+        for (int i = 0; i < 4; i++) {
+            if (SWS_COMP_TEST(op->mask, i))
+                av_bprint_chars(&bp, "xyzw"[par->swizzle.in[i]], 1);
+        }
+        break;
+    case SWS_UOP_MOVE:
+        av_bprint_chars(&bp, '_', 1);
+        for (int i = 0; i < par->move.num_moves; i++)
+            av_bprint_chars(&bp, "txyzw"[par->move.dst[i] + 1], 1);
+        av_bprint_chars(&bp, '_', 1);
+        for (int i = 0; i < par->move.num_moves; i++)
+            av_bprint_chars(&bp, "txyzw"[par->move.src[i] + 1], 1);
+        break;
+    case SWS_UOP_PACK:
+    case SWS_UOP_UNPACK:
+        av_bprint_chars(&bp, '_', 1);
+        for (int i = 0; i < 4 && par->pack.pattern[i]; i++)
+            av_bprintf(&bp, "%x", par->pack.pattern[i]);
+        break;
+    case SWS_UOP_CLEAR:
+        av_bprint_chars(&bp, '_', 1);
+        for (int i = 0; i < 4; i++) {
+            if (!SWS_COMP_TEST(op->mask, i))
+                continue;
+            else if (SWS_COMP_TEST(par->clear.one, i))
+                av_bprint_chars(&bp, '1', 1);
+            else if (SWS_COMP_TEST(par->clear.zero, i))
+                av_bprint_chars(&bp, '0', 1);
+            else
+                av_bprint_chars(&bp, 'x', 1);
+        }
+        break;
+    case SWS_UOP_LINEAR:
+    case SWS_UOP_LINEAR_FMA:
+        for (int i = 0; i < 4; i++) {
+            if (!SWS_COMP_TEST(op->mask, i))
+                continue;
+            av_bprint_chars(&bp, '_', 1);
+            for (int j = 0; j < 5; j++) {
+                if (par->lin.one & SWS_MASK(i, j))
+                    av_bprint_chars(&bp, '1', 1);
+                else if (par->lin.zero & SWS_MASK(i, j))
+                    av_bprint_chars(&bp, '0', 1);
+                else if (par->lin.exact & SWS_MASK(i, j))
+                    av_bprint_chars(&bp, 'X', 1);
+                else
+                    av_bprint_chars(&bp, 'x', 1);
+            }
+        }
+        break;
+    case SWS_UOP_DITHER:
+        for (int i = 0; i < 4; i++) {
+            if (SWS_COMP_TEST(op->mask, i))
+                av_bprintf(&bp, "_%d", par->dither.y_offset[i]);
+        }
+        const unsigned size = 1u << par->dither.size_log2;
+        av_bprintf(&bp, "_%ux%u", size, size);
+        break;
+    }
+
+    av_assert0(av_bprint_is_complete(&bp));
+}
+#endif
 
 /* Serialize SwsAArch64OpImplParams for one function. */
 static int print_op(void *opaque, void *elem)
@@ -284,13 +570,18 @@ int main(int argc, char *argv[])
      * Generate a C file with all the unique function parameter entries
      * collected by aarch64_enum_ops().
      */
+#if 0
     printf("/*\n");
     printf(" * This file is automatically generated. Do not edit manually.\n");
     printf(" * To regenerate, run: make sws_ops_entries_aarch64\n");
     printf(" */\n");
     printf("\n");
+#endif
     av_tree_enumerate(roots.op, stdout, NULL, print_op);
+#if UOPSIE
+    printf("UOPS\n");
     av_tree_enumerate(roots.uop, stdout, NULL, print_uop);
+#endif
 
 fail:
     av_tree_destroy(roots.op);
