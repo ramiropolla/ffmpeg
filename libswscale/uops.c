@@ -799,7 +799,8 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         uop.mask = 0;
         for (int i = 0; i < 4 && op->pack.pattern[i]; i++) {
             uop.par.pack.pattern[i] = op->pack.pattern[i];
-            uop.mask |= SWS_COMP(i);
+            if (op->op == SWS_OP_PACK || SWS_OP_NEEDED(op, i))
+                uop.mask |= SWS_COMP(i);
         }
         break;
     case SWS_OP_LSHIFT:
@@ -1019,6 +1020,17 @@ int ff_sws_uops_macros_gen(char **out_str)
                     goto fail;
             }
         }
+    }
+
+    /* HACK: add some patterns for checkasm */
+    const SwsUOp extra_uops[] = {
+        { .type = SWS_PIXEL_U32, .uop = SWS_UOP_UNPACK, .mask = 0xf, .par.pack.pattern = {2, 10, 10, 10} },
+        { .type = SWS_PIXEL_U32, .uop = SWS_UOP_UNPACK, .mask = 0xf, .par.pack.pattern = {10, 10, 10, 2} },
+    };
+    for (int i = 0; i < FF_ARRAY_ELEMS(extra_uops); i++) {
+        ret = register_uop(&root, &extra_uops[i]);
+        if (ret < 0)
+            goto fail;
     }
 
     #define BPRINT_STR(str) av_bprint_append_data(bp, str, strlen(str))
