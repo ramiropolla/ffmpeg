@@ -351,6 +351,17 @@ static int sws_uops_macros_gen(char **out_str)
         }
     }
 
+    /* HACK: add some patterns for checkasm */
+    const SwsUOp extra_uops[] = {
+        { .type = SWS_PIXEL_U32, .uop = SWS_UOP_UNPACK, .mask = 0xf, .par.pack.pattern = {2, 10, 10, 10} },
+        { .type = SWS_PIXEL_U32, .uop = SWS_UOP_UNPACK, .mask = 0xf, .par.pack.pattern = {10, 10, 10, 2} },
+    };
+    for (int i = 0; i < FF_ARRAY_ELEMS(extra_uops); i++) {
+        ret = register_uop(&root, &extra_uops[i]);
+        if (ret < 0)
+            goto fail;
+    }
+
     #define BPRINT_STR(str) av_bprint_append_data(bp, str, strlen(str))
     BPRINT_STR(
 "/**\n"
