@@ -302,7 +302,7 @@ static void serialize_op(char *buf, size_t size, const SwsAArch64OpImplParams *p
     case SWS_UOP_LINEAR_FMA:         buf_appendf(&buf, &size, "linear_fma");         break;
     case SWS_UOP_DITHER:             buf_appendf(&buf, &size, "dither");             break;
     }
-    if (p->mask) {
+    if (p->mask && p->uop != SWS_UOP_MOVE) {
         buf_appendf(&buf, &size, "_");
         LOOP(p->mask, i) {
             buf_appendf(&buf, &size, "%c", "xyzw"[i]);
@@ -336,6 +336,106 @@ static void serialize_op(char *buf, size_t size, const SwsAArch64OpImplParams *p
     case SWS_UOP_COPY:
         break;
     case SWS_UOP_MOVE:
+        {
+            SwsAArch64MoveOp move = p->move;
+            char src[8] = { 0 };
+            char dst[8] = { 0 };
+            char *psrc = src;
+            char *pdst = dst;
+            char chars[16] = { 0 };
+            chars[0] = 'x';
+            chars[1] = 'y';
+            chars[2] = 'z';
+            chars[3] = 'w';
+            chars[0xf] = 't';
+            while (move) {
+                *psrc++ = chars[move & 0xf];
+                move >>= 4;
+                *pdst++ = chars[move & 0xf];
+                move >>= 4;
+            }
+            buf_appendf(&buf, &size, "_%s_%s", dst, src);
+
+#if 0
+            SwsAArch64MoveOp move = p->move;
+            char src[8];
+            char dst[8];
+            char *psrc = &src[7];
+            char *pdst = &dst[7];
+            char chars[16] = { 0 };
+            chars[0] = 'x';
+            chars[1] = 'y';
+            chars[2] = 'z';
+            chars[3] = 'w';
+            chars[0xf] = 't';
+            *psrc-- = '\0';
+            *pdst-- = '\0';
+            while (move) {
+                *psrc-- = chars[move & 0xf];
+                move >>= 4;
+                *pdst-- = chars[move & 0xf];
+                move >>= 4;
+            }
+            buf_appendf(&buf, &size, "_%s_%s", pdst + 1, psrc + 1);
+#endif
+
+#if 0
+            while (move) {
+                uint8_t src = (move     ) & 0xf;
+                uint8_t dst = (move >> 4) & 0xf;
+                if (src
+                swizzle_emit(s, dst, src);
+                move >>= 8;
+            }
+#endif
+
+#if 0
+    while (1) {
+        char buf[64];
+        char *p = fgets(buf, sizeof(buf), fp);
+        if (!p)
+            break;
+        uint64_t val = strtoul(p, NULL, 16);
+        char src[8] = { 0 };
+        char dst[8] = { 0 };
+        char *psrc = src;
+        char *pdst = dst;
+        char chars[16] = { 0 };
+        chars[0] = 'x';
+        chars[1] = 'y';
+        chars[2] = 'z';
+        chars[3] = 'w';
+        chars[0xf] = 't';
+        while (val) {
+#if 0
+            char usrc = val & 0xf;
+            val >>= 4;
+            if (usrc == 0xf)
+                usrc = 't';
+            else
+                usrc += '0';
+
+            char udst = val & 0xf;
+            val >>= 4;
+            if (udst == 0xf)
+                udst = 't';
+            else
+                udst += '0';
+
+            *psrc++ = usrc;
+            *pdst++ = udst;
+#else
+            *psrc++ = chars[val & 0xf];
+            val >>= 4;
+            *pdst++ = chars[val & 0xf];
+            val >>= 4;
+#endif
+        }
+        // printf("%s %"PRIx64"\n", p, val);
+        printf("%s_%s\n", src, dst);
+    }
+#endif
+        }
         break;
     case SWS_UOP_SWAP_BYTES:
         break;
@@ -578,6 +678,7 @@ int main(int argc, char *argv[])
     printf("\n");
 #endif
     av_tree_enumerate(roots.op, stdout, NULL, print_op);
+
 #if UOPSIE
     printf("UOPS\n");
     av_tree_enumerate(roots.uop, stdout, NULL, print_uop);

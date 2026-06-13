@@ -586,6 +586,12 @@ static int translate_move(SwsUOpList *ops, const SwsOp *op)
         idx[dst] = idx[src];
     }
 
+fprintf(stderr, "{ %d %d %d %d } ->", op->swizzle.in[0], op->swizzle.in[1], op->swizzle.in[2], op->swizzle.in[3]);
+for (int i = 0; i < par->num_moves; i++) {
+    fprintf(stderr, " %d->%d", par->src[i], par->dst[i]);
+}
+fprintf(stderr, "\n");
+
     return ff_sws_uop_list_append(ops, &uop);
 }
 
@@ -917,13 +923,30 @@ static const SwsUOpFlags uop_flags[] = {
 static int register_uops(SwsContext *ctx, const SwsOpList *ops,
                          SwsCompiledOp *out)
 {
+    *out = (SwsCompiledOp) {0}; /* dummy value, will be immediately freed */
+
+    /* Skip ops lists which include filtering, since this is still not
+     * supported. */
+    for (int i = 0; i < ops->num_ops; i++) {
+        const SwsOp *op = &ops->ops[i];
+        switch (op->op) {
+        case SWS_OP_READ:
+        case SWS_OP_WRITE:
+            if (op->rw.filter.op)
+                return 0;
+            break;
+        case SWS_OP_FILTER_H:
+        case SWS_OP_FILTER_V:
+            return 0;
+        }
+    }
+
     for (int i = 0; i < FF_ARRAY_ELEMS(uop_flags); i++) {
         int ret = register_flags(ctx, ops, uop_flags[i]);
         if (ret < 0)
             return ret;
     }
 
-    *out = (SwsCompiledOp) {0}; /* dummy value, will be immediately freed */
     return 0;
 }
 
