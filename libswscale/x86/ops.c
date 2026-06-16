@@ -601,9 +601,9 @@ static int compile(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
         goto fail;
     }
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_MOVE;
+    SwsUOpFlags flags = SWS_UOP_FLAG_MOVE | SWS_UOP_FLAG_EXPAND_BIT | SWS_UOP_FLAG_READ_PALETTE;
     if (EXTERNAL_FMA3(cpu_flags))
-        flags |= SWS_UOP_FLAG_FMA;
+        flags |= SWS_UOP_FLAG_FMA | SWS_UOP_FLAG_FMA_EXACT;
 
     ret = ff_sws_ops_translate(ctx, ops, flags, uops);
     if (ret < 0)

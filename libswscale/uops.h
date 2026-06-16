@@ -80,9 +80,12 @@ enum {
 
 typedef uint32_t SwsUOpFlags;
 typedef enum SwsUOpFlagBits {
-    SWS_UOP_FLAG_NONE = 0,
-    SWS_UOP_FLAG_FMA  = (1 << 0), /* platform supports FMA ops */
-    SWS_UOP_FLAG_MOVE = (1 << 1), /* platform supports SWS_UOP_MOVE */
+    SWS_UOP_FLAG_NONE         = 0,
+    SWS_UOP_FLAG_FMA          = (1 << 0), /* platform supports FMA ops */
+    SWS_UOP_FLAG_FMA_EXACT    = (1 << 1), /* platform supports FMA ops with exact calculation */
+    SWS_UOP_FLAG_MOVE         = (1 << 2), /* platform supports SWS_UOP_MOVE */
+    SWS_UOP_FLAG_EXPAND_BIT   = (1 << 3), /* platform supports SWS_UOP_EXPAND_BIT */
+    SWS_UOP_FLAG_READ_PALETTE = (1 << 4), /* platform supports SWS_UOP_FLAG_READ_PALETTE */
 } SwsUOpFlagBits;
 
 typedef enum SwsUOpType {

@@ -501,7 +501,7 @@ static int translate_rw_op(SwsContext *ctx, SwsUOpList *ops, SwsUOpFlags flags,
             return AVERROR(ENOTSUP);
         uop.uop = is_read ? SWS_UOP_READ_PACKED : SWS_UOP_WRITE_PACKED;
     } else if (op->rw.mode == SWS_RW_PALETTE) {
-        if (op->rw.frac || !is_read)
+        if (!(flags & SWS_UOP_FLAG_READ_PALETTE) || op->rw.frac || !is_read)
             return AVERROR(ENOTSUP);
         uop.uop = SWS_UOP_READ_PALETTE;
     } else if (op->rw.frac == 3) {
@@ -738,7 +738,8 @@ static int translate_linear_op(SwsContext *ctx, SwsUOpList *ops,
     if (flags & SWS_UOP_FLAG_FMA) {
         /* multiplication by 1 and 0 are always exact by definition */
         uop.uop = SWS_UOP_LINEAR_FMA;
-        uop.par.lin.exact = exact | uop.par.lin.zero | uop.par.lin.one;
+        if (flags & SWS_UOP_FLAG_FMA_EXACT)
+            uop.par.lin.exact = exact | uop.par.lin.zero | uop.par.lin.one;
     }
 
     return ff_sws_uop_list_append(ops, &uop);
@@ -838,7 +839,7 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         }
         break;
     case SWS_OP_SCALE:
-        if (is_expand_bit(op->type, op->scale.factor)) {
+        if ((flags & SWS_UOP_FLAG_EXPAND_BIT) && is_expand_bit(op->type, op->scale.factor)) {
             uop.uop = SWS_UOP_EXPAND_BIT;
         } else {
             uop.uop = SWS_UOP_SCALE;
@@ -923,8 +924,8 @@ fail:
 }
 
 static const SwsUOpFlags uop_flags[] = {
-    0,
-    SWS_UOP_FLAG_FMA | SWS_UOP_FLAG_MOVE, /* x86 backend */
+    SWS_UOP_FLAG_EXPAND_BIT | SWS_UOP_FLAG_READ_PALETTE,
+    SWS_UOP_FLAG_FMA | SWS_UOP_FLAG_FMA_EXACT | SWS_UOP_FLAG_MOVE | SWS_UOP_FLAG_EXPAND_BIT | SWS_UOP_FLAG_READ_PALETTE, /* x86 backend */
 };
 
 static int register_uops(SwsContext *ctx, const SwsOpList *ops,
