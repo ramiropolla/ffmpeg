@@ -917,13 +917,30 @@ static const SwsUOpFlags uop_flags[] = {
 static int register_uops(SwsContext *ctx, const SwsOpList *ops,
                          SwsCompiledOp *out)
 {
+    *out = (SwsCompiledOp) {0}; /* dummy value, will be immediately freed */
+
+    /* Skip ops lists which include filtering, since this is still not
+     * supported. */
+    for (int i = 0; i < ops->num_ops; i++) {
+        const SwsOp *op = &ops->ops[i];
+        switch (op->op) {
+        case SWS_OP_READ:
+        case SWS_OP_WRITE:
+            if (op->rw.filter.op)
+                return 0;
+            break;
+        case SWS_OP_FILTER_H:
+        case SWS_OP_FILTER_V:
+            return 0;
+        }
+    }
+
     for (int i = 0; i < FF_ARRAY_ELEMS(uop_flags); i++) {
         int ret = register_flags(ctx, ops, uop_flags[i]);
         if (ret < 0)
             return ret;
     }
 
-    *out = (SwsCompiledOp) {0}; /* dummy value, will be immediately freed */
     return 0;
 }
 
