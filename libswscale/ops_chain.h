@@ -112,14 +112,14 @@ typedef struct SwsImplParams {
 } SwsImplParams;
 
 typedef struct SwsImplResult {
-    SwsFuncPtr func; /* overrides `SwsOpEntry.func` if non-NULL */
+    SwsFuncPtr func; /* overrides `SwsUOpEntry.func` if non-NULL */
     SwsOpPriv priv; /* private data for this implementation instance */
     void (*free)(SwsOpPriv *priv); /* free function for `priv` */
     int over_read[4];  /* implementation over-reads input by this many bytes */
     int over_write[4]; /* implementation over-writes output by this many bytes */
 } SwsImplResult;
 
-typedef struct SwsOpEntry {
+typedef struct SwsUOpEntry {
     /* Kernel metadata; reduced size subset of SwsUOp (sans data) */
     SwsUOpType uop;
     SwsPixelType type;
@@ -130,7 +130,7 @@ typedef struct SwsOpEntry {
     SwsFuncPtr func;
     int (*setup)(const SwsImplParams *params, SwsImplResult *out); /* optional */
     bool (*check)(const SwsImplParams *params); /* optional, return true if supported */
-} SwsOpEntry;
+} SwsUOpEntry;
 
 /* Setup helpers for common/trivial operation types */
 int ff_sws_setup_scale(const SwsImplParams *params, SwsImplResult *out);
@@ -154,7 +154,7 @@ static inline void ff_op_priv_unref(SwsOpPriv *priv)
 struct SwsOpTable {
     unsigned cpu_flags;   /* required CPU flags for this table */
     int block_size;       /* fixed block size of this table */
-    const SwsOpEntry *entries[]; /* terminated by NULL */
+    const SwsUOpEntry *entries[]; /* terminated by NULL */
 };
 
 /**

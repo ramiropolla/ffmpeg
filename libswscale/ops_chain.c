@@ -118,7 +118,7 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsOpTable *const tables[],
                       SwsOpChain *chain)
 {
     const unsigned cpu_flags = av_get_cpu_flags();
-    const SwsOpEntry *match = NULL;
+    const SwsUOpEntry *match = NULL;
     int ret;
 
     SwsImplParams params = {
@@ -133,7 +133,7 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsOpTable *const tables[],
             continue;
 
         for (int i = 0; table->entries[i]; i++) {
-            const SwsOpEntry *entry = table->entries[i];
+            const SwsUOpEntry *entry = table->entries[i];
             const SwsUOp entry_uop = {
                 .uop  = entry->uop,
                 .type = entry->type,

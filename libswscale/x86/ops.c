@@ -297,10 +297,10 @@ static bool uop_is_type_invariant(const SwsUOpType uop)
     }
 }
 
-#define REF_ENTRY(EXT, NAME, ...) &op_##NAME##EXT,
+#define REF_ENTRY(EXT, NAME, ...) &uop_##NAME##EXT,
 #define DECL_ENTRY(EXT, CHECK, SETUP, NAME, ...)                                \
     void ff_##NAME##EXT(void);                                                  \
-    static const SwsOpEntry op_##NAME##EXT = {                                  \
+    static const SwsUOpEntry uop_##NAME##EXT = {                                \
         .func = (SwsFuncPtr) ff_##NAME##EXT,                                    \
         .check = CHECK,                                                         \
         .setup = SETUP,                                                         \
