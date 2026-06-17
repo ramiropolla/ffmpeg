@@ -246,6 +246,44 @@ static int cmp_pixel(void *pa, void *pb)
     return 0;
 }
 
+static uint16_t clear_to_mask(SwsClearUOp *clear)
+{
+    uint16_t mask = 0;
+    for (int i = 0; i < 4; i++) {
+        if (SWS_COMP_TEST(clear->zero, i)) {
+            /* no-op */
+        } else if (SWS_COMP_TEST(clear->one, i)) {
+            MASK_SET(mask, i, 1);
+        } else {
+            MASK_SET(mask, i, 0xf);
+        }
+    }
+    return mask;
+}
+
+static void print_clear_name(char **pbuf, size_t *prem, void *p)
+{
+    SwsClearUOp *clear = (SwsClearUOp *) p;
+    uint16_t mask = clear_to_mask(clear);
+    buf_appendf(pbuf, prem, "_%04x", mask);
+}
+
+static void print_clear_val(char **pbuf, size_t *prem, void *p)
+{
+    SwsClearUOp *clear = (SwsClearUOp *) p;
+    buf_appendf(pbuf, prem, "{ .one = 0x%x, .zero = 0x%x }", clear->one, clear->zero);
+}
+
+static int cmp_clear(void *pa, void *pb)
+{
+    int64_t ia = (int64_t) clear_to_mask((SwsClearUOp *) pa);
+    int64_t ib = (int64_t) clear_to_mask((SwsClearUOp *) pb);
+    int64_t diff = ia - ib;
+    if (diff)
+        return diff < 0 ? -1 : 1;
+    return 0;
+}
+
 static void print_u8_name(char **pbuf, size_t *prem, void *p)
 {
     uint8_t val = *(uint8_t *) p;
@@ -340,7 +378,7 @@ static const ParamField field_mask             = { PARAM_FIELD(mask),           
 static const ParamField field_type             = { PARAM_FIELD(type),             print_pixel_name, print_pixel_val, cmp_pixel };
 static const ParamField field_block_size       = { PARAM_FIELD(block_size),       print_u8_name,    print_u8_val,    cmp_u8 };
 static const ParamField field_shift            = { PARAM_FIELD(shift.amount),     print_u8_name,    print_u8_val,    cmp_u8 };
-static const ParamField field_clear            = { PARAM_FIELD(clear),            print_u16_name,   print_u16_val,   cmp_u16 };
+static const ParamField field_clear            = { PARAM_FIELD(clear),            print_clear_name, print_clear_val, cmp_clear };
 static const ParamField field_move             = { PARAM_FIELD(move),             print_u48_name,   print_u48_val,   cmp_u48 };
 static const ParamField field_pack             = { PARAM_FIELD(pack),             print_u16_name,   print_u16_val,   cmp_u16 };
 static const ParamField field_linear_mask      = { PARAM_FIELD(linear.mask),      print_u40_name,   print_u40_val,   cmp_u40 };
