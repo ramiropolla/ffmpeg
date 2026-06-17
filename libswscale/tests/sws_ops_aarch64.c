@@ -70,6 +70,21 @@ static uint16_t pack_to_mask(const SwsPackUOp *pack)
     return mask;
 }
 
+static uint64_t linear_to_mask(const SwsLinearUOp *linear)
+{
+    uint64_t mask = 0;
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 5; j++) {
+            int jj = (j == 0) ? 4 : (j - 1);
+            if (linear->one & SWS_MASK(i, jj))
+                mask |= 1ULL << (2 * ((5 * i + j)));
+            else if (!(linear->zero & SWS_MASK(i, jj)))
+                mask |= 3ULL << (2 * ((5 * i + j)));
+        }
+    }
+    return mask;
+}
+
 static int aarch64_op_impl_cmp(const void *a, const void *b)
 {
     const SwsAArch64OpImplParams *pa = (const SwsAArch64OpImplParams *) a;
@@ -107,10 +122,13 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
         break;
     }
     case SWS_UOP_LINEAR:
-    case SWS_UOP_LINEAR_FMA:
-        if (pa->linear.mask != pb->linear.mask)
-            return (int64_t) (pa->linear.mask - pb->linear.mask) < 0 ? -1 : 1;
+    case SWS_UOP_LINEAR_FMA: {
+        uint64_t ia = linear_to_mask(&pa->linear);
+        uint64_t ib = linear_to_mask(&pb->linear);
+        if (ia != ib)
+            return (int64_t) (ia - ib) < 0 ? -1 : 1;
         break;
+    }
     case SWS_UOP_DITHER:
         if (pa->dither.y_offset != pb->dither.y_offset)
             return (int) pa->dither.y_offset - pb->dither.y_offset;
@@ -193,7 +211,6 @@ static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
              * and do not use fmla (selected by SWS_BITEXACT).
              */
             params.uop = SWS_UOP_LINEAR;
-            params.linear.fmla = !params.linear.fmla;
             ret = aarch64_collect_op(&params, root);
             if (ret < 0)
                 goto end;
@@ -264,7 +281,7 @@ static void impl_func_name(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         break;
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
-        av_bprintf(bp, "_%010" PRIx64 "_%d", params->linear.mask, params->uop == SWS_UOP_LINEAR_FMA);
+        av_bprintf(bp, "_%010" PRIx64 "_%d", linear_to_mask(&params->linear), params->uop == SWS_UOP_LINEAR_FMA);
         break;
     case SWS_UOP_DITHER:
         av_bprintf(bp, "_%04x_%u", params->dither.y_offset, params->dither.size_log2);
@@ -340,7 +357,7 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         break;
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
-        av_bprintf(bp, ", .linear.mask = 0x%010" PRIx64 "ULL, .linear.fmla = %u", params->linear.mask, params->uop == SWS_UOP_LINEAR_FMA);
+        av_bprintf(bp, ", .linear = { .one = 0x%x, .zero = 0x%x }", params->linear.one, params->linear.zero);
         break;
     case SWS_UOP_DITHER:
         av_bprintf(bp, ", .dither.y_offset = 0x%04x, .dither.size_log2 = %u", params->dither.y_offset, params->dither.size_log2);
