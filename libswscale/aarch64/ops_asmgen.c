@@ -659,8 +659,8 @@ static void swizzle_emit(SwsAArch64Context *s, int8_t dst, int8_t src)
 
 static void asmgen_op_move(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
-    for (int i = 0; i < p->move.num_moves; i++)
-        swizzle_emit(s, p->move.dst[i], p->move.src[i]);
+    for (int i = 0; i < p->par.move.num_moves; i++)
+        swizzle_emit(s, p->par.move.dst[i], p->par.move.src[i]);
 }
 
 /*********************************************************************/
@@ -679,16 +679,16 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     uint8_t cur_vt = 0;
 
     const int offsets[4] = {
-        p->pack.pattern[3] + p->pack.pattern[2] + p->pack.pattern[1],
-        p->pack.pattern[3] + p->pack.pattern[2],
-        p->pack.pattern[3],
+        p->par.pack.pattern[3] + p->par.pack.pattern[2] + p->par.pack.pattern[1],
+        p->par.pack.pattern[3] + p->par.pack.pattern[2],
+        p->par.pack.pattern[3],
         0
     };
 
     /* Generate masks. */
     rasm_add_comment(r, "generate masks");
     LOOP_MASK(p, i) {
-        uint32_t val = (1u << p->pack.pattern[i]) - 1;
+        uint32_t val = (1u << p->par.pack.pattern[i]) - 1;
         for (int j = 0; j < 4; j++) {
             if (mask_val[j] == val) {
                 mask_val[i] = mask_val[j];
@@ -746,9 +746,9 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
     RasmOp *vh = s->vh;
 
     const int offsets[4] = {
-        p->pack.pattern[3] + p->pack.pattern[2] + p->pack.pattern[1],
-        p->pack.pattern[3] + p->pack.pattern[2],
-        p->pack.pattern[3],
+        p->par.pack.pattern[3] + p->par.pack.pattern[2] + p->par.pack.pattern[1],
+        p->par.pack.pattern[3] + p->par.pack.pattern[2],
+        p->par.pack.pattern[3],
         0
     };
     SwsCompMask offset_mask = 0;
@@ -779,7 +779,7 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
 
 static void asmgen_op_lshift(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
-    uint8_t shift = p->shift.amount;
+    uint8_t shift = p->par.shift.amount;
     RasmContext *r = s->rctx;
     RasmOp *vl = s->vl;
     RasmOp *vh = s->vh;
@@ -794,7 +794,7 @@ static void asmgen_op_lshift(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 
 static void asmgen_op_rshift(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
 {
-    uint8_t shift = p->shift.amount;
+    uint8_t shift = p->par.shift.amount;
     RasmContext *r = s->rctx;
     RasmOp *vl = s->vl;
     RasmOp *vh = s->vh;
@@ -812,9 +812,9 @@ static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 {
     RasmContext *r = s->rctx;
     RasmOp clear_vec = s->vt[0];
-    if (SWS_COMP_TEST(p->clear.zero, i)) {
+    if (SWS_COMP_TEST(p->par.clear.zero, i)) {
         i_movi(r, vx[i], IMM(0));                   CMTF("%s[%u] = 0;", vx_str, i);
-    } else if (SWS_COMP_TEST(p->clear.one, i)) {
+    } else if (SWS_COMP_TEST(p->par.clear.one, i)) {
         if (p->block_size * aarch64_pixel_size(p->type) == 8) {
             i_movi(r, v_8b (vx[i]), IMM(0xff));
         } else {
@@ -839,7 +839,7 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
 
     bool load_priv = false;
     LOOP_MASK(p, i) {
-        if (!SWS_COMP_TEST(p->clear.zero, i) && !SWS_COMP_TEST(p->clear.one, i))
+        if (!SWS_COMP_TEST(p->par.clear.zero, i) && !SWS_COMP_TEST(p->par.clear.one, i))
             load_priv = true;
     }
     if (load_priv) {
@@ -1109,7 +1109,7 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
         for (int j = 0; j < 5; j++) {
             bool is_offset = (j == 0);
             int src_j = is_offset ? 4 : (j - 1);
-            if (p->linear.zero & SWS_MASK(i, src_j))
+            if (p->par.lin.zero & SWS_MASK(i, src_j))
                 continue;
             RasmOp vsrc = src_vx[src_j];
             uint8_t vc_i = i_coeff / 4;
@@ -1119,7 +1119,7 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             if (first && is_offset) {
                 i_dup (r, vx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(vc[%u][%u]);", cvh, i, vc_i, vc_j);
             } else if (first && !is_offset) {
-                if (p->linear.one & SWS_MASK(i, src_j)) {
+                if (p->par.lin.one & SWS_MASK(i, src_j)) {
                     i_mov16b(r, vx[i], vsrc);           CMTF("v%c[%u]  = vsrc[%u];", cvh, i, src_j);
                 } else {
                     i_fmul  (r, vx[i], vsrc, vcoeff);   CMTF("v%c[%u]  = vsrc[%u] * vc[%u][%u];", cvh, i, src_j, vc_i, vc_j);
@@ -1139,7 +1139,7 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                  * to reduce the dependency chain.
                  * There is no need to perform multiplications by 1.
                  */
-                if (!(p->linear.one & SWS_MASK(i, src_j))) {
+                if (!(p->par.lin.one & SWS_MASK(i, src_j))) {
                     pre_mul = rasm_set_current_node(r, pre_mul);
                     i_fmul(r, vtmp[vc_j], vsrc, vcoeff);    CMTF("vtmp[%u] = vsrc[%u] * vc[%u][%u];", vc_j, src_j, vc_i, vc_j);
                     pre_mul = rasm_set_current_node(r, pre_mul);
@@ -1181,7 +1181,7 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         for (int j = 0; j < 5; j++) {
             bool is_offset = (j == 0);
             int src_j = is_offset ? 4 : (j - 1);
-            if (p->linear.zero & SWS_MASK(i, src_j))
+            if (p->par.lin.zero & SWS_MASK(i, src_j))
                 continue;
             if (!is_offset && overwritten[src_j])
                 save_mask |= SWS_COMP(src_j);
@@ -1230,10 +1230,10 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     /* Very cheap bucket sort. */
     int max_offset = 0;
     LOOP_MASK(p, i)
-        max_offset = FFMAX(max_offset, p->dither.y_offset[i]);
+        max_offset = FFMAX(max_offset, p->par.dither.y_offset[i]);
     for (int y_off = 0; y_off <= max_offset; y_off++) {
         LOOP_MASK(p, i) {
-            if (p->dither.y_offset[i] == y_off)
+            if (p->par.dither.y_offset[i] == y_off)
                 sorted[n_comps++] = i;
         }
     }
@@ -1262,7 +1262,7 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
      *  lsb   = log2(block_size) + log2(sizeof(float))
      */
     const int block_size_log2   = (p->block_size == 16) ? 4 : 3;
-    const int dither_size_log2  = p->dither.size_log2;
+    const int dither_size_log2  = p->par.dither.size_log2;
     const int sizeof_float_log2 = 2;
     if (dither_size_log2 != block_size_log2) {
         RasmOp lsb   = IMM(block_size_log2 + sizeof_float_log2);
@@ -1275,7 +1275,7 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     int prev_i = 0;
     for (int sorted_i = 0; sorted_i < n_comps; sorted_i++) {
         int i = sorted[sorted_i];
-        uint8_t y_off = p->dither.y_offset[i];
+        uint8_t y_off = p->par.dither.y_offset[i];
         bool do_load = (y_off != last_y_off);
 
         if (last_y_off < 0) {
