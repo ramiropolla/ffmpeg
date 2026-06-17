@@ -405,22 +405,38 @@ static int cmp_pack(void *pa, void *pb)
     return 0;
 }
 
-static void print_u40_name(char **pbuf, size_t *prem, void *p)
+static uint64_t linear_to_mask(SwsLinearUOp *linear)
 {
-    uint64_t val = *(uint64_t *) p;
-    buf_appendf(pbuf, prem, "_%010" PRIx64, val);
+    uint64_t mask = 0;
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 5; j++) {
+            int jj = (j == 0) ? 4 : (j - 1); /* move offset first */
+            if (linear->one & SWS_MASK(i, jj))
+                mask |= 1ULL << (2 * ((5 * i + j)));
+            else if (!(linear->zero & SWS_MASK(i, jj)))
+                mask |= 3ULL << (2 * ((5 * i + j)));
+        }
+    }
+    return mask;
 }
 
-static void print_u40_val(char **pbuf, size_t *prem, void *p)
+static void print_linear_name(char **pbuf, size_t *prem, void *p)
 {
-    uint64_t val = *(uint64_t *) p;
-    buf_appendf(pbuf, prem, "0x%010" PRIx64 "ULL", val);
+    SwsLinearUOp *linear = (SwsLinearUOp *) p;
+    uint64_t mask = linear_to_mask(linear);
+    buf_appendf(pbuf, prem, "_%010" PRIx64 "_0", mask);
 }
 
-static int cmp_u40(void *pa, void *pb)
+static void print_linear_val(char **pbuf, size_t *prem, void *p)
 {
-    int64_t ia = (int64_t) *((uint64_t *) pa);
-    int64_t ib = (int64_t) *((uint64_t *) pb);
+    SwsLinearUOp *linear = (SwsLinearUOp *) p;
+    buf_appendf(pbuf, prem, "{ .one = 0x%x, .zero = 0x%x }", linear->one, linear->zero);
+}
+
+static int cmp_linear(void *pa, void *pb)
+{
+    int64_t ia = (int64_t) linear_to_mask((SwsLinearUOp *) pa);
+    int64_t ib = (int64_t) linear_to_mask((SwsLinearUOp *) pb);
     int64_t diff = ia - ib;
     if (diff)
         return diff < 0 ? -1 : 1;
@@ -436,8 +452,7 @@ static const ParamField field_shift            = { PARAM_FIELD(shift.amount),   
 static const ParamField field_clear            = { PARAM_FIELD(clear),            print_clear_name, print_clear_val, cmp_clear };
 static const ParamField field_move             = { PARAM_FIELD(move),             print_move_name,  print_move_val,  cmp_move };
 static const ParamField field_pack             = { PARAM_FIELD(pack),             print_pack_name,  print_pack_val,  cmp_pack };
-static const ParamField field_linear_mask      = { PARAM_FIELD(linear.mask),      print_u40_name,   print_u40_val,   cmp_u40 };
-static const ParamField field_linear_fmla      = { PARAM_FIELD(linear.fmla),      print_u8_name,    print_u8_val,    cmp_u8 };
+static const ParamField field_linear           = { PARAM_FIELD(linear),           print_linear_name,print_linear_val,cmp_linear };
 static const ParamField field_dither_y_offset  = { PARAM_FIELD(dither.y_offset),  print_u16_name,   print_u16_val,   cmp_u16 };
 static const ParamField field_dither_size_log2 = { PARAM_FIELD(dither.size_log2), print_u8_name,    print_u8_val,    cmp_u8 };
 
@@ -468,7 +483,7 @@ static const ParamField *op_fields[SWS_UOP_TYPE_NB][MAX_LEVELS] = {
     [SWS_UOP_MIN           ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
     [SWS_UOP_MAX           ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
     [SWS_UOP_SCALE         ] = { &field_uop,                                                  &field_block_size, &field_type, &field_mask },
-    [SWS_UOP_LINEAR        ] = { &field_uop, &field_linear_mask,     &field_linear_fmla,      &field_block_size, &field_type, &field_mask },
-    [SWS_UOP_LINEAR_FMA    ] = { &field_uop, &field_linear_mask,     &field_linear_fmla,      &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_LINEAR        ] = { &field_uop, &field_linear,                                   &field_block_size, &field_type, &field_mask },
+    [SWS_UOP_LINEAR_FMA    ] = { &field_uop, &field_linear,                                   &field_block_size, &field_type, &field_mask },
     [SWS_UOP_DITHER        ] = { &field_uop, &field_dither_y_offset, &field_dither_size_log2, &field_block_size, &field_type, &field_mask },
 };
