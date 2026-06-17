@@ -30,9 +30,6 @@
 /* TODO make available in uops.h */
 #define SWS_MASK(I, J)  (1 << (5 * (I) + (J)))
 
-/* Each nibble in the mask corresponds to one component. */
-typedef uint16_t SwsAArch64OpMask;
-
 /**
  * SwsAArch64OpImplParams describes the parameters for an SwsUOpType
  * operation. It consists of simplified parameters from the SwsOp structure,
@@ -40,7 +37,7 @@ typedef uint16_t SwsAArch64OpMask;
  */
 typedef struct SwsAArch64OpImplParams {
     SwsUOpType          uop;
-    SwsAArch64OpMask    mask;
+    SwsCompMask         mask;
     SwsPixelType        type;
     uint8_t block_size;
     union {
@@ -53,17 +50,12 @@ typedef struct SwsAArch64OpImplParams {
     };
 } SwsAArch64OpImplParams;
 
-/* SwsAArch64OpMask-related helpers. */
-
-#define MASK_GET(mask, idx) (((mask) >> ((idx) << 2)) & 0xf)
-#define MASK_SET(mask, idx, val) do { (mask) |= (((val) & 0xf) << ((idx) << 2)); } while (0)
-
 #define LOOP(mask, idx)                 \
     for (int idx = 0; idx < 4; idx++)   \
-        if (MASK_GET(mask, idx))
+        if (mask & SWS_COMP(idx))
 #define LOOP_BWD(mask, idx)             \
     for (int idx = 3; idx >= 0; idx--)  \
-        if (MASK_GET(mask, idx))
+        if (mask & SWS_COMP(idx))
 
 #define LOOP_MASK(p, idx) LOOP(p->mask, idx)
 #define LOOP_MASK_BWD(p, idx) LOOP_BWD(p->mask, idx)
