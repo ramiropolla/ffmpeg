@@ -64,6 +64,14 @@ static uint64_t move_to_mask(const SwsMoveUOp *move)
     return mask;
 }
 
+static uint16_t pack_to_mask(const SwsPackUOp *pack)
+{
+    uint16_t mask = 0;
+    for (int i = 0; i < 4; i++)
+        MASK_SET(mask, i, pack->pattern[i]);
+    return mask;
+}
+
 static int aarch64_op_impl_cmp(const void *a, const void *b)
 {
     const SwsAArch64OpImplParams *pa = (const SwsAArch64OpImplParams *) a;
@@ -81,10 +89,13 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
         break;
     }
     case SWS_UOP_UNPACK:
-    case SWS_UOP_PACK:
-        if (pa->pack != pb->pack)
-            return (int) pa->pack - pb->pack;
+    case SWS_UOP_PACK: {
+        uint16_t ia = pack_to_mask(&pa->pack);
+        uint16_t ib = pack_to_mask(&pb->pack);
+        if (ia != ib)
+            return (int) ia - ib;
         break;
+    }
     case SWS_UOP_LSHIFT:
     case SWS_UOP_RSHIFT:
         if (pa->shift.amount != pb->shift.amount)
@@ -260,7 +271,7 @@ static void impl_func_name(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         break;
     case SWS_UOP_UNPACK:
     case SWS_UOP_PACK:
-        av_bprintf(bp, "_%04x", params->pack);
+        av_bprintf(bp, "_%04x", pack_to_mask(&params->pack));
         break;
     case SWS_UOP_LSHIFT:
     case SWS_UOP_RSHIFT:
@@ -334,7 +345,9 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         break;
     case SWS_UOP_UNPACK:
     case SWS_UOP_PACK:
-        av_bprintf(bp, ", .pack = 0x%04x", params->pack);
+        av_bprintf(bp, ", .pack = { .pattern = {%d, %d, %d, %d} }",
+                   params->pack.pattern[0], params->pack.pattern[1],
+                   params->pack.pattern[2], params->pack.pattern[3]);
         break;
     case SWS_UOP_LSHIFT:
     case SWS_UOP_RSHIFT:
