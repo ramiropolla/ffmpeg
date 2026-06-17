@@ -77,7 +77,7 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
      */
     int i_coeff = 0;
     LOOP_LINEAR_MASK(p, i, j) {
-        const int jj = linear_index_to_sws_op(j);
+        const int jj = (j == 0) ? 4 : (j - 1);
         coeffs[i_coeff++] = (float) op->lin.m[i][jj].num / op->lin.m[i][jj].den;
     }
 

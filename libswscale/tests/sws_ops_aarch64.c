@@ -112,7 +112,6 @@ static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
              * and do not use fmla (selected by SWS_BITEXACT).
              */
             params.uop = SWS_UOP_LINEAR;
-            params.linear.fmla = !params.linear.fmla;
             ret = aarch64_collect_op(&params, root);
             if (ret < 0)
                 goto end;
