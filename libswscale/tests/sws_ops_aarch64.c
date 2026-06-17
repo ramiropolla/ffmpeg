@@ -85,6 +85,14 @@ static uint64_t linear_to_mask(const SwsLinearUOp *linear)
     return mask;
 }
 
+static uint16_t dither_to_mask(const SwsDitherUOp *dither)
+{
+    uint16_t mask = 0;
+    for (int i = 0; i < 4; i++)
+        MASK_SET(mask, i, dither->y_offset[i]);
+    return mask;
+}
+
 static int aarch64_op_impl_cmp(const void *a, const void *b)
 {
     const SwsAArch64OpImplParams *pa = (const SwsAArch64OpImplParams *) a;
@@ -129,12 +137,15 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
             return (int64_t) (ia - ib) < 0 ? -1 : 1;
         break;
     }
-    case SWS_UOP_DITHER:
-        if (pa->dither.y_offset != pb->dither.y_offset)
-            return (int) pa->dither.y_offset - pb->dither.y_offset;
+    case SWS_UOP_DITHER: {
+        uint16_t ia = dither_to_mask(&pa->dither);
+        uint16_t ib = dither_to_mask(&pb->dither);
+        if (ia != ib)
+            return (int) ia - ib;
         if (pa->dither.size_log2 != pb->dither.size_log2)
             return (int) pa->dither.size_log2 - pb->dither.size_log2;
         break;
+    }
     }
 
     if (pa->block_size != pb->block_size)
@@ -282,7 +293,7 @@ static void impl_func_name(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         av_bprintf(bp, "_%010" PRIx64 "_%d", linear_to_mask(&params->linear), params->uop == SWS_UOP_LINEAR_FMA);
         break;
     case SWS_UOP_DITHER:
-        av_bprintf(bp, "_%04x_%u", params->dither.y_offset, params->dither.size_log2);
+        av_bprintf(bp, "_%04x_%u", dither_to_mask(&params->dither), params->dither.size_log2);
         break;
     }
     av_bprintf(bp, "_%u_%s_%04x_neon", params->block_size, pixel_type_names[params->type], params->mask);
@@ -358,7 +369,12 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         av_bprintf(bp, ", .linear = { .one = 0x%x, .zero = 0x%x }", params->linear.one, params->linear.zero);
         break;
     case SWS_UOP_DITHER:
-        av_bprintf(bp, ", .dither.y_offset = 0x%04x, .dither.size_log2 = %u", params->dither.y_offset, params->dither.size_log2);
+        av_bprintf(bp, ", .dither = { .y_offset = {%u, %u, %u, %u}, .size_log2 = %u }",
+                   (params->dither.y_offset[0] == 0xf) ? 0 : params->dither.y_offset[0],
+                   (params->dither.y_offset[1] == 0xf) ? 0 : params->dither.y_offset[1],
+                   (params->dither.y_offset[2] == 0xf) ? 0 : params->dither.y_offset[2],
+                   (params->dither.y_offset[3] == 0xf) ? 0 : params->dither.y_offset[3],
+                   params->dither.size_log2);
         break;
     }
     av_bprintf(bp, ", .block_size = %u, .type = %s, .mask = 0x%04x })", params->block_size, pixel_types[params->type], params->mask);
