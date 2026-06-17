@@ -372,6 +372,39 @@ static int cmp_move(void *pa, void *pb)
     return 0;
 }
 
+static uint16_t pack_to_mask(SwsPackUOp *pack)
+{
+    uint16_t mask = 0;
+    for (int i = 0; i < 4; i++)
+        MASK_SET(mask, i, pack->pattern[i]);
+    return mask;
+}
+
+static void print_pack_name(char **pbuf, size_t *prem, void *p)
+{
+    SwsPackUOp *pack = (SwsPackUOp *) p;
+    uint16_t mask = pack_to_mask(pack);
+    buf_appendf(pbuf, prem, "_%04x", mask);
+}
+
+static void print_pack_val(char **pbuf, size_t *prem, void *p)
+{
+    SwsPackUOp *pack = (SwsPackUOp *) p;
+    buf_appendf(pbuf, prem, "{ .pattern = {%d, %d, %d, %d} }",
+                pack->pattern[0], pack->pattern[1],
+                pack->pattern[2], pack->pattern[3]);
+}
+
+static int cmp_pack(void *pa, void *pb)
+{
+    int64_t ia = (int64_t) pack_to_mask((SwsPackUOp *) pa);
+    int64_t ib = (int64_t) pack_to_mask((SwsPackUOp *) pb);
+    int64_t diff = ia - ib;
+    if (diff)
+        return diff < 0 ? -1 : 1;
+    return 0;
+}
+
 static void print_u40_name(char **pbuf, size_t *prem, void *p)
 {
     uint64_t val = *(uint64_t *) p;
@@ -402,7 +435,7 @@ static const ParamField field_block_size       = { PARAM_FIELD(block_size),     
 static const ParamField field_shift            = { PARAM_FIELD(shift.amount),     print_u8_name,    print_u8_val,    cmp_u8 };
 static const ParamField field_clear            = { PARAM_FIELD(clear),            print_clear_name, print_clear_val, cmp_clear };
 static const ParamField field_move             = { PARAM_FIELD(move),             print_move_name,  print_move_val,  cmp_move };
-static const ParamField field_pack             = { PARAM_FIELD(pack),             print_u16_name,   print_u16_val,   cmp_u16 };
+static const ParamField field_pack             = { PARAM_FIELD(pack),             print_pack_name,  print_pack_val,  cmp_pack };
 static const ParamField field_linear_mask      = { PARAM_FIELD(linear.mask),      print_u40_name,   print_u40_val,   cmp_u40 };
 static const ParamField field_linear_fmla      = { PARAM_FIELD(linear.fmla),      print_u8_name,    print_u8_val,    cmp_u8 };
 static const ParamField field_dither_y_offset  = { PARAM_FIELD(dither.y_offset),  print_u16_name,   print_u16_val,   cmp_u16 };
