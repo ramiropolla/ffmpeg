@@ -328,22 +328,44 @@ static int cmp_u16(void *pa, void *pb)
     return 0;
 }
 
-static void print_u48_name(char **pbuf, size_t *prem, void *p)
+static uint64_t move_to_mask(SwsMoveUOp *move)
 {
-    uint64_t val = *(uint64_t *) p;
-    buf_appendf(pbuf, prem, "_%012" PRIx64, val);
+    uint64_t mask = 0;
+    for (int i = 0; i < move->num_moves; i++) {
+        uint8_t dst = move->dst[i] < 0 ? 0xf : move->dst[i];
+        uint8_t src = move->src[i] < 0 ? 0xf : move->src[i];
+        uint64_t pair = src | (dst << 4);
+        mask |= pair << (i * 8);
+    }
+    return mask;
 }
 
-static void print_u48_val(char **pbuf, size_t *prem, void *p)
+static void print_move_name(char **pbuf, size_t *prem, void *p)
 {
-    uint64_t val = *(uint64_t *) p;
-    buf_appendf(pbuf, prem, "0x%012" PRIx64 "ULL", val);
+    SwsMoveUOp *move = (SwsMoveUOp *) p;
+    uint64_t mask = move_to_mask(move);
+    buf_appendf(pbuf, prem, "_%012" PRIx64, mask);
 }
 
-static int cmp_u48(void *pa, void *pb)
+static void print_move_val(char **pbuf, size_t *prem, void *p)
 {
-    int64_t ia = (int64_t) *((uint64_t *) pa);
-    int64_t ib = (int64_t) *((uint64_t *) pb);
+    SwsMoveUOp *move = (SwsMoveUOp *) p;
+    buf_appendf(pbuf, prem,
+                "{ .num_moves = %d", move->num_moves);
+    buf_appendf(pbuf, prem,
+                ", .dst = {%d, %d, %d, %d, %d, %d}",
+                move->dst[0], move->dst[1], move->dst[2],
+                move->dst[3], move->dst[4], move->dst[5]);
+    buf_appendf(pbuf, prem,
+                ", .src = {%d, %d, %d, %d, %d, %d} }",
+                move->src[0], move->src[1], move->src[2],
+                move->src[3], move->src[4], move->src[5]);
+}
+
+static int cmp_move(void *pa, void *pb)
+{
+    int64_t ia = (int64_t) move_to_mask((SwsMoveUOp *) pa);
+    int64_t ib = (int64_t) move_to_mask((SwsMoveUOp *) pb);
     int64_t diff = ia - ib;
     if (diff)
         return diff < 0 ? -1 : 1;
@@ -379,7 +401,7 @@ static const ParamField field_type             = { PARAM_FIELD(type),           
 static const ParamField field_block_size       = { PARAM_FIELD(block_size),       print_u8_name,    print_u8_val,    cmp_u8 };
 static const ParamField field_shift            = { PARAM_FIELD(shift.amount),     print_u8_name,    print_u8_val,    cmp_u8 };
 static const ParamField field_clear            = { PARAM_FIELD(clear),            print_clear_name, print_clear_val, cmp_clear };
-static const ParamField field_move             = { PARAM_FIELD(move),             print_u48_name,   print_u48_val,   cmp_u48 };
+static const ParamField field_move             = { PARAM_FIELD(move),             print_move_name,  print_move_val,  cmp_move };
 static const ParamField field_pack             = { PARAM_FIELD(pack),             print_u16_name,   print_u16_val,   cmp_u16 };
 static const ParamField field_linear_mask      = { PARAM_FIELD(linear.mask),      print_u40_name,   print_u40_val,   cmp_u40 };
 static const ParamField field_linear_fmla      = { PARAM_FIELD(linear.fmla),      print_u8_name,    print_u8_val,    cmp_u8 };
