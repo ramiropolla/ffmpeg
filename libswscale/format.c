@@ -958,24 +958,22 @@ static void swizzle_inv(const SwsSwizzleOp *swiz, SwsSwizzleOp *out) {
  * it will end up getting pushed towards the output or optimized away entirely
  * by the optimization pass.
  */
-static SwsClearOp fmt_clear(enum AVPixelFormat fmt)
+static void fmt_clear(enum AVPixelFormat fmt, SwsClearOp *out)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
     const bool has_chroma = desc->nb_components >= 3;
     const bool has_alpha  = desc->flags & AV_PIX_FMT_FLAG_ALPHA;
 
-    SwsClearOp c = {0};
+    *out = (SwsClearOp) {0};
     if (!has_chroma) {
-        c.mask |= SWS_COMP(1) | SWS_COMP(2);
-        c.value[1] = c.value[2] = Q0;
+        out->mask |= SWS_COMP(1) | SWS_COMP(2);
+        out->value[1] = out->value[2] = Q0;
     }
 
     if (!has_alpha) {
-        c.mask |= SWS_COMP(3);
-        c.value[3] = Q0;
+        out->mask |= SWS_COMP(3);
+        out->value[3] = Q0;
     }
-
-    return c;
 }
 
 #if HAVE_BIGENDIAN
@@ -1064,11 +1062,9 @@ int ff_sws_decode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
         }));
     }
 
-    RET(ff_sws_op_list_append(ops, &(SwsOp) {
-        .op    = SWS_OP_CLEAR,
-        .type  = pixel_type,
-        .clear = fmt_clear(fmt),
-    }));
+    SwsOp clear_op = { .op = SWS_OP_CLEAR, .type = pixel_type };
+    fmt_clear(fmt, &clear_op.clear);
+    RET(ff_sws_op_list_append(ops, &clear_op));
 
     return 0;
 }
