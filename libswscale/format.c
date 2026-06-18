@@ -940,14 +940,14 @@ static int test_format_ops(enum AVPixelFormat format, int output)
     return ret == 0;
 }
 
-static SwsSwizzleOp swizzle_inv(SwsSwizzleOp swiz) {
+static void swizzle_inv(const SwsSwizzleOp *swiz, SwsSwizzleOp *out) {
     /* Input[x] =: Output[swizzle.x] */
-    unsigned out[4];
-    out[swiz.x] = 0;
-    out[swiz.y] = 1;
-    out[swiz.z] = 2;
-    out[swiz.w] = 3;
-    return (SwsSwizzleOp) {{ .x = out[0], out[1], out[2], out[3] }};
+    unsigned tmp[4];
+    tmp[swiz->x] = 0;
+    tmp[swiz->y] = 1;
+    tmp[swiz->z] = 2;
+    tmp[swiz->w] = 3;
+    *out = (SwsSwizzleOp) {{ .x = tmp[0], tmp[1], tmp[2], tmp[3] }};
 }
 
 /**
@@ -997,7 +997,7 @@ int ff_sws_decode_pixfmt(SwsOpList *ops, enum AVPixelFormat fmt)
     RET(fmt_analyze(fmt, &rw_op, &unpack, &swizzle, &shift,
                     &pixel_type, &raw_type));
 
-    swizzle = swizzle_inv(swizzle);
+    swizzle_inv(&swizzle, &swizzle);
 
     /* Set baseline pixel content flags */
     const int integer = ff_sws_pixel_type_is_int(raw_type);
