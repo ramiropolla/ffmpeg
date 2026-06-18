@@ -1373,20 +1373,20 @@ static int fmt_dither(SwsContext *ctx, SwsOpList *ops,
     return AVERROR(EINVAL);
 }
 
-static inline SwsLinearOp
+static inline void
 linear_mat3(const AVRational m00, const AVRational m01, const AVRational m02,
             const AVRational m10, const AVRational m11, const AVRational m12,
-            const AVRational m20, const AVRational m21, const AVRational m22)
+            const AVRational m20, const AVRational m21, const AVRational m22,
+            SwsLinearOp *out)
 {
-    SwsLinearOp c = {{
+    *out = (SwsLinearOp) {{
         { m00, m01, m02, Q0, Q0 },
         { m10, m11, m12, Q0, Q0 },
         { m20, m21, m22, Q0, Q0 },
         {  Q0,  Q0,  Q0, Q1, Q0 },
     }};
 
-    c.mask = ff_sws_linear_mask(&c);
-    return c;
+    out->mask = ff_sws_linear_mask(out);
 }
 
 int ff_sws_decode_colors(SwsContext *ctx, SwsPixelType type,
@@ -1431,27 +1431,24 @@ int ff_sws_decode_colors(SwsContext *ctx, SwsPixelType type,
         AVRational m11 = av_mul_q(cbg, m21);
         AVRational m12 = av_mul_q(crg, m02);
 
-        return ff_sws_op_list_append(ops, &(SwsOp) {
-            .type = type,
-            .op   = SWS_OP_LINEAR,
-            .lin  = linear_mat3(
-                Q1,  Q0, m02,
-                Q1, m11, m12,
-                Q1, m21,  Q0
-            ),
-        });
+        SwsOp lin_op_yuv = { .type = type, .op = SWS_OP_LINEAR };
+        linear_mat3(
+            Q1,  Q0, m02,
+            Q1, m11, m12,
+            Q1, m21,  Q0,
+            &lin_op_yuv.lin);
+        return ff_sws_op_list_append(ops, &lin_op_yuv);
     }
 
-    case AVCOL_SPC_YCGCO:
-        return ff_sws_op_list_append(ops, &(SwsOp) {
-            .type = type,
-            .op   = SWS_OP_LINEAR,
-            .lin  = linear_mat3(
-                Q1, Q(-1), Q( 1),
-                Q1, Q( 1), Q( 0),
-                Q1, Q(-1), Q(-1)
-            ),
-        });
+    case AVCOL_SPC_YCGCO: {
+        SwsOp lin_op_ycgco = { .type = type, .op = SWS_OP_LINEAR };
+        linear_mat3(
+            Q1, Q(-1), Q( 1),
+            Q1, Q( 1), Q( 0),
+            Q1, Q(-1), Q(-1),
+            &lin_op_ycgco.lin);
+        return ff_sws_op_list_append(ops, &lin_op_ycgco);
+    }
 
     case AVCOL_SPC_BT2020_CL:
     case AVCOL_SPC_SMPTE2085:
@@ -1504,29 +1501,26 @@ int ff_sws_encode_colors(SwsContext *ctx, SwsPixelType type,
         AVRational m21 = av_mul_q(m20, av_div_q(c->cg, cr1));
         AVRational m22 = av_mul_q(m20, av_div_q(c->cb, cr1));
 
-        RET(ff_sws_op_list_append(ops, &(SwsOp) {
-            .type = type,
-            .op   = SWS_OP_LINEAR,
-            .lin  = linear_mat3(
-                c->cr, c->cg, c->cb,
-                m10,     m11,   m20,
-                m20,     m21,   m22
-            ),
-        }));
+        SwsOp lin_op_yuv_enc = { .type = type, .op = SWS_OP_LINEAR };
+        linear_mat3(
+            c->cr, c->cg, c->cb,
+            m10,     m11,   m20,
+            m20,     m21,   m22,
+            &lin_op_yuv_enc.lin);
+        RET(ff_sws_op_list_append(ops, &lin_op_yuv_enc));
         break;
     }
 
-    case AVCOL_SPC_YCGCO:
-        RET(ff_sws_op_list_append(ops, &(SwsOp) {
-            .type = type,
-            .op   = SWS_OP_LINEAR,
-            .lin  = linear_mat3(
-                av_make_q( 1, 4), av_make_q(1, 2), av_make_q( 1, 4),
-                av_make_q( 1, 2), av_make_q(0, 1), av_make_q(-1, 2),
-                av_make_q(-1, 4), av_make_q(1, 2), av_make_q(-1, 4)
-            ),
-        }));
+    case AVCOL_SPC_YCGCO: {
+        SwsOp lin_op_ycgco_enc = { .type = type, .op = SWS_OP_LINEAR };
+        linear_mat3(
+            av_make_q( 1, 4), av_make_q(1, 2), av_make_q( 1, 4),
+            av_make_q( 1, 2), av_make_q(0, 1), av_make_q(-1, 2),
+            av_make_q(-1, 4), av_make_q(1, 2), av_make_q(-1, 4),
+            &lin_op_ycgco_enc.lin);
+        RET(ff_sws_op_list_append(ops, &lin_op_ycgco_enc));
         break;
+    }
 
     case AVCOL_SPC_BT2020_CL:
     case AVCOL_SPC_SMPTE2085:
