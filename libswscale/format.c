@@ -346,7 +346,7 @@ static void sanitize_fmt(SwsFormat *fmt, const AVPixFmtDescriptor *desc)
  * This function also sanitizes and strips the input data, removing irrelevant
  * fields for certain formats.
  */
-SwsFormat ff_fmt_from_frame(const AVFrame *frame, int field)
+void ff_fmt_from_frame(const AVFrame *frame, int field, SwsFormat *fmt)
 {
     const AVColorPrimariesDesc *primaries;
     AVFrameSideData *sd;
@@ -364,7 +364,7 @@ SwsFormat ff_fmt_from_frame(const AVFrame *frame, int field)
 
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(format);
 
-    SwsFormat fmt = {
+    *fmt = (SwsFormat) {
         .width     = frame->width,
         .height    = frame->height,
         .format    = format,
@@ -379,48 +379,48 @@ SwsFormat ff_fmt_from_frame(const AVFrame *frame, int field)
         },
     };
 
-    av_assert1(fmt.width > 0);
-    av_assert1(fmt.height > 0);
-    av_assert1(fmt.format != AV_PIX_FMT_NONE);
+    av_assert1(fmt->width > 0);
+    av_assert1(fmt->height > 0);
+    av_assert1(fmt->format != AV_PIX_FMT_NONE);
     av_assert0(desc);
-    sanitize_fmt(&fmt, desc);
+    sanitize_fmt(fmt, desc);
 
     if (frame->flags & AV_FRAME_FLAG_INTERLACED) {
-        fmt.height = (fmt.height + (field == FIELD_TOP)) >> 1;
-        fmt.interlaced = 1;
+        fmt->height = (fmt->height + (field == FIELD_TOP)) >> 1;
+        fmt->interlaced = 1;
     }
 
     /* Set luminance and gamut information */
-    fmt.color.min_luma = av_make_q(0, 1);
-    switch (fmt.color.trc) {
+    fmt->color.min_luma = av_make_q(0, 1);
+    switch (fmt->color.trc) {
     case AVCOL_TRC_SMPTE2084:
-        fmt.color.max_luma = av_make_q(10000, 1); break;
+        fmt->color.max_luma = av_make_q(10000, 1); break;
     case AVCOL_TRC_ARIB_STD_B67:
-        fmt.color.max_luma = av_make_q( 1000, 1); break; /* HLG reference display */
+        fmt->color.max_luma = av_make_q( 1000, 1); break; /* HLG reference display */
     default:
-        fmt.color.max_luma = av_make_q(  203, 1); break; /* SDR reference brightness */
+        fmt->color.max_luma = av_make_q(  203, 1); break; /* SDR reference brightness */
     }
 
-    primaries = av_csp_primaries_desc_from_id(fmt.color.prim);
+    primaries = av_csp_primaries_desc_from_id(fmt->color.prim);
     if (primaries)
-        fmt.color.gamut = primaries->prim;
+        fmt->color.gamut = primaries->prim;
 
     if ((sd = av_frame_get_side_data(frame, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA))) {
         const AVMasteringDisplayMetadata *mdm = (const AVMasteringDisplayMetadata *) sd->data;
         if (mdm->has_luminance) {
-            fmt.color.min_luma = mdm->min_luminance;
-            fmt.color.max_luma = mdm->max_luminance;
+            fmt->color.min_luma = mdm->min_luminance;
+            fmt->color.max_luma = mdm->max_luminance;
         }
 
         if (mdm->has_primaries) {
             /* Ignore mastering display white point as it has no bearance on
              * the underlying content */
-            fmt.color.gamut.r.x = mdm->display_primaries[0][0];
-            fmt.color.gamut.r.y = mdm->display_primaries[0][1];
-            fmt.color.gamut.g.x = mdm->display_primaries[1][0];
-            fmt.color.gamut.g.y = mdm->display_primaries[1][1];
-            fmt.color.gamut.b.x = mdm->display_primaries[2][0];
-            fmt.color.gamut.b.y = mdm->display_primaries[2][1];
+            fmt->color.gamut.r.x = mdm->display_primaries[0][0];
+            fmt->color.gamut.r.y = mdm->display_primaries[0][1];
+            fmt->color.gamut.g.x = mdm->display_primaries[1][0];
+            fmt->color.gamut.g.y = mdm->display_primaries[1][1];
+            fmt->color.gamut.b.x = mdm->display_primaries[2][0];
+            fmt->color.gamut.b.y = mdm->display_primaries[2][1];
         }
     }
 
@@ -441,16 +441,16 @@ SwsFormat ff_fmt_from_frame(const AVFrame *frame, int field)
 
         if (maxrgb.num > 0) {
             /* Estimate true luminance from MaxSCL */
-            const AVLumaCoefficients *luma = av_csp_luma_coeffs_from_avcsp(fmt.csp);
+            const AVLumaCoefficients *luma = av_csp_luma_coeffs_from_avcsp(fmt->csp);
             if (!luma)
                 goto skip_hdr10;
-            fmt.color.frame_peak = av_add_q(av_mul_q(luma->cr, pars->maxscl[0]),
-                                   av_add_q(av_mul_q(luma->cg, pars->maxscl[1]),
-                                            av_mul_q(luma->cb, pars->maxscl[2])));
+            fmt->color.frame_peak = av_add_q(av_mul_q(luma->cr, pars->maxscl[0]),
+                                    av_add_q(av_mul_q(luma->cg, pars->maxscl[1]),
+                                             av_mul_q(luma->cb, pars->maxscl[2])));
             /* Scale the scene average brightness by the ratio between the
              * maximum luminance and the MaxRGB values */
-            fmt.color.frame_avg = av_mul_q(pars->average_maxrgb,
-                                           av_div_q(fmt.color.frame_peak, maxrgb));
+            fmt->color.frame_avg = av_mul_q(pars->average_maxrgb,
+                                            av_div_q(fmt->color.frame_peak, maxrgb));
         } else {
             /**
              * Calculate largest value from histogram to use as fallback for
@@ -462,22 +462,20 @@ SwsFormat ff_fmt_from_frame(const AVFrame *frame, int field)
                 const AVRational pct = pars->distribution_maxrgb[i].percentile;
                 if (av_cmp_q(pct, maxrgb) > 0)
                     maxrgb = pct;
-                fmt.color.frame_peak = maxrgb;
-                fmt.color.frame_avg  = pars->average_maxrgb;
+                fmt->color.frame_peak = maxrgb;
+                fmt->color.frame_avg  = pars->average_maxrgb;
             }
         }
 
         /* Rescale to nits */
-        fmt.color.frame_peak = av_mul_q(nits, fmt.color.frame_peak);
-        fmt.color.frame_avg  = av_mul_q(nits, fmt.color.frame_avg);
+        fmt->color.frame_peak = av_mul_q(nits, fmt->color.frame_peak);
+        fmt->color.frame_avg  = av_mul_q(nits, fmt->color.frame_avg);
     }
 skip_hdr10:
 
     /* PQ is always scaled down to absolute zero, so ignore mastering metadata */
-    if (fmt.color.trc == AVCOL_TRC_SMPTE2084)
-        fmt.color.min_luma = av_make_q(0, 1);
-
-    return fmt;
+    if (fmt->color.trc == AVCOL_TRC_SMPTE2084)
+        fmt->color.min_luma = av_make_q(0, 1);
 }
 
 void ff_fmt_from_pixfmt(enum AVPixelFormat pixfmt, SwsFormat *fmt)
@@ -642,7 +640,8 @@ int ff_test_fmt(const SwsBackend backends, const SwsFormat *fmt, int output)
 int sws_test_frame(const AVFrame *frame, int output)
 {
     for (int field = 0; field < 2; field++) {
-        const SwsFormat fmt = ff_fmt_from_frame(frame, field);
+        SwsFormat fmt;
+        ff_fmt_from_frame(frame, field, &fmt);
         if (!ff_test_fmt(SWS_BACKEND_STABLE, &fmt, output))
             return 0;
         if (!fmt.interlaced)
@@ -655,8 +654,10 @@ int sws_test_frame(const AVFrame *frame, int output)
 int sws_is_noop(const AVFrame *dst, const AVFrame *src)
 {
     for (int field = 0; field < 2; field++) {
-        SwsFormat dst_fmt = ff_fmt_from_frame(dst, field);
-        SwsFormat src_fmt = ff_fmt_from_frame(src, field);
+        SwsFormat dst_fmt;
+        SwsFormat src_fmt;
+        ff_fmt_from_frame(dst, field, &dst_fmt);
+        ff_fmt_from_frame(src, field, &src_fmt);
         if (!ff_fmt_equal(&dst_fmt, &src_fmt))
             return 0;
         if (!dst_fmt.interlaced)

@@ -104,7 +104,7 @@ static inline void ff_fmt_clear(SwsFormat *fmt)
  * This function also sanitizes and strips the input data, removing irrelevant
  * fields for certain formats.
  */
-SwsFormat ff_fmt_from_frame(const AVFrame *frame, int field);
+void ff_fmt_from_frame(const AVFrame *frame, int field, SwsFormat *fmt);
 
 /**
  * Subset of ff_fmt_from_frame() that sets default metadata for the format.

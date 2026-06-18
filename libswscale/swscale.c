@@ -1500,8 +1500,10 @@ int sws_frame_setup(SwsContext *ctx, const AVFrame *dst, const AVFrame *src)
     int dst_width = dst->width;
     const SwsBackend backends = ff_sws_enabled_backends(ctx);
     for (int field = 0; field < 2; field++) {
-        SwsFormat src_fmt = ff_fmt_from_frame(src, field);
-        SwsFormat dst_fmt = ff_fmt_from_frame(dst, field);
+        SwsFormat src_fmt;
+        SwsFormat dst_fmt;
+        ff_fmt_from_frame(src, field, &src_fmt);
+        ff_fmt_from_frame(dst, field, &dst_fmt);
         int src_ok, dst_ok;
 
         if ((src->flags ^ dst->flags) & AV_FRAME_FLAG_INTERLACED) {
