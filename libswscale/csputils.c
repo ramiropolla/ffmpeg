@@ -89,9 +89,8 @@ static inline AVRational cie_Z(AVCIExy xy)
     return av_div_q(av_sub_q(av_sub_q(av_make_q(1, 1), xy.x), xy.y), xy.y);
 }
 
-SwsMatrix3x3 ff_sws_rgb2xyz(const AVColorPrimariesDesc *desc)
+void ff_sws_rgb2xyz(const AVColorPrimariesDesc *desc, SwsMatrix3x3 *out)
 {
-    SwsMatrix3x3 out = {{{0}}};
     float S[3], X[3], Z[3], Xw, Zw;
 
     X[0] = av_q2d(cie_X(desc->prim.r));
@@ -106,32 +105,30 @@ SwsMatrix3x3 ff_sws_rgb2xyz(const AVColorPrimariesDesc *desc)
     Zw = av_q2d(cie_Z(desc->wp));
 
     /* S = XYZ^-1 * W */
+    *out = (SwsMatrix3x3) {{{0}}};
     for (int i = 0; i < 3; i++) {
-        out.m[0][i] = X[i];
-        out.m[1][i] = 1.0f;
-        out.m[2][i] = Z[i];
+        out->m[0][i] = X[i];
+        out->m[1][i] = 1.0f;
+        out->m[2][i] = Z[i];
     }
 
-    ff_sws_matrix3x3_invert(&out);
+    ff_sws_matrix3x3_invert(out);
 
     for (int i = 0; i < 3; i++)
-        S[i] = out.m[i][0] * Xw + out.m[i][1] + out.m[i][2] * Zw;
+        S[i] = out->m[i][0] * Xw + out->m[i][1] + out->m[i][2] * Zw;
 
     /* M = [Sc * XYZc] */
     for (int i = 0; i < 3; i++) {
-        out.m[0][i] = S[i] * X[i];
-        out.m[1][i] = S[i];
-        out.m[2][i] = S[i] * Z[i];
+        out->m[0][i] = S[i] * X[i];
+        out->m[1][i] = S[i];
+        out->m[2][i] = S[i] * Z[i];
     }
-
-    return out;
 }
 
-SwsMatrix3x3 ff_sws_xyz2rgb(const AVColorPrimariesDesc *prim)
+void ff_sws_xyz2rgb(const AVColorPrimariesDesc *prim, SwsMatrix3x3 *out)
 {
-    SwsMatrix3x3 out = ff_sws_rgb2xyz(prim);
-    ff_sws_matrix3x3_invert(&out);
-    return out;
+    ff_sws_rgb2xyz(prim, out);
+    ff_sws_matrix3x3_invert(out);
 }
 
 /* Matrix used in CAT16, a revised one-step linear transform method */
@@ -188,21 +185,21 @@ static void apply_chromatic_adaptation(AVWhitepointCoefficients src,
     ff_sws_matrix3x3_mul(mat, &tmp);
 }
 
-SwsMatrix3x3 ff_sws_get_adaptation(const AVPrimaryCoefficients *prim,
-                                   AVWhitepointCoefficients from,
-                                   AVWhitepointCoefficients to)
+void ff_sws_get_adaptation(const AVPrimaryCoefficients *prim,
+                           AVWhitepointCoefficients from,
+                           AVWhitepointCoefficients to,
+                           SwsMatrix3x3 *out)
 {
-    SwsMatrix3x3 rgb2xyz, xyz2rgb;
+    SwsMatrix3x3 rgb2xyz;
     const AVColorPrimariesDesc csp = {
         .prim = *prim,
         .wp = from,
     };
 
-    rgb2xyz = ff_sws_rgb2xyz(&csp);
-    xyz2rgb = ff_sws_xyz2rgb(&csp);
-    apply_chromatic_adaptation(from, to, &xyz2rgb);
-    ff_sws_matrix3x3_mul(&xyz2rgb, &rgb2xyz);
-    return xyz2rgb;
+    ff_sws_rgb2xyz(&csp, &rgb2xyz);
+    ff_sws_xyz2rgb(&csp, out);
+    apply_chromatic_adaptation(from, to, out);
+    ff_sws_matrix3x3_mul(out, &rgb2xyz);
 }
 
 static const AVWhitepointCoefficients d65 = {
@@ -216,31 +213,30 @@ static const SwsMatrix3x3 hpe = {{ /* HPE XYZ->LMS (D65) method */
     {  0.00000f, 0.00000f,  0.91822f },
 }};
 
-SwsMatrix3x3 ff_sws_ipt_rgb2lms(const AVColorPrimariesDesc *prim)
+void ff_sws_ipt_rgb2lms(const AVColorPrimariesDesc *prim, SwsMatrix3x3 *out)
 {
     const float c = 0.04f; // 4% crosstalk
     SwsMatrix3x3 rgb2xyz;
-    SwsMatrix3x3 m = {{
+
+    *out = (SwsMatrix3x3) {{
         { 1 - 2*c,       c,       c },
         {       c, 1 - 2*c,       c },
         {       c,       c, 1 - 2*c },
     }};
 
-    ff_sws_matrix3x3_mul(&m, &hpe);
+    ff_sws_matrix3x3_mul(out, &hpe);
 
     // Apply chromatic adaptation to D65 if the input white point differs
-    apply_chromatic_adaptation(prim->wp, d65, &m);
+    apply_chromatic_adaptation(prim->wp, d65, out);
 
-    rgb2xyz = ff_sws_rgb2xyz(prim);
-    ff_sws_matrix3x3_mul(&m, &rgb2xyz);
-    return m;
+    ff_sws_rgb2xyz(prim, &rgb2xyz);
+    ff_sws_matrix3x3_mul(out, &rgb2xyz);
 }
 
-SwsMatrix3x3 ff_sws_ipt_lms2rgb(const AVColorPrimariesDesc *prim)
+void ff_sws_ipt_lms2rgb(const AVColorPrimariesDesc *prim, SwsMatrix3x3 *out)
 {
-    SwsMatrix3x3 rgb2lms = ff_sws_ipt_rgb2lms(prim);
-    ff_sws_matrix3x3_invert(&rgb2lms);
-    return rgb2lms;
+    ff_sws_ipt_rgb2lms(prim, out);
+    ff_sws_matrix3x3_invert(out);
 }
 
 /* Test the sign of 'p' relative to the line 'ab' (barycentric coordinates) */

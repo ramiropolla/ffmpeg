@@ -52,17 +52,18 @@ void ff_sws_matrix3x3_mul(SwsMatrix3x3 *a, const SwsMatrix3x3 *b);
 void ff_sws_matrix3x3_invert(SwsMatrix3x3 *mat);
 void ff_sws_matrix3x3_apply(const SwsMatrix3x3 *mat, float vec[3]);
 
-SwsMatrix3x3 ff_sws_ipt_rgb2lms(const AVColorPrimariesDesc *prim);
-SwsMatrix3x3 ff_sws_ipt_lms2rgb(const AVColorPrimariesDesc *prim);
+void ff_sws_ipt_rgb2lms(const AVColorPrimariesDesc *prim, SwsMatrix3x3 *out);
+void ff_sws_ipt_lms2rgb(const AVColorPrimariesDesc *prim, SwsMatrix3x3 *out);
 
 /* Converts to/from XYZ (relative to the given white point, no adaptation) */
-SwsMatrix3x3 ff_sws_rgb2xyz(const AVColorPrimariesDesc *prim);
-SwsMatrix3x3 ff_sws_xyz2rgb(const AVColorPrimariesDesc *prim);
+void ff_sws_rgb2xyz(const AVColorPrimariesDesc *prim, SwsMatrix3x3 *out);
+void ff_sws_xyz2rgb(const AVColorPrimariesDesc *prim, SwsMatrix3x3 *out);
 
-/* Returns an RGB -> RGB adaptation matrix */
-SwsMatrix3x3 ff_sws_get_adaptation(const AVPrimaryCoefficients *prim,
-                                   AVWhitepointCoefficients from,
-                                   AVWhitepointCoefficients to);
+/* Fills an RGB -> RGB adaptation matrix */
+void ff_sws_get_adaptation(const AVPrimaryCoefficients *prim,
+                           AVWhitepointCoefficients from,
+                           AVWhitepointCoefficients to,
+                           SwsMatrix3x3 *out);
 
 /* Integer math definitions / helpers */
 typedef struct v3u8_t {

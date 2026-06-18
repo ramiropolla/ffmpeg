@@ -120,11 +120,7 @@ static Gamut gamut_from_colorspace(SwsColor fmt)
     const float Lw = av_q2d(fmt.max_luma), Lb = av_q2d(fmt.min_luma);
     const float Imax = pq_oetf(Lw);
 
-    return (Gamut) {
-        .encoding2lms = ff_sws_ipt_rgb2lms(encoding),
-        .lms2encoding = ff_sws_ipt_lms2rgb(encoding),
-        .lms2content  = ff_sws_ipt_lms2rgb(&content),
-        .content2lms  = ff_sws_ipt_rgb2lms(&content),
+    Gamut gamut = {
         .eotf         = av_csp_itu_eotf(fmt.trc),
         .eotf_inv     = av_csp_itu_eotf_inv(fmt.trc),
         .wp           = encoding->wp,
@@ -135,6 +131,11 @@ static Gamut gamut_from_colorspace(SwsColor fmt)
         .Lb           = Lb,
         .Lw           = Lw,
     };
+    ff_sws_ipt_rgb2lms(encoding, &gamut.encoding2lms);
+    ff_sws_ipt_lms2rgb(encoding, &gamut.lms2encoding);
+    ff_sws_ipt_lms2rgb(&content, &gamut.lms2content);
+    ff_sws_ipt_rgb2lms(&content, &gamut.content2lms);
+    return gamut;
 }
 
 static av_always_inline IPT rgb2ipt(RGB c, const SwsMatrix3x3 rgb2lms)
@@ -725,8 +726,8 @@ int ff_sws_color_map_generate_dynamic(v3u16_t *input, v3u16_t *output,
          * from src to dst, so to get absolute colorimetric semantics we have
          * to explicitly undo this adaptation with a * corresponding inverse.
          */
-        ctx.adaptation = ff_sws_get_adaptation(&ctx.map.dst.gamut,
-                                               ctx.dst.wp, ctx.src.wp);
+        ff_sws_get_adaptation(&ctx.map.dst.gamut, ctx.dst.wp, ctx.src.wp,
+                              &ctx.adaptation);
     }
 
     ret = avpriv_slicethread_create(&slicethread, &ctx, generate_slice, NULL, 0);
