@@ -34,7 +34,7 @@
 #include <fcntl.h>
 #endif
 
-#define UOPSIE 0
+#define UOPSIE 1
 
 typedef struct roots_t {
     struct AVTreeNode *op;
@@ -394,22 +394,120 @@ static void impl_func_name(AVBPrint *bp, const SwsAArch64OpImplParams *params)
     av_bprintf(bp, "_%u_%s_%04x_neon", params->block_size, pixel_type_names[params->type], mask16);
 }
 
+static void impl_func_name_uopbs(AVBPrint *bp, const SwsUOpWithBlockSize *uopbs)
+{
+    const SwsUOpParams *par = &uopbs->uop.par;
+    av_bprintf(bp, "ff_sws_%s", op_type_names[uopbs->uop.uop]);
+    switch (uopbs->uop.uop) {
+    case SWS_UOP_MOVE:
+        av_bprintf(bp, "_%012" PRIx64, move_to_mask(&par->move));
+        break;
+    case SWS_UOP_UNPACK:
+    case SWS_UOP_PACK:
+        av_bprintf(bp, "_%04x", pack_to_mask(&par->pack));
+        break;
+    case SWS_UOP_LSHIFT:
+    case SWS_UOP_RSHIFT:
+        av_bprintf(bp, "_%u", par->shift.amount);
+        break;
+    case SWS_UOP_CLEAR:
+        av_bprintf(bp, "_%04x", clear_to_mask(&par->clear));
+        break;
+    case SWS_UOP_LINEAR:
+    case SWS_UOP_LINEAR_FMA:
+        av_bprintf(bp, "_%010" PRIx64, linear_to_mask(&par->lin));
+        break;
+    case SWS_UOP_DITHER:
+        av_bprintf(bp, "_%04x_%u", dither_to_mask(&par->dither), par->dither.size_log2);
+        break;
+    }
+    uint16_t mask16 = 0;
+    for (int i = 0; i < 4; i++)
+        mask16 |= !!(uopbs->uop.mask & SWS_COMP(i)) << (i << 2);
+    av_bprintf(bp, "_%u_%s_%04x_neon", uopbs->block_size, pixel_type_names[uopbs->uop.type], mask16);
+}
+
+static const char op_types[SWS_UOP_TYPE_NB][32] = {
+    [SWS_UOP_READ_BIT      ] = "SWS_UOP_READ_BIT",
+    [SWS_UOP_READ_NIBBLE   ] = "SWS_UOP_READ_NIBBLE",
+    [SWS_UOP_READ_PACKED   ] = "SWS_UOP_READ_PACKED",
+    [SWS_UOP_READ_PLANAR   ] = "SWS_UOP_READ_PLANAR",
+    [SWS_UOP_WRITE_BIT     ] = "SWS_UOP_WRITE_BIT",
+    [SWS_UOP_WRITE_NIBBLE  ] = "SWS_UOP_WRITE_NIBBLE",
+    [SWS_UOP_WRITE_PACKED  ] = "SWS_UOP_WRITE_PACKED",
+    [SWS_UOP_WRITE_PLANAR  ] = "SWS_UOP_WRITE_PLANAR",
+    [SWS_UOP_SWAP_BYTES    ] = "SWS_UOP_SWAP_BYTES",
+    [SWS_UOP_MOVE          ] = "SWS_UOP_MOVE",
+    [SWS_UOP_UNPACK        ] = "SWS_UOP_UNPACK",
+    [SWS_UOP_PACK          ] = "SWS_UOP_PACK",
+    [SWS_UOP_LSHIFT        ] = "SWS_UOP_LSHIFT",
+    [SWS_UOP_RSHIFT        ] = "SWS_UOP_RSHIFT",
+    [SWS_UOP_CLEAR         ] = "SWS_UOP_CLEAR",
+    [SWS_UOP_TO_U8         ] = "SWS_UOP_TO_U8",
+    [SWS_UOP_TO_U16        ] = "SWS_UOP_TO_U16",
+    [SWS_UOP_TO_U32        ] = "SWS_UOP_TO_U32",
+    [SWS_UOP_TO_F32        ] = "SWS_UOP_TO_F32",
+    [SWS_UOP_EXPAND_PAIR   ] = "SWS_UOP_EXPAND_PAIR",
+    [SWS_UOP_EXPAND_QUAD   ] = "SWS_UOP_EXPAND_QUAD",
+    [SWS_UOP_MIN           ] = "SWS_UOP_MIN",
+    [SWS_UOP_MAX           ] = "SWS_UOP_MAX",
+    [SWS_UOP_SCALE         ] = "SWS_UOP_SCALE",
+    [SWS_UOP_LINEAR        ] = "SWS_UOP_LINEAR",
+    [SWS_UOP_LINEAR_FMA    ] = "SWS_UOP_LINEAR_FMA",
+    [SWS_UOP_DITHER        ] = "SWS_UOP_DITHER",
+};
+
+static const char pixel_types[SWS_PIXEL_TYPE_NB][32] = {
+    [SWS_PIXEL_U8 ] = "SWS_PIXEL_U8",
+    [SWS_PIXEL_U16] = "SWS_PIXEL_U16",
+    [SWS_PIXEL_U32] = "SWS_PIXEL_U32",
+    [SWS_PIXEL_F32] = "SWS_PIXEL_F32",
+};
+
 static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
 {
-#if 0
+#if 1
+    const SwsUOpParams *par = &params->par;
     av_bprintf(bp, "ENTRY(");
-    impl_func_name(&buf, &size, params);
+    impl_func_name(bp, params);
     av_bprintf(bp, ", {");
-    const ParamField **fields = op_fields[params->uop];
-    for (int i = 0; fields[i]; i++) {
-        const ParamField *field = fields[i];
-        void *p = (void *) (((uintptr_t) params) + field->offset);
-        if (i)
-            av_bprintf(bp, ",");
-        av_bprintf(bp, " .%s = ", field->name);
-        field->print_val(&buf, &size, p);
+    av_bprintf(bp, " .uop = %s", op_types[params->uop]);
+    switch (params->uop) {
+    case SWS_UOP_MOVE:
+        av_bprintf(bp, ", .par.move = { .num_moves = %d, .dst = {%d, %d, %d, %d, %d, %d}, .src = {%d, %d, %d, %d, %d, %d} }",
+                   par->move.num_moves,
+                   par->move.dst[0], par->move.dst[1], par->move.dst[2],
+                   par->move.dst[3], par->move.dst[4], par->move.dst[5],
+                   par->move.src[0], par->move.src[1], par->move.src[2],
+                   par->move.src[3], par->move.src[4], par->move.src[5]);
+        break;
+    case SWS_UOP_UNPACK:
+    case SWS_UOP_PACK:
+        av_bprintf(bp, ", .par.pack = { .pattern = {%d, %d, %d, %d} }",
+                   par->pack.pattern[0], par->pack.pattern[1],
+                   par->pack.pattern[2], par->pack.pattern[3]);
+        break;
+    case SWS_UOP_LSHIFT:
+    case SWS_UOP_RSHIFT:
+        av_bprintf(bp, ", .par.shift.amount = %u", par->shift.amount);
+        break;
+    case SWS_UOP_CLEAR:
+        av_bprintf(bp, ", .par.clear = { .one = 0x%0x, .zero = 0x%0x }", par->clear.one, par->clear.zero);
+        break;
+    case SWS_UOP_LINEAR:
+    case SWS_UOP_LINEAR_FMA:
+        av_bprintf(bp, ", .par.lin = { .one = 0x%x, .zero = 0x%x }", par->lin.one, par->lin.zero);
+        break;
+    case SWS_UOP_DITHER:
+        av_bprintf(bp, ", .par.dither = { .y_offset = {%u, %u, %u, %u}, .size_log2 = %u }",
+                   (par->dither.y_offset[0] == 0xf) ? 0 : par->dither.y_offset[0],
+                   (par->dither.y_offset[1] == 0xf) ? 0 : par->dither.y_offset[1],
+                   (par->dither.y_offset[2] == 0xf) ? 0 : par->dither.y_offset[2],
+                   (par->dither.y_offset[3] == 0xf) ? 0 : par->dither.y_offset[3],
+                   par->dither.size_log2);
+        break;
     }
-    av_bprintf(bp, " })");
+    av_bprintf(bp, ", .block_size = %u, .type = %s, .mask = 0x%x })", params->block_size, pixel_types[params->type], params->mask);
 #else
     // f32_linear_xyzw_xxx0x_xxx0x_xxx0x_000x0_8
     const SwsAArch64OpImplParams *p = params;
@@ -626,9 +724,58 @@ static int print_uop(void *opaque, void *elem)
     SwsUOpWithBlockSize *uopbs = (SwsUOpWithBlockSize *) elem;
     FILE *fp = (FILE *) opaque;
 
+    AVBPrint bp;
+    av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
+#if 0
     char buf[SWS_UOP_NAME_MAX];
     ff_sws_uop_name(&uopbs->uop, buf);
     fprintf(fp, "%s_%d\n", buf, uopbs->block_size);
+#else
+    const SwsUOpParams *par = &uopbs->uop.par;
+    av_bprintf(&bp, "ENTRY(");
+    impl_func_name_uopbs(&bp, uopbs);
+    av_bprintf(&bp, ", {");
+    av_bprintf(&bp, " .uop = %s", op_types[uopbs->uop.uop]);
+    switch (uopbs->uop.uop) {
+    case SWS_UOP_MOVE:
+        av_bprintf(&bp, ", .par.move = { .num_moves = %d, .dst = {%d, %d, %d, %d, %d, %d}, .src = {%d, %d, %d, %d, %d, %d} }",
+                   par->move.num_moves,
+                   par->move.dst[0], par->move.dst[1], par->move.dst[2],
+                   par->move.dst[3], par->move.dst[4], par->move.dst[5],
+                   par->move.src[0], par->move.src[1], par->move.src[2],
+                   par->move.src[3], par->move.src[4], par->move.src[5]);
+        break;
+    case SWS_UOP_UNPACK:
+    case SWS_UOP_PACK:
+        av_bprintf(&bp, ", .par.pack = { .pattern = {%d, %d, %d, %d} }",
+                   par->pack.pattern[0], par->pack.pattern[1],
+                   par->pack.pattern[2], par->pack.pattern[3]);
+        break;
+    case SWS_UOP_LSHIFT:
+    case SWS_UOP_RSHIFT:
+        av_bprintf(&bp, ", .par.shift.amount = %u", par->shift.amount);
+        break;
+    case SWS_UOP_CLEAR:
+        av_bprintf(&bp, ", .par.clear = { .one = 0x%0x, .zero = 0x%0x }", par->clear.one, par->clear.zero);
+        break;
+    case SWS_UOP_LINEAR:
+    case SWS_UOP_LINEAR_FMA:
+        av_bprintf(&bp, ", .par.lin = { .one = 0x%x, .zero = 0x%x }", par->lin.one, par->lin.zero);
+        break;
+    case SWS_UOP_DITHER:
+        av_bprintf(&bp, ", .par.dither = { .y_offset = {%u, %u, %u, %u}, .size_log2 = %u }",
+                   (par->dither.y_offset[0] == 0xf) ? 0 : par->dither.y_offset[0],
+                   (par->dither.y_offset[1] == 0xf) ? 0 : par->dither.y_offset[1],
+                   (par->dither.y_offset[2] == 0xf) ? 0 : par->dither.y_offset[2],
+                   (par->dither.y_offset[3] == 0xf) ? 0 : par->dither.y_offset[3],
+                   par->dither.size_log2);
+        break;
+    }
+    av_bprintf(&bp, ", .block_size = %u, .type = %s, .mask = 0x%x })", uopbs->block_size, pixel_types[uopbs->uop.type], uopbs->uop.mask);
+#endif
+
+    fprintf(fp, "%s\n", bp.str);
+    av_bprint_finalize(&bp, NULL);
 
     av_free(uopbs);
 
@@ -656,16 +803,13 @@ int main(int argc, char *argv[])
      * Generate a C file with all the unique function parameter entries
      * collected by aarch64_enum_ops().
      */
-#if 0
     printf("/*\n");
     printf(" * This file is automatically generated. Do not edit manually.\n");
     printf(" * To regenerate, run: make fate-sws-ops-entries-aarch64 GEN=1\n");
     printf(" */\n");
     printf("\n");
-#endif
 
 #if UOPSIE
-    printf("UOPS\n");
     av_tree_enumerate(roots.uop, stdout, NULL, print_uop);
 #else
     av_tree_enumerate(roots.op, stdout, NULL, print_op);
