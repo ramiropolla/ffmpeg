@@ -93,11 +93,14 @@ static uint64_t linear_to_mask(const SwsLinearUOp *linear)
     return mask;
 }
 
-static uint16_t dither_to_mask(const SwsDitherUOp *dither)
+static uint16_t dither_to_mask(const SwsDitherUOp *dither, SwsCompMask omask)
 {
     uint16_t mask = 0;
     for (int i = 0; i < 4; i++)
-        mask |= dither->y_offset[i] << (i << 2);
+        if (omask & SWS_COMP(i))
+            mask |= dither->y_offset[i] << (i << 2);
+        else
+            mask |= 0xf << (i << 2);
     return mask;
 }
 
@@ -268,7 +271,7 @@ static void impl_func_name(AVBPrint *bp, const SwsUOpWithBlockSize *uopbs)
         av_bprintf(bp, "_%010" PRIx64, linear_to_mask(&par->lin));
         break;
     case SWS_UOP_DITHER:
-        av_bprintf(bp, "_%04x_%u", dither_to_mask(&par->dither), par->dither.size_log2);
+        av_bprintf(bp, "_%04x_%u", dither_to_mask(&par->dither, uopbs->uop.mask), par->dither.size_log2);
         break;
     }
     uint16_t mask16 = 0;
