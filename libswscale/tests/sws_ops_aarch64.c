@@ -32,11 +32,6 @@
 #include <fcntl.h>
 #endif
 
-typedef struct roots_t {
-    struct AVTreeNode *op;
-    struct AVTreeNode *uop;
-} roots_t;
-
 typedef struct SwsUOpWithBlockSize {
     SwsUOp uop;
     int block_size;
@@ -140,9 +135,7 @@ error:
 
 static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
 {
-    roots_t *roots = (roots_t *) opaque;
-    struct AVTreeNode **root = &roots->op;
-    struct AVTreeNode **root_uop = &roots->uop;
+    struct AVTreeNode **root = (struct AVTreeNode **) opaque;
     int ret;
 
     /* Skip ops lists which include filtering, since this is still not
@@ -198,7 +191,7 @@ static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
                         uop->mask |= SWS_COMP(uop->par.move.dst[j]);
                 break;
             }
-            ret = aarch64_collect_uop(uop, root_uop, cur_block_size);
+            ret = aarch64_collect_uop(uop, root, cur_block_size);
             if (ret < 0)
                 goto end;
         }
@@ -329,11 +322,6 @@ static int print_uop(void *opaque, void *elem)
 
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
-#if 0
-    char buf[SWS_UOP_NAME_MAX];
-    ff_sws_uop_name(&uopbs->uop, buf);
-    fprintf(fp, "%s_%d\n", buf, uopbs->block_size);
-#else
     const SwsUOpParams *par = &uopbs->uop.par;
     av_bprintf(&bp, "ENTRY(");
     impl_func_name(&bp, uopbs);
@@ -375,7 +363,6 @@ static int print_uop(void *opaque, void *elem)
         break;
     }
     av_bprintf(&bp, ", .block_size = %u, .type = %s, .mask = 0x%x })", uopbs->block_size, pixel_types[uopbs->uop.type], uopbs->uop.mask);
-#endif
 
     fprintf(fp, "%s\n", bp.str);
     av_bprint_finalize(&bp, NULL);
@@ -388,7 +375,7 @@ static int print_uop(void *opaque, void *elem)
 /*********************************************************************/
 int main(int argc, char *argv[])
 {
-    roots_t roots = { 0 };
+    struct AVTreeNode *root = NULL;
     int ret = 1;
 
 #ifdef _WIN32
@@ -399,7 +386,7 @@ int main(int argc, char *argv[])
     if (!ctx)
         goto fail;
 
-    ret = ff_sws_enum_op_lists(ctx, &roots, AV_PIX_FMT_NONE, AV_PIX_FMT_NONE,
+    ret = ff_sws_enum_op_lists(ctx, &root, AV_PIX_FMT_NONE, AV_PIX_FMT_NONE,
                                register_op);
 
     /**
@@ -412,11 +399,10 @@ int main(int argc, char *argv[])
     printf(" */\n");
     printf("\n");
 
-    av_tree_enumerate(roots.uop, stdout, NULL, print_uop);
+    av_tree_enumerate(root, stdout, NULL, print_uop);
 
 fail:
-    av_tree_destroy(roots.op);
-    av_tree_destroy(roots.uop);
+    av_tree_destroy(root);
     sws_free_context(&ctx);
     return ret;
 }
