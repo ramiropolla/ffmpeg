@@ -315,6 +315,7 @@ static const char pixel_types[SWS_PIXEL_TYPE_NB][32] = {
 
 /*********************************************************************/
 /* Serialize SwsUOp for one uop. */
+// TODO use generate_entry_struct()
 static int print_uop(void *opaque, void *elem)
 {
     SwsUOpWithBlockSize *uopbs = (SwsUOpWithBlockSize *) elem;
