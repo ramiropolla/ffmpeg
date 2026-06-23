@@ -541,7 +541,6 @@ static int translate_move(SwsUOpList *ops, const SwsOp *op)
         if (op->swizzle.in[i] == i)
             todo &= ~SWS_COMP(i);
     }
-    uop.mask = todo;
 
     /* Mask of components whose value is required for the final output */
     SwsCompMask needed = 0;
@@ -718,12 +717,8 @@ static int translate_linear_op(SwsContext *ctx, SwsUOpList *ops,
     uint32_t exact = 0;
 
     for (int i = 0; i < 4; i++) {
-        if (!SWS_OP_NEEDED(op, i) || !(op->lin.mask & SWS_MASK_ROW(i))) {
-            for (int j = 0; j < 5; j++)
-                uop.par.lin.zero |= SWS_MASK(i, j);
-            continue;
-        }
-        uop.mask |= SWS_COMP(i);
+        if (SWS_OP_NEEDED(op, i) && (op->lin.mask & SWS_MASK_ROW(i)))
+            uop.mask |= SWS_COMP(i);
         bool nonzero = (op->lin.m[i][4].num != 0);
         for (int j = 0; j < 5; j++) {
             const AVRational k = op->lin.m[i][j];
