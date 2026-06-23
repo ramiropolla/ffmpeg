@@ -193,6 +193,9 @@ static int register_op(SwsContext *ctx, void *opaque, SwsOpList *ops)
                 /* The element size and type don't matter. */
                 cur_block_size = cur_block_size * ff_sws_pixel_type_size(uop->type);
                 uop->type = SWS_PIXEL_U8;
+                for (int j = 0; j < uop->par.move.num_moves; j++)
+                    if (uop->par.move.dst[j] >= 0)
+                        uop->mask |= SWS_COMP(uop->par.move.dst[j]);
                 break;
             }
             ret = aarch64_collect_uop(uop, root_uop, cur_block_size);
