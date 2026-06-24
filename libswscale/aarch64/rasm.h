@@ -234,8 +234,9 @@ void rasm_annotate_next(RasmContext *rctx, const char *comment);
 void rasm_annotate_nextf(RasmContext *rctx, char *s, size_t n,
                          const char *fmt, ...) av_printf_format(4, 5);
 
-/* Emit the assembled IR as GNU assembler text to bp. */
-int rasm_print(RasmContext *rctx, AVBPrint *bp);
+/* Emit the assembled IR as GNU assembler text to bp.
+ * When jit is true, function/endfunc markers are omitted. */
+int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit);
 
 /*********************************************************************/
 /* AArch64-specific */

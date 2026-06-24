@@ -392,10 +392,12 @@ static void print_node_label(const RasmContext *rctx,
 
 static void print_node_function(const RasmContext *rctx,
                                 AVBPrint *bp, unsigned line_start,
-                                const RasmNode *node)
+                                const RasmNode *node, bool jit)
 {
-    av_bprintf(bp, "function %s, export=%d, jumpable=%d",
-               node->func.name, node->func.export, node->func.jumpable);
+    if (!jit) {
+        av_bprintf(bp, "function %s, export=%d, jumpable=%d",
+                   node->func.name, node->func.export, node->func.jumpable);
+    }
 }
 
 /*********************************************************************/
@@ -403,9 +405,11 @@ static void print_node_function(const RasmContext *rctx,
 
 static void print_node_endfunc(const RasmContext *rctx,
                                AVBPrint *bp, unsigned line_start,
-                               const RasmNode *node)
+                               const RasmNode *node, bool jit)
 {
-    av_bprintf(bp, "endfunc");
+    if (!jit) {
+        av_bprintf(bp, "endfunc");
+    }
 }
 
 /*********************************************************************/
@@ -419,7 +423,7 @@ static void print_node_directive(const RasmContext *rctx,
 }
 
 /*********************************************************************/
-int rasm_print(RasmContext *rctx, AVBPrint *bp)
+int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit)
 {
     if (rctx->error)
         return rctx->error;
@@ -462,10 +466,10 @@ int rasm_print(RasmContext *rctx, AVBPrint *bp)
                 print_node_label(rctx, bp, line_start, node, local_labels);
                 break;
             case RASM_NODE_FUNCTION:
-                print_node_function(rctx, bp, line_start, node);
+                print_node_function(rctx, bp, line_start, node, jit);
                 break;
             case RASM_NODE_ENDFUNC:
-                print_node_endfunc(rctx, bp, line_start, node);
+                print_node_endfunc(rctx, bp, line_start, node, jit);
                 break;
             case RASM_NODE_DIRECTIVE:
                 print_node_directive(rctx, bp, line_start, node);
