@@ -372,9 +372,9 @@ static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplPara
                                 SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
-    RasmOp src_ptr = s->tmp0;
+    s->dither_src_ptr = s->tmp0;
 
-    i_ldr(r, src_ptr, s->impl_priv);                        CMT("void *ptr = impl->priv.ptr;");
+    i_ldr(r, s->dither_src_ptr, s->impl_priv);              CMT("void *ptr = impl->priv.ptr;");
     asmgen_set_load_cont_node(s);
 }
 
