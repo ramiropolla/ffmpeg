@@ -30,6 +30,32 @@ typedef struct SwsAArch64OpRegs {
 } SwsAArch64OpRegs;
 
 /*********************************************************************/
+/* Immediate values: scalar constants broadcast to all vector lanes,  *
+ * pre-loaded into v27..v31 before the inner loop.                    */
+
+#define SWS_AARCH64_MAX_IMM    5
+#define SWS_AARCH64_REGID_VIMM 27
+
+/* Data pool: 128-bit constant vectors pre-loaded into v8..v15 before
+ * the inner loop, loaded via adr + ldr from a pool after the function. */
+
+#define SWS_AARCH64_MAX_DATA_VECS 8
+#define SWS_AARCH64_REGID_VDATA   8
+
+typedef struct SwsAArch64Immediate {
+    RasmOp op;
+    uint32_t val;
+    uint8_t len;
+    uint8_t repeat_len;
+    uint8_t small_value;
+} SwsAArch64Immediate;
+
+typedef struct SwsAArch64RegState {
+    uint32_t used;
+    uint32_t clobbered;
+} SwsAArch64RegState;
+
+/*********************************************************************/
 typedef struct SwsAArch64Context {
     RasmContext *rctx;
 
@@ -54,6 +80,8 @@ typedef struct SwsAArch64Context {
     RasmOp tmp0;
     RasmOp tmp1;
 
+// #ifdef AARCH64_ASMGEN_CPS
+#if 1
     /* CPS-related variables. */
     RasmOp op0_func;
     RasmOp op1_impl;
@@ -61,6 +89,16 @@ typedef struct SwsAArch64Context {
     RasmNode *load_cont_node;
     RasmOp impl_priv;
     SwsAArch64OpRegs regs;
+#elif defined(AARCH64_ASMGEN_JIT)
+    /* Immediates. */
+    SwsAArch64Immediate imm[SWS_AARCH64_MAX_IMM];
+    int                 imm_count;
+
+    /* 128-bit constant vectors pre-loaded into v8..v15 from a data pool. */
+    uint32_t data[SWS_AARCH64_MAX_DATA_VECS * 4];
+    int      n_data;
+    RasmOp   vdata[SWS_AARCH64_MAX_DATA_VECS];
+#endif
 
     /* Read/Write data pointers and padding. */
     RasmOp in[4];
@@ -73,6 +111,10 @@ typedef struct SwsAArch64Context {
     size_t el_count;
     size_t vec_size;
     bool use_vh;
+
+    /* TOOD */
+    int block_size;
+    SwsContext *sws;
 } SwsAArch64Context;
 
 #endif /* SWSCALE_AARCH64_OPS_ASMGEN_H */
