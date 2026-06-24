@@ -15,6 +15,14 @@ NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops.o
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_impl_conv.o
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_neon.gen.o
 
+ifeq ($(CONFIG_LLVM),yes)
+NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_asmgen.o    \
+                                aarch64/ops_jit.o       \
+                                aarch64/ops_jit_llvm.o  \
+                                aarch64/rasm.o          \
+                                aarch64/rasm_print.o
+endif
+
 $(SUBDIR)aarch64/ops_neon.gen.S: $(SUBDIR)aarch64/ops_static$(HOSTEXESUF)
 	$(M)$< > $@.tmp
 	$(CP) $@.tmp $@

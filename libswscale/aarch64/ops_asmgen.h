@@ -41,6 +41,18 @@ typedef struct SwsAArch64OpRegs {
 } SwsAArch64OpRegs;
 
 /*********************************************************************/
+typedef union SwsAArch64Vector {
+    uint32_t u32[4];
+    uint64_t u64[2];
+} SwsAArch64Vector;
+
+typedef struct SwsAArch64ConstVec {
+    SwsAArch64Vector vec;
+    RasmOp op;
+    int    op_idx;  /* index of last 32-bit element used. */
+} SwsAArch64ConstVec;
+
+/*********************************************************************/
 typedef struct SwsAArch64Context {
     RasmContext *rctx;
 
@@ -66,6 +78,11 @@ typedef struct SwsAArch64Context {
     RasmOp cont;
     RasmNode *load_cont_node;
     SwsAArch64OpRegs regs;
+
+    /* JIT-related variables. */
+#define SWS_AARCH64_MAX_CONST_VECS 16
+    SwsAArch64ConstVec data[SWS_AARCH64_MAX_CONST_VECS];
+    int data_count;
 
     /* Read/Write data pointers and padding. */
     RasmOp in[4];
