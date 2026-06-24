@@ -95,8 +95,8 @@ static void convert_swizzle_to_moves(const SwsOp *op, SwsAArch64OpImplParams *ou
  * Convert SwsOp to a SwsAArch64OpImplParams. Read the comments regarding
  * SwsAArch64OpImplParams in ops_impl.h for more information.
  */
-static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
-                                   int block_size, SwsAArch64OpImplParams *out)
+int ff_sws_aarch64_ops_translate(SwsContext *ctx, const SwsOpList *ops, int n,
+                                 int block_size, SwsAArch64OpImplParams *out)
 {
     const SwsOp *op = &ops->ops[n];
 
