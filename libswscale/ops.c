@@ -34,6 +34,7 @@
 extern const SwsOpBackend backend_c;
 extern const SwsOpBackend backend_murder;
 extern const SwsOpBackend backend_aarch64;
+extern const SwsOpBackend backend_aarch64_jit;
 extern const SwsOpBackend backend_x86;
 #if HAVE_SPIRV_HEADERS_SPIRV_H || HAVE_SPIRV_UNIFIED1_SPIRV_H
 extern const SwsOpBackend backend_spirv;
@@ -45,6 +46,9 @@ extern const SwsOpBackend backend_glsl;
 const SwsOpBackend * const ff_sws_op_backends[] = {
     &backend_murder,
 #if ARCH_AARCH64 && HAVE_NEON
+#if CONFIG_LLVM
+    &backend_aarch64_jit,
+#endif
     &backend_aarch64,
 #elif ARCH_X86_64 && HAVE_X86ASM
     &backend_x86,

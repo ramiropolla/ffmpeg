@@ -29,8 +29,7 @@
 #include "libswscale/ops_chain.h"
 #include "libswscale/op_list_gen_template.c"
 #include "libswscale/ops_dispatch.h"
-
-#include "libswscale/aarch64/ops_impl_conv.c"
+#include "libswscale/aarch64/ops_impl.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -196,7 +195,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
 
     for (int i = 0; i < ops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        ret = convert_to_aarch64_impl(ctx, ops, i, block_size, &params);
+        ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params);
         if (ret == AVERROR(ENOTSUP))
             continue;
         if (ret < 0)
