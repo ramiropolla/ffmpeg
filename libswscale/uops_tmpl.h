@@ -34,7 +34,7 @@
 #include "libavutil/attributes.h"
 
 #include "ops_chain.h"
-#include "uops_macros.h"
+#include "uops_macros_wrapper.h"
 
 #ifndef SWS_BLOCK_SIZE
 #  define SWS_BLOCK_SIZE 32
