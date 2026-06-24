@@ -19,7 +19,9 @@
  */
 
 #include <stdarg.h>
+#include <string.h>
 
+#include "libavutil/error.h"
 #include "libavutil/mem.h"
 
 #include "rasm.h"
