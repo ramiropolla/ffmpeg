@@ -24,7 +24,7 @@
  * may inadvertently declare any C syntax. The following header only declares
  * further macros, and is therefore safe.
  */
-#include "../uops_macros.h"
+#include "../uops_macros_wrapper.h"
 
 /**
  * NASM expects one statement per source line, but the C preprocessor expands
@@ -45,7 +45,7 @@
 #define DECL_OP_MACRO(...) {DECL_OP MACRO __VA_ARGS__},
 #define DEF_MACRO(UOP, TYPE)                            \
     %define DECL_##TYPE##_##UOP(MACRO)                  \
-    MULTILINE SWS_FOR_##TYPE##_##UOP(DECL_OP_MACRO)     \
+    MULTILINE SWS_FOR(TYPE, UOP, DECL_OP_MACRO)         \
     dummy
 
 #define DEF_ALL_MACROS(TYPE)                \

@@ -27,7 +27,7 @@
 #include "libswscale/filters.h"
 #include "libswscale/ops_dispatch.h"
 #include "libswscale/uops.h"
-#include "libswscale/uops_macros.h"
+#include "libswscale/uops_macros_wrapper.h"
 
 #include "checkasm.h"
 
