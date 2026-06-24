@@ -224,6 +224,10 @@ x86 SIMD kernels.
 @item aarch64
 AArch64 NEON kernels.
 
+@item aarch64_jit
+JIT-compiled AArch64 NEON kernels. Requires FFmpeg to be built with
+@code{--enable-llvm --enable-version3}.
+
 @item spirv
 Vulkan SPIR-V backend.
 

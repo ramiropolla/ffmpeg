@@ -41,6 +41,18 @@ typedef struct SwsAArch64OpRegs {
 } SwsAArch64OpRegs;
 
 /*********************************************************************/
+typedef union SwsAArch64Vector {
+    uint32_t u32[4];
+    uint64_t u64[2];
+} SwsAArch64Vector;
+
+typedef struct SwsAArch64ConstVec {
+    SwsAArch64Vector vec;
+    RasmOp op;
+    int    op_idx;  /* index of last 32-bit element used. */
+} SwsAArch64ConstVec;
+
+/*********************************************************************/
 typedef struct SwsAArch64Context {
     RasmContext *rctx;
 
@@ -67,6 +79,11 @@ typedef struct SwsAArch64Context {
     RasmNode *load_cont_node;
     SwsAArch64OpRegs regs;
 
+    /* JIT-related variables. */
+#define SWS_AARCH64_MAX_CONST_VECS 16
+    SwsAArch64ConstVec data[SWS_AARCH64_MAX_CONST_VECS];
+    int data_count;
+
     /* Read/Write data pointers and padding. */
     RasmOp in[4];
     RasmOp out[4];
@@ -75,8 +92,10 @@ typedef struct SwsAArch64Context {
 
     /* Process function. */
     AArch64RegState regstate;
+    RasmNode *prologue;
     RasmNode *setup;
     RasmNode *loop;
+    RasmNode *epilogue;
 
     /* Vector register dimensions. */
     size_t el_size;
@@ -91,6 +110,7 @@ void ff_sws_aarch64_asmgen_reshape_vecs(SwsAArch64Context *s, SwsAArch64OpRegs *
 void ff_sws_aarch64_asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask);
 void ff_sws_aarch64_asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                               SwsAArch64OpRegs *regs);
+void ff_sws_aarch64_asmgen_frame(SwsAArch64Context *s);
 
 /* Looping when s->use_vh is set. */
 #define LOOP_VH(s, mask, idx) if (s->use_vh) LOOP(mask, idx)

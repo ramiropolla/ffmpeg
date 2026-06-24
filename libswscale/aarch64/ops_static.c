@@ -539,6 +539,9 @@ static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
     rasm_set_current_node(r, s->loop);
     i_mov(r, s->impl, s->op1_impl);                     CMT("impl = op1_impl;");
     i_blr(r, s->op0_func);                              CMT("op0_func();");
+
+    /* Emit frame. */
+    ff_sws_aarch64_asmgen_frame(s);
 }
 
 /*********************************************************************/

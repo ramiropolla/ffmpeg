@@ -87,7 +87,7 @@ void ff_sws_aarch64_asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsC
      */
 
     /* Function prologue */
-    RasmNode *prologue = rasm_get_current_node(r);
+    s->prologue = rasm_get_current_node(r);
 
     /* Load values from exec. */
     RasmOp exec_in[4];
@@ -138,11 +138,9 @@ void ff_sws_aarch64_asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsC
     i_bne(r, next_row);                     CMT("    goto next_row;");
 
     /* Function epilogue */
-    RasmNode *epilogue = rasm_get_current_node(r);
+    s->epilogue = rasm_get_current_node(r);
 
     i_ret(r);
-
-    a64reg_emit(r, &s->regstate, prologue, epilogue);
 }
 
 /*********************************************************************/
@@ -1041,4 +1039,11 @@ void ff_sws_aarch64_asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams
     default:
         break;
     }
+}
+
+/*********************************************************************/
+void ff_sws_aarch64_asmgen_frame(SwsAArch64Context *s)
+{
+    RasmContext *r = s->rctx;
+    a64reg_emit(r, &s->regstate, s->prologue, s->epilogue);
 }

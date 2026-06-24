@@ -42,7 +42,10 @@ ifeq ($(ARCH_X86_64),yes)
 SWS_UNSTABLE_BACKENDS-$(HAVE_X86ASM)                 += x86
 endif
 ifeq ($(ARCH_AARCH64),yes)
-SWS_UNSTABLE_BACKENDS-$(HAVE_NEON)                   += aarch64
+ifeq ($(HAVE_NEON),yes)
+SWS_UNSTABLE_BACKENDS-yes                            += aarch64
+SWS_UNSTABLE_BACKENDS-$(CONFIG_LLVM)                 += aarch64_jit
+endif
 endif
 # TODO: enable spirv tests once they pass on all Vulkan devices.
 # SWS_UNSTABLE_BACKENDS-$(HAVE_SPIRV_HEADERS_SPIRV_H)  += spirv
