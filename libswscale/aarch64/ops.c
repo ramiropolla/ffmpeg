@@ -25,6 +25,7 @@
 #include "libavutil/tree.h"
 
 #include "ops_impl.h"
+#include "ops.h"
 
 /**
  * Check that there is no mismatch for the SwsOpExec/SwsOpImpl offset
@@ -147,7 +148,7 @@ static int aarch64_setup_dither(const SwsAArch64OpImplParams *p,
 }
 
 /*********************************************************************/
-static int aarch64_setup(const SwsOpList *ops, int block_size, int n,
+int ff_sws_aarch64_setup(const SwsOpList *ops, int block_size, int n,
                          const SwsAArch64OpImplParams *p, SwsImplResult *out)
 {
     const SwsOp *op = &ops->ops[n];
@@ -229,7 +230,7 @@ static int aarch64_compile(SwsContext *ctx, const SwsOpList *ops,
             goto error;
         }
         SwsImplResult res = { 0 };
-        ret = aarch64_setup(ops, block_size, i, &params, &res);
+        ret = ff_sws_aarch64_setup(ops, block_size, i, &params, &res);
         if (ret < 0)
             goto error;
         ret = ff_sws_op_chain_append(chain, func, res.free, &res.priv);

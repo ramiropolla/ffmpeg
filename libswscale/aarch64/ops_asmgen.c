@@ -23,11 +23,6 @@
 /*********************************************************************/
 /* Helpers functions. */
 
-/* Looping when s->use_vh is set. */
-#define LOOP_VH(s, mask, idx) if (s->use_vh) LOOP(mask, idx)
-#define LOOP_MASK_VH(s, p, idx) if (s->use_vh) LOOP_MASK(p, idx)
-#define LOOP_MASK_BWD_VH(s, p, idx) if (s->use_vh) LOOP_MASK_BWD(p, idx)
-
 /* Inline rasm comments. */
 #define CMT(comment)   rasm_annotate(r, comment)
 #define CMTF(fmt, ...) rasm_annotatef(r, (char[128]){0}, 128, fmt, __VA_ARGS__)
