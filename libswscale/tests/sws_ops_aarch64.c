@@ -195,7 +195,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
 
     for (int i = 0; i < ops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        ret = convert_to_aarch64_impl(ctx, ops, i, block_size, &params);
+        ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params);
         if (ret == AVERROR(ENOTSUP))
             continue;
         if (ret < 0)
