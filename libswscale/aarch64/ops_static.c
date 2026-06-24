@@ -174,7 +174,7 @@ static void asmgen_set_load_cont_node(SwsAArch64Context *s)
  *
  * The read/write data pointers and padding values first use up the
  * remaining free caller-saved registers, and only then are the
- * caller-saved registers (r19-r28) used.
+ * callee-saved registers (r19-r29) used.
  *
  * The Link Register (r30) is used when calling the first kernel, so it
  * must be saved.
@@ -278,15 +278,15 @@ static void asmgen_setup_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplPa
 {
     RasmContext *r = s->rctx;
     AArch64VecViews shift_vec   = a64op_vec_views(regs->vk[0]);
-    RasmOp          bitmask_vec = regs->vk[1];
+    AArch64VecViews bitmask_vec = a64op_vec_views(regs->vk[1]);
 
     rasm_annotate_next(r, "v128 shift_vec = impl->priv.v128;");
     i_ldr(r, shift_vec.q, s->impl_priv);
     asmgen_set_load_cont_node(s);
     if (p->block_size == 16) {
-        i_movi(r, bitmask_vec, IMM(1));                     CMT("v128 bitmask_vec = {1 <repeats 16 times>};");
+        i_movi(r, bitmask_vec.b16, IMM(1));                 CMT("v128 bitmask_vec = {1 <repeats 16 times>};");
     } else {
-        i_movi(r, bitmask_vec, IMM(1));                     CMT("v128 bitmask_vec = {1 <repeats 8 times>, 0 <repeats 8 times>};");
+        i_movi(r, bitmask_vec.b8,  IMM(1));                 CMT("v128 bitmask_vec = {1 <repeats 8 times>, 0 <repeats 8 times>};");
     }
 }
 
@@ -294,10 +294,10 @@ static void asmgen_setup_read_nibble(SwsAArch64Context *s, const SwsAArch64OpImp
                                      SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
-    RasmOp nibble_mask    = v_8b(regs->vk[0]);
+    AArch64VecViews nibble_mask = a64op_vec_views(regs->vk[0]);
 
     rasm_annotate_next(r, "v128 nibble_mask = {0xf <repeats 8 times>, 0x0 <repeats 8 times>};");
-    i_movi(r, nibble_mask, IMM(0x0f));
+    i_movi(r, nibble_mask.b8, IMM(0x0f));
 }
 
 /*********************************************************************/
