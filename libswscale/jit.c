@@ -70,6 +70,9 @@ void *ff_sws_jit_alloc(size_t size)
 
 int ff_sws_jit_protect(void *ptr, size_t size)
 {
+    DWORD old_protect;
+    if (!VirtualProtect(ptr, size, PAGE_EXECUTE_READ, &old_protect))
+        return AVERROR(EINVAL);
     return 0;
 }
 
