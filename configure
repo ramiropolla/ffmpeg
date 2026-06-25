@@ -321,6 +321,7 @@ External library support:
   --enable-libzimg         enable z.lib, needed for zscale filter [no]
   --enable-libzmq          enable message passing via libzmq [no]
   --enable-libzvbi         enable teletext support via libzvbi [no]
+  --enable-llvm            enable LLVM-based JIT assembler for aarch64 swscale [no]
   --enable-lv2             enable LV2 audio filtering [no]
   --disable-lzma           disable lzma [autodetect]
   --enable-decklink        enable Blackmagic DeckLink I/O support [no]
@@ -405,6 +406,7 @@ Toolchain options:
   --objcc=OCC              use ObjC compiler OCC [$cc_default]
   --dep-cc=DEPCC           use dependency generator DEPCC [$cc_default]
   --glslc=GLSLC            use GLSL compiler GLSLC [$glslc_default]
+  --llvm-config=LLVMCONFIG use LLVM configuration tool LLVMCONFIG [$llvm_config_default]
   --nvcc=NVCC              use Nvidia CUDA compiler NVCC or clang [$nvcc_default]
   --ld=LD                  use linker LD [$ld_default]
   --metalcc=METALCC        use metal compiler METALCC [$metalcc_default]
@@ -2154,6 +2156,7 @@ EXTERNAL_LIBRARY_LIST="
     libzimg
     libzmq
     libzvbi
+    llvm
     lv2
     mediacodec
     ohcodec
@@ -2919,6 +2922,7 @@ CMDLINE_SET="
     ignore_tests
     install
     ld
+    llvm_config
     ln_s
     logfile
     malloc_prefix
@@ -4422,6 +4426,7 @@ makeinfo_default="makeinfo"
 install="install"
 ln_s_default="ln -s -f"
 glslc_default="glslc"
+llvm_config_default="llvm-config"
 metalcc_default="xcrun -sdk macosx metal"
 metallib_default="xcrun -sdk macosx metallib"
 nm_default="nm -g"
@@ -5067,7 +5072,7 @@ if enabled cuda_nvcc; then
 fi
 
 set_default arch cc cxx doxygen pkg_config ranlib strip sysinclude \
-    target_exec x86asmexe glslc metalcc metallib stdc stdcxx makeinfo
+    target_exec x86asmexe glslc llvm_config metalcc metallib stdc stdcxx makeinfo
 enabled cross_compile || host_cc_default=$cc
 set_default host_cc
 
@@ -7489,6 +7494,13 @@ enabled libvo_amrwbenc    && { check_pkg_config libvo_amrwbenc vo-amrwbenc vo-am
 enabled libvorbis         && require_pkg_config libvorbis vorbis vorbis/codec.h vorbis_info_init &&
                              require_pkg_config libvorbisenc vorbisenc vorbis/vorbisenc.h vorbis_encode_init
 
+enabled llvm              && {
+    enabled aarch64 || die "ERROR: --enable-llvm is only supported on aarch64"
+    llvm_cflags=$($llvm_config --cflags 2>/dev/null)
+    llvm_libs=$($llvm_config --libs --system-libs AArch64 MC MCParser Object 2>/dev/null)
+    check_lib_cxx llvm "llvm/MC/MCAsmInfo.h" "llvm::MCAsmInfo" $llvm_cflags $llvm_libs "-lstdc++" ||
+        die "ERROR: LLVM not found"
+}
 enabled whisper           && require_pkg_config whisper "whisper >= 1.7.5" whisper.h whisper_init_from_file_with_params
 
 enabled libvpx            && {
