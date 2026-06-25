@@ -60,6 +60,17 @@ static void av_freep(void *ptr)
     }
 }
 
+static void *av_memdup(const void *p, size_t size)
+{
+    void *ptr = NULL;
+    if (p) {
+        ptr = av_malloc(size);
+        if (ptr)
+            memcpy(ptr, p, size);
+    }
+    return ptr;
+}
+
 #include "libavutil/dynarray.h"
 
 static void *av_dynarray2_add(void **tab_ptr, int *nb_ptr, size_t elem_size,
@@ -77,6 +88,9 @@ static void *av_dynarray2_add(void **tab_ptr, int *nb_ptr, size_t elem_size,
     });
     return tab_elem_data;
 }
+
+#define MKTAG(a,b,c,d)   ((a) | ((b) << 8) | ((c) << 16) | ((unsigned)(d) << 24))
+#include "libavutil/bprint.c"
 
 /*********************************************************************/
 #include "rasm.c"
@@ -1398,7 +1412,10 @@ static int asmgen(void)
         return AVERROR(ENOMEM);
 
     SwsAArch64Context s = { .rctx = rctx };
+    AVBPrint bp;
     int ret;
+
+    av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
 
     /**
      * The entry point of the SwsOpFunc is the `process` function. The
@@ -1492,9 +1509,13 @@ static int asmgen(void)
     /* Print all rasm functions to stdout. */
     printf("#include \"libavutil/aarch64/asm.S\"\n");
     printf("\n");
-    ret = rasm_print(s.rctx, stdout);
+    ret = rasm_print(s.rctx, &bp);
+    if (ret < 0)
+        goto error;
+    fputs(bp.str, stdout);
 
 error:
+    av_bprint_finalize(&bp, NULL);
     rasm_free(&s.rctx);
     return ret;
 }
