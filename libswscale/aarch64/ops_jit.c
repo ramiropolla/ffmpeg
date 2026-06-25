@@ -1604,7 +1604,11 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
 
     printf("used_gprs %08x\n", s.used_gprs);
     printf("[%s][%d] %s() %d\n", __FILE__, __LINE__, __func__, SWS_MAX_OPS);
-    rasm_print(s.rctx, stdout);
+    AVBPrint bp;
+    av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
+    rasm_print(s.rctx, &bp);
+    fputs(bp.str, stdout);
+    av_bprint_finalize(&bp, NULL);
 
     exit(1);
 
