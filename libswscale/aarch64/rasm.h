@@ -24,9 +24,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-
 #include "libavutil/attributes.h"
+#include "libavutil/bprint.h"
 #include "libavutil/avassert.h"
 
 /**
@@ -234,7 +233,7 @@ void rasm_annotate_nextf(RasmContext *rctx, char *s, size_t n,
                          const char *fmt, ...) av_printf_format(4, 5);
 
 /* Emit the assembled IR as GNU assembler text to fp. */
-int rasm_print(RasmContext *rctx, FILE *fp);
+int rasm_print(RasmContext *rctx, AVBPrint *bp);
 
 /*********************************************************************/
 /* AArch64-specific */
