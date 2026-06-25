@@ -880,51 +880,43 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
      * Therefore, u32 always uses the high vector bank.
      */
     if (p->type == SWS_PIXEL_F32) {
-        rasm_add_comment(r, "f32 -> u32");
-        LOOP_MASK(p, i) i_fcvtzu(r, vl[i].s4, vl[i].s4);
-        LOOP_MASK(p, i) i_fcvtzu(r, vh[i].s4, vh[i].s4);
+        LOOP_MASK(p, i) { i_fcvtzu(r, vl[i].s4, vl[i].s4);          CMTF("vl.u32[%u] = vl.f32[%u];", i, i); }
+        LOOP_MASK(p, i) { i_fcvtzu(r, vh[i].s4, vh[i].s4);          CMTF("vh.u32[%u] = vh.f32[%u];", i, i); }
     }
 
     if (p->block_size == 8) {
         if (src_el_size == 1 && dst_el_size > src_el_size) {
-            rasm_add_comment(r, "u8 -> u16");
-            LOOP_MASK(p, i) i_uxtl (r, vl[i].h8,    vl[i].b8);
+            LOOP_MASK(p, i) { i_uxtl (r, vl[i].h8,    vl[i].b8);    CMTF("vl.u16[%u] = vl.u8[%u];", i, i); }
             src_el_size = 2;
         } else if (src_el_size == 4 && dst_el_size < src_el_size) {
-            rasm_add_comment(r, "u32 -> u16");
-            LOOP_MASK(p, i) i_xtn  (r, vl[i].h4,    vl[i].s4);
-            LOOP_MASK(p, i) i_xtn  (r, vh[i].h4,    vh[i].s4);
-            LOOP_MASK(p, i) i_ins  (r, vl[i].de[1], vh[i].de[0]);
+            LOOP_MASK(p, i) { i_xtn  (r, vl[i].h4,    vl[i].s4);    CMTF("vl.u16[%u].lo = vl.u32[%u];", i, i); }
+            LOOP_MASK(p, i) { i_xtn  (r, vh[i].h4,    vh[i].s4);    CMTF("vh.u16[%u].lo = vh.u32[%u];", i, i); }
+            LOOP_MASK(p, i) { i_ins  (r, vl[i].de[1], vh[i].de[0]); CMTF("vl.u16[%u].hi = vh.u16[%u].lo;", i, i); }
             src_el_size = 2;
         }
         if (src_el_size == 2 && dst_el_size == 4) {
-            rasm_add_comment(r, "u16 -> u32");
-            LOOP_MASK(p, i) i_uxtl2(r, vh[i].s4,    vl[i].h8);
-            LOOP_MASK(p, i) i_uxtl (r, vl[i].s4,    vl[i].h4);
+            LOOP_MASK(p, i) { i_uxtl2(r, vh[i].s4,    vl[i].h8);    CMTF("vh.u32[%u] = vl.u16[%u].hi;", i, i); }
+            LOOP_MASK(p, i) { i_uxtl (r, vl[i].s4,    vl[i].h4);    CMTF("vl.u32[%u] = vl.u16[%u].lo;", i, i); }
             src_el_size = 4;
         } else if (src_el_size == 2 && dst_el_size == 1) {
-            rasm_add_comment(r, "u16 -> u8");
-            LOOP_MASK(p, i) i_xtn  (r, vl[i].b8,    vl[i].h8);
+            LOOP_MASK(p, i) { i_xtn  (r, vl[i].b8,    vl[i].h8);    CMTF("vl.u8[%u].lo = vl.u16[%u];", i, i); }
             src_el_size = 1;
         }
     } else /* if (p->block_size == 16) */ {
         if (src_el_size == 1 && dst_el_size == 2) {
-            rasm_add_comment(r, "u8 -> u16");
-            LOOP_MASK(p, i) i_uxtl2(r, vh[i].h8,    vl[i].b16);
-            LOOP_MASK(p, i) i_uxtl (r, vl[i].h8,    vl[i].b8);
+            LOOP_MASK(p, i) { i_uxtl2(r, vh[i].h8,    vl[i].b16);   CMTF("vh.u16[%u] = vl.u8[%u].hi;", i, i); }
+            LOOP_MASK(p, i) { i_uxtl (r, vl[i].h8,    vl[i].b8);    CMTF("vl.u16[%u] = vl.u8[%u].lo;", i, i); }
         } else if (src_el_size == 2 && dst_el_size == 1) {
-            rasm_add_comment(r, "u16 -> u8");
-            LOOP_MASK(p, i) i_xtn  (r, vl[i].b8,    vl[i].h8);
-            LOOP_MASK(p, i) i_xtn  (r, vh[i].b8,    vh[i].h8);
-            LOOP_MASK(p, i) i_ins  (r, vl[i].de[1], vh[i].de[0]);
+            LOOP_MASK(p, i) { i_xtn  (r, vl[i].b8,    vl[i].h8);    CMTF("vl.u8[%u].lo = vl.u16[%u];", i, i); }
+            LOOP_MASK(p, i) { i_xtn  (r, vh[i].b8,    vh[i].h8);    CMTF("vh.u8[%u].lo = vh.u16[%u];", i, i); }
+            LOOP_MASK(p, i) { i_ins  (r, vl[i].de[1], vh[i].de[0]); CMTF("vl.u8[%u].hi = vh.u8[%u].lo;", i, i); }
         }
     }
 
     /* See comment above for high vector bank usage for u32. */
     if (to_type == SWS_PIXEL_F32) {
-        rasm_add_comment(r, "u32 -> f32");
-        LOOP_MASK(p, i) i_ucvtf(r, vl[i].s4, vl[i].s4);
-        LOOP_MASK(p, i) i_ucvtf(r, vh[i].s4, vh[i].s4);
+        LOOP_MASK(p, i) { i_ucvtf(r, vl[i].s4, vl[i].s4);           CMTF("vl.f32[%u] = vl.u32[%u];", i, i); }
+        LOOP_MASK(p, i) { i_ucvtf(r, vh[i].s4, vh[i].s4);           CMTF("vh.f32[%u] = vh.u32[%u];", i, i); }
     }
 }
 
