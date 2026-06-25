@@ -16,6 +16,7 @@ NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_neon.gen.o
 
 ifeq ($(CONFIG_LLVM),yes)
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_jit.o
+NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_jit_llvm.o
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/rasm.o
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/rasm_print.o
 endif

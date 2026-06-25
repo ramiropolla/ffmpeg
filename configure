@@ -7500,6 +7500,7 @@ enabled llvm              && {
     llvm_libs=$($llvm_config --libs --system-libs AArch64 MC MCParser Object 2>/dev/null)
     check_lib_cxx llvm "llvm/MC/MCAsmInfo.h" "llvm::MCAsmInfo" $llvm_cflags $llvm_libs "-lstdc++" ||
         die "ERROR: LLVM not found"
+    add_cxxflags $llvm_cflags
 }
 enabled whisper           && require_pkg_config whisper "whisper >= 1.7.5" whisper.h whisper_init_from_file_with_params
 
