@@ -14,11 +14,11 @@ NEON-OBJS   += aarch64/hscale.o                 \
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops.o
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_neon.gen.o
 
-# TODO if jit
+ifeq ($(CONFIG_LLVM),yes)
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_jit.o
-# NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/ops_asmgen_jit.o
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/rasm.o
 NEON-OBJS-$(CONFIG_UNSTABLE) += aarch64/rasm_print.o
+endif
 
 $(SUBDIR)aarch64/ops_neon.gen.S: $(SUBDIR)aarch64/ops_asmgen$(HOSTEXESUF)
 	$(M)$< -ops > $@.tmp
