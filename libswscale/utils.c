@@ -1411,7 +1411,8 @@ av_cold int ff_sws_init_single_context(SwsContext *sws, SwsFilter *srcFilter,
         dst_stride <<= 1;
 
     if (INLINE_MMXEXT(cpu_flags) && c->srcBpc == 8 && c->dstBpc <= 14) {
-        c->canMMXEXTBeUsed = dstW >= srcW && (dstW & 31) == 0 &&
+        c->canMMXEXTBeUsed = ff_sws_jit_supported() &&
+                             dstW >= srcW && (dstW & 31) == 0 &&
                              c->chrDstW >= c->chrSrcW &&
                              (srcW & 15) == 0;
         if (!c->canMMXEXTBeUsed && dstW >= srcW && c->chrDstW >= c->chrSrcW && (srcW & 15) == 0

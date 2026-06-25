@@ -37,6 +37,11 @@
 
 #if HAVE_MMAP && HAVE_MPROTECT && defined(MAP_ANONYMOUS)
 
+int ff_sws_jit_supported(void)
+{
+    return 1;
+}
+
 void *ff_sws_jit_alloc(size_t size)
 {
     void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE,
@@ -63,6 +68,11 @@ void ff_sws_jit_free(void *ptr, size_t size)
 
 #include <windows.h>
 
+int ff_sws_jit_supported(void)
+{
+    return 1;
+}
+
 void *ff_sws_jit_alloc(size_t size)
 {
     return VirtualAlloc(NULL, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
@@ -84,21 +94,23 @@ void ff_sws_jit_free(void *ptr, size_t size)
 
 #else
 
-#include "libavutil/mem.h"
-
-void *ff_sws_jit_alloc(size_t size)
-{
-    return av_malloc(size);
-}
-
-int ff_sws_jit_protect(void *ptr, size_t size)
+int ff_sws_jit_supported(void)
 {
     return 0;
 }
 
+void *ff_sws_jit_alloc(size_t size)
+{
+    return NULL;
+}
+
+int ff_sws_jit_protect(void *ptr, size_t size)
+{
+    return AVERROR(EINVAL);
+}
+
 void ff_sws_jit_free(void *ptr, size_t size)
 {
-    av_free(ptr);
 }
 
 #endif
