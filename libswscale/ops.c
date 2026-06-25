@@ -46,7 +46,9 @@ extern const SwsOpBackend backend_glsl;
 const SwsOpBackend * const ff_sws_op_backends[] = {
     &backend_murder,
 #if ARCH_AARCH64 && HAVE_NEON
+#if CONFIG_LLVM
     &backend_aarch64_jit,
+#endif
     &backend_aarch64,
 #elif ARCH_X86_64 && HAVE_X86ASM
     &backend_x86,
