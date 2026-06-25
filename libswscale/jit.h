@@ -23,6 +23,9 @@
 
 #include <stddef.h>
 
+/* Returns 1 if JIT is supported by the platform, 0 otherwise. */
+int ff_sws_jit_supported(void);
+
 /* Allocate size bytes of writable memory for JIT code generation. */
 void *ff_sws_jit_alloc(size_t size);
 
