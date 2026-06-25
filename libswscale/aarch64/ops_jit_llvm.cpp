@@ -18,9 +18,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <string.h>
-#include <sys/mman.h>
-
 /* FFmpeg's build system defines -DPIC for position-independent code, but LLVM
  * headers use PIC as a parameter name.  Undefine it before pulling in LLVM. */
 #undef PIC
@@ -49,6 +46,7 @@
 extern "C" {
 #include "libavutil/error.h"
 #include "libavutil/log.h"
+#include "../jit.h"
 }
 
 using namespace llvm;
@@ -57,7 +55,7 @@ using namespace llvm;
  * Assemble AArch64 GAS-syntax text into a read+exec memory buffer.
  *
  * On success, sets *out_text to executable memory of *out_size bytes
- * that must be released with munmap(*out_text, *out_size) and returns 0.
+ * that must be released with ff_sws_jit_free(*out_text, *out_size) and returns 0.
  * Returns a negative AVERROR code on failure.
  */
 extern "C"
@@ -186,26 +184,12 @@ int ff_sws_jit_assemble_llvm(const char *asm_src, void **out_text, size_t *out_s
             return AVERROR_INVALIDDATA;
         }
 
-        void *buf = mmap(NULL, Contents->size(),
-                         PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (buf == MAP_FAILED) {
-            av_log(NULL, AV_LOG_ERROR, "LLVM JIT: mmap failed\n");
-            return AVERROR(ENOMEM);
-        }
+        int ret = ff_sws_jit_make_exec(Contents->data(), Contents->size(), out_text);
+        if (ret < 0)
+            return ret;
 
-        memcpy(buf, Contents->data(), Contents->size());
-
-        if (mprotect(buf, Contents->size(), PROT_READ | PROT_EXEC) < 0) {
-            av_log(NULL, AV_LOG_ERROR, "LLVM JIT: mprotect failed\n");
-            munmap(buf, Contents->size());
-            return AVERROR(EPERM);
-        }
-
-        __builtin___clear_cache((char *)buf, (char *)buf + Contents->size());
-
-        *out_text = buf;
         *out_size = Contents->size();
+
         return 0;
     }
 
