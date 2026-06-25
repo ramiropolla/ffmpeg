@@ -21,6 +21,7 @@
 #include "rasm.h"
 
 #include <stdarg.h>
+#include <stdio.h>
 
 #include "libavutil/error.h"
 #include "libavutil/macros.h"
