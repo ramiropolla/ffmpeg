@@ -431,6 +431,7 @@ static int aarch64_jit_process(SwsAArch64JITContext *s, const SwsAArch64OpImplPa
     /* Reset impl and call first kernel. */
     rasm_add_label(r, next_block);          CMT("next_block:");
     s->loop = rasm_get_current_node(r);
+    rasm_add_comment(r, "loop");
 
     /* Perform horizontal loop. */
     i_add(r, s->bx, s->bx, IMM(1));         CMT("bx += 1;");
