@@ -18,8 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/* FFmpeg's build system defines -DPIC for position-independent code, but LLVM
- * headers use PIC as a parameter name.  Undefine it before pulling in LLVM. */
+/* Prevent collision with LLVM's usage of PIC as a parameter name. */
 #undef PIC
 
 #include <llvm/MC/MCAsmBackend.h>
@@ -61,7 +60,7 @@ using namespace llvm;
 extern "C"
 int ff_sws_jit_assemble_llvm(const char *asm_src, void **out_text, size_t *out_size)
 {
-    static const char triple_str[] = "aarch64-unknown-linux-gnu";
+    static const char triple[] = "aarch64-unknown-linux-gnu";
 
     LLVMInitializeAArch64TargetInfo();
     LLVMInitializeAArch64Target();
@@ -69,83 +68,87 @@ int ff_sws_jit_assemble_llvm(const char *asm_src, void **out_text, size_t *out_s
     LLVMInitializeAArch64AsmParser();
 
     std::string err;
-    const Target *T = TargetRegistry::lookupTarget(triple_str, err);
-    if (!T) {
+    const Target *target = TargetRegistry::lookupTarget(triple, err);
+    if (!target) {
         av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to find target %s: %s\n",
-               triple_str, err.c_str());
+               triple, err.c_str());
         return AVERROR_EXTERNAL;
     }
 
     MCTargetOptions MCOpts;
 
-    std::unique_ptr<MCRegisterInfo> MRI(T->createMCRegInfo(triple_str));
+    std::unique_ptr<MCRegisterInfo> MRI(target->createMCRegInfo(triple));
     if (!MRI) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCRegisterInfo\n");
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCRegInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
 
-    std::unique_ptr<MCAsmInfo> MAI(T->createMCAsmInfo(*MRI, triple_str, MCOpts));
+    std::unique_ptr<MCAsmInfo> MAI(target->createMCAsmInfo(*MRI, triple, MCOpts));
     if (!MAI) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCAsmInfo\n");
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCAsmInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
 
-    std::unique_ptr<MCInstrInfo> MCII(T->createMCInstrInfo());
+    std::unique_ptr<MCInstrInfo> MCII(target->createMCInstrInfo());
     if (!MCII) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCInstrInfo\n");
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCInstrInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
 
-    std::unique_ptr<MCSubtargetInfo> STI(T->createMCSubtargetInfo(triple_str, "", ""));
+    std::unique_ptr<MCSubtargetInfo> STI(target->createMCSubtargetInfo(triple, "", ""));
     if (!STI) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCSubtargetInfo\n");
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCSubtargetInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
 
     SmallVector<char, 4096> ObjBuf;
     raw_svector_ostream OS(ObjBuf);
 
-    MCContext Ctx(Triple(triple_str), MAI.get(), MRI.get(), STI.get());
+    MCContext ctx(Triple(triple), MAI.get(), MRI.get(), STI.get());
 
-    std::unique_ptr<MCObjectFileInfo> MOFI(T->createMCObjectFileInfo(Ctx, false));
+    std::unique_ptr<MCObjectFileInfo> MOFI(target->createMCObjectFileInfo(ctx, false));
     if (!MOFI) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCObjectFileInfo\n");
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCObjectFileInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
-    Ctx.setObjectFileInfo(MOFI.get());
+    ctx.setObjectFileInfo(MOFI.get());
 
-    std::unique_ptr<MCCodeEmitter> CE(T->createMCCodeEmitter(*MCII, Ctx));
+    std::unique_ptr<MCCodeEmitter> CE(target->createMCCodeEmitter(*MCII, ctx));
     if (!CE) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCCodeEmitter\n");
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCCodeEmitter() failed\n");
         return AVERROR_EXTERNAL;
     }
 
-    std::unique_ptr<MCAsmBackend> MAB(T->createMCAsmBackend(*STI, *MRI, MCOpts));
+    std::unique_ptr<MCAsmBackend> MAB(target->createMCAsmBackend(*STI, *MRI, MCOpts));
     if (!MAB) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCAsmBackend\n");
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCAsmBackend() failed\n");
         return AVERROR_EXTERNAL;
     }
 
     std::unique_ptr<MCObjectWriter> OW(MAB->createObjectWriter(OS));
-    std::unique_ptr<MCStreamer> Streamer(T->createMCObjectStreamer(
-        Triple(triple_str), Ctx, std::move(MAB), std::move(OW), std::move(CE), *STI));
-    if (!Streamer) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCStreamer\n");
+    if (!OW) {
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createObjectWriter() failed\n");
+        return AVERROR_EXTERNAL;
+    }
+
+    std::unique_ptr<MCStreamer> streamer(target->createMCObjectStreamer(Triple(triple), ctx, std::move(MAB), std::move(OW), std::move(CE), *STI));
+    if (!streamer) {
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCObjectStreamer() failed\n");
         return AVERROR_EXTERNAL;
     }
 
     SourceMgr SrcMgr;
     SrcMgr.AddNewSourceBuffer(MemoryBuffer::getMemBuffer(asm_src, "<asm>"), SMLoc());
 
-    std::unique_ptr<MCAsmParser> Parser(createMCAsmParser(SrcMgr, Ctx, *Streamer, *MAI));
+    std::unique_ptr<MCAsmParser> Parser(createMCAsmParser(SrcMgr, ctx, *streamer, *MAI));
     if (!Parser) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCAsmParser\n");
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCAsmParser() failed\n");
         return AVERROR_EXTERNAL;
     }
 
-    MCTargetAsmParser *TAP = T->createMCAsmParser(*STI, *Parser, *MCII, MCOpts);
+    MCTargetAsmParser *TAP = target->createMCAsmParser(*STI, *Parser, *MCII, MCOpts);
     if (!TAP) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to create MCTargetAsmParser\n");
+        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: target createMCAsmParser() failed\n");
         return AVERROR_EXTERNAL;
     }
     Parser->setTargetParser(*TAP);
@@ -156,21 +159,20 @@ int ff_sws_jit_assemble_llvm(const char *asm_src, void **out_text, size_t *out_s
     }
 
     MemoryBufferRef ObjMBR(StringRef(ObjBuf.data(), ObjBuf.size()), "obj");
-    Expected<std::unique_ptr<object::ObjectFile>> ObjOrErr =
-        object::ObjectFile::createObjectFile(ObjMBR);
+    Expected<std::unique_ptr<object::ObjectFile>> ObjOrErr = object::ObjectFile::createObjectFile(ObjMBR);
     if (!ObjOrErr) {
         consumeError(ObjOrErr.takeError());
         av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to parse assembled object\n");
         return AVERROR_INVALIDDATA;
     }
 
-    for (const object::SectionRef &S : (*ObjOrErr)->sections()) {
-        Expected<StringRef> Name = S.getName();
-        if (!Name) {
+    for (const object::SectionRef &S: (*ObjOrErr)->sections()) {
+        Expected<StringRef> name = S.getName();
+        if (!name) {
             consumeError(Name.takeError());
             continue;
         }
-        if (*Name != ".text")
+        if (*name != ".text")
             continue;
 
         Expected<StringRef> Contents = S.getContents();
@@ -194,5 +196,6 @@ int ff_sws_jit_assemble_llvm(const char *asm_src, void **out_text, size_t *out_s
     }
 
     av_log(NULL, AV_LOG_ERROR, "LLVM JIT: no .text section in assembled output\n");
+
     return AVERROR_INVALIDDATA;
 }
