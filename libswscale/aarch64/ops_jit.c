@@ -1608,7 +1608,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     printf("[%s][%d] %s() %d\n", __FILE__, __LINE__, __func__, SWS_MAX_OPS);
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
-    rasm_print(s.rctx, &bp);
+    rasm_print(s.rctx, &bp, true);
 
     uint8_t *text;
     size_t text_size;

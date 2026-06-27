@@ -1507,7 +1507,9 @@ static int asmgen(void)
     }
 
     /* Print all rasm functions to stdout. */
-    ret = rasm_print(s.rctx, &bp);
+    printf("#include \"libavutil/aarch64/asm.S\"\n");
+    printf("\n");
+    ret = rasm_print(s.rctx, &bp, false);
     if (ret < 0)
         goto error;
     fputs(bp.str, stdout);
