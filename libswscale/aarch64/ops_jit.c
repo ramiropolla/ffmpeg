@@ -1467,6 +1467,8 @@ static int aarch64_jit_uop(SwsAArch64JITContext *s, const SwsAArch64OpImplParams
     return 0;
 }
 
+int ff_sws_jit_assemble_llvm(const char *asm_src, uint8_t **out_text, size_t *out_size);
+
 /*********************************************************************/
 static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
                                SwsCompiledOp *out)
@@ -1607,10 +1609,18 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
     rasm_print(s.rctx, &bp);
+
+    uint8_t *text;
+    size_t text_size;
+    ret = ff_sws_jit_assemble_llvm(bp.str, &text, &text_size);
+    if (ret < 0) {
+        printf("[%s][%d] %s() ret %d\n", __FILE__, __LINE__, __func__, ret);
+    }
+
     fputs(bp.str, stdout);
     av_bprint_finalize(&bp, NULL);
 
-    exit(1);
+    out->func = (SwsOpFunc) text;
 
 error:
     if (ret < 0) {
