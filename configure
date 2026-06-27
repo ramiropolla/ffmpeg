@@ -4380,6 +4380,7 @@ shader_compression_suggest="zlib"
 avcodec_extralibs="pthreads_extralibs iconv_extralibs dxva2_extralibs liblcevc_dec_extralibs lcms2_extralibs"
 avfilter_extralibs="pthreads_extralibs"
 avutil_extralibs="d3d11va_extralibs d3d12va_extralibs mediacodec_extralibs nanosleep_extralibs pthreads_extralibs vaapi_drm_extralibs vaapi_x11_extralibs vaapi_win32_extralibs vdpau_x11_extralibs"
+swscale_extralibs="llvm_extralibs"
 
 # programs
 ffmpeg_deps="avcodec avfilter avformat threads"
@@ -7501,6 +7502,7 @@ enabled llvm              && {
     check_lib_cxx llvm "llvm/MC/MCAsmInfo.h" "llvm::MCAsmInfo" $llvm_cflags $llvm_libs "-lstdc++" ||
         die "ERROR: LLVM not found"
     add_cxxflags $llvm_cflags
+    llvm_extralibs="$llvm_libs -lstdc++"
 }
 enabled whisper           && require_pkg_config whisper "whisper >= 1.7.5" whisper.h whisper_init_from_file_with_params
 
