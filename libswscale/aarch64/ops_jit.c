@@ -432,7 +432,7 @@ static int aarch64_jit_process(SwsAArch64Context *s, const SwsAArch64OpImplParam
     rasm_add_label(r, first_row);           CMT("first_row:");
     i_mov(r, s->bx, s->bx_start);           CMT("bx = bx_start;");
 
-    /* Reset impl and call first kernel. */
+    /* TODO Reset impl and call first kernel. */
     rasm_add_label(r, next_block);          CMT("next_block:");
     s->loop = rasm_get_current_node(r);
 
