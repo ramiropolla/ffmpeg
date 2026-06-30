@@ -1733,18 +1733,18 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
             return ret;
     }
 
-    /* initialize JIT */
+    /* initialize JIT and context */
+    RasmContext *r = rasm_alloc();
+    if (!r)
+        return AVERROR(ENOTSUP);
+
     SwsAArch64Context s = {
         .sws        = ctx,
         .block_size = block_size,
-        .rctx       = rasm_alloc(),
+        .rctx       = r,
     };
-    if (!s.rctx)
-        return AVERROR(ENOMEM);
 
-    RasmContext *r = s.rctx;
-
-    /* setup pass: collect all immediates and data pool entries */
+    /* Setup ops, registers, and constants. */
     SwsAArch64OpRegs regs[SWS_MAX_OPS] = { 0 };
     for (int i = 0; i < ops->num_ops; i++) {
         ret = aarch64_setup(&s, ops, i, &params[i], &regs[i]);
