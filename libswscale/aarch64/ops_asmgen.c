@@ -117,21 +117,6 @@ static const SwsAArch64OpEntry ops_entries[] = {
 };
 
 /*********************************************************************/
-static size_t aarch64_pixel_size(SwsPixelType fmt)
-{
-    switch (fmt) {
-    case SWS_PIXEL_U8:  return 1;
-    case SWS_PIXEL_U16: return 2;
-    case SWS_PIXEL_U32: return 4;
-    case SWS_PIXEL_F32: return 4;
-    default:
-        av_assert0(!"Invalid pixel type!");
-        break;
-    }
-    return 0;
-}
-
-/*********************************************************************/
 typedef struct SwsAArch64Context {
     RasmContext *rctx;
 
@@ -612,7 +597,7 @@ static void asmgen_op_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImplPar
         a64op_vec_views(s->vh[i], &vh[i]);
     }
 
-    switch (aarch64_pixel_size(p->type)) {
+    switch (ff_sws_pixel_type_size(p->type)) {
     case sizeof(uint16_t):
         LOOP_MASK      (p, i) i_rev16(r, vl[i].b16, vl[i].b16);
         LOOP_MASK_VH(s, p, i) i_rev16(r, vh[i].b16, vh[i].b16);
@@ -815,7 +800,7 @@ static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     if (SWS_COMP_TEST(p->par.clear.zero, i)) {
         i_movi(r, vx[i], IMM(0));                   CMTF("%s[%u] = 0;", vx_str, i);
     } else if (SWS_COMP_TEST(p->par.clear.one, i)) {
-        if (p->block_size * aarch64_pixel_size(p->type) == 8) {
+        if (p->block_size * ff_sws_pixel_type_size(p->type) == 8) {
             i_movi(r, v_8b (vx[i]), IMM(0xff));
         } else {
             i_movi(r, v_16b(vx[i]), IMM(0xff));
@@ -886,7 +871,7 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
         av_assert0(!"Invalid uop!");
         break;
     }
-    size_t dst_el_size = aarch64_pixel_size(to_type);
+    size_t dst_el_size = ff_sws_pixel_type_size(to_type);
 
     /**
      * This function assumes block_size is either 8 or 16, and that
@@ -962,7 +947,7 @@ static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         av_assert0(!"Invalid uop!");
         break;
     }
-    size_t dst_el_size = aarch64_pixel_size(to_type);
+    size_t dst_el_size = ff_sws_pixel_type_size(to_type);
     size_t dst_total_size = p->block_size * dst_el_size;
     size_t dst_vec_size = FFMIN(dst_total_size, 16);
 
@@ -1350,7 +1335,7 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
      * Set up vector register dimensions and reshape all vectors
      * accordingly.
      */
-    size_t el_size = aarch64_pixel_size(p->type);
+    size_t el_size = ff_sws_pixel_type_size(p->type);
     size_t total_size = p->block_size * el_size;
 
     s->vec_size = FFMIN(total_size, 16);
