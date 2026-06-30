@@ -1726,6 +1726,8 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
+    const int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
+
     RasmContext *r = rasm_alloc();
     if (!r)
         return AVERROR(ENOMEM);
@@ -1738,7 +1740,6 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
 
     /* Translate all ops into implementation parameters and setup all
      * constant data. */
-    const int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
     SwsAArch64OpImplParams params[SWS_MAX_OPS] = { 0 };
     SwsAArch64OpRegs regs[SWS_MAX_OPS] = { 0 };
     for (int i = 0; i < ops->num_ops; i++) {
