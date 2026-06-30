@@ -393,28 +393,6 @@ static int aarch64_jit_setup(const SwsOpList *ops, int block_size, int n,
 {
     SwsOp *op = &ops->ops[n];
     switch (op->op) {
-    case SWS_OP_READ:
-        /* Negative shift values to perform right shift using ushl. */
-        if (op->rw.frac == 3) {
-            out->priv = (SwsOpPriv) {
-                .u8 = {
-                    -7, -6, -5, -4, -3, -2, -1, 0,
-                    -7, -6, -5, -4, -3, -2, -1, 0,
-                }
-            };
-        }
-        break;
-    case SWS_OP_WRITE:
-        /* Shift values for ushl. */
-        if (op->rw.frac == 3) {
-            out->priv = (SwsOpPriv) {
-                .u8 = {
-                    7, 6, 5, 4, 3, 2, 1, 0,
-                    7, 6, 5, 4, 3, 2, 1, 0,
-                }
-            };
-        }
-        break;
     case SWS_OP_CLEAR:
         ff_sws_setup_clear(&(const SwsImplParams) { .op = op }, out);
         break;
@@ -1618,9 +1596,21 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
     case SWS_UOP_READ_BIT: {
         int bitmask_idx = jit_push_imm8(s, 1, 1);
         regs->read_bit.bitmask = s->vimm[bitmask_idx];
+#if 0
         int ret = aarch64_jit_setup(ops, s->block_size, n, p, &impl_result);
         if (ret < 0)
             return ret;
+#else
+        /* Negative shift values to perform right shift using ushl. */
+        if (op->rw.frac == 3) {
+            out->priv = (SwsOpPriv) {
+                .u8 = {
+                    -7, -6, -5, -4, -3, -2, -1, 0,
+                    -7, -6, -5, -4, -3, -2, -1, 0,
+                }
+            };
+        }
+#endif
         int idx = jit_push_data(s, impl_result.priv.u32);
         regs->read_bit.shift_vec = s->vdata[idx];
         break;
@@ -1631,9 +1621,21 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         break;
     }
     case SWS_UOP_WRITE_BIT: {
+#if 0
         int ret = aarch64_jit_setup(ops, s->block_size, n, p, &impl_result);
         if (ret < 0)
             return ret;
+#else
+        /* Shift values for ushl. */
+        if (op->rw.frac == 3) {
+            out->priv = (SwsOpPriv) {
+                .u8 = {
+                    7, 6, 5, 4, 3, 2, 1, 0,
+                    7, 6, 5, 4, 3, 2, 1, 0,
+                }
+            };
+        }
+#endif
         int idx = jit_push_data(s, impl_result.priv.u32);
         regs->write_bit.shift_vec = s->vdata[idx];
         break;
@@ -1724,19 +1726,9 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
-    /* translate all ops */
-    const int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
-    SwsAArch64OpImplParams params[SWS_MAX_OPS] = { 0 };
-    for (int i = 0; i < ops->num_ops; i++) {
-        ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params[i]);
-        if (ret < 0)
-            return ret;
-    }
-
-    /* initialize JIT and context */
     RasmContext *r = rasm_alloc();
     if (!r)
-        return AVERROR(ENOTSUP);
+        return AVERROR(ENOMEM);
 
     SwsAArch64Context s = {
         .sws        = ctx,
@@ -1744,9 +1736,15 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         .rctx       = r,
     };
 
-    /* Setup ops, registers, and constants. */
+    /* Translate all ops into implementation parameters and setup all
+     * constant data. */
+    const int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
+    SwsAArch64OpImplParams params[SWS_MAX_OPS] = { 0 };
     SwsAArch64OpRegs regs[SWS_MAX_OPS] = { 0 };
     for (int i = 0; i < ops->num_ops; i++) {
+        ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params[i]);
+        if (ret < 0)
+            goto error;
         ret = aarch64_setup(&s, ops, i, &params[i], &regs[i]);
         if (ret < 0)
             goto error;
@@ -1785,40 +1783,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
      * The read/write data pointers and padding values first use up the
      * remaining free caller-saved registers, and only then are the
      * caller-saved registers (r19-r28) used.
-     *
-     * The Link Register (r30) is used when calling the first kernel,
-     * so it must be saved.
      */
-
-
-#if 0
-    /* Loop iterator variables. */
-    s.bx        = jit_gpw(s, 6);
-    s.y         = s.y_start;    /* Reused from SwsOpFunc argument. */
-
-    /* Scratch registers. */
-    s.tmp0      = jit_gpx(16); /* IP0 */
-    s.tmp1      = jit_gpx(17); /* IP1 */
-
-    /* Read/Write data pointers and padding. */
-    s.in      [0] = jit_gpx(9);
-    s.out     [0] = jit_gpx(10);
-    s.in_bump [0] = jit_gpx(11);
-    s.out_bump[0] = jit_gpx(12);
-    s.in      [1] = jit_gpx(13);
-    s.out     [1] = jit_gpx(14);
-    s.in_bump [1] = jit_gpx(15);
-    s.out_bump[1] = jit_gpx(19);
-    s.in      [2] = jit_gpx(20);
-    s.out     [2] = jit_gpx(21);
-    s.in_bump [2] = jit_gpx(22);
-    s.out_bump[2] = jit_gpx(23);
-    s.in      [3] = jit_gpx(24);
-    s.out     [3] = jit_gpx(25);
-    s.in_bump [3] = jit_gpx(26);
-    s.out_bump[3] = jit_gpx(27);
-#endif
-
 #endif
 
     /* create process */
