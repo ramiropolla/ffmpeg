@@ -23,6 +23,11 @@
 #include "rasm.h"
 #include "ops_impl.h"
 
+typedef struct SwsAArch64UsedRegs {
+    uint32_t used;
+    uint32_t clobbered;
+} SwsAArch64UsedRegs;
+
 /*********************************************************************/
 typedef struct SwsAArch64Context {
     /* TOOD */
@@ -35,9 +40,8 @@ typedef struct SwsAArch64Context {
 
     RasmContext *rctx;
 
-    uint32_t used_gprs;
-    uint32_t clobbered;
-    int next_gpr_idx;
+    SwsAArch64UsedRegs gprs;
+    SwsAArch64UsedRegs vecs;
 
     /* SwsOpFunc arguments. */
     RasmOp exec;
@@ -77,14 +81,14 @@ typedef struct SwsAArch64Context {
 static int jit_gpr(SwsAArch64Context *s, int r)
 {
     if (r < 0) {
-        if (!s->used_gprs)
+        if (!s->gprs.used)
             return -1;
-        r = ff_ctz(~s->used_gprs);
-    } else if (s->used_gprs & (1 << r)) {
+        r = ff_ctz(~s->gprs.used);
+    } else if (s->gprs.used & (1 << r)) {
         return -1;
     }
-    s->used_gprs |= (1 << r);
-    s->clobbered |= (1 << r);
+    s->gprs.used |= (1 << r);
+    s->gprs.clobbered |= (1 << r);
     return r;
 }
 
@@ -107,7 +111,7 @@ static RasmOp jit_gpx(SwsAArch64Context *s, int r)
 static void jit_free_gpr(SwsAArch64Context *s, RasmOp op)
 {
     int r = a64op_gpr_n(op);
-    s->used_gprs &= ~(1 << r);
+    s->gprs.used &= ~(1 << r);
 }
 
 /*********************************************************************/
@@ -1592,7 +1596,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     RasmOp saved_regs[MAX_SAVED_REGS];
     unsigned nsaved = 0;
     for (int i = 19; i <= 30; i++) {
-        if (s.clobbered & (1 << i))
+        if (s.gprs.clobbered & (1 << i))
             saved_regs[nsaved++] = a64op_gpx(i);
     }
     if (nsaved) {
@@ -1611,7 +1615,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         .cpu_flags   = cpu_flags,
     };
 
-    printf("used_gprs %08x\n", s.used_gprs);
+    printf("gprs.used %08x\n", s.gprs.used);
     printf("[%s][%d] %s() %d\n", __FILE__, __LINE__, __func__, SWS_MAX_OPS);
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
