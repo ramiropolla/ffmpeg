@@ -28,8 +28,7 @@
 #include "libswscale/ops.h"
 #include "libswscale/ops_chain.h"
 #include "libswscale/ops_dispatch.h"
-
-#include "libswscale/aarch64/ops_impl_conv.c"
+#include "libswscale/aarch64/ops_impl.h"
 
 #ifdef _WIN32
 #include <io.h>
