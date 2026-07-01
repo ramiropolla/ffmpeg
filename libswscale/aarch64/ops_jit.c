@@ -1596,7 +1596,7 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
     case SWS_UOP_READ_BIT: {
         int bitmask_idx = jit_push_imm8(s, 1, 1);
         regs->read_bit.bitmask = s->vimm[bitmask_idx];
-#if 0
+#if 1
         int ret = aarch64_jit_setup(ops, s->block_size, n, p, &impl_result);
         if (ret < 0)
             return ret;
@@ -1621,7 +1621,7 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         break;
     }
     case SWS_UOP_WRITE_BIT: {
-#if 0
+#if 1
         int ret = aarch64_jit_setup(ops, s->block_size, n, p, &impl_result);
         if (ret < 0)
             return ret;
