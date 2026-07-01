@@ -394,10 +394,8 @@ static void print_node_function(const RasmContext *rctx,
                                 AVBPrint *bp, unsigned line_start,
                                 const RasmNode *node, bool jit)
 {
-    if (!jit) {
-        av_bprintf(bp, "function %s, export=%d, jumpable=%d",
-                   node->func.name, node->func.export, node->func.jumpable);
-    }
+    av_bprintf(bp, "function %s, export=%d, jumpable=%d",
+               node->func.name, node->func.export, node->func.jumpable);
 }
 
 /*********************************************************************/
@@ -407,9 +405,7 @@ static void print_node_endfunc(const RasmContext *rctx,
                                AVBPrint *bp, unsigned line_start,
                                const RasmNode *node, bool jit)
 {
-    if (!jit) {
-        av_bprintf(bp, "endfunc");
-    }
+    av_bprintf(bp, "endfunc");
 }
 
 /*********************************************************************/
@@ -494,6 +490,8 @@ int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit)
                 break;
             case RASM_NODE_DATA:
                 print_node_data(rctx, bp, line_start, node);
+                break;
+            case RASM_NODE_DATASECTION:
                 break;
             default:
                 break;

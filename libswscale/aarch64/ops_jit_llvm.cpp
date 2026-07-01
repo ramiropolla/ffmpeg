@@ -135,8 +135,17 @@ int ff_sws_jit_assemble_llvm(const char *src, uint8_t **out_text, size_t *out_si
         return AVERROR_EXTERNAL;
     }
 
+std::string blabliblu =
+".macro  function name, export=0, jumpable=0, align=4\n"
+"        .text\n"
+"        .align \\align\n"
+".endm\n"
+".macro endfunc\n"
+".endm\n";
+blabliblu += src;
+
     SourceMgr src_mgr;
-    src_mgr.AddNewSourceBuffer(MemoryBuffer::getMemBuffer(src, "<asm>"), SMLoc());
+    src_mgr.AddNewSourceBuffer(MemoryBuffer::getMemBuffer(blabliblu, "<asm>"), SMLoc());
 
     std::unique_ptr<MCAsmParser> parser(createMCAsmParser(src_mgr, ctx, *streamer, *mai));
     if (!parser) {
