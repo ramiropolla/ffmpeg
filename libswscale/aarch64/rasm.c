@@ -263,6 +263,32 @@ int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
     return id;
 }
 
+int rasm_data_begin(RasmContext *rctx)
+{
+    if (rctx->error)
+        return rctx->error;
+
+    /* Grow entries array. */
+    RasmEntry *entry = av_dynarray2_add((void **) &rctx->entries,
+                                        &rctx->num_entries,
+                                        sizeof(*rctx->entries), NULL);
+    if (!entry) {
+        rctx->error = AVERROR(ENOMEM);
+        return rctx->error;
+    }
+
+    entry->type = RASM_ENTRY_DATA;
+
+    rasm_set_current_node(rctx, NULL);
+    entry->start = add_node(rctx, RASM_NODE_DATASECTION);
+    entry->end   = entry->start;
+
+    if (rctx->error)
+        return rctx->error;
+
+    return 0;
+}
+
 /*********************************************************************/
 void rasm_annotate(RasmContext *rctx, const char *comment)
 {

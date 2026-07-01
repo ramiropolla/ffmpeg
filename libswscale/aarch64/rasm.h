@@ -115,7 +115,8 @@ typedef enum RasmNodeType {
     RASM_NODE_FUNCTION,
     RASM_NODE_ENDFUNC,
     RASM_NODE_DIRECTIVE,
-    RASM_NODE_DATA,
+    RASM_NODE_DATA, // TODO implement const instead of data (like in libavutil/aarch64/asm.S)
+    RASM_NODE_DATASECTION,
 } RasmNodeType;
 
 typedef struct RasmNodeInsn {
@@ -167,7 +168,7 @@ typedef struct RasmNode {
 
 typedef enum RasmEntryType {
     RASM_ENTRY_FUNC,
-    RASM_ENTRY_DATA, /* NOTE not yet implemented */
+    RASM_ENTRY_DATA,
 } RasmEntryType;
 
 typedef struct RasmFunction {
@@ -220,6 +221,7 @@ RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node);
 /* Top-level IR entries */
 int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
                     bool jumpable);
+int rasm_data_begin(RasmContext *rctx);
 
 /**
  * Allocate a new label ID with the given name.
