@@ -62,7 +62,6 @@ typedef struct SwsAArch64Context {
     RasmNode *pre_loop;
     RasmNode *loop;
     RasmNode *epilogue;
-    RasmNode *const_data;
 
     RasmContext *rctx;
 
@@ -623,8 +622,6 @@ static int aarch64_jit_process(SwsAArch64Context *s, const SwsAArch64OpImplParam
     s->epilogue = rasm_get_current_node(r);
 
     i_ret(r);
-
-    s->const_data = rasm_get_current_node(r);
 
     return 0;
 }
@@ -1792,16 +1789,12 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto error;
 
-    /* emit data pool words after the ret instruction */
+    /* emit data pool as a separate data entry */
     if (s.n_data > 0) {
-        rasm_set_current_node(r, s.const_data);
+        rasm_data_begin(r);
         rasm_add_directive(r, ".align 16");
         rasm_add_label(r, s.data_label);
-        char buf[32];
-        for (int i = 0; i < s.n_data * 4; i++) {
-            snprintf(buf, sizeof(buf), ".word 0x%08x", s.data[i]);
-            rasm_add_directive(r, buf);
-        }
+        rasm_add_data(r, s.data, s.n_data * 4 * sizeof(uint32_t));
     }
 
     /* add all ops */
