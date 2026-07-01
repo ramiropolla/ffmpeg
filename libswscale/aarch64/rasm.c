@@ -51,6 +51,9 @@ void rasm_free(RasmContext **prctx)
             case RASM_NODE_DIRECTIVE:
                 av_freep(&node->directive.text);
                 break;
+            case RASM_NODE_DATA:
+                av_freep(&node->data.data);
+                break;
             default:
                 break;
             }
@@ -185,6 +188,27 @@ RasmNode *rasm_add_directive(RasmContext *rctx, const char *text)
     RasmNode *node = add_node(rctx, RASM_NODE_DIRECTIVE);
     if (node) {
         node->directive.text = dup;
+    } else {
+        av_freep(&dup);
+    }
+    return node;
+}
+
+RasmNode *rasm_add_data(RasmContext *rctx, const void *data, size_t size)
+{
+    if (rctx->error)
+        return NULL;
+
+    void *dup = av_memdup(data, size);
+    if (!dup) {
+        rctx->error = AVERROR(ENOMEM);
+        return NULL;
+    }
+
+    RasmNode *node = add_node(rctx, RASM_NODE_DATA);
+    if (node) {
+        node->data.data = dup;
+        node->data.size = size;
     } else {
         av_freep(&dup);
     }

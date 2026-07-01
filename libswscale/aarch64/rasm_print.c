@@ -423,6 +423,24 @@ static void print_node_directive(const RasmContext *rctx,
 }
 
 /*********************************************************************/
+/* RASM_NODE_DATA */
+
+static void print_node_data(const RasmContext *rctx,
+                            AVBPrint *bp, unsigned line_start,
+                            const RasmNode *node)
+{
+    const uint32_t *u32 = (const uint32_t *) node->data.data;
+    for (size_t i = 0; i < node->data.size / 4; i++) {
+        bool first = !(i & 3);
+        if (i > 0)
+            av_bprintf(bp, first ? "\n" : ",");
+        if (first)
+            av_bprintf(bp, ".word");
+        av_bprintf(bp, " 0x%08x", u32[i]);
+    }
+}
+
+/*********************************************************************/
 int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit)
 {
     if (rctx->error)
@@ -473,6 +491,9 @@ int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit)
                 break;
             case RASM_NODE_DIRECTIVE:
                 print_node_directive(rctx, bp, line_start, node);
+                break;
+            case RASM_NODE_DATA:
+                print_node_data(rctx, bp, line_start, node);
                 break;
             default:
                 break;
