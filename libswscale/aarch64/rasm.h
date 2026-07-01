@@ -115,7 +115,7 @@ typedef enum RasmNodeType {
     RASM_NODE_FUNCTION,
     RASM_NODE_ENDFUNC,
     RASM_NODE_DIRECTIVE,
-    RASM_NODE_DATA, /* NOTE not yet implemented */
+    RASM_NODE_DATA,
 } RasmNodeType;
 
 typedef struct RasmNodeInsn {
@@ -141,6 +141,11 @@ typedef struct RasmNodeDirective {
     char *text;
 } RasmNodeDirective;
 
+typedef struct RasmNodeData {
+    void *data;
+    size_t size;
+} RasmNodeData;
+
 /* A single node in the IR. */
 typedef struct RasmNode {
     RasmNodeType type;
@@ -150,6 +155,7 @@ typedef struct RasmNode {
         RasmNodeLabel     label;
         RasmNodeFunc      func;
         RasmNodeDirective directive;
+        RasmNodeData      data;
     };
     char *inline_comment;
     struct RasmNode *prev;
@@ -206,6 +212,7 @@ RasmNode *rasm_add_func(RasmContext *rctx, int id, bool export,
                         bool jumpable);
 RasmNode *rasm_add_endfunc(RasmContext *rctx);
 RasmNode *rasm_add_directive(RasmContext *rctx, const char *text);
+RasmNode *rasm_add_data(RasmContext *rctx, const void *data, size_t size);
 
 RasmNode *rasm_get_current_node(RasmContext *rctx);
 RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node);
