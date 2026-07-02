@@ -259,19 +259,22 @@ static void load_constants(SwsAArch64Context *s)
 
     if (s->n_imm) {
         rasm_add_comment(r, "immediates");
-        RasmOp tmp = a64op_w(s->tmp0);
 
-        /* First load large values into the scratch GPR, then movi small
-         * values into vectors, then dup the scratch values into vectors.
-         * Separating the passes allows the CPU to overlap integer and
-         * vector instruction execution. */
+        /* First load large values into distinct scratch GPRs, then movi
+         * small values into vectors, then dup the scratch values into
+         * vectors. Separating the passes -- and giving each large value
+         * its own GPR -- allows the CPU to overlap the (independent)
+         * integer and vector instructions instead of stalling on a
+         * read-after-write hazard between each mov and its own dup. */
+        RasmOp tmp[SWS_AARCH64_MAX_IMM];
         for (int i = 0; i < s->n_imm; i++) {
             int small_value = (int) (s->imm[i].meta >> 16);
             int repeat_len  = (int) ((s->imm[i].meta >> 8) & 0xff);
             if (!small_value && repeat_len != 1) {
+                tmp[i] = jit_gpw(s, -1);
                 switch (repeat_len) {
-                case 2: i_mov(r, tmp, IMM((int32_t) (s->imm[i].val & 0xffff))); break;
-                case 4: i_mov(r, tmp, IMM((int32_t)  s->imm[i].val          )); break;
+                case 2: i_mov(r, tmp[i], IMM((int32_t) (s->imm[i].val & 0xffff))); break;
+                case 4: i_mov(r, tmp[i], IMM((int32_t)  s->imm[i].val          )); break;
                 }
             }
         }
@@ -293,9 +296,10 @@ static void load_constants(SwsAArch64Context *s)
             int len         = (int)  (s->imm[i].meta & 0xff);
             if (!small_value && repeat_len != 1) {
                 switch (len) {
-                case 2: i_dup(r, v_8h(s->vimm[i]), tmp); break;
-                case 4: i_dup(r, v_4s(s->vimm[i]), tmp); break;
+                case 2: i_dup(r, v_8h(s->vimm[i]), tmp[i]); break;
+                case 4: i_dup(r, v_4s(s->vimm[i]), tmp[i]); break;
                 }
+                jit_free_gpr(s, tmp[i]);
             }
         }
     }
