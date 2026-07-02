@@ -123,8 +123,8 @@ typedef struct SwsAArch64OpRegs {
         struct { RasmOp nibble_mask; } read_nibble;
         struct { RasmOp mask[4]; } unpack;
         struct { RasmOp data_vec; } clear;
-        struct { RasmOp data_vec; } min;
-        struct { RasmOp data_vec; } max;
+        struct { RasmOp vec[4]; } min;
+        struct { RasmOp vec[4]; } max;
         struct { RasmOp vec; } scale;
         struct { RasmOp coeff[4]; int num_vregs; } linear;
     };
@@ -1182,18 +1182,17 @@ static void asmgen_op_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     RasmContext *r = s->rctx;
     RasmOp *vl = s->vl;
     RasmOp *vh = s->vh;
-    RasmOp data_vec = regs->min.data_vec;
 
     LOOP_MASK(p, i) {
-        i_dup(r, s->vt[0], a64op_elem(data_vec, i));
+        RasmOp vmin = a64op_make_vec(a64op_vec_n(regs->min.vec[i]), s->el_count, s->el_size);
         if (p->type == SWS_PIXEL_F32) {
-            i_fmin(r, vl[i], vl[i], s->vt[0]); CMTF("vl[%u] = min(vl[%u], vmin%u);", i, i, i);
+            i_fmin(r, vl[i], vl[i], vmin); CMTF("vl[%u] = min(vl[%u], vmin%u);", i, i, i);
             if (s->use_vh)
-                i_fmin(r, vh[i], vh[i], s->vt[0]);
+                i_fmin(r, vh[i], vh[i], vmin);
         } else {
-            i_umin(r, vl[i], vl[i], s->vt[0]); CMTF("vl[%u] = min(vl[%u], vmin%u);", i, i, i);
+            i_umin(r, vl[i], vl[i], vmin); CMTF("vl[%u] = min(vl[%u], vmin%u);", i, i, i);
             if (s->use_vh)
-                i_umin(r, vh[i], vh[i], s->vt[0]);
+                i_umin(r, vh[i], vh[i], vmin);
         }
     }
 }
@@ -1208,18 +1207,17 @@ static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     RasmContext *r = s->rctx;
     RasmOp *vl = s->vl;
     RasmOp *vh = s->vh;
-    RasmOp data_vec = regs->max.data_vec;
 
     LOOP_MASK(p, i) {
-        i_dup(r, s->vt[0], a64op_elem(data_vec, i));
+        RasmOp vmax = a64op_make_vec(a64op_vec_n(regs->max.vec[i]), s->el_count, s->el_size);
         if (p->type == SWS_PIXEL_F32) {
-            i_fmax(r, vl[i], vl[i], s->vt[0]); CMTF("vl[%u] = max(vl[%u], vmax%u);", i, i, i);
+            i_fmax(r, vl[i], vl[i], vmax); CMTF("vl[%u] = max(vl[%u], vmax%u);", i, i, i);
             if (s->use_vh)
-                i_fmax(r, vh[i], vh[i], s->vt[0]);
+                i_fmax(r, vh[i], vh[i], vmax);
         } else {
-            i_umax(r, vl[i], vl[i], s->vt[0]); CMTF("vl[%u] = max(vl[%u], vmax%u);", i, i, i);
+            i_umax(r, vl[i], vl[i], vmax); CMTF("vl[%u] = max(vl[%u], vmax%u);", i, i, i);
             if (s->use_vh)
-                i_umax(r, vh[i], vh[i], s->vt[0]);
+                i_umax(r, vh[i], vh[i], vmax);
         }
     }
 }
@@ -1665,20 +1663,26 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         int ret = aarch64_jit_setup(ops, s->block_size, n, p, &impl_result);
         if (ret < 0)
             return ret;
-        int idx = jit_push_data(s, impl_result.priv.u32);
-        int el_size = ff_sws_pixel_type_size(p->type);
-        regs->min.data_vec = a64op_make_vec(SWS_AARCH64_REGID_VDATA + idx,
-                                            16 / el_size, el_size);
+        LOOP_MASK(p, i) {
+            uint32_t val = (p->type == SWS_PIXEL_U8)  ? impl_result.priv.u8[i]
+                         : (p->type == SWS_PIXEL_U16) ? impl_result.priv.u16[i]
+                         :                              impl_result.priv.u32[i];
+            int idx = jit_push_imm32_op(s, p->type, val);
+            regs->min.vec[i] = s->vimm[idx];
+        }
         break;
     }
     case SWS_UOP_MAX: {
         int ret = aarch64_jit_setup(ops, s->block_size, n, p, &impl_result);
         if (ret < 0)
             return ret;
-        int idx = jit_push_data(s, impl_result.priv.u32);
-        int el_size = ff_sws_pixel_type_size(p->type);
-        regs->max.data_vec = a64op_make_vec(SWS_AARCH64_REGID_VDATA + idx,
-                                            16 / el_size, el_size);
+        LOOP_MASK(p, i) {
+            uint32_t val = (p->type == SWS_PIXEL_U8)  ? impl_result.priv.u8[i]
+                         : (p->type == SWS_PIXEL_U16) ? impl_result.priv.u16[i]
+                         :                              impl_result.priv.u32[i];
+            int idx = jit_push_imm32_op(s, p->type, val);
+            regs->max.vec[i] = s->vimm[idx];
+        }
         break;
     }
     case SWS_UOP_SCALE: {
