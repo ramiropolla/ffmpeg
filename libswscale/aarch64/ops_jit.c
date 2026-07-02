@@ -65,6 +65,11 @@ typedef struct SwsAArch64Context {
 
     RasmContext *rctx;
 
+    /* Per-op private data (e.g. dither matrices), indexed by op number
+     * and addressed at runtime via a fixed offset from `impl`. Owned by
+     * the compiled op (see aarch64_jit_compile()). */
+    SwsOpChain *chain;
+
     SwsAArch64UsedRegs gprs;
     SwsAArch64UsedRegs vecs;
 
@@ -127,6 +132,7 @@ typedef struct SwsAArch64OpRegs {
         struct { RasmOp vec[4]; } max;
         struct { RasmOp vec; } scale;
         struct { RasmOp coeff[4]; int num_vregs; } linear;
+        struct { int offset; } dither;
     };
 } SwsAArch64OpRegs;
 
@@ -604,7 +610,10 @@ static int aarch64_jit_process(SwsAArch64Context *s, const SwsAArch64OpImplParam
     }
 
     s->tmp0 = s->exec;
-    s->tmp1 = s->impl;
+    /* `impl` must stay intact for the whole function: ops that carry
+     * per-op private data (e.g. dither) read it via a fixed offset from
+     * `impl` at any point in the chain, so it cannot double as scratch. */
+    s->tmp1 = jit_gpx(s, -1);
 
     load_constants(s);
 
@@ -1389,7 +1398,8 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 /* add dithering noise */
 /* SWS_UOP_DITHER */
 
-static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
+static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                             const SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
     RasmOp *vl = s->vl;
@@ -1404,7 +1414,11 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 
     /**
      * For a description of the matrix buffer layout, read the comments
-     * in aarch64_setup_dither() in aarch64/ops.c.
+     * in aarch64_jit_setup_dither() above.
+     *
+     * `impl` (see aarch64_jit_process()) points at the base of the
+     * per-op data chain for the whole compiled function; regs->dither.offset
+     * (computed in aarch64_setup()) locates this op's own slot within it.
      */
 
     /**
@@ -1429,7 +1443,7 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         }
     }
 
-    i_ldr(r, ptr, a64op_off(s->impl, offsetof_impl_priv));  CMT("void *ptr = impl->priv.ptr;");
+    i_ldr(r, ptr, a64op_off(s->impl, regs->dither.offset)); CMT("void *ptr = chain->impl[n].priv.ptr;");
 
     /**
      * We use ubfiz to mask and shift left in one single instruction:
@@ -1588,7 +1602,7 @@ static int aarch64_jit_uop(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
     case SWS_UOP_SCALE:        asmgen_op_scale(s, p, regs);        break;
     case SWS_UOP_LINEAR:       asmgen_op_linear(s, p, regs);       break;
     case SWS_UOP_LINEAR_FMA:   asmgen_op_linear(s, p, regs);       break;
-    case SWS_UOP_DITHER:       asmgen_op_dither(s, p);             break;
+    case SWS_UOP_DITHER:       asmgen_op_dither(s, p, regs);       break;
     /* TODO implement SWS_UOP_SHUFFLE */
     default:
         break;
@@ -1709,6 +1723,16 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         impl_result.free(&impl_result.priv);
         break;
     }
+    case SWS_UOP_DITHER: {
+        int ret = aarch64_jit_setup(ops, s->block_size, n, p, &impl_result);
+        if (ret < 0)
+            return ret;
+        s->chain->impl[n].priv = impl_result.priv;
+        s->chain->free[n] = impl_result.free;
+        s->chain->num_impl = FFMAX(s->chain->num_impl, n + 1);
+        regs->dither.offset = n * sizeof_impl + offsetof_impl_priv;
+        break;
+    }
     default:
         break;
     }
@@ -1720,6 +1744,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
                                SwsCompiledOp *out)
 {
     int ret;
+    int chain_owned_by_out = 0;
 
     const int cpu_flags = av_get_cpu_flags();
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
@@ -1736,6 +1761,14 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         .block_size = block_size,
         .rctx       = r,
     };
+
+    /* Owns per-op private data (e.g. dither matrices) for the lifetime of
+     * the compiled op; see the `chain` field of SwsAArch64Context. */
+    s.chain = ff_sws_op_chain_alloc();
+    if (!s.chain) {
+        ret = AVERROR(ENOMEM);
+        goto error;
+    }
 
     /* Translate all ops into implementation parameters and setup all
      * constant data. */
@@ -1822,19 +1855,23 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     }
 
     *out = (SwsCompiledOp) {
-        .priv        = &s,
+        .priv        = s.chain,
         .slice_align = 1,
-        // .free        = ff_sws_op_chain_free_cb,
+        .free        = ff_sws_op_chain_free_cb,
         .block_size  = block_size,
         .func        = /*process_func*/ NULL,
         .cpu_flags   = cpu_flags,
     };
+    /* From this point on, `*out` owns `s.chain`; don't free it below. */
+    chain_owned_by_out = 1;
 
-    printf("gprs.used %08x\n", s.gprs.used);
-    printf("[%s][%d] %s() %d\n", __FILE__, __LINE__, __func__, SWS_MAX_OPS);
+    // printf("gprs.used %08x\n", s.gprs.used);
+    // printf("[%s][%d] %s() %d\n", __FILE__, __LINE__, __func__, SWS_MAX_OPS);
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
     rasm_print(s.rctx, &bp, true);
+
+    fputs(bp.str, stdout);
 
     uint8_t *text;
     size_t text_size;
@@ -1843,7 +1880,6 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         printf("[%s][%d] %s() ret %d\n", __FILE__, __LINE__, __func__, ret);
     }
 
-    fputs(bp.str, stdout);
     av_bprint_finalize(&bp, NULL);
 
     out->func = (SwsOpFunc) text;
@@ -1851,6 +1887,8 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
 error:
     if (ret < 0) {
         rasm_free(&s.rctx);
+        if (!chain_owned_by_out)
+            ff_sws_op_chain_free_cb(s.chain);
     }
     return ret;
 }
