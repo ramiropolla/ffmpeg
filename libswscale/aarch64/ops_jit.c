@@ -964,11 +964,11 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     /* Apply masks. */
     reshape_all_vectors(s, 16, 1);
     LOOP_MASK_BWD(p, i) {
-        i_and(r, vl[i], vl[i], regs->unpack.mask[i]);
+        i_and(r, vl[i], vl[i], v_16b(regs->unpack.mask[i]));
         CMTF("vl[%u] &= 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1);
     }
     LOOP_MASK_BWD_VH(s, p, i) {
-        i_and(r, vh[i], vh[i], regs->unpack.mask[i]);
+        i_and(r, vh[i], vh[i], v_16b(regs->unpack.mask[i]));
         CMTF("vh[%u] &= 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1);
     }
 }
@@ -1871,13 +1871,12 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
     rasm_print(s.rctx, &bp, true);
 
-    fputs(bp.str, stdout);
-
     uint8_t *text;
     size_t text_size;
     ret = ff_sws_jit_assemble_llvm(bp.str, &text, &text_size);
     if (ret < 0) {
         printf("[%s][%d] %s() ret %d\n", __FILE__, __LINE__, __func__, ret);
+        fputs(bp.str, stdout);
     }
 
     av_bprint_finalize(&bp, NULL);
