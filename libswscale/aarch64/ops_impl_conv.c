@@ -19,20 +19,16 @@
  */
 
 /**
- * NOTE: This file is #include'd directly by both the NEON backend and
- *       the sws_ops_aarch64 tool.
+ * NOTE: This file is #include'd directly by the sws_ops_aarch64 tool,
+ *       and also built as part of libswscale when targeting aarch64.
  */
 
 #include "libavutil/error.h"
 
 #include "ops_impl.h"
 
-/**
- * Convert SwsUOp to a SwsAArch64OpImplParams. Read the comments regarding
- * SwsAArch64OpImplParams in ops_impl.h for more information.
- */
-static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
-                                    SwsAArch64OpImplParams *out)
+void ff_sws_aarch64_ops_translate(const SwsUOp *uop, int block_size,
+                                  SwsAArch64OpImplParams *out)
 {
     out->uop = uop->uop;
     out->mask = uop->mask;
