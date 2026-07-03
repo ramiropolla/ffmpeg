@@ -51,6 +51,9 @@ void rasm_free(RasmContext **prctx)
             case RASM_NODE_DIRECTIVE:
                 av_freep(&node->directive.text);
                 break;
+            case RASM_NODE_DATA:
+                av_freep(&node->data.data);
+                break;
             default:
                 break;
             }
@@ -191,6 +194,46 @@ RasmNode *rasm_add_directive(RasmContext *rctx, const char *text)
     return node;
 }
 
+RasmNode *rasm_add_data(RasmContext *rctx, const void *data, unsigned count,
+                        RasmDataType type)
+{
+    if (rctx->error)
+        return NULL;
+
+    size_t size = count * rasm_data_type_size(type);
+    void *dup = av_memdup(data, size);
+    if (!dup) {
+        rctx->error = AVERROR(ENOMEM);
+        return NULL;
+    }
+
+    RasmNode *node = add_node(rctx, RASM_NODE_DATA);
+    if (node) {
+        node->data.data  = dup;
+        node->data.count = count;
+        node->data.type  = type;
+    } else {
+        av_freep(&dup);
+    }
+    return node;
+}
+
+RasmNode *rasm_add_const(RasmContext *rctx, int id)
+{
+    RasmNode *node = add_node(rctx, RASM_NODE_CONST);
+    if (node) {
+        av_assert0(id >= 0 && id < rctx->num_labels);
+        node->konst.name = rctx->labels[id];
+    }
+    return node;
+}
+
+RasmNode *rasm_add_endconst(RasmContext *rctx)
+{
+    RasmNode *node = add_node(rctx, RASM_NODE_ENDCONST);
+    return node;
+}
+
 RasmNode *rasm_get_current_node(RasmContext *rctx)
 {
     return rctx->current_node;
@@ -232,6 +275,37 @@ int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
 
     entry->func.export   = export;
     entry->func.label_id = id;
+
+    if (rctx->error)
+        return rctx->error;
+
+    return id;
+}
+
+int rasm_const_begin(RasmContext *rctx, const char *name)
+{
+    if (rctx->error)
+        return rctx->error;
+
+    /* Grow entries array. */
+    RasmEntry *entry = av_dynarray2_add((void **) &rctx->entries,
+                                        &rctx->num_entries,
+                                        sizeof(*rctx->entries), NULL);
+    if (!entry) {
+        rctx->error = AVERROR(ENOMEM);
+        return rctx->error;
+    }
+
+    entry->type = RASM_ENTRY_CONST;
+
+    int id = rasm_new_label(rctx, name);
+
+    rasm_set_current_node(rctx, NULL);
+    entry->start = rasm_add_const(rctx, id);
+    entry->end   = rasm_add_endconst(rctx);
+    rasm_set_current_node(rctx, entry->start);
+
+    entry->konst.label_id = id;
 
     if (rctx->error)
         return rctx->error;
