@@ -584,7 +584,7 @@ static unsigned clobbered_gprs(const SwsAArch64Context *s,
     return count;
 }
 
-static int aarch64_jit_process(SwsAArch64Context *s, const SwsAArch64OpImplParams *pin, const SwsAArch64OpImplParams *pout)
+static int aarch64_jit_process(SwsAArch64Context *s, const SwsFormat *src, const SwsFormat *dst, const SwsAArch64OpImplParams *pin, const SwsAArch64OpImplParams *pout)
 {
     SwsCompMask imask = pin->mask;
     SwsCompMask omask = pout->mask;
@@ -599,7 +599,7 @@ static int aarch64_jit_process(SwsAArch64Context *s, const SwsAArch64OpImplParam
      * The description in x86/ops_include.asm mostly holds as well here.
      */
 
-    snprintf(func_name, sizeof(func_name), "ff_sws_process_%04x_%04x_neon", nibble_mask(pin->mask), nibble_mask(pout->mask));
+    snprintf(func_name, sizeof(func_name), "jit_%s_%s_neon", av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format));
 
     rasm_func_begin(r, func_name, true, false);
 
@@ -1851,7 +1851,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
 #endif
 
     /* create process */
-    ret = aarch64_jit_process(&s, &params[0], &params[ops->num_ops - 1]);
+    ret = aarch64_jit_process(&s, &ops->src, &ops->dst, &params[0], &params[ops->num_ops - 1]);
     if (ret < 0)
         goto error;
 
