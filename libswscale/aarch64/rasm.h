@@ -106,6 +106,32 @@ static inline int rasm_op_label_id(RasmOp op)
 }
 
 /*********************************************************************/
+/* Data types */
+
+typedef enum RasmDataType {
+    RASM_DATA_BYTE = 0,
+    RASM_DATA_SHORT,
+    RASM_DATA_WORD,
+    RASM_DATA_QUAD,
+
+    RASM_DATA_NB,
+} RasmDataType;
+
+static inline unsigned rasm_data_type_size(RasmDataType type)
+{
+    switch (type) {
+    case RASM_DATA_BYTE:  return 1; break;
+    case RASM_DATA_SHORT: return 2; break;
+    case RASM_DATA_WORD:  return 4; break;
+    case RASM_DATA_QUAD:  return 8; break;
+    default:
+        break;
+    }
+    av_assert0(0);
+    return 0;
+}
+
+/*********************************************************************/
 /* IR Nodes */
 
 typedef enum RasmNodeType {
@@ -115,8 +141,9 @@ typedef enum RasmNodeType {
     RASM_NODE_FUNCTION,
     RASM_NODE_ENDFUNC,
     RASM_NODE_DIRECTIVE,
-    RASM_NODE_DATA, // TODO implement const instead of data (like in libavutil/aarch64/asm.S)
-    RASM_NODE_DATASECTION,
+    RASM_NODE_DATA,
+    RASM_NODE_CONST,
+    RASM_NODE_ENDCONST,
 } RasmNodeType;
 
 typedef struct RasmNodeInsn {
@@ -144,8 +171,13 @@ typedef struct RasmNodeDirective {
 
 typedef struct RasmNodeData {
     void *data;
-    size_t size;
+    unsigned count;
+    RasmDataType type;
 } RasmNodeData;
+
+typedef struct RasmNodeConst {
+    char *name;
+} RasmNodeConst;
 
 /* A single node in the IR. */
 typedef struct RasmNode {
@@ -157,6 +189,7 @@ typedef struct RasmNode {
         RasmNodeFunc      func;
         RasmNodeDirective directive;
         RasmNodeData      data;
+        RasmNodeConst     konst;
     };
     char *inline_comment;
     struct RasmNode *prev;
@@ -168,13 +201,17 @@ typedef struct RasmNode {
 
 typedef enum RasmEntryType {
     RASM_ENTRY_FUNC,
-    RASM_ENTRY_DATA,
+    RASM_ENTRY_CONST,
 } RasmEntryType;
 
 typedef struct RasmFunction {
     bool export;
     int label_id;
 } RasmFunction;
+
+typedef struct RasmConst {
+    int label_id;
+} RasmConst;
 
 /* A contiguous range of nodes. */
 typedef struct RasmEntry {
@@ -183,6 +220,7 @@ typedef struct RasmEntry {
     RasmNode *end;
     union {
         RasmFunction func;
+        RasmConst    konst;
     };
 } RasmEntry;
 
@@ -213,7 +251,10 @@ RasmNode *rasm_add_func(RasmContext *rctx, int id, bool export,
                         bool jumpable);
 RasmNode *rasm_add_endfunc(RasmContext *rctx);
 RasmNode *rasm_add_directive(RasmContext *rctx, const char *text);
-RasmNode *rasm_add_data(RasmContext *rctx, const void *data, size_t size);
+RasmNode *rasm_add_data(RasmContext *rctx, const void *data, unsigned count,
+                        RasmDataType type);
+RasmNode *rasm_add_const(RasmContext *rctx, int id);
+RasmNode *rasm_add_endconst(RasmContext *rctx);
 
 RasmNode *rasm_get_current_node(RasmContext *rctx);
 RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node);
@@ -221,7 +262,7 @@ RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node);
 /* Top-level IR entries */
 int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
                     bool jumpable);
-int rasm_data_begin(RasmContext *rctx);
+int rasm_const_begin(RasmContext *rctx, const char *name);
 
 /**
  * Allocate a new label ID with the given name.
@@ -243,9 +284,8 @@ void rasm_annotate_next(RasmContext *rctx, const char *comment);
 void rasm_annotate_nextf(RasmContext *rctx, char *s, size_t n,
                          const char *fmt, ...) av_printf_format(4, 5);
 
-/* Emit the assembled IR as GNU assembler text to bp.
- * When jit is true, function/endfunc markers are omitted. */
-int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit);
+/* Emit the assembled IR as GNU assembler text to bp. */
+int rasm_print(RasmContext *rctx, AVBPrint *bp);
 
 /*********************************************************************/
 /* AArch64-specific */

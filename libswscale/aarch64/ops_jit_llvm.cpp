@@ -139,8 +139,15 @@ std::string blabliblu =
 ".macro  function name, export=0, jumpable=0, align=4\n"
 "        .text\n"
 "        .align \\align\n"
+"\\name:\n"
 ".endm\n"
 ".macro endfunc\n"
+".endm\n"
+".macro  const name, align=4, relocate=0\n"
+"        .align \\align\n"
+"\\name:\n"
+".endm\n"
+".macro endconst\n"
 ".endm\n";
 blabliblu += src;
 

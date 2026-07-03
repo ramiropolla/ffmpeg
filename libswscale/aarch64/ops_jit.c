@@ -115,7 +115,6 @@ typedef struct SwsAArch64Context {
     uint32_t data[SWS_AARCH64_MAX_DATA_VECS * 4];
     int      n_data;
     RasmOp   vdata[SWS_AARCH64_MAX_DATA_VECS];
-    int      data_label;
 } SwsAArch64Context;
 
 /*********************************************************************/
@@ -253,7 +252,7 @@ static int jit_push_data(SwsAArch64Context *s, const uint32_t words[4])
  * 128-bit data pool vectors (v8..v15) before the inner loop.
  * Uses tmp0 as a scratch GPR for values that cannot be encoded by movi,
  * and as the base pointer for adr + ldr of the data pool. */
-static void load_constants(SwsAArch64Context *s)
+static void load_constants(SwsAArch64Context *s, int data_label)
 {
     RasmContext *r = s->rctx;
     int pool_idx[SWS_AARCH64_MAX_IMM];
@@ -326,9 +325,9 @@ static void load_constants(SwsAArch64Context *s)
 
     if (s->n_data) {
         rasm_add_comment(r, "data pool");
+
         RasmOp ptr = s->tmp0;
-        s->data_label = rasm_new_label(r, "ldata");
-        i_adr(r, ptr, rasm_op_label(s->data_label));
+        i_adr(r, ptr, rasm_op_label(data_label));
         for (int i = 0; i < s->n_data; i++)
             i_ldr(r, s->vdata[i], a64op_off(ptr, (int16_t) (i * 16)));
     }
@@ -561,29 +560,6 @@ static void asmgen_epilogue(SwsAArch64Context *s, const RasmOp *regs, unsigned n
 /* Callee-saved registers (r19-r28, fp, and lr). */
 #define MAX_SAVED_REGS 12
 
-static void clobber_gpr(RasmOp regs[MAX_SAVED_REGS], unsigned *count,
-                        RasmOp gpr)
-{
-    const int n = a64op_gpr_n(gpr);
-    if (n >= 19 && n <= 30)
-        regs[(*count)++] = gpr;
-}
-
-static unsigned clobbered_gprs(const SwsAArch64Context *s,
-                               SwsCompMask mask,
-                               RasmOp regs[MAX_SAVED_REGS])
-{
-    unsigned count = 0;
-    clobber_gpr(regs, &count, a64op_lr());
-    LOOP(mask, i) {
-        clobber_gpr(regs, &count, s->in[i]);
-        clobber_gpr(regs, &count, s->out[i]);
-        clobber_gpr(regs, &count, s->in_bump[i]);
-        clobber_gpr(regs, &count, s->out_bump[i]);
-    }
-    return count;
-}
-
 static int aarch64_jit_process(SwsAArch64Context *s, const SwsFormat *src, const SwsFormat *dst, const SwsAArch64OpImplParams *pin, const SwsAArch64OpImplParams *pout)
 {
     SwsCompMask imask = pin->mask;
@@ -646,8 +622,6 @@ static int aarch64_jit_process(SwsAArch64Context *s, const SwsFormat *src, const
      * per-op private data (e.g. dither) read it via a fixed offset from
      * `impl` at any point in the chain, so it cannot double as scratch. */
     s->tmp1 = jit_gpx(s, -1);
-
-    load_constants(s);
 
     s->pre_loop = rasm_get_current_node(r);
 
@@ -1316,7 +1290,7 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
  * (low or high).
  */
 static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                        RasmOp *vt, RasmOp *vc,
+                        const RasmOp *vt, const RasmOp *vc,
                         SwsCompMask save_mask, bool vh_pass)
 {
     RasmContext *r = s->rctx;
@@ -1324,8 +1298,8 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
      * The intermediate registers for fmul+fadd (for when SWS_BITEXACT
      * is set) start from temp vector 4.
      */
-    RasmOp *vtmp = &vt[4];
-    RasmOp *vx = vh_pass ? s->vh : s->vl;
+    const RasmOp *vtmp = &vt[4];
+    const RasmOp *vx = vh_pass ? s->vh : s->vl;
     char cvh = vh_pass ? 'h' : 'l';
 
     if (vh_pass && !s->use_vh)
@@ -1855,20 +1829,20 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto error;
 
-    /* emit data pool as a separate data entry */
-    if (s.n_data > 0) {
-        rasm_data_begin(r);
-        rasm_add_directive(r, ".align 16");
-        rasm_add_label(r, s.data_label);
-        rasm_add_data(r, s.data, s.n_data * 4 * sizeof(uint32_t));
-    }
-
     /* add all ops */
     rasm_set_current_node(r, s.loop);
     for (int i = 0; i < ops->num_ops; i++) {
         ret = aarch64_jit_uop(&s, &params[i], &regs[i]);
         if (ret < 0)
             goto error;
+    }
+
+    /* emit data pool */
+    if (s.n_data > 0) {
+        int data_label = rasm_const_begin(r, "ldata");
+        rasm_add_data(r, s.data, s.n_data * 4, RASM_DATA_WORD);
+        rasm_set_current_node(r, s.pre_loop);
+        load_constants(&s, data_label);
     }
 
     /* Function prologue */
@@ -1900,7 +1874,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     // printf("[%s][%d] %s() %d\n", __FILE__, __LINE__, __func__, SWS_MAX_OPS);
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
-    rasm_print(s.rctx, &bp, true);
+    rasm_print(s.rctx, &bp);
 
     if (getenv("SWS_JIT_DUMP")) {
         fputs(bp.str, stdout);

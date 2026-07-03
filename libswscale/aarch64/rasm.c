@@ -194,11 +194,13 @@ RasmNode *rasm_add_directive(RasmContext *rctx, const char *text)
     return node;
 }
 
-RasmNode *rasm_add_data(RasmContext *rctx, const void *data, size_t size)
+RasmNode *rasm_add_data(RasmContext *rctx, const void *data, unsigned count,
+                        RasmDataType type)
 {
     if (rctx->error)
         return NULL;
 
+    size_t size = count * rasm_data_type_size(type);
     void *dup = av_memdup(data, size);
     if (!dup) {
         rctx->error = AVERROR(ENOMEM);
@@ -207,11 +209,28 @@ RasmNode *rasm_add_data(RasmContext *rctx, const void *data, size_t size)
 
     RasmNode *node = add_node(rctx, RASM_NODE_DATA);
     if (node) {
-        node->data.data = dup;
-        node->data.size = size;
+        node->data.data  = dup;
+        node->data.count = count;
+        node->data.type  = type;
     } else {
         av_freep(&dup);
     }
+    return node;
+}
+
+RasmNode *rasm_add_const(RasmContext *rctx, int id)
+{
+    RasmNode *node = add_node(rctx, RASM_NODE_CONST);
+    if (node) {
+        av_assert0(id >= 0 && id < rctx->num_labels);
+        node->konst.name = rctx->labels[id];
+    }
+    return node;
+}
+
+RasmNode *rasm_add_endconst(RasmContext *rctx)
+{
+    RasmNode *node = add_node(rctx, RASM_NODE_ENDCONST);
     return node;
 }
 
@@ -263,7 +282,7 @@ int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
     return id;
 }
 
-int rasm_data_begin(RasmContext *rctx)
+int rasm_const_begin(RasmContext *rctx, const char *name)
 {
     if (rctx->error)
         return rctx->error;
@@ -277,16 +296,21 @@ int rasm_data_begin(RasmContext *rctx)
         return rctx->error;
     }
 
-    entry->type = RASM_ENTRY_DATA;
+    entry->type = RASM_ENTRY_CONST;
+
+    int id = rasm_new_label(rctx, name);
 
     rasm_set_current_node(rctx, NULL);
-    entry->start = add_node(rctx, RASM_NODE_DATASECTION);
-    entry->end   = entry->start;
+    entry->start = rasm_add_const(rctx, id);
+    entry->end   = rasm_add_endconst(rctx);
+    rasm_set_current_node(rctx, entry->start);
+
+    entry->konst.label_id = id;
 
     if (rctx->error)
         return rctx->error;
 
-    return 0;
+    return id;
 }
 
 /*********************************************************************/

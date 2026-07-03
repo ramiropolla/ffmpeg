@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <inttypes.h>
 #include <stdarg.h>
 #include <string.h>
 
@@ -392,7 +393,7 @@ static void print_node_label(const RasmContext *rctx,
 
 static void print_node_function(const RasmContext *rctx,
                                 AVBPrint *bp, unsigned line_start,
-                                const RasmNode *node, bool jit)
+                                const RasmNode *node)
 {
     av_bprintf(bp, "function %s, export=%d, jumpable=%d",
                node->func.name, node->func.export, node->func.jumpable);
@@ -403,7 +404,7 @@ static void print_node_function(const RasmContext *rctx,
 
 static void print_node_endfunc(const RasmContext *rctx,
                                AVBPrint *bp, unsigned line_start,
-                               const RasmNode *node, bool jit)
+                               const RasmNode *node)
 {
     av_bprintf(bp, "endfunc");
 }
@@ -421,23 +422,67 @@ static void print_node_directive(const RasmContext *rctx,
 /*********************************************************************/
 /* RASM_NODE_DATA */
 
+static const char data_type_names[RASM_DATA_NB][8] = {
+    [RASM_DATA_BYTE]  = ".byte",
+    [RASM_DATA_SHORT] = ".short",
+    [RASM_DATA_WORD]  = ".word",
+    [RASM_DATA_QUAD]  = ".quad",
+};
+
+static unsigned data_type_wrap[RASM_DATA_NB] = {
+    [RASM_DATA_BYTE]  = 16,
+    [RASM_DATA_SHORT] =  8,
+    [RASM_DATA_WORD]  =  4,
+    [RASM_DATA_QUAD]  =  2,
+};
+
 static void print_node_data(const RasmContext *rctx,
                             AVBPrint *bp, unsigned line_start,
                             const RasmNode *node)
 {
-    const uint32_t *u32 = (const uint32_t *) node->data.data;
-    for (size_t i = 0; i < node->data.size / 4; i++) {
-        bool first = !(i & 3);
-        if (i > 0)
-            av_bprintf(bp, first ? "\n" : ",");
-        if (first)
-            av_bprintf(bp, ".word");
-        av_bprintf(bp, " 0x%08x", u32[i]);
+    for (unsigned i = 0; i < node->data.count; i++) {
+        if (!(i & (data_type_wrap[node->data.type] - 1))) {
+            if (i > 0)
+                av_bprintf(bp, "\n");
+            indent_to(bp, bp->len, INSTR_INDENT);
+            av_bprintf(bp, "%s", data_type_names[node->data.type]);
+        } else {
+            av_bprintf(bp, ",");
+        }
+
+        switch (node->data.type) {
+        case RASM_DATA_BYTE:  av_bprintf(bp, " 0x%02x",        ((const uint8_t  *) node->data.data)[i]); break;
+        case RASM_DATA_SHORT: av_bprintf(bp, " 0x%04x",        ((const uint16_t *) node->data.data)[i]); break;
+        case RASM_DATA_WORD:  av_bprintf(bp, " 0x%08x",        ((const uint32_t *) node->data.data)[i]); break;
+        case RASM_DATA_QUAD:  av_bprintf(bp, " 0x%016" PRIx64, ((const uint64_t *) node->data.data)[i]); break;
+        default:
+            break;
+        }
     }
 }
 
 /*********************************************************************/
-int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit)
+/* RASM_NODE_CONST */
+
+static void print_node_const(const RasmContext *rctx,
+                             AVBPrint *bp, unsigned line_start,
+                             const RasmNode *node)
+{
+    av_bprintf(bp, "const %s", node->konst.name);
+}
+
+/*********************************************************************/
+/* RASM_NODE_ENDCONST */
+
+static void print_node_endconst(const RasmContext *rctx,
+                                AVBPrint *bp, unsigned line_start,
+                                const RasmNode *node)
+{
+    av_bprintf(bp, "endconst");
+}
+
+/*********************************************************************/
+int rasm_print(RasmContext *rctx, AVBPrint *bp)
 {
     if (rctx->error)
         return rctx->error;
@@ -480,10 +525,10 @@ int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit)
                 print_node_label(rctx, bp, line_start, node, local_labels);
                 break;
             case RASM_NODE_FUNCTION:
-                print_node_function(rctx, bp, line_start, node, jit);
+                print_node_function(rctx, bp, line_start, node);
                 break;
             case RASM_NODE_ENDFUNC:
-                print_node_endfunc(rctx, bp, line_start, node, jit);
+                print_node_endfunc(rctx, bp, line_start, node);
                 break;
             case RASM_NODE_DIRECTIVE:
                 print_node_directive(rctx, bp, line_start, node);
@@ -491,7 +536,11 @@ int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit)
             case RASM_NODE_DATA:
                 print_node_data(rctx, bp, line_start, node);
                 break;
-            case RASM_NODE_DATASECTION:
+            case RASM_NODE_CONST:
+                print_node_const(rctx, bp, line_start, node);
+                break;
+            case RASM_NODE_ENDCONST:
+                print_node_endconst(rctx, bp, line_start, node);
                 break;
             default:
                 break;
@@ -503,8 +552,8 @@ int rasm_print(RasmContext *rctx, AVBPrint *bp, bool jit)
             }
             av_bprintf(bp, "\n");
 
-            /* Add extra line after end of functions. */
-            if (node->type == RASM_NODE_ENDFUNC)
+            /* Add extra line after end of function/const blocks. */
+            if (node->type == RASM_NODE_ENDFUNC || node->type == RASM_NODE_ENDCONST)
                 av_bprintf(bp, "\n");
         }
     }
