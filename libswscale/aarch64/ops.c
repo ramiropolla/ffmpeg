@@ -24,7 +24,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/tree.h"
 
-#include "ops_impl_conv.c"
+#include "ops_impl.h"
 
 /**
  * Check that there is no mismatch for the SwsOpExec/SwsOpImpl offset
@@ -220,7 +220,7 @@ static int aarch64_compile(SwsContext *ctx, const SwsOpList *ops,
     /* Look up kernel functions. */
     for (int i = 0; i < ops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        ret = convert_to_aarch64_impl(ctx, ops, i, block_size, &params);
+        ret = ff_sws_aarch64_ops_translate(ctx, ops, i, bctx.block_size, &params);
         if (ret < 0)
             goto error;
         SwsFuncPtr func = aarch64_lookup(&params);
