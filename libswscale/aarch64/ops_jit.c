@@ -256,6 +256,8 @@ static int jit_push_data(SwsAArch64Context *s, const uint32_t words[4])
 static void load_constants(SwsAArch64Context *s)
 {
     RasmContext *r = s->rctx;
+    int pool_idx[SWS_AARCH64_MAX_IMM];
+    bool via_pool[SWS_AARCH64_MAX_IMM] = { 0 };
 
     if (s->n_imm) {
         rasm_add_comment(r, "immediates");
@@ -265,17 +267,35 @@ static void load_constants(SwsAArch64Context *s)
          * vectors. Separating the passes -- and giving each large value
          * its own GPR -- allows the CPU to overlap the (independent)
          * integer and vector instructions instead of stalling on a
-         * read-after-write hazard between each mov and its own dup. */
+         * read-after-write hazard between each mov and its own dup.
+         *
+         * A word-sized (repeat_len == 4) value with both halves non-zero
+         * fits neither a single movz/movn nor (in general) a logical
+         * immediate, so building it would need extra GPR arithmetic --
+         * instead, push it as a ready-made 4-word broadcast into the
+         * data pool below and load it directly, skipping the GPR
+         * entirely. 16-bit values (repeat_len <= 2) always fit a single
+         * mov, so this only ever applies to repeat_len == 4. */
         RasmOp tmp[SWS_AARCH64_MAX_IMM];
         for (int i = 0; i < s->n_imm; i++) {
             int small_value = (int) (s->imm[i].meta >> 16);
             int repeat_len  = (int) ((s->imm[i].meta >> 8) & 0xff);
-            if (!small_value && repeat_len != 1) {
+            if (small_value || repeat_len == 1)
+                continue;
+            uint32_t val   = s->imm[i].val;
+            uint32_t low16 = val & 0xffff;
+            uint32_t hi16  = val >> 16;
+            if (repeat_len == 4 && low16 && hi16) {
+                /* s->vimm[i] (v28+i) was already handed out to callers
+                 * during the setup pass, so it must still end up holding
+                 * this value -- push it into the data pool and copy it
+                 * into place once the pool has been loaded, below. */
+                uint32_t words[4] = { val, val, val, val };
+                pool_idx[i] = jit_push_data(s, words);
+                via_pool[i] = true;
+            } else {
                 tmp[i] = jit_gpw(s, -1);
-                switch (repeat_len) {
-                case 2: i_mov(r, tmp[i], IMM((int32_t) (s->imm[i].val & 0xffff))); break;
-                case 4: i_mov(r, tmp[i], IMM((int32_t)  s->imm[i].val          )); break;
-                }
+                i_mov(r, tmp[i], IMM((int32_t) (repeat_len == 2 ? low16 : val)));
             }
         }
         for (int i = 0; i < s->n_imm; i++) {
@@ -294,13 +314,13 @@ static void load_constants(SwsAArch64Context *s)
             int small_value = (int) (s->imm[i].meta >> 16);
             int repeat_len  = (int) ((s->imm[i].meta >> 8) & 0xff);
             int len         = (int)  (s->imm[i].meta & 0xff);
-            if (!small_value && repeat_len != 1) {
-                switch (len) {
-                case 2: i_dup(r, v_8h(s->vimm[i]), tmp[i]); break;
-                case 4: i_dup(r, v_4s(s->vimm[i]), tmp[i]); break;
-                }
-                jit_free_gpr(s, tmp[i]);
+            if (small_value || repeat_len == 1 || via_pool[i])
+                continue;
+            switch (len) {
+            case 2: i_dup(r, v_8h(s->vimm[i]), tmp[i]); break;
+            case 4: i_dup(r, v_4s(s->vimm[i]), tmp[i]); break;
             }
+            jit_free_gpr(s, tmp[i]);
         }
     }
 
@@ -311,6 +331,14 @@ static void load_constants(SwsAArch64Context *s)
         i_adr(r, ptr, rasm_op_label(s->data_label));
         for (int i = 0; i < s->n_data; i++)
             i_ldr(r, s->vdata[i], a64op_off(ptr, (int16_t) (i * 16)));
+    }
+
+    /* Now that the data pool above has been loaded, copy any pool-sourced
+     * immediates into the v28+i register their callers were already
+     * handed during the setup pass. */
+    for (int i = 0; i < s->n_imm; i++) {
+        if (via_pool[i])
+            i_mov(r, v_16b(s->vimm[i]), v_16b(s->vdata[pool_idx[i]]));
     }
 }
 
@@ -1874,6 +1902,10 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
     rasm_print(s.rctx, &bp, true);
+
+    if (getenv("SWS_JIT_DUMP")) {
+        fputs(bp.str, stdout);
+    }
 
     uint8_t *text;
     size_t text_size;
