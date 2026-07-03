@@ -32,10 +32,10 @@ typedef struct SwsAArch64UsedRegs {
 
 /*********************************************************************/
 /* Immediate values: scalar constants broadcast to all vector lanes,  *
- * pre-loaded into v28..v31 before the inner loop.                    */
+ * pre-loaded into v27..v31 before the inner loop.                    */
 
-#define SWS_AARCH64_MAX_IMM    4
-#define SWS_AARCH64_REGID_VIMM 28
+#define SWS_AARCH64_MAX_IMM    5
+#define SWS_AARCH64_REGID_VIMM 27
 
 /* Data pool: 128-bit constant vectors pre-loaded into v8..v15 before
  * the inner loop, loaded via adr + ldr from a pool after the function. */
@@ -718,12 +718,12 @@ static void asmgen_op_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParam
         i_dup (r, vtmp.b8,                     wtmp);                       CMT("vtmp.lo = broadcast(tmp);");
         i_ins (r, vl[0].de[1],                 vtmp.de[0]);                 CMT("vl[0].hi = vtmp.lo;");
         i_ushl(r, vl[0].b16,                   vl[0].b16, shift_vec.b16);   CMT("vl[0] <<= shift_vec;");
-        i_and (r, vl[0].b16,                   vl[0].b16, regs->read_bit.bitmask); CMT("vl[0] &= bitmask_vec;");
+        i_and (r, vl[0].b16,                   vl[0].b16, v_16b(regs->read_bit.bitmask)); CMT("vl[0] &= bitmask_vec;");
     } else {
         i_ldrb(r, wtmp,                        a64op_post(s->in[0], 1));    CMT("uint8_t tmp = *in[0]++;");
         i_dup (r, vl[0].b8,                    wtmp);                       CMT("vl[0].lo = broadcast(tmp);");
         i_ushl(r, vl[0].b8,                    vl[0].b8,  shift_vec.b8);    CMT("vl[0] <<= shift_vec;");
-        i_and (r, vl[0].b8,                    vl[0].b8,  regs->read_bit.bitmask); CMT("vl[0] &= bitmask_vec;");
+        i_and (r, vl[0].b8,                    vl[0].b8,  v_8b(regs->read_bit.bitmask)); CMT("vl[0] &= bitmask_vec;");
     }
 }
 
@@ -1733,8 +1733,7 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         int ret = aarch64_jit_setup(ops, s->block_size, n, p, &impl_result);
         if (ret < 0)
             return ret;
-        int len = ff_sws_pixel_type_size(p->type);
-        int idx = jit_push_imm32(s, impl_result.priv.u32[0], len);
+        int idx = jit_push_imm32_op(s, p->type, impl_result.priv.u32[0]);
         regs->scale.vec = s->vimm[idx];
         break;
     }
