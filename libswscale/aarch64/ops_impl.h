@@ -52,6 +52,10 @@ typedef struct SwsAArch64OpImplParams {
     SwsUOpParams par;
 } SwsAArch64OpImplParams;
 
+/* Convert SwsOp to a SwsAArch64OpImplParams. */
+int ff_sws_aarch64_ops_translate(SwsContext *ctx, const SwsOpList *ops, int n,
+                                 int block_size, SwsAArch64OpImplParams *out);
+
 /* SwsCompMask-related helpers. */
 #define LOOP(mask, idx)                 \
     for (int idx = 0; idx < 4; idx++)   \

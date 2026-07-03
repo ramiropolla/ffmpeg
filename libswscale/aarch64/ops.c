@@ -24,7 +24,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/tree.h"
 
-#include "ops_impl_conv.c"
+#include "ops_impl.h"
 
 /*********************************************************************/
 typedef struct SwsAArch64BackendContext {
@@ -228,7 +228,7 @@ static int aarch64_compile(SwsContext *ctx, const SwsOpList *ops,
     /* Look up kernel functions. */
     for (int i = 0; i < rest.num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        ret = convert_to_aarch64_impl(ctx, &rest, i, bctx.block_size, &params);
+        ret = ff_sws_aarch64_ops_translate(ctx, &rest, i, bctx.block_size, &params);
         if (ret < 0)
             goto error;
         SwsFuncPtr func = aarch64_lookup(&params);
