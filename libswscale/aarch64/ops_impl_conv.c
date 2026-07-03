@@ -19,13 +19,17 @@
  */
 
 /**
- * NOTE: This file is #include'd directly by both the NEON backend and
- *       the sws_ops_aarch64 tool.
+ * NOTE: When targeting aarch64, this file is built as part of libswscale
+ *       (see libswscale/aarch64/Makefile) and used both by the NEON backend
+ *       and by the sws_ops_aarch64 devtool. On other targets, it is instead
+ *       #include'd directly by the sws_ops_aarch64 devtool, since it is not
+ *       otherwise part of the library.
  */
 
 #include "libavutil/error.h"
 #include "libavutil/rational.h"
 #include "libswscale/ops.h"
+#include "libswscale/ops_chain.h"
 
 #include "ops_impl.h"
 
@@ -91,12 +95,8 @@ static void convert_swizzle_to_moves(const SwsOp *op, SwsAArch64OpImplParams *ou
     }
 }
 
-/**
- * Convert SwsOp to a SwsAArch64OpImplParams. Read the comments regarding
- * SwsAArch64OpImplParams in ops_impl.h for more information.
- */
-static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
-                                   int block_size, SwsAArch64OpImplParams *out)
+int ff_sws_aarch64_ops_translate(SwsContext *ctx, const SwsOpList *ops, int n,
+                                 int block_size, SwsAArch64OpImplParams *out)
 {
     const SwsOp *op = &ops->ops[n];
 

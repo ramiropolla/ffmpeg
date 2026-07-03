@@ -52,6 +52,13 @@ typedef struct SwsAArch64OpImplParams {
     SwsUOpParams par;
 } SwsAArch64OpImplParams;
 
+/**
+ * Convert the n-th operation in `ops` to a SwsAArch64OpImplParams, which can
+ * then be used to look up the corresponding aarch64 kernel function.
+ */
+int ff_sws_aarch64_ops_translate(SwsContext *ctx, const SwsOpList *ops, int n,
+                                 int block_size, SwsAArch64OpImplParams *out);
+
 /* SwsCompMask-related helpers. */
 #define LOOP(mask, idx)                 \
     for (int idx = 0; idx < 4; idx++)   \

@@ -30,7 +30,17 @@
 #include "libswscale/op_list_gen_template.c"
 #include "libswscale/ops_dispatch.h"
 
+/**
+ * ff_sws_aarch64_ops_translate() is only built into libswscale when
+ * targeting aarch64 (see libswscale/aarch64/Makefile). On other targets,
+ * pull in its definition directly so this devtool can still be built and
+ * run to (re)generate ops_entries.c.
+ */
+#if ARCH_AARCH64
+#include "libswscale/aarch64/ops_impl.h"
+#else
 #include "libswscale/aarch64/ops_impl_conv.c"
+#endif
 
 #ifdef _WIN32
 #include <io.h>
@@ -196,7 +206,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
 
     for (int i = 0; i < ops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        ret = convert_to_aarch64_impl(ctx, ops, i, block_size, &params);
+        ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params);
         if (ret == AVERROR(ENOTSUP))
             continue;
         if (ret < 0)
