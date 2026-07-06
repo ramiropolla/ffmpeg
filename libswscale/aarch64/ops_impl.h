@@ -79,8 +79,8 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
 
 /**
  * These values will be used by ops_asmgen to access fields inside of
- * SwsOpExec and SwsOpImpl. The sizes are checked below when compiling
- * for AArch64 to make sure there is no mismatch.
+ * SwsOpExec and SwsOpImpl. The sizes are checked in aarch64/ops.c when
+ * compiling for AArch64 to make sure there is no mismatch.
  */
 #define offsetof_exec_in         0
 #define offsetof_exec_out       32
@@ -89,14 +89,5 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
 #define offsetof_impl_cont       0
 #define offsetof_impl_priv      16
 #define sizeof_impl             32
-
-#if ARCH_AARCH64 && HAVE_NEON
-static_assert(offsetof_exec_in       == offsetof(SwsOpExec, in),       "SwsOpExec layout mismatch");
-static_assert(offsetof_exec_out      == offsetof(SwsOpExec, out),      "SwsOpExec layout mismatch");
-static_assert(offsetof_exec_in_bump  == offsetof(SwsOpExec, in_bump),  "SwsOpExec layout mismatch");
-static_assert(offsetof_exec_out_bump == offsetof(SwsOpExec, out_bump), "SwsOpExec layout mismatch");
-static_assert(offsetof_impl_cont     == offsetof(SwsOpImpl, cont),     "SwsOpImpl layout mismatch");
-static_assert(offsetof_impl_priv     == offsetof(SwsOpImpl, priv),     "SwsOpImpl layout mismatch");
-#endif
 
 #endif /* SWSCALE_AARCH64_OPS_IMPL_H */
