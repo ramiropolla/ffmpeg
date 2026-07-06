@@ -1034,6 +1034,16 @@ retry:
                 goto retry;
             }
             break;
+
+        case SWS_UOP_SCALE: {
+            const int bits = 8 * ff_sws_pixel_type_size(op->type);
+            if (is_integer_scale(op, UINT64_MAX >> (64 - bits))) {
+                op->uop = SWS_UOP_EXPAND_BIT;
+                memset(&op->par, 0, sizeof(op->par));
+                goto retry;
+            }
+            break;
+        }
         }
     }
 
