@@ -337,6 +337,18 @@ static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplPara
 }
 
 /*********************************************************************/
+static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
+{
+    RasmContext *r = s->rctx;
+    char func_name[128];
+
+    snprintf(func_name, sizeof(func_name), "ff_sws_process_%04x_neon", nibble_mask(mask));
+    rasm_func_begin(r, func_name, true, false);
+
+    asmgen_process(s, mask, mask);
+}
+
+/*********************************************************************/
 static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 {
     const SwsAArch64OpImplParams *p = &entry->params;
@@ -538,10 +550,10 @@ static int asmgen(void)
     s.out_bump[3] = a64op_gpx(27);
 
     /* Generate all process functions using rasm. */
-    asmgen_process(&s, SWS_COMP_MASK(1, 0, 0, 0));
-    asmgen_process(&s, SWS_COMP_MASK(1, 1, 0, 0));
-    asmgen_process(&s, SWS_COMP_MASK(1, 1, 1, 0));
-    asmgen_process(&s, SWS_COMP_MASK(1, 1, 1, 1));
+    asmgen_process_cps(&s, SWS_COMP_MASK(1, 0, 0, 0));
+    asmgen_process_cps(&s, SWS_COMP_MASK(1, 1, 0, 0));
+    asmgen_process_cps(&s, SWS_COMP_MASK(1, 1, 1, 0));
+    asmgen_process_cps(&s, SWS_COMP_MASK(1, 1, 1, 1));
 
     /* Generate all functions from ops_entries.c using rasm. */
     const SwsAArch64OpEntry *entries = ops_entries;
