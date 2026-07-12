@@ -33,6 +33,9 @@ typedef struct SwsAArch64OpRegs {
 typedef struct SwsAArch64Context {
     RasmContext *rctx;
 
+    /* Function frame. */
+    AArch64Frame frame;
+
     /* SwsOpFunc arguments. */
     RasmOp exec;
     RasmOp impl;
