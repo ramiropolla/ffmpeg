@@ -37,6 +37,7 @@
  */
 
 #define AVUTIL_AVASSERT_H
+#define AVUTIL_INTMATH_H
 #define AVUTIL_LOG_H
 #define AVUTIL_MACROS_H
 #define AVUTIL_MEM_H
@@ -49,6 +50,18 @@
 #define FFMAX(a,b) ((a) > (b) ? (a) : (b))
 #define FFMIN(a,b) ((a) > (b) ? (b) : (a))
 #define MKTAG(a,b,c,d) ((a) | ((b) << 8) | ((c) << 16) | ((unsigned)(d) << 24))
+
+static int ff_ctz(uint32_t mask)
+{
+    if (!mask)
+        return 32;
+    int n = 0;
+    while (!(mask & 1)) {
+        mask >>= 1;
+        n++;
+    }
+    return n;
+}
 
 static void av_freep(void *ptr)
 {
