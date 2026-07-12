@@ -74,6 +74,7 @@ typedef struct SwsAArch64Context {
     RasmOp out_bump[4];
 
     /* Process function. */
+    AArch64RegState regstate;
     RasmNode *setup;
     RasmNode *loop;
 
