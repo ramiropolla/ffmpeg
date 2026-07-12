@@ -582,6 +582,74 @@ static inline RasmOp a64cond_al(void) { return a64op_cond(AARCH64_COND_AL); }
 static inline RasmOp a64cond_nv(void) { return a64op_cond(AARCH64_COND_NV); }
 
 /*********************************************************************/
+/* AArch64 register state tracker */
+
+typedef struct AArch64RegState {
+    uint32_t gpr_used;
+    uint32_t gpr_clobbered;
+    uint32_t vec_used;
+    uint32_t vec_clobbered;
+} AArch64RegState;
+
+/* GPRs */
+int a64reg_pick_unused_gpr     (AArch64RegState *rs, int r);
+int a64reg_pick_unclobbered_gpr(AArch64RegState *rs);
+
+static inline void a64reg_gpr_free(AArch64RegState *rs, RasmOp op)
+{
+    rs->gpr_used &= ~(1u << a64op_gpr_n(op));
+}
+
+static inline void a64reg_gpr_clobber(AArch64RegState *rs, RasmOp op)
+{
+    rs->gpr_clobbered |= 1u << a64op_gpr_n(op);
+}
+
+static inline RasmOp a64reg_gpx            (AArch64RegState *rs, int r){ return a64op_gpx(a64reg_pick_unused_gpr(rs, r)); }
+static inline RasmOp a64reg_gpw            (AArch64RegState *rs, int r){ return a64op_gpw(a64reg_pick_unused_gpr(rs, r)); }
+static inline RasmOp a64reg_unclobbered_gpx(AArch64RegState *rs)       { return a64op_gpx(a64reg_pick_unclobbered_gpr(rs)); }
+static inline RasmOp a64reg_unclobbered_gpw(AArch64RegState *rs)       { return a64op_gpw(a64reg_pick_unclobbered_gpr(rs)); }
+
+/* Function arguments */
+static inline int a64reg_arg(AArch64RegState *rs, int argnum)
+{
+    av_assert0(argnum >= 0 && argnum < 8);
+    return a64reg_pick_unused_gpr(rs, argnum);
+}
+
+static inline RasmOp a64reg_argx(AArch64RegState *rs, int argnum) { return a64op_gpx(a64reg_arg(rs, argnum)); }
+static inline RasmOp a64reg_argw(AArch64RegState *rs, int argnum) { return a64op_gpw(a64reg_arg(rs, argnum)); }
+
+/* Vector registers */
+int a64reg_pick_unused_vec     (AArch64RegState *rs, int r);
+int a64reg_pick_unclobbered_vec(AArch64RegState *rs);
+int a64reg_pick_unused_veclist (AArch64RegState *rs, int num_regs);
+
+static inline void a64reg_vec_free(AArch64RegState *rs, RasmOp op)
+{
+    rs->vec_used &= ~(1u << a64op_vec_n(op));
+}
+
+static inline void a64reg_vec_clobber(AArch64RegState *rs, RasmOp op)
+{
+    rs->vec_clobbered |= 1u << a64op_vec_n(op);
+}
+
+static inline RasmOp a64reg_vec            (AArch64RegState *rs, int r)        { return a64op_vec(a64reg_pick_unused_vec(rs, r)); }
+static inline RasmOp a64reg_unclobbered_vec(AArch64RegState *rs)               { return a64op_vec(a64reg_pick_unclobbered_vec(rs)); }
+
+static inline void a64reg_veclist_ops(AArch64RegState *rs, int num_regs, RasmOp *ops)
+{
+    int r = a64reg_pick_unused_veclist(rs, num_regs);
+    for (int i = 0; i < num_regs; i++)
+        ops[i] = a64op_vec(r + i);
+}
+
+/* Emits prologue and epilogue for callee-saved clobbered registers. */
+void a64reg_emit(RasmContext *rctx, const AArch64RegState *rs,
+                 RasmNode *prologue, RasmNode *epilogue);
+
+/*********************************************************************/
 /* Helpers to add instructions. */
 
 #define i_none(rctx                      ) rasm_add_insn(rctx, AARCH64_INSN_NONE,   OPN, OPN, OPN, OPN)

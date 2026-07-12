@@ -23,6 +23,7 @@
 #include <stdarg.h>
 
 #include "libavutil/error.h"
+#include "libavutil/intmath.h"
 #include "libavutil/macros.h"
 #include "libavutil/mem.h"
 
@@ -423,4 +424,178 @@ AArch64VecViews a64op_vec_views(RasmOp op)
     for (int i = 0; i < 2; i++)
         out.de[i] = a64op_elem(out.d, i);
     return out;
+}
+
+/*********************************************************************/
+/* AArch64 register state tracker */
+
+#define AARCH64_GPR_PR  (1 << 18u)  /* Platform Register */
+#define AARCH64_GPR_SP  (1 << 31u)  /* Stack Pointer */
+
+/* Callee-saved GPRs (r19-r28, fp, and lr). */
+#define AARCH64_GPR_CALLEE_SAVED        0x7ff80000u
+#define AARCH64_GPR_CALLEE_SAVED_COUNT  12
+
+/* Callee-saved vector registers (bottom 64-bit of v8-v15). */
+#define AARCH64_VEC_CALLEE_SAVED        0x0000ff00u
+#define AARCH64_VEC_CALLEE_SAVED_COUNT  8
+
+typedef enum AArch64RegPick {
+    AARCH64_REG_PICK_LOWEST,
+    AARCH64_REG_PICK_HIGHEST,
+} AArch64RegPick;
+
+static int pick_avail(uint32_t avail, AArch64RegPick pick)
+{
+    switch (pick) {
+        case AARCH64_REG_PICK_LOWEST:
+            return ff_ctz(avail);
+        case AARCH64_REG_PICK_HIGHEST:
+            return 31 - ff_clz(avail);
+    }
+    return -1;
+}
+
+/* GPRs */
+static int pick_gpr(uint32_t mask, AArch64RegPick pick)
+{
+    uint32_t avail = ~(mask | AARCH64_GPR_PR | AARCH64_GPR_SP);
+    av_assert0(avail);
+    /* Use callee-saved registers last. */
+    if (avail & ~AARCH64_GPR_CALLEE_SAVED)
+        return pick_avail(avail & ~AARCH64_GPR_CALLEE_SAVED, pick);
+    return pick_avail(avail, pick);
+}
+
+int a64reg_pick_unused_gpr(AArch64RegState *rs, int r)
+{
+    if (r < 0) {
+        r = pick_gpr(rs->gpr_used, AARCH64_REG_PICK_LOWEST);
+    } else {
+        av_assert0(r >= 0 && r <= 30);
+    }
+    rs->gpr_used      |= 1u << r;
+    rs->gpr_clobbered |= 1u << r;
+    return r;
+}
+
+int a64reg_pick_unclobbered_gpr(AArch64RegState *rs)
+{
+    int r = pick_gpr(rs->gpr_clobbered, AARCH64_REG_PICK_HIGHEST);
+    rs->gpr_used      |= 1u << r;
+    rs->gpr_clobbered |= 1u << r;
+    return r;
+}
+
+/* Vector registers */
+static int pick_vec(uint32_t mask, AArch64RegPick pick)
+{
+    uint32_t avail = ~mask;
+    av_assert0(avail);
+    /* Use callee-saved registers last. */
+    if (avail & ~AARCH64_VEC_CALLEE_SAVED)
+        return pick_avail(avail & ~AARCH64_VEC_CALLEE_SAVED, pick);
+    return pick_avail(avail, pick);
+}
+
+int a64reg_pick_unused_vec(AArch64RegState *rs, int r)
+{
+    if (r < 0) {
+        r = pick_vec(rs->vec_used, AARCH64_REG_PICK_LOWEST);
+    } else {
+        av_assert0(r >= 0 && r <= 31);
+    }
+    rs->vec_used      |= 1u << r;
+    rs->vec_clobbered |= 1u << r;
+    return r;
+}
+
+int a64reg_pick_unclobbered_vec(AArch64RegState *rs)
+{
+    int r = pick_vec(rs->vec_clobbered, AARCH64_REG_PICK_HIGHEST);
+    rs->vec_used      |= 1u << r;
+    rs->vec_clobbered |= 1u << r;
+    return r;
+}
+
+static int pick_contiguous_vec(uint32_t avail, int num_regs)
+{
+    uint32_t mask = (1u << num_regs) - 1;
+    for (int i = 0; i <= (32 - num_regs); i++) {
+        if ((avail & (mask << i)) == (mask << i))
+            return i;
+    }
+    return -1;
+}
+
+int a64reg_pick_unused_veclist(AArch64RegState *rs, int num_regs)
+{
+    uint32_t avail = ~rs->vec_used;
+    av_assert0(avail);
+    /* Use callee-saved registers last. */
+    int r = pick_contiguous_vec(avail & ~AARCH64_VEC_CALLEE_SAVED, num_regs);
+    if (r < 0)
+        r = pick_contiguous_vec(avail, num_regs);
+    av_assert0(r >= 0);
+    rs->vec_used      |= ((1u << num_regs) - 1) << r;
+    rs->vec_clobbered |= ((1u << num_regs) - 1) << r;
+    return r;
+}
+
+void a64reg_emit(RasmContext *rctx, const AArch64RegState *rs,
+                 RasmNode *prologue, RasmNode *epilogue)
+{
+    /* Collect clobbered registers and compute frame size. */
+    RasmOp regs[AARCH64_GPR_CALLEE_SAVED_COUNT + AARCH64_VEC_CALLEE_SAVED_COUNT];
+    unsigned n = 0;
+    for (unsigned i = 0; i <= 30; i++) {
+        if (rs->gpr_clobbered & AARCH64_GPR_CALLEE_SAVED & (1u << i))
+            regs[n++] = a64op_gpx(i);
+    }
+    if (n & 1)
+        regs[n++] = rasm_op_none();
+    for (unsigned i = 0; i <= 31; i++) {
+        if (rs->vec_clobbered & AARCH64_VEC_CALLEE_SAVED & (1u << i))
+            regs[n++] = a64op_vecd(i);
+    }
+    if (n & 1)
+        regs[n++] = rasm_op_none();
+    if (!n)
+        return;
+    unsigned frame_size = n * sizeof(uint64_t);
+
+    RasmNode *saved = rasm_get_current_node(rctx);
+    RasmOp sp      = a64op_sp();
+    RasmOp sp_pre  = a64op_pre(sp, -frame_size);
+    RasmOp sp_post = a64op_post(sp, frame_size);
+
+    /* Emit prologue. */
+    rasm_set_current_node(rctx, prologue);
+    rasm_add_comment(rctx, "prologue");
+    if (rasm_op_type(regs[1]) == RASM_OP_NONE)
+        i_str(rctx, regs[0], sp_pre);
+    else
+        i_stp(rctx, regs[0], regs[1], sp_pre);
+    for (unsigned i = 2; i < n; i += 2) {
+        if (rasm_op_type(regs[i + 1]) == RASM_OP_NONE)
+            i_str(rctx, regs[i],              a64op_off(sp, i * sizeof(uint64_t)));
+        else
+            i_stp(rctx, regs[i], regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
+    }
+
+    /* Emit epilogue. */
+    rasm_set_current_node(rctx, epilogue);
+    rasm_add_comment(rctx, "epilogue");
+    for (unsigned i = n - 2; i >= 2; i -= 2) {
+        if (rasm_op_type(regs[i + 1]) == RASM_OP_NONE)
+            i_ldr(rctx, regs[i],              a64op_off(sp, i * sizeof(uint64_t)));
+        else
+            i_ldp(rctx, regs[i], regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
+    }
+    if (rasm_op_type(regs[1]) == RASM_OP_NONE)
+        i_ldr(rctx, regs[0],          sp_post);
+    else
+        i_ldp(rctx, regs[0], regs[1], sp_post);
+
+    rasm_set_current_node(rctx, saved);
 }
