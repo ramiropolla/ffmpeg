@@ -177,47 +177,59 @@ static const int rw_gprs[] = {
 
 static void asmgen_common_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
+    AArch64Frame *f = &s->frame;
+
+    /* Reset function frame. */
+    *f = (AArch64Frame) { 0 };
+
     /* Loop iterator variables. */
-    s->bx        = a64op_gpw(6);
-    s->y         = a64op_gpw(3);    /* Reused from SwsOpFunc.y_start argument. */
+    s->bx        = a64frame_gpw(f, 6);
+    s->y         = a64frame_gpw(f, 3);  /* Reused from SwsOpFunc.y_start argument. */
 
     /* Scratch registers. */
-    s->tmp0      = a64op_gpx(16);   /* IP0 */
-    s->tmp1      = a64op_gpx(17);   /* IP1 */
+    s->tmp0      = a64frame_gpx(f, 16); /* IP0 */
+    s->tmp1      = a64frame_gpx(f, 17); /* IP1 */
 
     /* Read/Write data pointers. */
-    LOOP(imask, i) { s->in [i] = a64op_gpx(rw_gprs[(i * 4) + 0]); }
-    LOOP(omask, i) { s->out[i] = a64op_gpx(rw_gprs[(i * 4) + 1]); }
+    LOOP(imask, i) { s->in [i] = a64frame_gpx(f, rw_gprs[(i * 4) + 0]); }
+    LOOP(omask, i) { s->out[i] = a64frame_gpx(f, rw_gprs[(i * 4) + 1]); }
 }
 
 static void asmgen_process_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
+    AArch64Frame *f = &s->frame;
+
     asmgen_common_frame(s, imask, omask);
 
     /* SwsOpFunc arguments. */
-    s->exec      = a64op_gpx(0);    // const SwsOpExec *exec
-    s->impl      = a64op_gpx(1);    // const void *priv
-    s->bx_start  = a64op_gpw(2);    // int bx_start
-    s->y_start   = a64op_gpw(3);    // int y_start
-    s->bx_end    = a64op_gpw(4);    // int bx_end
-    s->y_end     = a64op_gpw(5);    // int y_end
+    s->exec      = a64frame_argx(f, 0); // const SwsOpExec *exec
+    s->impl      = a64frame_argx(f, 1); // const void *priv
+    s->bx_start  = a64frame_argw(f, 2); // int bx_start
+    s->y_start   = a64frame_argw(f, 3); // int y_start
+    s->bx_end    = a64frame_argw(f, 4); // int bx_end
+    s->y_end     = a64frame_argw(f, 5); // int y_end
 
     /* CPS-related variables. */
-    s->op0_func  = a64op_gpx(7);
-    s->op1_impl  = a64op_gpx(8);
+    s->op0_func  = a64frame_gpx(f, 7);
+    s->op1_impl  = a64frame_gpx(f, 8);
+
+    /* The link register is clobbered by the call to the first kernel. */
+    a64frame_gpr_clobber(f, a64op_lr());
 
     /* Read/Write data pointer padding. */
-    LOOP(imask, i) { s->in_bump [i] = a64op_gpx(rw_gprs[(i * 4) + 2]); }
-    LOOP(omask, i) { s->out_bump[i] = a64op_gpx(rw_gprs[(i * 4) + 3]); }
+    LOOP(imask, i) { s->in_bump [i] = a64frame_gpx(f, rw_gprs[(i * 4) + 2]); }
+    LOOP(omask, i) { s->out_bump[i] = a64frame_gpx(f, rw_gprs[(i * 4) + 3]); }
 }
 
 static void asmgen_op_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
+    AArch64Frame *f = &s->frame;
+
     asmgen_common_frame(s, imask, omask);
 
     /* CPS-related variables. */
-    s->cont      = a64op_gpx(0);    /* Reused from SwsOpFunc.exec argument. */
-    s->impl      = a64op_gpx(1);    /* Same as SwsOpFunc.impl argument. */
+    s->cont      = a64frame_argx(f, 0); /* Reused from SwsOpFunc.exec argument. */
+    s->impl      = a64frame_argx(f, 1); /* Same as SwsOpFunc.impl argument. */
 }
 
 /*********************************************************************/
