@@ -95,9 +95,8 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
     LOOP(omask, i) { i_ldr(r, s->out_bump[i], exec_out_bump[i]);    CMTF("out_bump[%u] = exec->out_bump[%u];", i, i); }
     a64frame_gpr_free(&s->frame, s->exec);
 
-    /* Load values from impl. */
-    i_ldr(r, s->op0_func, a64op_off(s->impl, offsetof_impl_cont));  CMT("SwsFuncPtr op0_func = impl->cont;");
-    i_add(r, s->op1_impl, s->impl, IMM(sizeof_impl));               CMT("SwsOpImpl *op1_impl = impl + 1;");
+    /* Setup. */
+    s->setup = rasm_get_current_node(r);
 
     int first_row  = rasm_new_label(r, NULL);
     int next_row   = rasm_new_label(r, NULL);
@@ -115,10 +114,9 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
     rasm_add_label(r, first_row);           CMT("first_row:");
     i_mov(r, s->bx, s->bx_start);           CMT("bx = bx_start;");
 
-    /* Reset impl and call first kernel. */
+    /* Main loop. */
     rasm_add_label(r, next_block);          CMT("next_block:");
-    i_mov(r, s->impl, s->op1_impl);         CMT("impl = op1_impl;");
-    i_blr(r, s->op0_func);                  CMT("op0_func();");
+    s->loop = rasm_get_current_node(r);
 
     /* Perform horizontal loop. */
     i_add(r, s->bx, s->bx, IMM(1));         CMT("bx += 1;");

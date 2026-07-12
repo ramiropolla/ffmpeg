@@ -255,6 +255,17 @@ static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
     asmgen_process_frame(s, mask, mask);
 
     asmgen_process(s, mask, mask);
+
+    /* Load values from impl. */
+    rasm_set_current_node(r, s->setup);
+    RasmOp impl_cont = a64op_off(s->impl, offsetof_impl_cont);
+    i_ldr(r, s->op0_func, impl_cont);                   CMT("SwsFuncPtr op0_func = impl->cont;");
+    i_add(r, s->op1_impl, s->impl, IMM(sizeof_impl));   CMT("SwsOpImpl *op1_impl = impl + 1;");
+
+    /* Reset impl and call first kernel. */
+    rasm_set_current_node(r, s->loop);
+    i_mov(r, s->impl, s->op1_impl);                     CMT("impl = op1_impl;");
+    i_blr(r, s->op0_func);                              CMT("op0_func();");
 }
 
 /*********************************************************************/

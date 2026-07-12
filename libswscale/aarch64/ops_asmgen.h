@@ -33,8 +33,10 @@ typedef struct SwsAArch64OpRegs {
 typedef struct SwsAArch64Context {
     RasmContext *rctx;
 
-    /* Function frame. */
+    /* Process function. */
     AArch64Frame frame;
+    RasmNode *setup;
+    RasmNode *loop;
 
     /* SwsOpFunc arguments. */
     RasmOp exec;
