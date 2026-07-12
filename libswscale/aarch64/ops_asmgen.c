@@ -80,10 +80,6 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
     /* Function prologue */
     RasmNode *prologue = rasm_get_current_node(r);
 
-    /* Load values from impl. */
-    i_ldr(r, s->op0_func, a64op_off(s->impl, offsetof_impl_cont));  CMT("SwsFuncPtr op0_func = impl->cont;");
-    i_add(r, s->op1_impl, s->impl, IMM(sizeof_impl));               CMT("SwsOpImpl *op1_impl = impl + 1;");
-
     /* Load values from exec. */
     RasmOp exec_in[4];
     RasmOp exec_in_bump[4];
@@ -97,6 +93,11 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
     LOOP(omask, i) { i_ldr(r, s->out[i],      exec_out[i]);         CMTF("out[%u] = exec->out[%u];", i, i); }
     LOOP(imask, i) { i_ldr(r, s->in_bump[i],  exec_in_bump[i]);     CMTF("in_bump[%u] = exec->in_bump[%u];", i, i); }
     LOOP(omask, i) { i_ldr(r, s->out_bump[i], exec_out_bump[i]);    CMTF("out_bump[%u] = exec->out_bump[%u];", i, i); }
+    a64frame_gpr_free(&s->frame, s->exec);
+
+    /* Load values from impl. */
+    i_ldr(r, s->op0_func, a64op_off(s->impl, offsetof_impl_cont));  CMT("SwsFuncPtr op0_func = impl->cont;");
+    i_add(r, s->op1_impl, s->impl, IMM(sizeof_impl));               CMT("SwsOpImpl *op1_impl = impl + 1;");
 
     int first_row  = rasm_new_label(r, NULL);
     int next_row   = rasm_new_label(r, NULL);
