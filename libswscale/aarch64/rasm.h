@@ -590,6 +590,40 @@ static inline RasmOp a64cond_al(void) { return a64op_cond(AARCH64_COND_AL); }
 static inline RasmOp a64cond_nv(void) { return a64op_cond(AARCH64_COND_NV); }
 
 /*********************************************************************/
+/* AArch64 function frame */
+
+typedef struct AArch64Frame {
+    uint32_t used;
+    uint32_t clobbered;
+} AArch64Frame;
+
+int a64frame_gpr(AArch64Frame *f, int r);
+
+static inline void a64frame_gpr_free(AArch64Frame *f, RasmOp reg)
+{
+    f->used &= ~(1u << a64op_gpr_n(reg));
+}
+
+static inline void a64frame_gpr_clobber(AArch64Frame *f, RasmOp reg)
+{
+    f->clobbered |= 1u << a64op_gpr_n(reg);
+}
+
+static inline int a64frame_arg(AArch64Frame *f, int argnum)
+{
+    av_assert0(argnum >= 0 && argnum < 8);
+    return a64frame_gpr(f, argnum);
+}
+
+static inline RasmOp a64frame_argx(AArch64Frame *f, int argnum) { return a64op_gpx(a64frame_arg(f, argnum)); }
+static inline RasmOp a64frame_argw(AArch64Frame *f, int argnum) { return a64op_gpw(a64frame_arg(f, argnum)); }
+static inline RasmOp a64frame_gpx(AArch64Frame *f, int r)       { return a64op_gpx(a64frame_gpr(f, r)); }
+static inline RasmOp a64frame_gpw(AArch64Frame *f, int r)       { return a64op_gpw(a64frame_gpr(f, r)); }
+
+void a64frame_emit(RasmContext *rctx, const AArch64Frame *f,
+                   RasmNode *prologue, RasmNode *epilogue);
+
+/*********************************************************************/
 /* Helpers to add instructions. */
 
 #define i_none(rctx                      ) rasm_add_insn(rctx, AARCH64_INSN_NONE,   OPN, OPN, OPN, OPN)

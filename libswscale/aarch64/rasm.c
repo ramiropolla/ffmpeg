@@ -23,6 +23,7 @@
 #include <stdarg.h>
 
 #include "libavutil/error.h"
+#include "libavutil/intmath.h"
 #include "libavutil/macros.h"
 #include "libavutil/mem.h"
 
@@ -423,4 +424,80 @@ AArch64VecViews a64op_vec_views(RasmOp op)
     for (int i = 0; i < 2; i++)
         out.de[i] = a64op_elem(out.d, i);
     return out;
+}
+
+/*********************************************************************/
+/* AArch64 function frame */
+
+#define AARCH64_GPR_MASK         0x7fffffffu
+#define AARCH64_GPR_CALLEE_SAVED 0x7ff80000u
+#define AARCH64_GPR_RESERVED     0x00040000u
+
+int a64frame_gpr(AArch64Frame *f, int r)
+{
+    if (r < 0) {
+        uint32_t avail = ~f->used & AARCH64_GPR_MASK & ~AARCH64_GPR_RESERVED;
+        av_assert0(avail);
+        r = ff_ctz(avail);
+    } else {
+        av_assert0(r >= 0 && r <= 30);
+    }
+    f->used      |= 1u << r;
+    f->clobbered |= 1u << r;
+    return r;
+}
+
+/* Callee-saved registers (r19-r28, fp, and lr). */
+#define AARCH64_MAX_SAVED_REGS 12
+
+void a64frame_emit(RasmContext *rctx, const AArch64Frame *f,
+                   RasmNode *prologue, RasmNode *epilogue)
+{
+    /* Collect clobbered gprs and compute frame size. */
+    RasmOp regs[AARCH64_MAX_SAVED_REGS];
+    unsigned n = 0;
+    for (unsigned i = 0; i <= 30; i++) {
+        if (f->clobbered & AARCH64_GPR_CALLEE_SAVED & (1u << i))
+            regs[n++] = a64op_gpx(i);
+    }
+    if (!n)
+        return;
+    unsigned frame_size = ((n + 1) >> 1) * 16;
+
+    RasmNode *saved = rasm_get_current_node(rctx);
+    RasmOp sp      = a64op_sp();
+    RasmOp sp_pre  = a64op_pre(sp, -frame_size);
+    RasmOp sp_post = a64op_post(sp, frame_size);
+
+    /* Emit prologue. */
+    rasm_set_current_node(rctx, prologue);
+    rasm_add_comment(rctx, "prologue");
+    if (n == 0) {
+        /* no-op */
+    } else if (n == 1) {
+        i_str(rctx, regs[0], sp_pre);
+    } else {
+        i_stp(rctx, regs[0], regs[1], sp_pre);
+        for (unsigned i = 2; i + 1 < n; i += 2)
+            i_stp(rctx, regs[i],     regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
+        if (n & 1)
+            i_str(rctx, regs[n - 1],              a64op_off(sp, (n - 1) * sizeof(uint64_t)));
+    }
+
+    /* Emit epilogue. */
+    rasm_set_current_node(rctx, epilogue);
+    rasm_add_comment(rctx, "epilogue");
+    if (n == 0) {
+        /* no-op */
+    } else if (n == 1) {
+        i_ldr(rctx, regs[0], sp_post);
+    } else {
+        if (n & 1)
+            i_ldr(rctx, regs[n - 1],              a64op_off(sp, (n - 1) * sizeof(uint64_t)));
+        for (unsigned i = (n & ~1u) - 2; i >= 2; i -= 2)
+            i_ldp(rctx, regs[i],     regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
+        i_ldp(rctx, regs[0], regs[1], sp_post);
+    }
+
+    rasm_set_current_node(rctx, saved);
 }
