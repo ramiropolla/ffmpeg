@@ -233,6 +233,18 @@ static void asmgen_op_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask
 }
 
 /*********************************************************************/
+/**
+ * Set node where the continuation address will be loaded and impl will
+ * be incremented. This should be done right after impl->priv has been
+ * used.
+ */
+static void asmgen_set_load_cont_node(SwsAArch64Context *s)
+{
+    RasmContext *r = s->rctx;
+    s->load_cont_node = rasm_get_current_node(r);
+}
+
+/*********************************************************************/
 static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
 {
     RasmContext *r = s->rctx;
