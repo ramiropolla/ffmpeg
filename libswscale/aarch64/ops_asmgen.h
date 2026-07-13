@@ -80,8 +80,6 @@ typedef struct SwsAArch64Context {
     RasmOp tmp0;
     RasmOp tmp1;
 
-// #ifdef AARCH64_ASMGEN_CPS
-#if 1
     /* CPS-related variables. */
     RasmOp op0_func;
     RasmOp op1_impl;
@@ -89,7 +87,8 @@ typedef struct SwsAArch64Context {
     RasmNode *load_cont_node;
     RasmOp impl_priv;
     SwsAArch64OpRegs regs;
-#elif defined(AARCH64_ASMGEN_JIT)
+
+    /* JIT-related variables. */
     /* Immediates. */
     SwsAArch64Immediate imm[SWS_AARCH64_MAX_IMM];
     int                 imm_count;
@@ -98,7 +97,6 @@ typedef struct SwsAArch64Context {
     uint32_t data[SWS_AARCH64_MAX_DATA_VECS * 4];
     int      n_data;
     RasmOp   vdata[SWS_AARCH64_MAX_DATA_VECS];
-#endif
 
     /* Read/Write data pointers and padding. */
     RasmOp in[4];

@@ -24,12 +24,7 @@
 
 #include "rasm.h"
 #include "ops_impl.h"
-
-/*********************************************************************/
-typedef struct SwsAArch64JITBackendContext {
-    SwsContext *sws;
-    int block_size;
-} SwsAArch64JITBackendContext;
+#include "ops.h"
 
 /*********************************************************************/
 /* Emit JIT code. */
@@ -71,7 +66,7 @@ static int jit_push_imm(SwsAArch64Context *s, uint32_t val, int len)
     /* Add it to our data and create a new vector */
     int ret = s->imm_count;
     s->imm[s->imm_count++] = (SwsAArch64Immediate) {
-        .op          = jit_vec(s, -1),
+        // .op          = jit_vec(s, -1),
         .val         = val,
         .len         = len,
         .repeat_len  = repeat_len,
@@ -319,22 +314,20 @@ static int asmgen_op_jit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 int ff_sws_jit_assemble_llvm(const char *asm_src, uint8_t **out_text, size_t *out_size);
 
 /*********************************************************************/
-/* Unified setup pass: collect all immediates and data pool entries
- * needed by one op, and fill in the pre-allocated register assignments
- * in *regs.  Called before () so that
- * load_constants() can pre-load all constants before the inner loop. */
 static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
                          const SwsAArch64OpImplParams *p, SwsAArch64OpRegs *regs)
 {
     SwsImplResult impl_result = { 0 };
 
+    int ret = ff_sws_aarch64_setup(ops, s->block_size, n, p, &impl_result);
+    if (ret < 0)
+        return ret;
+
+#if 0
     switch (p->uop) {
     case SWS_UOP_READ_BIT: {
         int bitmask_idx = jit_push_imm8(s, 1);
         regs->read_bit.bitmask = s->vimm[bitmask_idx];
-        int ret = ff_sws_aarch64_setup(ops, s->block_size, n, p, &impl_result);
-        if (ret < 0)
-            return ret;
         int idx = jit_push_data(s, impl_result.priv.u32);
         regs->read_bit.shift_vec = s->vdata[idx];
         break;
@@ -345,9 +338,6 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         break;
     }
     case SWS_UOP_WRITE_BIT: {
-        int ret = ff_sws_aarch64_setup(ops, s->block_size, n, p, &impl_result);
-        if (ret < 0)
-            return ret;
         int idx = jit_push_data(s, impl_result.priv.u32);
         regs->write_bit.shift_vec = s->vdata[idx];
         break;
@@ -366,9 +356,6 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
                 need_data = true;
         }
         if (need_data) {
-            int ret = ff_sws_aarch64_setup(ops, s->block_size, n, p, &impl_result);
-            if (ret < 0)
-                return ret;
             int idx = jit_push_data(s, impl_result.priv.u32);
             int el_size = ff_sws_pixel_type_size(p->type);
             regs->clear.data_vec = a64op_make_vec(SWS_AARCH64_REGID_VDATA + idx,
@@ -377,9 +364,6 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         break;
     }
     case SWS_UOP_MIN: {
-        int ret = ff_sws_aarch64_setup(ops, s->block_size, n, p, &impl_result);
-        if (ret < 0)
-            return ret;
         LOOP_MASK(p, i) {
             uint32_t val = (p->type == SWS_PIXEL_U8)  ? impl_result.priv.u8[i]
                          : (p->type == SWS_PIXEL_U16) ? impl_result.priv.u16[i]
@@ -390,9 +374,6 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         break;
     }
     case SWS_UOP_MAX: {
-        int ret = ff_sws_aarch64_setup(ops, s->block_size, n, p, &impl_result);
-        if (ret < 0)
-            return ret;
         LOOP_MASK(p, i) {
             uint32_t val = (p->type == SWS_PIXEL_U8)  ? impl_result.priv.u8[i]
                          : (p->type == SWS_PIXEL_U16) ? impl_result.priv.u16[i]
@@ -403,18 +384,12 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         break;
     }
     case SWS_UOP_SCALE: {
-        int ret = ff_sws_aarch64_setup(ops, s->block_size, n, p, &impl_result);
-        if (ret < 0)
-            return ret;
         int idx = jit_push_imm32_op(s, p->type, impl_result.priv.u32[0]);
         regs->scale.vec = s->vimm[idx];
         break;
     }
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA: {
-        int ret = ff_sws_aarch64_setup(ops, s->block_size, n, p, &impl_result);
-        if (ret < 0)
-            return ret;
         const int num_vregs = linear_num_vregs(p);
         av_assert0(num_vregs <= 4);
         regs->linear.num_vregs = num_vregs;
@@ -428,9 +403,6 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
         break;
     }
     case SWS_UOP_DITHER: {
-        int ret = ff_sws_aarch64_setup(ops, s->block_size, n, p, &impl_result);
-        if (ret < 0)
-            return ret;
         s->chain->impl[n].priv = impl_result.priv;
         s->chain->free[n] = impl_result.free;
         s->chain->num_impl = FFMAX(s->chain->num_impl, n + 1);
@@ -440,6 +412,30 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
     default:
         break;
     }
+#endif
+    return 0;
+}
+
+/*********************************************************************/
+static int aarch64_jit_process(SwsAArch64Context *s, const SwsOpList *ops)
+{
+    const SwsOp *read      = ff_sws_op_list_input(ops);
+    const SwsOp *write     = ff_sws_op_list_output(ops);
+    const int read_planes  = read ? ff_sws_rw_op_planes(read) : 0;
+    const int write_planes = ff_sws_rw_op_planes(write);
+    SwsCompMask imask = SWS_COMP_MASK(read_planes > 0,  read_planes > 1,  read_planes > 2,  read_planes > 3);
+    SwsCompMask omask = SWS_COMP_MASK(write_planes > 0, write_planes > 1, write_planes > 2, write_planes > 3);
+
+    RasmContext *r = s->rctx;
+    char func_name[128];
+
+    snprintf(func_name, sizeof(func_name), "jit_process_%s_%s_neon",
+             av_get_pix_fmt_name(ops->src.format),
+             av_get_pix_fmt_name(ops->dst.format));
+    rasm_func_begin(r, func_name, true, false);
+
+    asmgen_process(s, imask, omask);
+
     return 0;
 }
 
@@ -447,7 +443,6 @@ static int aarch64_setup(SwsAArch64Context *s, const SwsOpList *ops, int n,
 static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
                                SwsCompiledOp *out)
 {
-    SwsAArch64JITBackendContext bctx;
     int ret;
 
     const int cpu_flags = av_get_cpu_flags();
@@ -455,8 +450,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         return AVERROR(ENOTSUP);
 
     /* Use at most two full vregs during the widest precision section */
-    bctx.block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
-    bctx.sws = ctx;
+    int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)
@@ -468,13 +462,11 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         .slice_align = 1,
         .free        = ff_sws_op_chain_free_cb,
         .block_size  = block_size,
-        .func        = /*process_func*/ NULL,
-        .cpu_flags   = cpu_flags,
     };
 
     RasmContext *r = rasm_alloc();
     if (!r)
-        return AVERROR(ENOMEM);
+        return AVERROR(ENOMEM); // TODO check
 
     SwsAArch64Context s = {
         .sws        = ctx,
@@ -482,6 +474,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         .rctx       = r,
     };
 
+#if 0
     /* Translate all ops into implementation parameters and setup all
      * constant data. */
     SwsAArch64OpImplParams params[SWS_MAX_OPS] = { 0 };
@@ -490,55 +483,43 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params[i]);
         if (ret < 0)
             goto error;
+        SwsImplResult res = { 0 };
+        ret = ff_sws_aarch64_setup(ops, block_size, i, &params, &res);
+        if (ret < 0)
+            goto error;
         ret = aarch64_setup(&s, ops, i, &params[i], &regs[i]);
         if (ret < 0)
             goto error;
     }
+#else
+    /* Look up kernel functions. */
+    for (int i = 0; i < ops->num_ops; i++) {
+        SwsAArch64OpImplParams params = { 0 };
+        ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params);
+        if (ret < 0)
+            goto error;
+        SwsFuncPtr func = aarch64_lookup(&params);
+        if (!func) {
+            ret = AVERROR(ENOTSUP);
+            goto error;
+        }
+        SwsImplResult res = { 0 };
+        ret = ff_sws_aarch64_setup(ops, block_size, i, &params, &res);
+        if (ret < 0)
+            goto error;
+        ret = ff_sws_op_chain_append(chain, func, res.free, &res.priv);
+        if (ret < 0)
+            goto error;
+    }
+#endif
 
-    int chain_owned_by_out = 0;
-
-#if 1
+#if 0
     /* The Platform Register (r18) is not used. */
     jit_gpr(&s, 18);
-
-    /**
-     * The entry point of the SwsOpFunc is the `process` function. The
-     * first kernel function is called from `process`, and subsequent
-     * kernel functions are chained by directly branching to the next
-     * operation, using a continuation-passing style design. The last
-     * operation must be a write operation, which returns from the call
-     * to the `process` function.
-     *
-     * The GPRs used by the entire call-chain are listed below.
-     *
-     * Function arguments are passed in r0-r5. After the parameters
-     * from `exec` have been read, r0 is reused to branch to the
-     * continuation functions. After the original parameters from
-     * `impl` have been computed, r1 is reused as the `impl` pointer
-     * for each operation.
-     *
-     * Loop iterators are r6 for `bx` and r3 for `y`, reused from
-     * `y_start`, which doesn't need to be preserved.
-     *
-     * The intra-procedure-call temporary registers (r16 and r17) are
-     * used as scratch registers. They may be used by call veneers and
-     * PLT code inserted by the linker, so we cannot expect them to
-     * persist across branches between functions.
-     *
-     * The Platform Register (r18) is not used.
-     *
-     * The read/write data pointers and padding values first use up the
-     * remaining free caller-saved registers, and only then are the
-     * caller-saved registers (r19-r28) used.
-     */
 #endif
 
     /* create process */
-    const SwsOp *read  = ff_sws_op_list_input(ops);
-    const SwsOp *write = ff_sws_op_list_output(ops);
-    SwsCompMask imask = read  ? read->mask  : 0;
-    SwsCompMask omask = write ? write->mask : 0;
-    ret = aarch64_jit_process(&s, &ops->src, &ops->dst, pin, &params[ops->num_ops - 1]);
+    ret = aarch64_jit_process(&s, ops);
     if (ret < 0)
         goto error;
 
@@ -551,30 +532,11 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     }
 
     /* emit data pool and immediates */
-    if (s.n_data > 0 || s.n_imm > 0) {
+    if (s.n_data > 0 || s.imm_count > 0) {
         rasm_set_current_node(r, s.setup);
         load_constants(&s);
     }
 
-    /* Function frame */
-    RasmOp saved_regs[MAX_SAVED_REGS];
-    unsigned nsaved = 0;
-    for (int i = 19; i <= 30; i++) {
-        if (s.gprs.clobbered & (1 << i))
-            saved_regs[nsaved++] = a64op_gpx(i);
-    }
-    if (nsaved) {
-        rasm_set_current_node(r, s.prologue);
-        asmgen_prologue(&s, saved_regs, nsaved);
-        rasm_set_current_node(r, s.epilogue);
-        asmgen_epilogue(&s, saved_regs, nsaved);
-    }
-
-    /* From this point on, `*out` owns `s.chain`; don't free it below. */
-    chain_owned_by_out = 1;
-
-    // printf("gprs.used %08x\n", s.gprs.used);
-    // printf("[%s][%d] %s() %d\n", __FILE__, __LINE__, __func__, SWS_MAX_OPS);
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
     rasm_print(s.rctx, &bp);
@@ -598,8 +560,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
 error:
     if (ret < 0) {
         rasm_free(&s.rctx);
-        if (!chain_owned_by_out)
-            ff_sws_op_chain_free_cb(s.chain);
+        // ff_sws_op_chain_free_cb(s.chain);
     }
     return ret;
 }
