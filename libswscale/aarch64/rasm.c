@@ -439,12 +439,30 @@ int a64frame_gpr(AArch64Frame *f, int r)
         uint32_t avail = ~f->used & AARCH64_GPR_MASK & ~AARCH64_GPR_RESERVED;
         av_assert0(avail);
         r = ff_ctz(avail);
+        fprintf(stderr, "%s(-1) avail %08x => %d", __func__, avail, r);
     } else {
         av_assert0(r >= 0 && r <= 30);
+        fprintf(stderr, "%s(%d)", __func__, r);
     }
     f->used      |= 1u << r;
     f->clobbered |= 1u << r;
+    fprintf(stderr, " [used %08x]\n", f->used);
     return r;
+}
+
+RasmOp a64frame_vec(AArch64Frame *f, int r)
+{
+    // TODO skip in the middle
+    if (r < 0) {
+        uint32_t avail = ~f->used;
+        av_assert0(avail);
+        r = ff_ctz(avail);
+    } else {
+        av_assert0(r >= 0 && r <= 31);
+    }
+    f->used      |= 1u << r;
+    f->clobbered |= 1u << r;
+    return a64op_vec(r);
 }
 
 /* Callee-saved registers (r19-r28, fp, and lr). */

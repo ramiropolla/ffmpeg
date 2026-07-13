@@ -599,14 +599,14 @@ typedef struct AArch64Frame {
 
 int a64frame_gpr(AArch64Frame *f, int r);
 
-static inline void a64frame_gpr_free(AArch64Frame *f, RasmOp reg)
+static inline void a64frame_gpr_free(AArch64Frame *f, RasmOp op)
 {
-    f->used &= ~(1u << a64op_gpr_n(reg));
+    f->used &= ~(1u << a64op_gpr_n(op));
 }
 
-static inline void a64frame_gpr_clobber(AArch64Frame *f, RasmOp reg)
+static inline void a64frame_gpr_clobber(AArch64Frame *f, RasmOp op)
 {
-    f->clobbered |= 1u << a64op_gpr_n(reg);
+    f->clobbered |= 1u << a64op_gpr_n(op);
 }
 
 static inline int a64frame_arg(AArch64Frame *f, int argnum)
@@ -615,10 +615,22 @@ static inline int a64frame_arg(AArch64Frame *f, int argnum)
     return a64frame_gpr(f, argnum);
 }
 
-static inline RasmOp a64frame_argx(AArch64Frame *f, int argnum) { return a64op_gpx(a64frame_arg(f, argnum)); }
-static inline RasmOp a64frame_argw(AArch64Frame *f, int argnum) { return a64op_gpw(a64frame_arg(f, argnum)); }
-static inline RasmOp a64frame_gpx(AArch64Frame *f, int r)       { return a64op_gpx(a64frame_gpr(f, r)); }
-static inline RasmOp a64frame_gpw(AArch64Frame *f, int r)       { return a64op_gpw(a64frame_gpr(f, r)); }
+static inline RasmOp a64frame_argx(AArch64Frame *f, int argnum) { fprintf(stderr, "%s(%d)\n", __func__, argnum); return a64op_gpx(a64frame_arg(f, argnum)); }
+static inline RasmOp a64frame_argw(AArch64Frame *f, int argnum) { fprintf(stderr, "%s(%d)\n", __func__, argnum); return a64op_gpw(a64frame_arg(f, argnum)); }
+static inline RasmOp a64frame_gpx(AArch64Frame *f, int r)       { fprintf(stderr, "%s(%d)\n", __func__, r); return a64op_gpx(a64frame_gpr(f, r)); }
+static inline RasmOp a64frame_gpw(AArch64Frame *f, int r)       { fprintf(stderr, "%s(%d)\n", __func__, r); return a64op_gpw(a64frame_gpr(f, r)); }
+
+RasmOp a64frame_vec(AArch64Frame *f, int r);
+
+static inline void a64frame_vec_free(AArch64Frame *f, RasmOp op)
+{
+    f->used &= ~(1u << a64op_vec_n(op));
+}
+
+static inline void a64frame_vec_clobber(AArch64Frame *f, RasmOp op)
+{
+    f->clobbered |= 1u << a64op_vec_n(op);
+}
 
 void a64frame_emit(RasmContext *rctx, const AArch64Frame *f,
                    RasmNode *prologue, RasmNode *epilogue);

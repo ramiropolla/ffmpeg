@@ -278,14 +278,14 @@ static void asmgen_setup_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplPa
 {
     RasmContext *r = s->rctx;
     AArch64VecViews shift_vec   = a64op_vec_views(regs->vk[0]);
-    RasmOp          bitmask_vec = regs->vk[1];
+    AArch64VecViews bitmask_vec = a64op_vec_views(regs->vk[1]);
 
     i_ldr(r, shift_vec.q, s->impl_priv);                    CMT("v128 shift_vec = impl->priv.v128;");
     asmgen_set_load_cont_node(s);
     if (p->block_size == 16) {
-        i_movi(r, bitmask_vec, IMM(1));                     CMT("v128 bitmask_vec = {1 <repeats 16 times>};");
+        i_movi(r, bitmask_vec.b16, IMM(1));                 CMT("v128 bitmask_vec = {1 <repeats 16 times>};");
     } else {
-        i_movi(r, bitmask_vec, IMM(1));                     CMT("v128 bitmask_vec = {1 <repeats 8 times>, 0 <repeats 8 times>};");
+        i_movi(r, bitmask_vec.b8,  IMM(1));                 CMT("v128 bitmask_vec = {1 <repeats 8 times>, 0 <repeats 8 times>};");
     }
 }
 
@@ -293,9 +293,9 @@ static void asmgen_setup_read_nibble(SwsAArch64Context *s, const SwsAArch64OpImp
                                      SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
-    RasmOp nibble_mask    = v_8b(regs->vk[0]);
+    AArch64VecViews nibble_mask = a64op_vec_views(regs->vk[0]);
 
-    i_movi(r, nibble_mask, IMM(0x0f));                  CMT("v128 nibble_mask = {0xf <repeats 8 times>, 0x0 <repeats 8 times>};");
+    i_movi(r, nibble_mask.b8, IMM(0x0f));                   CMT("v128 nibble_mask = {0xf <repeats 8 times>, 0x0 <repeats 8 times>};");
 }
 
 /*********************************************************************/

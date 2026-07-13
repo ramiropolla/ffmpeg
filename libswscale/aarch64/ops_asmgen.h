@@ -23,8 +23,10 @@
 
 /*********************************************************************/
 typedef struct SwsAArch64OpRegs {
-    RasmOp vl[4]; /* input/output vector registers (low bank) */
-    RasmOp vh[4]; /* input/output vector registers (high bank) */
+    RasmOp sl[4]; /* input vector registers (low bank) */
+    RasmOp sh[4]; /* input vector registers (high bank) */
+    RasmOp dl[4]; /* output vector registers (low bank) */
+    RasmOp dh[4]; /* output vector registers (high bank) */
     RasmOp vt[8]; /* temp vector registers */
     RasmOp vk[4]; /* constant data (may be gprs) */
 } SwsAArch64OpRegs;
@@ -43,11 +45,11 @@ typedef struct SwsAArch64OpRegs {
 #define SWS_AARCH64_REGID_VDATA   8
 
 typedef struct SwsAArch64Immediate {
-    RasmOp op;
     uint32_t val;
-    uint8_t len;
-    uint8_t repeat_len;
-    uint8_t small_value;
+    SwsPixelType type;
+    // uint8_t repeat_len;
+    // uint8_t small_value;
+    RasmOp op;
 } SwsAArch64Immediate;
 
 typedef struct SwsAArch64RegState {
@@ -55,12 +57,19 @@ typedef struct SwsAArch64RegState {
     uint32_t clobbered;
 } SwsAArch64RegState;
 
+typedef struct SwsAArch64ConstVec {
+    uint8_t val[16];
+    RasmOp op;
+    // TODO .8b
+} SwsAArch64ConstVec;
+
 /*********************************************************************/
 typedef struct SwsAArch64Context {
     RasmContext *rctx;
 
     /* Process function. */
     AArch64Frame frame;
+    AArch64Frame vframe;
     RasmNode *setup;
     RasmNode *loop;
 
@@ -93,10 +102,8 @@ typedef struct SwsAArch64Context {
     SwsAArch64Immediate imm[SWS_AARCH64_MAX_IMM];
     int                 imm_count;
 
-    /* 128-bit constant vectors pre-loaded into v8..v15 from a data pool. */
-    uint32_t data[SWS_AARCH64_MAX_DATA_VECS * 4];
-    int      n_data;
-    RasmOp   vdata[SWS_AARCH64_MAX_DATA_VECS];
+    SwsAArch64ConstVec  data[SWS_AARCH64_MAX_DATA_VECS];
+    int                 data_count;
 
     /* Read/Write data pointers and padding. */
     RasmOp in[4];
@@ -114,5 +121,10 @@ typedef struct SwsAArch64Context {
     int block_size;
     SwsContext *sws;
 } SwsAArch64Context;
+
+/* Looping when s->use_vh is set. */
+#define LOOP_VH(s, mask, idx) if (s->use_vh) LOOP(mask, idx)
+#define LOOP_MASK_VH(s, p, idx) if (s->use_vh) LOOP_MASK(p, idx)
+#define LOOP_MASK_BWD_VH(s, p, idx) if (s->use_vh) LOOP_MASK_BWD(p, idx)
 
 #endif /* SWSCALE_AARCH64_OPS_ASMGEN_H */
