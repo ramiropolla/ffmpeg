@@ -120,9 +120,7 @@ static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
     case SWS_OP_LSHIFT:     out->op = AARCH64_SWS_OP_LSHIFT;     break;
     case SWS_OP_RSHIFT:     out->op = AARCH64_SWS_OP_RSHIFT;     break;
     case SWS_OP_CLEAR:      out->op = AARCH64_SWS_OP_CLEAR;      break;
-    case SWS_OP_CONVERT:
-        out->op = op->convert.expand ? AARCH64_SWS_OP_EXPAND : AARCH64_SWS_OP_CONVERT;
-        break;
+    case SWS_OP_CONVERT:    out->op = AARCH64_SWS_OP_CONVERT;    break;
     case SWS_OP_MIN:        out->op = AARCH64_SWS_OP_MIN;        break;
     case SWS_OP_MAX:        out->op = AARCH64_SWS_OP_MAX;        break;
     case SWS_OP_SCALE:      out->op = AARCH64_SWS_OP_SCALE;      break;
