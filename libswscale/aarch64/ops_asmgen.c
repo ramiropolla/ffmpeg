@@ -1078,6 +1078,8 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                         int save_mask, bool vh_pass)
 {
     RasmContext *r = s->rctx;
+    av_assert0(p->type == AARCH64_PIXEL_F32);
+
     /**
      * The intermediate registers for fmul+fadd (for when SWS_BITEXACT
      * is set) start from temp vector 4.
