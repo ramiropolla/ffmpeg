@@ -277,12 +277,52 @@ static int setup_dither(const SwsImplParams *params, SwsImplResult *out)
     return 0;
 }
 
+static void splat_lane(void *dst, SwsPixelType type, SwsPixel px)
+{
+    switch (ff_sws_pixel_type_size(type)) {
+    case 1:
+        memset(dst, px.u8, 16);
+        break;
+    case 2:
+        for (int i = 0; i < 8; i++)
+            ((uint16_t *) dst)[i] = px.u16;
+        break;
+    case 4:
+        for (int i = 0; i < 4; i++)
+            ((uint32_t *) dst)[i] = px.u32;
+        break;
+    }
+}
+
 static int setup_linear(const SwsImplParams *params, SwsImplResult *out)
 {
     const SwsUOp *uop = params->uop;
-    out->priv.ptr = av_memdup(uop->data.mat4, sizeof(uop->data.mat4));
+    if (uop->type == SWS_PIXEL_F32) {
+        out->priv.ptr = av_memdup(uop->data.mat4, sizeof(uop->data.mat4));
+        out->free = ff_op_priv_free;
+        return out->priv.ptr ? 0 : AVERROR(ENOMEM);
+    }
+
+    uint8_t *mat = av_malloc(4 * 5 * 16); /* one lane per component */
+    if (!mat)
+        return AVERROR(ENOMEM);
+    out->priv.ptr = mat;
     out->free = ff_op_priv_free;
-    return out->priv.ptr ? 0 : AVERROR(ENOMEM);
+
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 5; j++) {
+            SwsPixel px = uop->data.mat4[i][j];
+            SwsPixelType type = uop->type;
+            if (type == SWS_PIXEL_U8) {
+                type = SWS_PIXEL_U16; /* for pmullw */
+                px.u16 = (px.u8 << 8) | px.u8;
+            }
+
+            splat_lane(mat, type, px);
+            mat += 16;
+        }
+    }
+    return 0;
 }
 
 static bool uop_is_type_invariant(const SwsUOpType uop)
@@ -372,6 +412,7 @@ static const SwsUOpTable uops_u8##EXT = {                                       
         SWS_FOR(U8, READ_PLANAR,    REF_ENTRY, EXT)                             \
         SWS_FOR(U8, WRITE_PLANAR,   REF_ENTRY, EXT)                             \
         SWS_FOR(U8, CLEAR,          REF_ENTRY, EXT)                             \
+        SWS_FOR(U8, LINEAR,         REF_ENTRY, EXT)                             \
         NULL                                                                    \
     },                                                                          \
 };
@@ -387,6 +428,7 @@ static const SwsUOpTable uops_u16##EXT = {                                      
     .block_size = SIZE,                                                         \
     .entries = {                                                                \
         REF_OPS_COMMON(EXT, U16)                                                \
+        SWS_FOR(U16, LINEAR, REF_ENTRY, EXT)                                    \
         SWS_FOR(U8,  TO_U16, REF_ENTRY, EXT)                                    \
         SWS_FOR(U16, TO_U8,  REF_ENTRY, EXT)                                    \
         SWS_FOR(U8,  EXPAND_PAIR, REF_ENTRY, EXT)                               \
