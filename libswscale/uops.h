@@ -267,7 +267,7 @@ typedef struct SwsUOp {
         SwsPixel *ptr;              /* refstruct */
         SwsPixel scalar;
         SwsPixel vec4[4];
-        SwsPixel mat4[4][5];        /* row major */
+        SwsPixel mat4x5[4][5];      /* row major */
         SwsShuffleMask shuffle;     /* for SWS_UOP_RW_SHUFFLE */
         void *opaque;               /* reserved for internal use */
     } data;
