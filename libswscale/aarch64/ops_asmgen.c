@@ -172,6 +172,7 @@ typedef struct SwsAArch64Context {
     RasmOp out_bump[4];
 
     /* Process function. */
+    AArch64RegState regstate;
     RasmNode *setup;
     RasmNode *loop;
 
@@ -230,84 +231,6 @@ static void reshape_const_vectors(SwsAArch64OpRegs *regs, int el_count, int el_s
 }
 
 /*********************************************************************/
-/* Function frame */
-
-static unsigned clobbered_frame_size(unsigned n)
-{
-    return ((n + 1) >> 1) * 16;
-}
-
-static void asmgen_prologue(SwsAArch64Context *s, const RasmOp *regs, unsigned n)
-{
-    RasmContext *r = s->rctx;
-    RasmOp sp = a64op_sp();
-    unsigned frame_size = clobbered_frame_size(n);
-    RasmOp sp_pre = a64op_pre(sp, -frame_size);
-
-    rasm_add_comment(r, "prologue");
-    if (n == 0) {
-        /* no-op */
-    } else if (n == 1) {
-        i_str(r, regs[0], sp_pre);
-    } else {
-        i_stp(r, regs[0], regs[1], sp_pre);
-        for (unsigned i = 2; i + 1 < n; i += 2)
-            i_stp(r, regs[i],     regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
-        if (n & 1)
-            i_str(r, regs[n - 1],              a64op_off(sp, (n - 1) * sizeof(uint64_t)));
-    }
-}
-
-static void asmgen_epilogue(SwsAArch64Context *s, const RasmOp *regs, unsigned n)
-{
-    RasmContext *r = s->rctx;
-    RasmOp sp = a64op_sp();
-    unsigned frame_size = clobbered_frame_size(n);
-    RasmOp sp_post = a64op_post(sp, frame_size);
-
-    rasm_add_comment(r, "epilogue");
-    if (n == 0) {
-        /* no-op */
-    } else if (n == 1) {
-        i_ldr(r, regs[0], sp_post);
-    } else {
-        if (n & 1)
-            i_ldr(r, regs[n - 1],              a64op_off(sp, (n - 1) * sizeof(uint64_t)));
-        for (unsigned i = (n & ~1u) - 2; i >= 2; i -= 2)
-            i_ldp(r, regs[i],     regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
-        i_ldp(r, regs[0], regs[1], sp_post);
-    }
-}
-
-/*********************************************************************/
-/* Callee-saved registers (r19-r28, fp, and lr). */
-#define MAX_SAVED_REGS 12
-
-static void clobber_gpr(RasmOp regs[MAX_SAVED_REGS], unsigned *count,
-                        RasmOp gpr)
-{
-    const int n = a64op_gpr_n(gpr);
-    if (n >= 19 && n <= 30)
-        regs[(*count)++] = gpr;
-}
-
-static unsigned clobbered_gprs(const SwsAArch64Context *s,
-                               SwsCompMask imask, SwsCompMask omask,
-                               RasmOp regs[MAX_SAVED_REGS])
-{
-    unsigned count = 0;
-    clobber_gpr(regs, &count, a64op_lr());
-    LOOP(imask, i) {
-        clobber_gpr(regs, &count, s->in[i]);
-        clobber_gpr(regs, &count, s->in_bump[i]);
-    }
-    LOOP(omask, i) {
-        clobber_gpr(regs, &count, s->out[i]);
-        clobber_gpr(regs, &count, s->out_bump[i]);
-    }
-    return count;
-}
-
 static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
     RasmContext *r = s->rctx;
@@ -318,10 +241,7 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
      */
 
     /* Function prologue */
-    RasmOp saved_regs[MAX_SAVED_REGS];
-    unsigned nsaved = clobbered_gprs(s, imask, omask, saved_regs);
-    if (nsaved)
-        asmgen_prologue(s, saved_regs, nsaved);
+    RasmNode *prologue = rasm_get_current_node(r);
 
     /* Load values from exec. */
     RasmOp exec_in[4];
@@ -371,10 +291,11 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
     i_bne(r, next_row);                     CMT("    goto next_row;");
 
     /* Function epilogue */
-    if (nsaved)
-        asmgen_epilogue(s, saved_regs, nsaved);
+    RasmNode *epilogue = rasm_get_current_node(r);
 
     i_ret(r);
+
+    a64reg_emit(r, &s->regstate, prologue, epilogue);
 }
 
 /*********************************************************************/
@@ -1436,47 +1357,59 @@ static const int rw_gprs[] = {
 
 static void asmgen_common_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
+    AArch64RegState *rs = &s->regstate;
+
+    /* Reset register state. */
+    *rs = (AArch64RegState) { 0 };
+
     /* Loop iterator variables. */
-    s->bx        = a64op_gpw(6);
-    s->y         = a64op_gpw(3);    /* Reused from SwsOpFunc.y_start argument. */
+    s->bx        = a64reg_gpw(rs, 6);
+    s->y         = a64reg_gpw(rs, 3);   /* Reused from SwsOpFunc.y_start argument. */
 
     /* Scratch registers. */
-    s->tmp0      = a64op_gpx(16);   /* IP0 */
-    s->tmp1      = a64op_gpx(17);   /* IP1 */
+    s->tmp0      = a64reg_gpx(rs, 16);  /* IP0 */
+    s->tmp1      = a64reg_gpx(rs, 17);  /* IP1 */
 
     /* Read/Write data pointers. */
-    LOOP(imask, i) { s->in [i] = a64op_gpx(rw_gprs[(i * 4) + 0]); }
-    LOOP(omask, i) { s->out[i] = a64op_gpx(rw_gprs[(i * 4) + 1]); }
+    LOOP(imask, i) { s->in [i] = a64reg_gpx(rs, rw_gprs[(i * 4) + 0]); }
+    LOOP(omask, i) { s->out[i] = a64reg_gpx(rs, rw_gprs[(i * 4) + 1]); }
 }
 
 static void asmgen_process_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
+    AArch64RegState *rs = &s->regstate;
+
     asmgen_common_frame(s, imask, omask);
 
     /* SwsOpFunc arguments. */
-    s->exec      = a64op_gpx(0);    // const SwsOpExec *exec
-    s->impl      = a64op_gpx(1);    // const void *priv
-    s->bx_start  = a64op_gpw(2);    // int bx_start
-    s->y_start   = a64op_gpw(3);    // int y_start
-    s->bx_end    = a64op_gpw(4);    // int bx_end
-    s->y_end     = a64op_gpw(5);    // int y_end
+    s->exec      = a64reg_argx(rs, 0);  // const SwsOpExec *exec
+    s->impl      = a64reg_argx(rs, 1);  // const void *priv
+    s->bx_start  = a64reg_argw(rs, 2);  // int bx_start
+    s->y_start   = a64reg_argw(rs, 3);  // int y_start
+    s->bx_end    = a64reg_argw(rs, 4);  // int bx_end
+    s->y_end     = a64reg_argw(rs, 5);  // int y_end
 
     /* CPS-related variables. */
-    s->op0_func  = a64op_gpx(7);
-    s->op1_impl  = a64op_gpx(8);
+    s->op0_func  = a64reg_gpx(rs, 7);
+    s->op1_impl  = a64reg_gpx(rs, 8);
+
+    /* The link register is clobbered by the call to the first kernel. */
+    a64reg_gpr_clobber(rs, a64op_lr());
 
     /* Read/Write data pointer padding. */
-    LOOP(imask, i) { s->in_bump [i] = a64op_gpx(rw_gprs[(i * 4) + 2]); }
-    LOOP(omask, i) { s->out_bump[i] = a64op_gpx(rw_gprs[(i * 4) + 3]); }
+    LOOP(imask, i) { s->in_bump [i] = a64reg_gpx(rs, rw_gprs[(i * 4) + 2]); }
+    LOOP(omask, i) { s->out_bump[i] = a64reg_gpx(rs, rw_gprs[(i * 4) + 3]); }
 }
 
 static void asmgen_op_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
+    AArch64RegState *rs = &s->regstate;
+
     asmgen_common_frame(s, imask, omask);
 
     /* CPS-related variables. */
-    s->cont      = a64op_gpx(0);    /* Reused from SwsOpFunc.exec argument. */
-    s->impl      = a64op_gpx(1);    /* Same as SwsOpFunc.impl argument. */
+    s->cont      = a64reg_argx(rs, 0);  /* Reused from SwsOpFunc.exec argument. */
+    s->impl      = a64reg_argx(rs, 1);  /* Same as SwsOpFunc.impl argument. */
 }
 
 /*********************************************************************/
