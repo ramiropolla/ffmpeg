@@ -454,19 +454,30 @@ int a64reg_gpr(AArch64RegState *rs, int r)
     return r;
 }
 
+static int a64reg_pick_vec(uint32_t avail)
+{
+    av_assert0(avail);
+    /* Use callee-saved registers last. */
+    if (avail & ~AARCH64_VEC_CALLEE_SAVED)
+        return ff_ctz(avail & ~AARCH64_VEC_CALLEE_SAVED);
+    return ff_ctz(avail & AARCH64_VEC_CALLEE_SAVED);
+}
+
 RasmOp a64reg_vec(AArch64RegState *rs, int r)
 {
     if (r < 0) {
-        uint32_t avail = ~rs->vec_used;
-        av_assert0(avail);
-        /* Use callee-saved registers last. */
-        if (avail & ~AARCH64_VEC_CALLEE_SAVED)
-            r = ff_ctz(avail & ~AARCH64_VEC_CALLEE_SAVED);
-        else
-            r = ff_ctz(avail & AARCH64_VEC_CALLEE_SAVED);
+        r = a64reg_pick_vec(~rs->vec_used);
     } else {
         av_assert0(r >= 0 && r <= 31);
     }
+    rs->vec_used      |= 1u << r;
+    rs->vec_clobbered |= 1u << r;
+    return a64op_vec(r);
+}
+
+RasmOp a64reg_unclobbered_vec(AArch64RegState *rs)
+{
+    int r = a64reg_pick_vec(~rs->vec_clobbered);
     rs->vec_used      |= 1u << r;
     rs->vec_clobbered |= 1u << r;
     return a64op_vec(r);
