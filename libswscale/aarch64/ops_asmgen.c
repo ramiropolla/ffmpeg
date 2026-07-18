@@ -131,12 +131,12 @@ static const SwsAArch64OpEntry ops_entries[] = {
 
 /*********************************************************************/
 typedef struct SwsAArch64OpRegs {
-    RasmOp sl[4]; /* input vector registers (low bank) */
-    RasmOp sh[4]; /* input vector registers (high bank) */
-    RasmOp dl[4]; /* output vector registers (low bank) */
-    RasmOp dh[4]; /* output vector registers (high bank) */
-    RasmOp vt[8]; /* temp vector registers */
-    RasmOp vk[4]; /* constant data (may be gprs) */
+    RasmOp sl[ 4]; /* input vector registers (low bank) */
+    RasmOp sh[ 4]; /* input vector registers (high bank) */
+    RasmOp dl[ 4]; /* output vector registers (low bank) */
+    RasmOp dh[ 4]; /* output vector registers (high bank) */
+    RasmOp vt[12]; /* temp vector registers */
+    RasmOp vk[ 4]; /* constant data (may be gprs) */
 } SwsAArch64OpRegs;
 
 /*********************************************************************/
@@ -221,23 +221,27 @@ static void reshape_io_vectors(SwsAArch64OpRegs *regs, int el_count, int el_size
 /* Reshape temp vector registers for current SwsOp. */
 static void reshape_temp_vectors(SwsAArch64OpRegs *regs, int el_count, int el_size)
 {
-    regs->vt[0] = a64op_make_vec(16, el_count, el_size);
-    regs->vt[1] = a64op_make_vec(17, el_count, el_size);
-    regs->vt[2] = a64op_make_vec(18, el_count, el_size);
-    regs->vt[3] = a64op_make_vec(19, el_count, el_size);
-    regs->vt[4] = a64op_make_vec(20, el_count, el_size);
-    regs->vt[5] = a64op_make_vec(21, el_count, el_size);
-    regs->vt[6] = a64op_make_vec(22, el_count, el_size);
-    regs->vt[7] = a64op_make_vec(23, el_count, el_size);
+    regs->vt[ 0] = a64op_make_vec(16, el_count, el_size);
+    regs->vt[ 1] = a64op_make_vec(17, el_count, el_size);
+    regs->vt[ 2] = a64op_make_vec(18, el_count, el_size);
+    regs->vt[ 3] = a64op_make_vec(19, el_count, el_size);
+    regs->vt[ 4] = a64op_make_vec(20, el_count, el_size);
+    regs->vt[ 5] = a64op_make_vec(21, el_count, el_size);
+    regs->vt[ 6] = a64op_make_vec(22, el_count, el_size);
+    regs->vt[ 7] = a64op_make_vec(23, el_count, el_size);
+    regs->vt[ 8] = a64op_make_vec(24, el_count, el_size);
+    regs->vt[ 9] = a64op_make_vec(25, el_count, el_size);
+    regs->vt[10] = a64op_make_vec(26, el_count, el_size);
+    regs->vt[11] = a64op_make_vec(27, el_count, el_size);
 }
 
 /* Reshape const vector registers for current SwsOp. */
 static void reshape_const_vectors(SwsAArch64OpRegs *regs, int el_count, int el_size)
 {
-    regs->vk[0] = a64op_make_vec(24, el_count, el_size);
-    regs->vk[1] = a64op_make_vec(25, el_count, el_size);
-    regs->vk[2] = a64op_make_vec(26, el_count, el_size);
-    regs->vk[3] = a64op_make_vec(27, el_count, el_size);
+    regs->vk[0] = a64op_make_vec(28, el_count, el_size);
+    regs->vk[1] = a64op_make_vec(29, el_count, el_size);
+    regs->vk[2] = a64op_make_vec(30, el_count, el_size);
+    regs->vk[3] = a64op_make_vec(31, el_count, el_size);
 }
 
 /*********************************************************************/
