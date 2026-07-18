@@ -848,9 +848,9 @@ static int aarch64_jit_setup_banks(SwsAArch64Context *s, const SwsAArch64OpImplP
         }
 
         SwsPixelType to_type = (p->uop == SWS_UOP_TO_U8)  ? SWS_PIXEL_U8  :
-                                (p->uop == SWS_UOP_TO_U16) ? SWS_PIXEL_U16 :
-                                (p->uop == SWS_UOP_TO_U32) ? SWS_PIXEL_U32 :
-                                                              SWS_PIXEL_F32;
+                               (p->uop == SWS_UOP_TO_U16) ? SWS_PIXEL_U16 :
+                               (p->uop == SWS_UOP_TO_U32) ? SWS_PIXEL_U32 :
+                                                            SWS_PIXEL_F32;
         bool src_use_vh = (p->block_size * s->el_size) > 16;
         bool dst_use_vh = (p->block_size * ff_sws_pixel_type_size(to_type)) > 16;
 
@@ -1016,6 +1016,14 @@ static int aarch64_jit_setup_banks(SwsAArch64Context *s, const SwsAArch64OpImplP
  *      auto-picked registers (a64reg_vec(rs, -1)) only ever claim a
  *      register value-flow genuinely isn't using, instead of a fixed
  *      range reserved unconditionally regardless of actual usage. */
+
+static uint32_t get_priv(const SwsOpPriv *priv, SwsPixelType type, int i)
+{
+    return (type == SWS_PIXEL_U8)  ? priv->u8[i]
+         : (type == SWS_PIXEL_U16) ? priv->u16[i]
+         :                           priv->u32[i];
+}
+
 static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                        SwsImplResult *res, SwsAArch64OpRegs *regs, int i)
 {
@@ -1034,14 +1042,14 @@ static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpI
 
     switch (p->uop) {
     case SWS_UOP_READ_BIT:
-        regs->vk[0] = jit_push_v128(s, res->priv.data, NULL);     /* shift_vec */
-        regs->vk[1] = jit_push_imm(s, SWS_PIXEL_U8, 1);     /* bitmask_vec */
+        regs->vk[0] = jit_push_v128(s, res->priv.data, NULL);   /* shift_vec */
+        regs->vk[1] = jit_push_imm(s, SWS_PIXEL_U8, 1);         /* bitmask_vec */
         break;
     case SWS_UOP_READ_NIBBLE:
-        regs->vk[0] = jit_push_imm(s, SWS_PIXEL_U8, 0x0f);  /* nibble_mask */
+        regs->vk[0] = jit_push_imm(s, SWS_PIXEL_U8, 0x0f);      /* nibble_mask */
         break;
     case SWS_UOP_WRITE_BIT:
-        regs->vk[0] = jit_push_v128(s, res->priv.data, NULL); /* shift_vec */
+        regs->vk[0] = jit_push_v128(s, res->priv.data, NULL);   /* shift_vec */
         break;
     case SWS_UOP_UNPACK:
         LOOP_MASK(p, i) {
@@ -1055,14 +1063,14 @@ static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpI
          * matches ops_impl_conv.c's SWS_UOP_CLEAR translation, which
          * only ever sets .one for the type's exact all-ones pattern. */
         uint32_t maxval = (p->type == SWS_PIXEL_U8)  ? UINT8_MAX
-                         : (p->type == SWS_PIXEL_U16) ? UINT16_MAX
-                         :                              UINT32_MAX;
+                        : (p->type == SWS_PIXEL_U16) ? UINT16_MAX
+                        :                              UINT32_MAX;
         LOOP_MASK(p, i) {
             uint32_t val = (p->par.clear.zero & SWS_COMP(i)) ? 0
-                          : (p->par.clear.one  & SWS_COMP(i)) ? maxval
-                          : (p->type == SWS_PIXEL_U8)  ? res->priv.u8[i]
-                          : (p->type == SWS_PIXEL_U16) ? res->priv.u16[i]
-                          :                              res->priv.u32[i]; /* U32 or F32: same union offset */
+                         : (p->par.clear.one  & SWS_COMP(i)) ? maxval
+                         : (p->type == SWS_PIXEL_U8)  ? res->priv.u8[i]
+                         : (p->type == SWS_PIXEL_U16) ? res->priv.u16[i]
+                         :                              res->priv.u32[i]; /* U32 or F32: same union offset */
             jit_push_clear_hoist(s, regs->dl[i], p->type, val);
             if (s->use_vh)
                 jit_push_clear_hoist(s, regs->dh[i], p->type, val);
@@ -1072,16 +1080,12 @@ static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpI
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
         LOOP_MASK(p, i) {
-            uint32_t val = (p->type == SWS_PIXEL_U8)  ? res->priv.u8[i]
-                         : (p->type == SWS_PIXEL_U16) ? res->priv.u16[i]
-                         :                              res->priv.u32[i];
+            uint32_t val = get_priv(&res->priv, p->type, i);
             regs->vk[i] = jit_push_imm(s, p->type, val);
         }
         break;
     case SWS_UOP_SCALE: {
-         uint32_t val = (p->type == SWS_PIXEL_U8)  ? res->priv.u8[0]
-                      : (p->type == SWS_PIXEL_U16) ? res->priv.u16[0]
-                      :                              res->priv.u32[0];
+        uint32_t val = get_priv(&res->priv, p->type, 0);
         regs->vk[0] = jit_push_imm(s, p->type, val);   /* scale_vec */
         break;
     }
