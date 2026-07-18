@@ -479,6 +479,45 @@ static void asmgen_op_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask
 }
 
 /*********************************************************************/
+/* Vector register assignment. */
+static void init_vectors(SwsAArch64Context *s, SwsAArch64OpRegs *regs)
+{
+    AArch64RegState *rs = &s->regstate;
+    regs->sl[ 0] = a64reg_vec(rs,  0);
+    regs->sl[ 1] = a64reg_vec(rs,  1);
+    regs->sl[ 2] = a64reg_vec(rs,  2);
+    regs->sl[ 3] = a64reg_vec(rs,  3);
+    regs->sh[ 0] = a64reg_vec(rs,  4);
+    regs->sh[ 1] = a64reg_vec(rs,  5);
+    regs->sh[ 2] = a64reg_vec(rs,  6);
+    regs->sh[ 3] = a64reg_vec(rs,  7);
+    regs->dl[ 0] = a64reg_vec(rs,  0);
+    regs->dl[ 1] = a64reg_vec(rs,  1);
+    regs->dl[ 2] = a64reg_vec(rs,  2);
+    regs->dl[ 3] = a64reg_vec(rs,  3);
+    regs->dh[ 0] = a64reg_vec(rs,  4);
+    regs->dh[ 1] = a64reg_vec(rs,  5);
+    regs->dh[ 2] = a64reg_vec(rs,  6);
+    regs->dh[ 3] = a64reg_vec(rs,  7);
+    regs->vt[ 0] = a64reg_vec(rs, 16);
+    regs->vt[ 1] = a64reg_vec(rs, 17);
+    regs->vt[ 2] = a64reg_vec(rs, 18);
+    regs->vt[ 3] = a64reg_vec(rs, 19);
+    regs->vt[ 4] = a64reg_vec(rs, 20);
+    regs->vt[ 5] = a64reg_vec(rs, 21);
+    regs->vt[ 6] = a64reg_vec(rs, 22);
+    regs->vt[ 7] = a64reg_vec(rs, 23);
+    regs->vt[ 8] = a64reg_vec(rs, 24);
+    regs->vt[ 9] = a64reg_vec(rs, 25);
+    regs->vt[10] = a64reg_vec(rs, 26);
+    regs->vt[11] = a64reg_vec(rs, 27);
+    regs->vk[ 0] = a64reg_vec(rs, 28);
+    regs->vk[ 1] = a64reg_vec(rs, 29);
+    regs->vk[ 2] = a64reg_vec(rs, 30);
+    regs->vk[ 3] = a64reg_vec(rs, 31);
+}
+
+/*********************************************************************/
 static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
 {
     RasmContext *r = s->rctx;
@@ -542,6 +581,7 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 
     s->el_size = el_size;
     s->el_count = s->vec_size / el_size;
+    init_vectors(s, &s->regs);
     reshape_io_vectors(&s->regs, s->el_count, el_size);
     reshape_temp_vectors(&s->regs, s->el_count, el_size);
     reshape_const_vectors(&s->regs, s->el_count, el_size);

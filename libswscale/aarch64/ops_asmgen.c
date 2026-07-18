@@ -32,51 +32,37 @@
 #define CMT(comment)   rasm_annotate(r, comment)
 #define CMTF(fmt, ...) rasm_annotatef(r, (char[128]){0}, 128, fmt, __VA_ARGS__)
 
+/* Reshape single vector register. */
+static RasmOp reshape_vector(RasmOp op, int el_count, int el_size)
+{
+    if (rasm_op_type(op) == AARCH64_OP_VEC)
+        op = a64op_make_vec(a64op_vec_n(op), el_count, el_size);
+    return op;
+}
+
 /* Reshape input/output vector registers for current SwsOp. */
 static void reshape_io_vectors(SwsAArch64OpRegs *regs, int el_count, int el_size)
 {
-    regs->sl[0] = a64op_make_vec( 0, el_count, el_size);
-    regs->sl[1] = a64op_make_vec( 1, el_count, el_size);
-    regs->sl[2] = a64op_make_vec( 2, el_count, el_size);
-    regs->sl[3] = a64op_make_vec( 3, el_count, el_size);
-    regs->sh[0] = a64op_make_vec( 4, el_count, el_size);
-    regs->sh[1] = a64op_make_vec( 5, el_count, el_size);
-    regs->sh[2] = a64op_make_vec( 6, el_count, el_size);
-    regs->sh[3] = a64op_make_vec( 7, el_count, el_size);
-    regs->dl[0] = a64op_make_vec( 0, el_count, el_size);
-    regs->dl[1] = a64op_make_vec( 1, el_count, el_size);
-    regs->dl[2] = a64op_make_vec( 2, el_count, el_size);
-    regs->dl[3] = a64op_make_vec( 3, el_count, el_size);
-    regs->dh[0] = a64op_make_vec( 4, el_count, el_size);
-    regs->dh[1] = a64op_make_vec( 5, el_count, el_size);
-    regs->dh[2] = a64op_make_vec( 6, el_count, el_size);
-    regs->dh[3] = a64op_make_vec( 7, el_count, el_size);
+    for (int i = 0; i < 4; i++) {
+        regs->sl[i] = reshape_vector(regs->sl[i], el_count, el_size);
+        regs->sh[i] = reshape_vector(regs->sh[i], el_count, el_size);
+        regs->dl[i] = reshape_vector(regs->dl[i], el_count, el_size);
+        regs->dh[i] = reshape_vector(regs->dh[i], el_count, el_size);
+    }
 }
 
 /* Reshape temp vector registers for current SwsOp. */
 static void reshape_temp_vectors(SwsAArch64OpRegs *regs, int el_count, int el_size)
 {
-    regs->vt[ 0] = a64op_make_vec(16, el_count, el_size);
-    regs->vt[ 1] = a64op_make_vec(17, el_count, el_size);
-    regs->vt[ 2] = a64op_make_vec(18, el_count, el_size);
-    regs->vt[ 3] = a64op_make_vec(19, el_count, el_size);
-    regs->vt[ 4] = a64op_make_vec(20, el_count, el_size);
-    regs->vt[ 5] = a64op_make_vec(21, el_count, el_size);
-    regs->vt[ 6] = a64op_make_vec(22, el_count, el_size);
-    regs->vt[ 7] = a64op_make_vec(23, el_count, el_size);
-    regs->vt[ 8] = a64op_make_vec(24, el_count, el_size);
-    regs->vt[ 9] = a64op_make_vec(25, el_count, el_size);
-    regs->vt[10] = a64op_make_vec(26, el_count, el_size);
-    regs->vt[11] = a64op_make_vec(27, el_count, el_size);
+    for (int i = 0; i < 12; i++)
+        regs->vt[i] = reshape_vector(regs->vt[i], el_count, el_size);
 }
 
 /* Reshape const vector registers for current SwsOp. */
 static void reshape_const_vectors(SwsAArch64OpRegs *regs, int el_count, int el_size)
 {
-    regs->vk[0] = a64op_make_vec(28, el_count, el_size);
-    regs->vk[1] = a64op_make_vec(29, el_count, el_size);
-    regs->vk[2] = a64op_make_vec(30, el_count, el_size);
-    regs->vk[3] = a64op_make_vec(31, el_count, el_size);
+    for (int i = 0; i < 4; i++)
+        regs->vk[i] = reshape_vector(regs->vk[i], el_count, el_size);
 }
 
 /*********************************************************************/
