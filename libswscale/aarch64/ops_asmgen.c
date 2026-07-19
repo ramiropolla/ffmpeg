@@ -1234,12 +1234,12 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             RasmOp vcoeff = a64op_elem(vc[vc_i], vc_j);
             i_coeff++;
             if (first && is_offset) {
-                i_dup (r, dx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(vc[%u][%u]);", cvh, i, vc_i, vc_j);
+                i_dup (r, dx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(vc[%u][%u]);", cvh, i, i, j);
             } else if (first && !is_offset) {
                 if (p->par.lin.one & SWS_MASK(i, src_j)) {
                     i_mov16b(r, dx[i], vsrc);           CMTF("v%c[%u]  = vsrc%c[%u];", cvh, i, cvh, src_j);
                 } else {
-                    i_fmul  (r, dx[i], vsrc, vcoeff);   CMTF("v%c[%u]  = vsrc%c[%u] * vc[%u][%u];", cvh, i, cvh, src_j, vc_i, vc_j);
+                    i_fmul  (r, dx[i], vsrc, vcoeff);   CMTF("v%c[%u]  = vsrc%c[%u] * vc[%u][%u];", cvh, i, cvh, src_j, i, j);
                 }
             } else if (p->uop == SWS_UOP_LINEAR_FMA) {
                 /**
@@ -1247,7 +1247,7 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                  * of fmla instructions. This means that even if the coefficient
                  * is 1, it is still faster to use fmla by 1 instead of fadd.
                  */
-                i_fmla(r, dx[i], vsrc, vcoeff);         CMTF("v%c[%u] += vsrc%c[%u] * vc[%u][%u];", cvh, i, cvh, src_j, vc_i, vc_j);
+                i_fmla(r, dx[i], vsrc, vcoeff);         CMTF("v%c[%u] += vsrc%c[%u] * vc[%u][%u];", cvh, i, cvh, src_j, i, j);
             } else {
                 /**
                  * Split the multiply-accumulate into fmul+fadd. All
@@ -1258,11 +1258,11 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                  */
                 if (!(p->par.lin.one & SWS_MASK(i, src_j))) {
                     pre_mul = rasm_set_current_node(r, pre_mul);
-                    i_fmul(r, vtmp[vc_j], vsrc, vcoeff);    CMTF("vtmp[%u] = vsrc%c[%u] * vc[%u][%u];", vc_j, cvh, src_j, vc_i, vc_j);
+                    i_fmul(r, vtmp[vc_j], vsrc, vcoeff);    CMTF("vtmp[%u] = vsrc%c[%u] * vc[%u][%u];", vc_j, cvh, src_j, i, j);
                     pre_mul = rasm_set_current_node(r, pre_mul);
-                    i_fadd(r, dx[i], dx[i], vtmp[vc_j]);    CMTF("v%c[%u] += vtmp[%u];", cvh, i, vc_j);
+                    i_fadd(r, dx[i], dx[i], vtmp[vc_j]);    CMTF("v%c[%u] += vtmp[%u];", cvh, i, j);
                 } else {
-                    i_fadd(r, dx[i], dx[i], vsrc);          CMTF("v%c[%u] += vsrc%c[%u];", cvh, i, cvh, vc_j);
+                    i_fadd(r, dx[i], dx[i], vsrc);          CMTF("v%c[%u] += vsrc%c[%u];", cvh, i, cvh, j);
                 }
             }
             first = false;
