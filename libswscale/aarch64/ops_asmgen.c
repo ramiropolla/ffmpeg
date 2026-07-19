@@ -23,11 +23,6 @@
 /*********************************************************************/
 /* Helpers functions. */
 
-/* Looping when s->use_vh is set. */
-#define LOOP_VH(s, mask, idx) if (s->use_vh) LOOP(mask, idx)
-#define LOOP_MASK_VH(s, p, idx) if (s->use_vh) LOOP_MASK(p, idx)
-#define LOOP_MASK_BWD_VH(s, p, idx) if (s->use_vh) LOOP_MASK_BWD(p, idx)
-
 /* Inline rasm comments. */
 #define CMT(comment)   rasm_annotate(r, comment)
 #define CMTF(fmt, ...) rasm_annotatef(r, (char[128]){0}, 128, fmt, __VA_ARGS__)
@@ -61,6 +56,7 @@ static void reshape_const_vectors(SwsAArch64OpRegs *regs, int el_count, int el_s
 static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
     RasmContext *r = s->rctx;
+    AArch64RegState *rs = &s->regstate;
 
     /**
      * The process function for aarch64 works similarly to the x86 backend.
@@ -83,6 +79,7 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
     LOOP(omask, i) { i_ldr(r, s->out[i],      exec_out[i]);         CMTF("out[%u] = exec->out[%u];", i, i); }
     LOOP(imask, i) { i_ldr(r, s->in_bump[i],  exec_in_bump[i]);     CMTF("in_bump[%u] = exec->in_bump[%u];", i, i); }
     LOOP(omask, i) { i_ldr(r, s->out_bump[i], exec_out_bump[i]);    CMTF("out_bump[%u] = exec->out_bump[%u];", i, i); }
+    a64reg_gpr_free(rs, s->exec);
 
     /* Setup. */
     s->setup = rasm_get_current_node(r);

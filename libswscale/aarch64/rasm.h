@@ -627,6 +627,7 @@ static inline RasmOp a64reg_unclobbered_gpw(AArch64RegState *rs)             { r
 
 RasmOp a64reg_vec(AArch64RegState *rs, int r);
 RasmOp a64reg_unclobbered_vec(AArch64RegState *rs);
+void   a64reg_contiguous_vec(AArch64RegState *rs, int n, RasmOp *ops);
 
 static inline void a64reg_vec_free(AArch64RegState *rs, RasmOp op)
 {

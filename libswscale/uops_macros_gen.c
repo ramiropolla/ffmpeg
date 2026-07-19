@@ -216,6 +216,20 @@ static int register_flags(SwsContext *ctx, const SwsOpList *ops, SwsUOpFlags fla
     if (ret < 0)
         goto fail;
 
+    /* The x86 backend collapses type-invariant uops (CLEAR, READ_PLANAR,
+     * WRITE_PLANAR) down to SWS_PIXEL_U8 before doing its table lookup (see
+     * compile_uops_x86() in x86/ops.c). Mirror that collapse here so the
+     * generated table actually contains the combinations it looks up,
+     * instead of only the pre-collapse combinations ff_sws_ops_translate()
+     * produces at their native type. */
+    if (flags & SWS_UOP_FLAG_PSHUFB) {
+        for (int i = 0; i < uops->num_ops; i++) {
+            SwsUOp *uop = &uops->ops[i];
+            if (ff_sws_uop_is_type_invariant(uop->uop))
+                uop->type = SWS_PIXEL_U8;
+        }
+    }
+
     struct AVTreeNode **root = ctx->opaque;
     for (int i = 0; i < uops->num_ops; i++) {
         ret = register_uop(root, &uops->ops[i]);
