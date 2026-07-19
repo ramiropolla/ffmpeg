@@ -23,6 +23,15 @@
 
 #include "rasm.h"
 
+/* Opaque here: ops_static.c is a standalone host tool that must not
+ * depend on internal FFmpeg headers, so it never includes
+ * ../ops_chain.h and only ever sees this forward declaration (fine --
+ * it only stores/passes a pointer, JIT-only code dereferences it).
+ * Wherever ../ops_chain.h *is* included first (ops_jit.c), this
+ * redeclares the same typedef name against the by-then-complete type,
+ * which C allows. */
+typedef struct SwsOpChain SwsOpChain;
+
 /*********************************************************************/
 typedef struct SwsAArch64OpRegs {
     RasmOp sl[ 4]; /* input vector registers (low bank) */
@@ -38,6 +47,59 @@ typedef struct SwsAArch64OpRegs {
         RasmOp linear_vcoeff[4][5];
     };
 } SwsAArch64OpRegs;
+
+/*********************************************************************/
+/* Immediate values: scalar constants broadcast to all vector lanes,
+ * pre-loaded before the inner loop. No fixed register range -- each
+ * one's home register is auto-picked (a64reg_vec(rs, -1)) *after* the
+ * whole-chain value-flow ("banks") pass has finished for every op, so
+ * it only ever claims a register value-flow genuinely isn't using,
+ * instead of unconditionally reserving a fixed range regardless of how
+ * many constants a given chain actually needs. Just a bound on array
+ * size + a sanity assert now, not a register-numbering scheme. */
+
+#define SWS_AARCH64_MAX_IMM    5
+
+/* Data pool: 128-bit constant vectors, same dynamic-placement story as
+ * immediates above, loaded via adr + ldr from a pool after the
+ * function. */
+
+#define SWS_AARCH64_MAX_DATA_VECS 8
+
+typedef struct SwsAArch64Immediate {
+    uint32_t val;
+    SwsPixelType type;
+    // uint8_t repeat_len;
+    // uint8_t small_value;
+    RasmOp op;
+} SwsAArch64Immediate;
+
+typedef struct SwsAArch64RegState {
+    uint32_t used;
+    uint32_t clobbered;
+} SwsAArch64RegState;
+
+typedef struct SwsAArch64ConstVec {
+    uint8_t val[16];
+    RasmOp op;
+    // TODO .8b
+} SwsAArch64ConstVec;
+
+/* CLEAR: a masked component's value is compile-time-constant and
+ * doesn't depend on loop position, but (unlike every other constant-
+ * consuming uop) its home register is whatever the *consumer* already
+ * expects -- often inside another op's contiguous register block (e.g.
+ * WRITE_PACKED's st2/st3/st4) -- so it can't be redirected to an
+ * auto-picked register the way jit_push_imm()/jit_push_v128() do.
+ * Each masked component's already-coalesced target register and value
+ * are recorded here instead, and loaded directly, once, in
+ * load_constants(). */
+#define SWS_AARCH64_MAX_CLEAR_HOIST 8
+
+typedef struct SwsAArch64ClearHoist {
+    RasmOp   target;
+    uint32_t val;
+} SwsAArch64ClearHoist;
 
 /*********************************************************************/
 typedef struct SwsAArch64Context {
@@ -59,6 +121,13 @@ typedef struct SwsAArch64Context {
     RasmOp tmp0;
     RasmOp tmp1;
 
+    /* DITHER's runtime matrix pointer -- CPS (asmgen_setup_dither(),
+     * ops_static.c) aliases this to tmp0, freshly loaded from
+     * impl->priv every call; JIT (ops_jit.c) points it at a genuinely
+     * persistent GPR, loaded once before the loop. Shared by
+     * asmgen_op_dither() (ops_asmgen.c) either way. */
+    RasmOp dither_src_ptr;
+
     /* CPS-related variables. */
     RasmOp op0_func;
     RasmOp op1_impl;
@@ -66,6 +135,32 @@ typedef struct SwsAArch64Context {
     RasmOp impl_priv;
     RasmNode *load_cont_node;
     SwsAArch64OpRegs regs;
+
+    /* JIT-related variables. */
+    /* Immediates. */
+    SwsAArch64Immediate imm[SWS_AARCH64_MAX_IMM];
+    int                 imm_count;
+
+    SwsAArch64ConstVec  data[SWS_AARCH64_MAX_DATA_VECS];
+    int                 data_count;
+
+    SwsAArch64ClearHoist clear_hoist[SWS_AARCH64_MAX_CLEAR_HOIST];
+    int                  clear_hoist_count;
+
+    /* DITHER (JIT only): the matrix pointer is too large to inline as
+     * compile-time data, so its bytes are pushed into the data pool
+     * like any jit_push_v128() vector via jit_push_dither_ptr(), which
+     * records the pool index here so load_constants() can also read it
+     * back as a scalar GPR (dither_src_ptr above), not just the vector
+     * every other data-pool entry gets -- -1 when no DITHER op needs
+     * it. `chain` owns the underlying malloc'd buffer from compile time
+     * until the compiled function itself is torn down
+     * (ff_sws_op_chain_free_cb(), see aarch64_jit_compile()) -- unused/
+     * NULL for CPS. Only one pointer is tracked -- a chain with two
+     * DITHER ops needing two live matrix pointers simultaneously isn't
+     * supported (not needed by anything this targets today). */
+    SwsOpChain *chain;
+    int         dither_data_idx;
 
     /* Read/Write data pointers and padding. */
     RasmOp in[4];
@@ -83,6 +178,15 @@ typedef struct SwsAArch64Context {
     size_t el_count;
     size_t vec_size;
     bool use_vh;
+
+    /* TOOD */
+    int block_size;
+    SwsContext *sws;
 } SwsAArch64Context;
+
+/* Looping when s->use_vh is set. */
+#define LOOP_VH(s, mask, idx) if (s->use_vh) LOOP(mask, idx)
+#define LOOP_MASK_VH(s, p, idx) if (s->use_vh) LOOP_MASK(p, idx)
+#define LOOP_MASK_BWD_VH(s, p, idx) if (s->use_vh) LOOP_MASK_BWD(p, idx)
 
 #endif /* SWSCALE_AARCH64_OPS_ASMGEN_H */
