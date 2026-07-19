@@ -128,6 +128,7 @@ typedef struct SwsAArch64OpRegs {
     /* Op-specific registers. */
     union {
         RasmOp dither_ptr;
+        RasmOp linear_vcoeff[4][5];
     };
 } SwsAArch64OpRegs;
 
@@ -1258,9 +1259,9 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                  */
                 if (!(p->par.lin.one & SWS_MASK(i, src_j))) {
                     pre_mul = rasm_set_current_node(r, pre_mul);
-                    i_fmul(r, vtmp[vc_j], vsrc, vcoeff);    CMTF("vtmp[%u] = vsrc%c[%u] * vc[%u][%u];", vc_j, cvh, src_j, i, j);
+                    i_fmul(r, vtmp[j], vsrc, vcoeff);       CMTF("vtmp[%u] = vsrc%c[%u] * vc[%u][%u];", j, cvh, src_j, i, j);
                     pre_mul = rasm_set_current_node(r, pre_mul);
-                    i_fadd(r, dx[i], dx[i], vtmp[vc_j]);    CMTF("v%c[%u] += vtmp[%u];", cvh, i, j);
+                    i_fadd(r, dx[i], dx[i], vtmp[j]);       CMTF("v%c[%u] += vtmp[%u];", cvh, i, j);
                 } else {
                     i_fadd(r, dx[i], dx[i], vsrc);          CMTF("v%c[%u] += vsrc%c[%u];", cvh, i, cvh, j);
                 }
