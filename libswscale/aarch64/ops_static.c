@@ -64,6 +64,18 @@ static int ff_ctz(uint32_t mask)
     return n;
 }
 
+static int ff_clz(uint32_t mask)
+{
+    if (!mask)
+        return 32;
+    int n = 0;
+    while (!(mask & 0x80000000u)) {
+        mask <<= 1;
+        n++;
+    }
+    return n;
+}
+
 static void av_freep(void *ptr)
 {
     void **pptr = (void **) ptr;
@@ -505,7 +517,7 @@ static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
     rasm_func_begin(r, func_name, true, false);
     asmgen_process_frame(s, mask, mask);
 
-    asmgen_process(s, mask, mask);
+    ff_sws_aarch64_asmgen_process(s, mask, mask);
 
     /* Load values from impl. */
     rasm_set_current_node(r, s->setup);
@@ -547,22 +559,8 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     rasm_func_begin(r, entry->name, true, !is_read);
     asmgen_op_frame(s, is_read ? p->mask : 0, is_write ? p->mask : 0);
 
-    /**
-     * Set up vector register dimensions and reshape all vectors
-     * accordingly.
-     */
-    size_t el_size = ff_sws_pixel_type_size(p->type);
-    size_t total_size = p->block_size * el_size;
-
-    s->vec_size = FFMIN(total_size, 16);
-    s->use_vh = (s->vec_size != total_size);
-
-    s->el_size = el_size;
-    s->el_count = s->vec_size / el_size;
     init_vectors_cps(s, &s->regs);
-    reshape_io_vectors(&s->regs, s->el_count, el_size);
-    reshape_temp_vectors(&s->regs, s->el_count, el_size);
-    reshape_const_vectors(&s->regs, s->el_count, el_size);
+    ff_sws_aarch64_asmgen_setup_vecs(s, p, &s->regs);
 
     /* Common start for continuation-passing style (CPS) functions. */
     asmgen_set_load_cont_node(s);
@@ -585,39 +583,7 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     }
 
     /* Emit uop kernel. */
-    switch (p->uop) {
-    case SWS_UOP_READ_BIT:     asmgen_op_read_bit(s, p, &s->regs);     break;
-    case SWS_UOP_READ_NIBBLE:  asmgen_op_read_nibble(s, p, &s->regs);  break;
-    case SWS_UOP_READ_PACKED:  asmgen_op_read_packed(s, p, &s->regs);  break;
-    case SWS_UOP_READ_PLANAR:  asmgen_op_read_planar(s, p, &s->regs);  break;
-    case SWS_UOP_WRITE_BIT:    asmgen_op_write_bit(s, p, &s->regs);    break;
-    case SWS_UOP_WRITE_NIBBLE: asmgen_op_write_nibble(s, p, &s->regs); break;
-    case SWS_UOP_WRITE_PACKED: asmgen_op_write_packed(s, p, &s->regs); break;
-    case SWS_UOP_WRITE_PLANAR: asmgen_op_write_planar(s, p, &s->regs); break;
-    case SWS_UOP_SWAP_BYTES:   asmgen_op_swap_bytes(s, p, &s->regs);   break;
-    case SWS_UOP_PERMUTE:      asmgen_op_move(s, p, &s->regs);         break;
-    case SWS_UOP_COPY:         asmgen_op_move(s, p, &s->regs);         break;
-    case SWS_UOP_UNPACK:       asmgen_op_unpack(s, p, &s->regs);       break;
-    case SWS_UOP_PACK:         asmgen_op_pack(s, p, &s->regs);         break;
-    case SWS_UOP_LSHIFT:       asmgen_op_lshift(s, p, &s->regs);       break;
-    case SWS_UOP_RSHIFT:       asmgen_op_rshift(s, p, &s->regs);       break;
-    case SWS_UOP_CLEAR:        asmgen_op_clear(s, p, &s->regs);        break;
-    case SWS_UOP_TO_U8:        asmgen_op_convert(s, p, &s->regs);      break;
-    case SWS_UOP_TO_U16:       asmgen_op_convert(s, p, &s->regs);      break;
-    case SWS_UOP_TO_U32:       asmgen_op_convert(s, p, &s->regs);      break;
-    case SWS_UOP_TO_F32:       asmgen_op_convert(s, p, &s->regs);      break;
-    case SWS_UOP_EXPAND_PAIR:  asmgen_op_expand(s, p, &s->regs);       break;
-    case SWS_UOP_EXPAND_QUAD:  asmgen_op_expand(s, p, &s->regs);       break;
-    case SWS_UOP_MIN:          asmgen_op_min(s, p, &s->regs);          break;
-    case SWS_UOP_MAX:          asmgen_op_max(s, p, &s->regs);          break;
-    case SWS_UOP_SCALE:        asmgen_op_scale(s, p, &s->regs);        break;
-    case SWS_UOP_LINEAR:       asmgen_op_linear(s, p, &s->regs);       break;
-    case SWS_UOP_LINEAR_FMA:   asmgen_op_linear(s, p, &s->regs);       break;
-    case SWS_UOP_DITHER:       asmgen_op_dither(s, p, &s->regs);       break;
-    /* TODO implement SWS_UOP_SHUFFLE */
-    default:
-        break;
-    }
+    ff_sws_aarch64_asmgen_op(s, p, &s->regs);
 
     if (is_write) {
         /* Write functions return directly. */

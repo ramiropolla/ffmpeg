@@ -467,20 +467,22 @@ int a64reg_unclobbered_gpr(AArch64RegState *rs)
     return r;
 }
 
-static int a64reg_pick_vec(uint32_t mask)
+static int a64reg_pick_vec(uint32_t mask, bool lower)
 {
     uint32_t avail = ~mask;
     av_assert0(avail);
     /* Use callee-saved registers last. */
     if (avail & ~AARCH64_VEC_CALLEE_SAVED)
-        return ff_ctz(avail & ~AARCH64_VEC_CALLEE_SAVED);
-    return ff_ctz(avail & AARCH64_VEC_CALLEE_SAVED);
+        return lower ? ff_ctz(avail & ~AARCH64_VEC_CALLEE_SAVED)
+                     : (31 - ff_clz(avail & ~AARCH64_VEC_CALLEE_SAVED));
+    return lower ? ff_ctz(avail & AARCH64_VEC_CALLEE_SAVED)
+                 : (31 - ff_clz(avail & AARCH64_VEC_CALLEE_SAVED));
 }
 
 RasmOp a64reg_vec(AArch64RegState *rs, int r)
 {
     if (r < 0) {
-        r = a64reg_pick_vec(rs->vec_used);
+        r = a64reg_pick_vec(rs->vec_used, true);
     } else {
         av_assert0(r >= 0 && r <= 31);
     }
@@ -491,10 +493,33 @@ RasmOp a64reg_vec(AArch64RegState *rs, int r)
 
 RasmOp a64reg_unclobbered_vec(AArch64RegState *rs)
 {
-    int r = a64reg_pick_vec(rs->vec_clobbered);
+    int r = a64reg_pick_vec(rs->vec_clobbered, false);
     rs->vec_used      |= 1u << r;
     rs->vec_clobbered |= 1u << r;
     return a64op_vec(r);
+}
+
+static int find_contiguous(uint32_t avail, int n)
+{
+    uint32_t mask = (1u << n) - 1;
+    for (int i = 0; i < 32 - n; i++) {
+        if ((avail & (mask << i)) == (mask << i))
+            return i;
+    }
+    return -1;
+}
+
+void a64reg_contiguous_vec(AArch64RegState *rs, int n, RasmOp *ops)
+{
+    uint32_t avail = ~rs->vec_used;
+    av_assert0(avail);
+    /* Use callee-saved registers last. */
+    int r = find_contiguous(avail & ~AARCH64_VEC_CALLEE_SAVED, n);
+    if (r < 0)
+        r = find_contiguous(avail, n);
+    av_assert0(r >= 0);
+    for (int i = 0; i < n; i++)
+        ops[i] = a64reg_vec(rs, r + i);
 }
 
 void a64reg_emit(RasmContext *rctx, const AArch64RegState *rs,

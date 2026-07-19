@@ -22,6 +22,7 @@
 #define SWSCALE_AARCH64_OPS_ASMGEN_H
 
 #include "rasm.h"
+#include "ops_impl.h"
 
 /*********************************************************************/
 typedef struct SwsAArch64OpRegs {
@@ -38,6 +39,21 @@ typedef struct SwsAArch64OpRegs {
         RasmOp linear_vcoeff[4][5];
     };
 } SwsAArch64OpRegs;
+
+/*********************************************************************/
+typedef union SwsAArch64Vector {
+    uint8_t  u8 [16];
+    uint16_t u16[ 8];
+    uint32_t u32[ 4];
+    float    f32[ 4];
+    uint64_t u64[ 2];
+} SwsAArch64Vector;
+
+typedef struct SwsAArch64ConstVec {
+    SwsAArch64Vector vec;
+    RasmOp op;
+    int    op_idx;  /* index of last 32-bit element used. */
+} SwsAArch64ConstVec;
 
 /*********************************************************************/
 typedef struct SwsAArch64Context {
@@ -66,6 +82,10 @@ typedef struct SwsAArch64Context {
     RasmNode *load_cont_node;
     SwsAArch64OpRegs regs;
 
+    /* JIT-related variables. */
+    SwsAArch64ConstVec data[16];
+    int data_count;
+
     /* Read/Write data pointers and padding. */
     RasmOp in[4];
     RasmOp out[4];
@@ -83,5 +103,21 @@ typedef struct SwsAArch64Context {
     size_t vec_size;
     bool use_vh;
 } SwsAArch64Context;
+
+/* Looping when s->use_vh is set. */
+#define LOOP_VH(s, mask, idx) if (s->use_vh) LOOP(mask, idx)
+#define LOOP_MASK_VH(s, p, idx) if (s->use_vh) LOOP_MASK(p, idx)
+#define LOOP_MASK_BWD_VH(s, p, idx) if (s->use_vh) LOOP_MASK_BWD(p, idx)
+
+/* Emit the main per-block process loop. */
+void ff_sws_aarch64_asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask);
+
+/* Set up vector register dimensions for p and reshape regs accordingly. */
+void ff_sws_aarch64_asmgen_setup_vecs(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                      SwsAArch64OpRegs *regs);
+
+/* Emit the uop kernel selected by p->uop. */
+void ff_sws_aarch64_asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                              SwsAArch64OpRegs *regs);
 
 #endif /* SWSCALE_AARCH64_OPS_ASMGEN_H */
