@@ -1169,12 +1169,17 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     /* Compute mask for rows that must be saved before being overwritten. */
     SwsCompMask save_mask = 0;
     bool overwritten[4] = { false, false, false, false };
+    int i_coeff = 0;
     LOOP_MASK(p, i) {
         for (int j = 0; j < 5; j++) {
             bool is_offset = (j == 0);
             int src_j = is_offset ? 4 : (j - 1);
             if (p->par.lin.zero & SWS_MASK(i, src_j))
                 continue;
+            uint8_t vc_i = i_coeff / 4;
+            uint8_t vc_j = i_coeff & 3;
+            regs->linear_vcoeff[i][j] = a64op_elem(vc[vc_i], vc_j);
+            i_coeff++;
             if (!is_offset && overwritten[src_j])
                 save_mask |= SWS_COMP(src_j);
             overwritten[i] = true;
@@ -1206,7 +1211,6 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
      * is set) start from temp vector 4.
      */
     RasmOp *vt = regs->vt;
-    RasmOp *vc = regs->vk;
     RasmOp *vtmp = &vt[8];
     RasmOp *sx = vh_pass ? regs->sh : regs->sl;
     RasmOp *dx = vh_pass ? regs->dh : regs->dl;
@@ -1220,7 +1224,6 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
      * in sequential order into the individual lanes of the coefficient
      * vector registers. We must follow the same order of execution here.
      */
-    int i_coeff = 0;
     LOOP_MASK(p, i) {
         bool first = true;
         RasmNode *pre_mul = rasm_get_current_node(r);
@@ -1230,10 +1233,7 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             if (p->par.lin.zero & SWS_MASK(i, src_j))
                 continue;
             RasmOp vsrc = sx[src_j];
-            uint8_t vc_i = i_coeff / 4;
-            uint8_t vc_j = i_coeff & 3;
-            RasmOp vcoeff = a64op_elem(vc[vc_i], vc_j);
-            i_coeff++;
+            RasmOp vcoeff = regs->linear_vcoeff[i][j];
             if (first && is_offset) {
                 i_dup (r, dx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(vc[%u][%u]);", cvh, i, i, j);
             } else if (first && !is_offset) {
