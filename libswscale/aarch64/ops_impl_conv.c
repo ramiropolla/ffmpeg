@@ -193,8 +193,6 @@ static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
         out->to_type = sws_pixel_to_aarch64(op->convert.to);
         break;
     case AARCH64_SWS_OP_LINEAR:
-        if (op->type != SWS_PIXEL_F32)
-            return AVERROR(ENOTSUP);
         /**
          * The out->linear.mask field packs the 4x5 matrix from SwsLinearOp as
          * 2 bits per element:
@@ -218,7 +216,7 @@ static int convert_to_aarch64_impl(SwsContext *ctx, const SwsOpList *ops, int n,
                     LINEAR_MASK_SET(out->linear.mask, i, jj, LINEAR_MASK_X);
             }
         }
-        out->linear.fmla = !(ctx->flags & SWS_BITEXACT);
+        out->linear.fmla = (op->type == SWS_PIXEL_F32) && !(ctx->flags & SWS_BITEXACT);
         break;
     case AARCH64_SWS_OP_DITHER:
         out->mask = 0;

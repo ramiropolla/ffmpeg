@@ -34,6 +34,19 @@ typedef enum SwsAArch64PixelType {
     AARCH64_PIXEL_TYPE_NB,
 } SwsAArch64PixelType;
 
+static inline size_t aarch64_pixel_size(SwsAArch64PixelType fmt)
+{
+    switch (fmt) {
+    case AARCH64_PIXEL_U8:  return 1;
+    case AARCH64_PIXEL_U16: return 2;
+    case AARCH64_PIXEL_U32: return 4;
+    case AARCH64_PIXEL_F32: return 4;
+    default:
+        break;
+    }
+    return 0;
+}
+
 /* Similar to SwsOpType */
 typedef enum SwsAArch64OpType {
     AARCH64_SWS_OP_NONE = 0,
@@ -132,13 +145,20 @@ typedef struct SwsAArch64OpImplParams {
         for (int jdx = 0; jdx < 5; jdx++)   \
             if (LINEAR_MASK_GET(p->linear.mask, idx, jdx))
 
+/* Number of elements in each linear coefficient vector register. */
+static inline int linear_vreg_nelems(SwsAArch64PixelType type)
+{
+    return 16 / aarch64_pixel_size(type);
+}
+
 /* Compute number of vector registers needed to store all coefficients. */
 static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
 {
     int count = 0;
     LOOP_LINEAR_MASK(params, i, j)
         count++;
-    return (count + 3) / 4;
+    const int nelems = linear_vreg_nelems(params->type);
+    return (count + nelems - 1) / nelems;
 }
 
 static inline int linear_index_to_sws_op(int idx)

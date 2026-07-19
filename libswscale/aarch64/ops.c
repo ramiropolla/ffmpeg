@@ -52,7 +52,7 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
      */
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
-    float *coeffs = av_malloc(num_vregs * 4 * sizeof(float));
+    void *coeffs = av_malloc(num_vregs * 16);
     if (!coeffs)
         return AVERROR(ENOMEM);
 
@@ -64,7 +64,13 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     int i_coeff = 0;
     LOOP_LINEAR_MASK(p, i, j) {
         const int jj = linear_index_to_sws_op(j);
-        coeffs[i_coeff++] = (float) op->lin.m[i][jj].num / op->lin.m[i][jj].den;
+        const SwsPixel px = ff_sws_pixel_from_q64(op->type, op->lin.m[i][jj]);
+        switch (op->type) {
+        case SWS_PIXEL_U8:  ((uint8_t  *) coeffs)[i_coeff++] = px.u8;  break;
+        case SWS_PIXEL_U16: ((uint16_t *) coeffs)[i_coeff++] = px.u16; break;
+        case SWS_PIXEL_U32: ((uint32_t *) coeffs)[i_coeff++] = px.u32; break;
+        case SWS_PIXEL_F32: ((float    *) coeffs)[i_coeff++] = px.f32; break;
+        }
     }
 
     res->priv.ptr = coeffs;
