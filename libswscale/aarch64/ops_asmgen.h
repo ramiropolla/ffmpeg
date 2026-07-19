@@ -38,6 +38,18 @@ typedef struct SwsAArch64OpRegs {
     RasmOp dh[ 4]; /* output vector registers (high bank) */
     RasmOp vt[12]; /* temp vector registers */
     RasmOp vk[ 4]; /* constant data (may be gprs) */
+
+    /* SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA: one resolved source operand
+     * per non-zero entry of the op's 4x5 coefficient matrix (column 4
+     * is the offset term, columns 0-3 are the input terms -- matches
+     * SwsOp.lin.m[4][5] and par.lin.zero/one's SWS_MASK(i, j)
+     * indexing). CPS (asmgen_setup_linear(), ops_static.c) points each
+     * entry at a by-element lane of vk[]; JIT
+     * (aarch64_jit_setup_constants(), ops_jit.c) points each entry at
+     * its own dedicated, chain-wide deduplicated broadcast register.
+     * linear_pass() (ops_asmgen.c) only ever reads these -- it doesn't
+     * need to know which. */
+    RasmOp lin[4][5];
 } SwsAArch64OpRegs;
 
 /*********************************************************************/
@@ -48,7 +60,11 @@ typedef struct SwsAArch64OpRegs {
  * it only ever claims a register value-flow genuinely isn't using,
  * instead of unconditionally reserving a fixed range regardless of how
  * many constants a given chain actually needs. Just a bound on array
- * size + a sanity assert now, not a register-numbering scheme. */
+ * size + a sanity assert now, not a register-numbering scheme.
+ * SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA does NOT push its coefficients
+ * through here -- see SWS_AARCH64_MAX_LIN_COEFF below for why a
+ * dedicated-per-value broadcast register would be far too expensive
+ * for those. */
 
 #define SWS_AARCH64_MAX_IMM    5
 
@@ -92,6 +108,19 @@ typedef struct SwsAArch64ClearHoist {
     RasmOp   target;
     uint32_t val;
 } SwsAArch64ClearHoist;
+
+/* SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA coefficients (JIT only): packs
+ * arbitrary 32-bit values -- virtually never movi/mov-eligible, being
+ * raw float bit patterns -- four per 16-byte data-pool entry/physical
+ * register, read back by-element, exactly how CPS
+ * (asmgen_setup_linear(), ops_static.c) already delivers coefficients.
+ * Dedups by exact 32-bit value across the whole chain like
+ * jit_push_imm(), but without paying a full dedicated register (and
+ * data-pool slot) per single distinct value the way jit_push_imm()'s
+ * always-broadcast, data-pool-fallback path does -- one LINEAR op
+ * alone can have up to 4*5 = 20 distinct values, four times what
+ * jit_push_imm() could ever afford to give each its own register. */
+#define SWS_AARCH64_MAX_LIN_COEFF 20
 
 /*********************************************************************/
 typedef struct SwsAArch64Context {
@@ -138,6 +167,10 @@ typedef struct SwsAArch64Context {
 
     SwsAArch64ClearHoist clear_hoist[SWS_AARCH64_MAX_CLEAR_HOIST];
     int                  clear_hoist_count;
+
+    uint32_t lin_coeff[SWS_AARCH64_MAX_LIN_COEFF];
+    RasmOp   lin_coeff_vec[(SWS_AARCH64_MAX_LIN_COEFF + 3) / 4];
+    int      lin_coeff_count;
 
     /* DITHER (JIT only): the matrix pointer is too large to inline as
      * compile-time data, so its bytes are pushed into the data pool

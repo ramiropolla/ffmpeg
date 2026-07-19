@@ -337,6 +337,27 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     asmgen_set_load_cont_node(s);
     i_ld1(r, coeff_veclist, a64op_base(ptr));               CMT("coeff_veclist = *vcoeff_ptr;");
 
+    /**
+     * Resolve each non-zero coefficient's source operand to a
+     * by-element lane of the vc[] vectors just loaded above, in the
+     * exact same (row, column) order aarch64_setup_linear() (ops.c)
+     * used to pack impl->priv -- this is what lets linear_pass()
+     * (ops_asmgen.c, shared with JIT) consume regs->lin[i][jj]
+     * directly without knowing how it was delivered.
+     */
+    int i_coeff = 0;
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 5; j++) {
+            const int jj = (j == 0) ? 4 : (j - 1);
+            if (p->par.lin.zero & SWS_MASK(i, jj))
+                continue;
+            uint8_t vc_i = i_coeff / 4;
+            uint8_t vc_j = i_coeff & 3;
+            regs->lin[i][jj] = a64op_elem(vc[vc_i], vc_j);
+            i_coeff++;
+        }
+    }
+
     /* Compute mask for rows that must be saved before being overwritten. */
     SwsCompMask save_mask = 0;
     bool overwritten[4] = { false, false, false, false };
@@ -585,6 +606,10 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     reshape_io_vectors(&s->regs, s->el_count, el_size);
     reshape_temp_vectors(&s->regs, s->el_count, el_size);
     reshape_const_vectors(&s->regs, s->el_count, el_size);
+    /* Must run before asmgen_setup_linear() below, which fills
+     * regs->lin[][] with by-element operands -- see
+     * reshape_lin_vectors()'s comment (ops_asmgen.c). */
+    reshape_lin_vectors(&s->regs, el_size);
 
     /* Common start for continuation-passing style (CPS) functions. */
     s->impl_priv = a64op_off(s->impl, offsetof_impl_priv);

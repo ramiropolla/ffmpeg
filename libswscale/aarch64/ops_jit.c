@@ -220,6 +220,32 @@ static void load_constants(SwsAArch64Context *s)
                   a64op_off(ptr, (int16_t) (s->dither_data_idx * 16)));
         }
     }
+
+    if (s->lin_coeff_count) {
+        /* SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA (Task 7): a separate pool
+         * from the data pool above -- jit_push_lin_coeff() fills
+         * lin_coeff[]/lin_coeff_vec[] incrementally, four raw scalar
+         * values at a time sharing one physical register, unlike
+         * s->data[]'s one-caller-supplies-a-complete-16-byte-blob
+         * model. Unused trailing lanes in the last register are
+         * padded with 0 and never read (regs->lin[][] only ever
+         * indexes lanes jit_push_lin_coeff() actually filled). */
+        rasm_add_comment(r, "linear coefficients");
+
+        int num_vecs = (s->lin_coeff_count + 3) / 4;
+        uint32_t padded[SWS_AARCH64_MAX_LIN_COEFF] = { 0 };
+        memcpy(padded, s->lin_coeff, s->lin_coeff_count * sizeof(uint32_t));
+
+        RasmNode *saved_node = rasm_get_current_node(r);
+        int coeff_label = rasm_const_begin(r, "lcoeff");
+        rasm_add_data(r, padded, num_vecs * 4, RASM_DATA_WORD);
+        rasm_set_current_node(r, saved_node);
+
+        RasmOp ptr = s->tmp0;
+        i_adr(r, ptr, rasm_op_label(coeff_label));
+        for (int i = 0; i < num_vecs; i++)
+            i_ldr(r, v_q(s->lin_coeff_vec[i]), a64op_off(ptr, (int16_t) (i * 16)));
+    }
 }
 
 /*********************************************************************/
@@ -274,6 +300,7 @@ static int asmgen_op_jit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     reshape_io_vectors(regs, s->el_count, el_size);
     reshape_temp_vectors(regs, s->el_count, el_size);
     reshape_const_vectors(regs, s->el_count, el_size);
+    reshape_lin_vectors(regs, el_size);
 
     rasm_add_commentf(r, (char[128]){0}, 128, "=> %s", op_type_names[p->uop]);
 
@@ -392,6 +419,31 @@ static RasmOp jit_push_v128(SwsAArch64Context *s, void *val, int *out_idx)
     if (out_idx)
         *out_idx = idx;
     return s->data[idx].op;
+}
+
+/* SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA (Task 7): dedups by exact 32-bit
+ * value across the whole chain, like jit_push_imm() -- but unlike it,
+ * never broadcasts to a dedicated whole register. Packs four *unrelated*
+ * distinct values into one physical register/16-byte data-pool entry
+ * instead, and returns a by-element reference into it -- the same
+ * delivery CPS already uses for LINEAR (asmgen_setup_linear(),
+ * ops_static.c). asmgen_op_linear()/linear_pass() (ops_asmgen.c) don't
+ * care which -- see regs->lin[][] in ops_asmgen.h. The actual ld1/ldr
+ * of lin_coeff_vec[] happens in load_constants() below, once every op
+ * in the chain has finished pushing its coefficients. */
+static RasmOp jit_push_lin_coeff(SwsAArch64Context *s, uint32_t val)
+{
+    for (int i = 0; i < s->lin_coeff_count; i++)
+        if (s->lin_coeff[i] == val)
+            return a64op_elem(s->lin_coeff_vec[i / 4], i & 3);
+
+    av_assert0(s->lin_coeff_count < SWS_AARCH64_MAX_LIN_COEFF);
+    int idx = s->lin_coeff_count++;
+    s->lin_coeff[idx] = val;
+    if ((idx & 3) == 0)
+        s->lin_coeff_vec[idx / 4] = a64reg_vec(&s->regstate, -1);
+
+    return a64op_elem(s->lin_coeff_vec[idx / 4], idx & 3);
 }
 
 /* ff_sws_op_chain_append() hard-asserts a non-NULL func (av_assert1),
@@ -1093,15 +1145,28 @@ static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpI
     case SWS_UOP_LINEAR_FMA: {
         /* Coefficients are compile-time-known (computed by
          * aarch64_setup_linear(), shared with CPS, into a malloc'd
-         * float array at res->priv.ptr) -- push each packed group of 4
-         * into the constant data pool directly instead of CPS's
-         * runtime impl->priv load, then free the now-fully-copied
-         * malloc'd array immediately. */
-        const int num_vregs = linear_num_vregs(p);
-        av_assert0(num_vregs <= 4);
+         * float array at res->priv.ptr, packed in (row, column) order
+         * with column 4 -- the offset term -- first per row). Push
+         * each non-zero coefficient individually through
+         * jit_push_lin_coeff() into regs->lin[i][jj]: this dedupes by
+         * exact scalar value across the *entire* chain (not just
+         * within one op's group of 4, the way the old per-4-group
+         * jit_push_v128() did), while still packing four unrelated
+         * distinct values per physical register/data-pool entry
+         * instead of jit_push_imm()'s one-register-per-value cost
+         * (LINEAR alone can have up to 4*5 = 20 distinct values). */
         const float *coeffs = (const float *) res->priv.ptr;
-        for (int vi = 0; vi < num_vregs; vi++)
-            regs->vk[vi] = jit_push_v128(s, (void *) &coeffs[vi * 4], NULL);
+        int i_coeff = 0;
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 5; j++) {
+                const int jj = (j == 0) ? 4 : (j - 1);
+                if (p->par.lin.zero & SWS_MASK(i, jj))
+                    continue;
+                uint32_t bits;
+                memcpy(&bits, &coeffs[i_coeff++], sizeof(bits));
+                regs->lin[i][jj] = jit_push_lin_coeff(s, bits);
+            }
+        }
         res->free(&res->priv);
         break;
     }

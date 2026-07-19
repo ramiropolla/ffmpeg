@@ -60,6 +60,41 @@ static void reshape_const_vectors(SwsAArch64OpRegs *regs, int el_count, int el_s
         regs->vk[i] = reshape_vector(regs->vk[i], el_count, el_size);
 }
 
+/* Like reshape_vector(), but for by-element operands: regs->lin[][]
+ * entries are always by-element (a lane of vk[] for CPS, a lane of
+ * lin_coeff_vec[] for JIT -- see jit_push_lin_coeff(), ops_jit.c), and
+ * a64op_make_vec() unconditionally clears any by-element tag, so
+ * plain reshape_vector() would silently turn "lane k of vN" into
+ * "whole vector vN", corrupting the operand. This re-applies the
+ * by-element tag after updating el_size (el_count is irrelevant for a
+ * by-element operand -- a64op_elem() always zeroes it). */
+static RasmOp reshape_elem_vector(RasmOp op, int el_size)
+{
+    if (rasm_op_type(op) == AARCH64_OP_VEC) {
+        uint8_t idx_p1 = a64op_vec_idx_p1(op);
+        op = a64op_make_vec(a64op_vec_n(op), 0, el_size);
+        if (idx_p1)
+            op = a64op_elem(op, idx_p1 - 1);
+    }
+    return op;
+}
+
+/* Reshape SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA coefficient operands for
+ * current SwsOp. CPS (asmgen_setup_linear(), ops_static.c) fills
+ * regs->lin[][] with by-element lanes of the already-reshaped vk[]
+ * *after* this runs, so it only ever touches stale/unset entries here
+ * (harmless, about to be fully overwritten). JIT
+ * (aarch64_jit_setup_constants(), ops_jit.c) fills regs->lin[][] with
+ * by-element lanes of unshaped lin_coeff_vec[] registers in an
+ * earlier, separate whole-chain pass, so this call is what actually
+ * gives them their real per-op element size. */
+static void reshape_lin_vectors(SwsAArch64OpRegs *regs, int el_size)
+{
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 5; j++)
+            regs->lin[i][j] = reshape_elem_vector(regs->lin[i][j], el_size);
+}
+
 /*********************************************************************/
 static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
@@ -787,7 +822,6 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
      * is set) start from temp vector 4.
      */
     RasmOp *vt = regs->vt;
-    RasmOp *vc = regs->vk;
     RasmOp *vtmp = &vt[8];
     RasmOp *sx = vh_pass ? regs->sh : regs->sl;
     RasmOp *dx = vh_pass ? regs->dh : regs->dl;
@@ -797,11 +831,18 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
         return;
 
     /**
-     * The non-zero coefficients have been packed in aarch64_setup_linear()
-     * in sequential order into the individual lanes of the coefficient
-     * vector registers. We must follow the same order of execution here.
+     * Each non-zero coefficient's source operand has already been
+     * resolved into regs->lin[i][src_j] by the setup phase (CPS:
+     * asmgen_setup_linear(), ops_static.c; JIT:
+     * aarch64_jit_setup_constants(), ops_jit.c) -- this decouples how
+     * coefficients are delivered (a lane of a packed vector for CPS, a
+     * dedicated chain-wide deduplicated register for JIT) from how
+     * they're consumed here.
+     * tmp_idx/tmp_j below is unrelated to that -- it only cycles
+     * vtmp[0..3] so up to four pending fmul results can stay live at
+     * once (see the fmul+fadd split branch).
      */
-    int i_coeff = 0;
+    int tmp_idx = 0;
     LOOP_MASK(p, i) {
         bool first = true;
         RasmNode *pre_mul = rasm_get_current_node(r);
@@ -811,17 +852,15 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             if (p->par.lin.zero & SWS_MASK(i, src_j))
                 continue;
             RasmOp vsrc = sx[src_j];
-            uint8_t vc_i = i_coeff / 4;
-            uint8_t vc_j = i_coeff & 3;
-            RasmOp vcoeff = a64op_elem(vc[vc_i], vc_j);
-            i_coeff++;
+            RasmOp vcoeff = regs->lin[i][src_j];
+            uint8_t tmp_j = tmp_idx++ & 3;
             if (first && is_offset) {
-                i_dup (r, dx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(vc[%u][%u]);", cvh, i, vc_i, vc_j);
+                i_dup (r, dx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(coeff);", cvh, i);
             } else if (first && !is_offset) {
                 if (p->par.lin.one & SWS_MASK(i, src_j)) {
                     i_mov16b(r, dx[i], vsrc);           CMTF("v%c[%u]  = vsrc%c[%u];", cvh, i, cvh, src_j);
                 } else {
-                    i_fmul  (r, dx[i], vsrc, vcoeff);   CMTF("v%c[%u]  = vsrc%c[%u] * vc[%u][%u];", cvh, i, cvh, src_j, vc_i, vc_j);
+                    i_fmul  (r, dx[i], vsrc, vcoeff);   CMTF("v%c[%u]  = vsrc%c[%u] * coeff;", cvh, i, cvh, src_j);
                 }
             } else if (p->uop == SWS_UOP_LINEAR_FMA) {
                 /**
@@ -829,7 +868,7 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                  * of fmla instructions. This means that even if the coefficient
                  * is 1, it is still faster to use fmla by 1 instead of fadd.
                  */
-                i_fmla(r, dx[i], vsrc, vcoeff);         CMTF("v%c[%u] += vsrc%c[%u] * vc[%u][%u];", cvh, i, cvh, src_j, vc_i, vc_j);
+                i_fmla(r, dx[i], vsrc, vcoeff);         CMTF("v%c[%u] += vsrc%c[%u] * coeff;", cvh, i, cvh, src_j);
             } else {
                 /**
                  * Split the multiply-accumulate into fmul+fadd. All
@@ -840,11 +879,11 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                  */
                 if (!(p->par.lin.one & SWS_MASK(i, src_j))) {
                     pre_mul = rasm_set_current_node(r, pre_mul);
-                    i_fmul(r, vtmp[vc_j], vsrc, vcoeff);    CMTF("vtmp[%u] = vsrc%c[%u] * vc[%u][%u];", vc_j, cvh, src_j, vc_i, vc_j);
+                    i_fmul(r, vtmp[tmp_j], vsrc, vcoeff);   CMTF("vtmp[%u] = vsrc%c[%u] * coeff;", tmp_j, cvh, src_j);
                     pre_mul = rasm_set_current_node(r, pre_mul);
-                    i_fadd(r, dx[i], dx[i], vtmp[vc_j]);    CMTF("v%c[%u] += vtmp[%u];", cvh, i, vc_j);
+                    i_fadd(r, dx[i], dx[i], vtmp[tmp_j]);   CMTF("v%c[%u] += vtmp[%u];", cvh, i, tmp_j);
                 } else {
-                    i_fadd(r, dx[i], dx[i], vsrc);          CMTF("v%c[%u] += vsrc%c[%u];", cvh, i, cvh, vc_j);
+                    i_fadd(r, dx[i], dx[i], vsrc);          CMTF("v%c[%u] += vsrc%c[%u];", cvh, i, cvh, tmp_j);
                 }
             }
             first = false;
