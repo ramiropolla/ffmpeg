@@ -39,6 +39,18 @@ int ff_sws_uop_cmp(const SwsUOp *a, const SwsUOp *b)
     return memcmp(&a->par, &b->par, sizeof(a->par));
 }
 
+bool ff_sws_uop_is_type_invariant(SwsUOpType uop)
+{
+    switch (uop) {
+    case SWS_UOP_READ_PLANAR:
+    case SWS_UOP_WRITE_PLANAR:
+    case SWS_UOP_CLEAR:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static const struct {
     char abbr[32];
 } uop_names[SWS_UOP_TYPE_NB] = {

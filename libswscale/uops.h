@@ -284,6 +284,16 @@ static inline int ff_sws_uop_cmp_v(const void *a, const void *b)
 }
 
 /**
+ * Returns true if a uop of this type only ever moves or clears raw bytes,
+ * independent of the logical pixel type it is nominally tagged with. Such
+ * uops may be safely reinterpreted as operating on SWS_PIXEL_U8, which
+ * backends may use to collapse their lookup tables. This must stay in sync
+ * with the equivalent collapsing performed by uops_macros_gen.c, or the
+ * generated tables will be missing entries that backends actually look up.
+ */
+bool ff_sws_uop_is_type_invariant(SwsUOpType uop);
+
+/**
  * Generate a unique name for a SwsUOp.
  */
 #define SWS_UOP_NAME_MAX 64

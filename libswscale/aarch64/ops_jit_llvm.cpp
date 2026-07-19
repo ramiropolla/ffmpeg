@@ -43,22 +43,42 @@
 #include <llvm/TargetParser/Triple.h>
 
 extern "C" {
+#include "libavutil/bprint.h"
 #include "libavutil/error.h"
 #include "libavutil/log.h"
 #include "../jit.h"
+#include "ops_jit_llvm.h"
 }
 
 using namespace llvm;
 
-/**
- * Assemble AArch64 GAS-syntax text into a read+exec memory buffer.
- *
- * On success, sets *out_text to executable memory of *out_size bytes
- * that must be released with ff_sws_jit_free(*out_text, *out_size) and returns 0.
- * Returns a negative AVERROR code on failure.
- */
+static void asm_diag_handler(const SMDiagnostic &diag, void *context)
+{
+    AVBPrint *errstr = (AVBPrint *) context;
+    int n_line = diag.getLineNo();
+    int n_col = diag.getColumnNo();
+    const char *kind = "unknown";
+    std::string message = std::string(diag.getMessage());
+    std::string line = std::string(diag.getLineContents());
+
+    switch (diag.getKind()) {
+    case SourceMgr::DK_Error:   kind = "error";   break;
+    case SourceMgr::DK_Warning: kind = "warning"; break;
+    case SourceMgr::DK_Remark:  kind = "remark";  break;
+    case SourceMgr::DK_Note:    kind = "note";    break;
+    }
+
+    av_bprintf(errstr, "%d:%d: %s: %s\n", n_line, n_col + 1, kind, message.c_str());
+    if (!line.empty()) {
+        av_bprintf(errstr, "%s\n", line.c_str());
+        av_bprintf(errstr, "%*s^\n", n_col, " ");
+    }
+}
+
 extern "C"
-int ff_sws_jit_assemble_llvm(const char *src, uint8_t **out_text, size_t *out_size)
+int ff_sws_jit_assemble_llvm(void *logctx, const char *src,
+                             uint8_t **out_text, size_t *out_size,
+                             AVBPrint *errstr)
 {
     static const char triple_name[] = "aarch64-unknown-linux-gnu";
 
@@ -70,33 +90,33 @@ int ff_sws_jit_assemble_llvm(const char *src, uint8_t **out_text, size_t *out_si
     std::string err;
     const Target *target = TargetRegistry::lookupTarget(triple_name, err);
     if (!target) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to find target %s: %s\n",
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: failed to find target %s: %s\n",
                triple_name, err.c_str());
         return AVERROR_EXTERNAL;
     }
 
     std::unique_ptr<MCRegisterInfo> mri(target->createMCRegInfo(triple_name));
     if (!mri) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCRegInfo() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createMCRegInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
 
     MCTargetOptions options;
     std::unique_ptr<MCAsmInfo> mai(target->createMCAsmInfo(*mri, triple_name, options));
     if (!mai) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCAsmInfo() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createMCAsmInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
 
     std::unique_ptr<MCInstrInfo> mcii(target->createMCInstrInfo());
     if (!mcii) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCInstrInfo() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createMCInstrInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
 
     std::unique_ptr<MCSubtargetInfo> sti(target->createMCSubtargetInfo(triple_name, "", ""));
     if (!sti) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCSubtargetInfo() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createMCSubtargetInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
 
@@ -104,20 +124,20 @@ int ff_sws_jit_assemble_llvm(const char *src, uint8_t **out_text, size_t *out_si
 
     std::unique_ptr<MCObjectFileInfo> mofi(target->createMCObjectFileInfo(ctx, false));
     if (!mofi) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCObjectFileInfo() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createMCObjectFileInfo() failed\n");
         return AVERROR_EXTERNAL;
     }
     ctx.setObjectFileInfo(mofi.get());
 
     std::unique_ptr<MCCodeEmitter> ce(target->createMCCodeEmitter(*mcii, ctx));
     if (!ce) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCCodeEmitter() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createMCCodeEmitter() failed\n");
         return AVERROR_EXTERNAL;
     }
 
     std::unique_ptr<MCAsmBackend> mab(target->createMCAsmBackend(*sti, *mri, options));
     if (!mab) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCAsmBackend() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createMCAsmBackend() failed\n");
         return AVERROR_EXTERNAL;
     }
 
@@ -125,50 +145,35 @@ int ff_sws_jit_assemble_llvm(const char *src, uint8_t **out_text, size_t *out_si
     raw_svector_ostream ostream(obj_buf);
     std::unique_ptr<MCObjectWriter> ow(mab->createObjectWriter(ostream));
     if (!ow) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createObjectWriter() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createObjectWriter() failed\n");
         return AVERROR_EXTERNAL;
     }
 
     std::unique_ptr<MCStreamer> streamer(target->createMCObjectStreamer(Triple(triple_name), ctx, std::move(mab), std::move(ow), std::move(ce), *sti));
     if (!streamer) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCObjectStreamer() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createMCObjectStreamer() failed\n");
         return AVERROR_EXTERNAL;
     }
 
-std::string blabliblu =
-".macro  function name, export=0, jumpable=0, align=4\n"
-"        .text\n"
-"        .align \\align\n"
-"\\name:\n"
-".endm\n"
-".macro endfunc\n"
-".endm\n"
-".macro  const name, align=4, relocate=0\n"
-"        .align \\align\n"
-"\\name:\n"
-".endm\n"
-".macro endconst\n"
-".endm\n";
-blabliblu += src;
-
     SourceMgr src_mgr;
-    src_mgr.AddNewSourceBuffer(MemoryBuffer::getMemBuffer(blabliblu, "<asm>"), SMLoc());
+    src_mgr.setDiagHandler(asm_diag_handler, errstr);
+    src_mgr.AddNewSourceBuffer(MemoryBuffer::getMemBuffer(src, "<asm>"), SMLoc());
 
     std::unique_ptr<MCAsmParser> parser(createMCAsmParser(src_mgr, ctx, *streamer, *mai));
     if (!parser) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: createMCAsmParser() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: createMCAsmParser() failed\n");
         return AVERROR_EXTERNAL;
     }
 
     MCTargetAsmParser *tap = target->createMCAsmParser(*sti, *parser, *mcii, options);
     if (!tap) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: target createMCAsmParser() failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: target createMCAsmParser() failed\n");
         return AVERROR_EXTERNAL;
     }
     parser->setTargetParser(*tap);
 
     if (parser->Run(false)) {
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: assembly failed\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: assembly failed\n");
         return AVERROR(EINVAL);
     }
 
@@ -176,7 +181,7 @@ blabliblu += src;
     Expected<std::unique_ptr<object::ObjectFile>> obj = object::ObjectFile::createObjectFile(obj_membuf);
     if (!obj) {
         consumeError(obj.takeError());
-        av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to parse assembled object\n");
+        av_log(logctx, AV_LOG_WARNING, "LLVM JIT: failed to parse assembled object\n");
         return AVERROR_INVALIDDATA;
     }
 
@@ -192,11 +197,11 @@ blabliblu += src;
         Expected<StringRef> contents = section.getContents();
         if (!contents) {
             consumeError(contents.takeError());
-            av_log(NULL, AV_LOG_ERROR, "LLVM JIT: failed to read .text section\n");
+            av_log(logctx, AV_LOG_WARNING, "LLVM JIT: failed to read .text section\n");
             return AVERROR_INVALIDDATA;
         }
         if (contents->empty()) {
-            av_log(NULL, AV_LOG_ERROR, "LLVM JIT: .text section is empty\n");
+            av_log(logctx, AV_LOG_WARNING, "LLVM JIT: .text section is empty\n");
             return AVERROR_INVALIDDATA;
         }
 
@@ -208,7 +213,7 @@ blabliblu += src;
         return 0;
     }
 
-    av_log(NULL, AV_LOG_ERROR, "LLVM JIT: no .text section in assembled output\n");
+    av_log(logctx, AV_LOG_WARNING, "LLVM JIT: no .text section in assembled output\n");
 
     return AVERROR_INVALIDDATA;
 }
