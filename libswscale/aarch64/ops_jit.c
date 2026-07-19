@@ -221,6 +221,7 @@ static void load_constants(SwsAArch64Context *s)
         }
     }
 
+#if 0
     if (s->lin_coeff_count) {
         /* SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA (Task 7): a separate pool
          * from the data pool above -- jit_push_lin_coeff() fills
@@ -246,6 +247,7 @@ static void load_constants(SwsAArch64Context *s)
         for (int i = 0; i < num_vecs; i++)
             i_ldr(r, v_q(s->lin_coeff_vec[i]), a64op_off(ptr, (int16_t) (i * 16)));
     }
+#endif
 }
 
 /*********************************************************************/
@@ -300,7 +302,7 @@ static int asmgen_op_jit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     reshape_io_vectors(regs, s->el_count, el_size);
     reshape_temp_vectors(regs, s->el_count, el_size);
     reshape_const_vectors(regs, s->el_count, el_size);
-    reshape_lin_vectors(regs, el_size);
+    // reshape_lin_vectors(regs, el_size);
 
     rasm_add_commentf(r, (char[128]){0}, 128, "=> %s", op_type_names[p->uop]);
 
@@ -421,6 +423,7 @@ static RasmOp jit_push_v128(SwsAArch64Context *s, void *val, int *out_idx)
     return s->data[idx].op;
 }
 
+#if 0
 /* SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA (Task 7): dedups by exact 32-bit
  * value across the whole chain, like jit_push_imm() -- but unlike it,
  * never broadcasts to a dedicated whole register. Packs four *unrelated*
@@ -445,6 +448,7 @@ static RasmOp jit_push_lin_coeff(SwsAArch64Context *s, uint32_t val)
 
     return a64op_elem(s->lin_coeff_vec[idx / 4], idx & 3);
 }
+#endif
 
 /* ff_sws_op_chain_append() hard-asserts a non-NULL func (av_assert1),
  * since CPS jumps through chain->impl[].cont as its continuation-
@@ -1141,6 +1145,7 @@ static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpI
         regs->vk[0] = jit_push_imm(s, p->type, val);   /* scale_vec */
         break;
     }
+#if 0
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA: {
         /* Coefficients are compile-time-known (computed by
@@ -1170,6 +1175,7 @@ static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpI
         res->free(&res->priv);
         break;
     }
+#endif
     case SWS_UOP_DITHER: {
         /* The matrix is too large to inline as compile-time data (up to
          * (16+15)*16*4 bytes) -- unlike LINEAR's coefficients, the
@@ -1218,23 +1224,6 @@ static void asmgen_process_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCom
     s->y_start   = a64reg_argw(rs, 3); // int y_start
     s->bx_end    = a64reg_argw(rs, 4); // int bx_end
     s->y_end     = a64reg_argw(rs, 5); // int y_end
-
-    /* Persistent GPR for DITHER's runtime matrix pointer (Task 6) --
-     * loaded once, before the loop, unlike CPS's per-call tmp0 reload.
-     * x20/x21 stay spare (reserved, unused) for now. */
-    s->dither_src_ptr = a64reg_gpx(rs, 19);
-    a64reg_gpx(rs, 20);
-    a64reg_gpx(rs, 21);
-
-    /* No upfront vector-register reservation for constants anymore --
-     * jit_push_imm()/jit_push_v128() auto-pick a register each *after*
-     * the whole-chain "banks" (value-flow) pass has finished for every
-     * op (see aarch64_jit_setup_constants()), so they only ever claim
-     * what value-flow isn't using. A fixed range reserved here,
-     * unconditionally, regardless of how many constants a given chain
-     * actually needs, was real waste that could exhaust the register
-     * file on wider chains (e.g. -src yuva444p -dst ayuv64le) even
-     * though most of the 13 reserved registers went unused. */
 }
 
 static int aarch64_jit_process(SwsAArch64Context *s, const SwsOpList *ops, SwsCompMask imask, SwsCompMask omask)
