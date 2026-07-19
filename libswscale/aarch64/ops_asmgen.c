@@ -1259,11 +1259,11 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                  */
                 if (!(p->par.lin.one & SWS_MASK(i, src_j))) {
                     pre_mul = rasm_set_current_node(r, pre_mul);
-                    i_fmul(r, vtmp[j], vsrc, vcoeff);       CMTF("vtmp[%u] = vsrc%c[%u] * vc[%u][%u];", j, cvh, src_j, i, j);
+                    i_fmul(r, vtmp[j], vsrc, vcoeff);   CMTF("vtmp[%u] = vsrc%c[%u] * vc[%u][%u];", j, cvh, src_j, i, j);
                     pre_mul = rasm_set_current_node(r, pre_mul);
-                    i_fadd(r, dx[i], dx[i], vtmp[j]);       CMTF("v%c[%u] += vtmp[%u];", cvh, i, j);
+                    i_fadd(r, dx[i], dx[i], vtmp[j]);   CMTF("v%c[%u] += vtmp[%u];", cvh, i, j);
                 } else {
-                    i_fadd(r, dx[i], dx[i], vsrc);          CMTF("v%c[%u] += vsrc%c[%u];", cvh, i, cvh, j);
+                    i_fadd(r, dx[i], dx[i], vsrc);      CMTF("v%c[%u] += vsrc%c[%u];", cvh, i, cvh, j);
                 }
             }
             first = false;
