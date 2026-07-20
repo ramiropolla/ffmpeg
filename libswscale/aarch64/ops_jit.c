@@ -27,7 +27,7 @@
 #include "ops.h"
 
 /*********************************************************************/
-/* Emit JIT code. */
+/* TODO no */
 #include "ops_asmgen.c"
 
 /*********************************************************************/
@@ -369,160 +369,102 @@ printf("[%s][%d] %s() %s\n", __FILE__, __LINE__, __func__, op_type_names[p->uop]
 
 int ff_sws_jit_assemble_llvm(const char *asm_src, uint8_t **out_text, size_t *out_size);
 
-#if 0
-typedef union SwsOpPriv {
-    DECLARE_ALIGNED_16(char, data)[16];
-
-    /* Common types */
-    void *ptr;
-    uint8_t    u8[16];
-    int8_t     i8[16];
-    uint16_t   u16[8];
-    int16_t    i16[8];
-    uint32_t   u32[4];
-    int32_t    i32[4];
-    float      f32[4];
-    uint64_t   u64[2];
-    int64_t    i64[2];
-    uintptr_t uptr[2];
-    intptr_t  iptr[2];
-} SwsOpPriv;
-#endif
-
 /*********************************************************************/
-/* `out_idx` (may be NULL) receives the s->data[] index this value
- * landed in -- most callers just want the register and don't care, but
- * a couple (the pool-fallback path in load_constants(), and
- * jit_push_dither_ptr() below) need to read the same pool entry back a
- * second time from a different register, once load_constants() has
- * computed the pool's base pointer, and can no longer just subtract a
- * fixed base offset from the returned register number now that it's
- * auto-picked instead of living at a fixed v8+idx slot. */
-static RasmOp jit_push_v128(SwsAArch64Context *s, void *val, int *out_idx)
+/**
+ * The end result is a single vector with the data copied verbatim.
+ * Returns new RasmOp which will just ld1.
+ */
+
+/* Returns a RasmOp with the entire 128-bit sequence. */
+static RasmOp jit_push_v128(SwsAArch64Context *s, void *val)
 {
-    /* Check whether we already have it */
+    /* Check if we already have it. */
     for (int i = 0; i < s->data_count; i++) {
         if (!memcmp(&s->data[i].val, val, 16)) {
-            if (out_idx)
-                *out_idx = i;
             return s->data[i].op;
         }
     }
 
-    /* Add it to our data and create a new vector -- auto-picked from
-     * whatever the whole-chain value-flow ("banks") pass, which has
-     * already finished for every op by the time any constant is ever
-     * pushed, left free. */
-    av_assert0(s->data_count < SWS_AARCH64_MAX_DATA_VECS);
+    /* Add it to our data and create a new vector. */
     int idx = s->data_count++;
     memcpy(s->data[idx].val, val, 16);
-    s->data[idx].op = a64reg_vec(&s->regstate, -1);
+    s->data[idx].op = a64reg_unclobbered_vec(&s->regstate);
 
-    if (out_idx)
-        *out_idx = idx;
     return s->data[idx].op;
 }
 
-#if 0
-/* SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA (Task 7): dedups by exact 32-bit
- * value across the whole chain, like jit_push_imm() -- but unlike it,
- * never broadcasts to a dedicated whole register. Packs four *unrelated*
- * distinct values into one physical register/16-byte data-pool entry
- * instead, and returns a by-element reference into it -- the same
- * delivery CPS already uses for LINEAR (asmgen_setup_linear(),
- * ops_static.c). asmgen_op_linear()/linear_pass() (ops_asmgen.c) don't
- * care which -- see regs->lin[][] in ops_asmgen.h. The actual ld1/ldr
- * of lin_coeff_vec[] happens in load_constants() below, once every op
- * in the chain has finished pushing its coefficients. */
-static RasmOp jit_push_lin_coeff(SwsAArch64Context *s, uint32_t val)
+/* Returns a RasmOp 
+static RasmOp jit_push_data(SwsAArch64Context *s, SwsPixelType type, uint32_t val)
 {
-    for (int i = 0; i < s->lin_coeff_count; i++)
-        if (s->lin_coeff[i] == val)
-            return a64op_elem(s->lin_coeff_vec[i / 4], i & 3);
-
-    av_assert0(s->lin_coeff_count < SWS_AARCH64_MAX_LIN_COEFF);
-    int idx = s->lin_coeff_count++;
-    s->lin_coeff[idx] = val;
-    if ((idx & 3) == 0)
-        s->lin_coeff_vec[idx / 4] = a64reg_vec(&s->regstate, -1);
-
-    return a64op_elem(s->lin_coeff_vec[idx / 4], idx & 3);
-}
-#endif
-
-/* ff_sws_op_chain_append() hard-asserts a non-NULL func (av_assert1),
- * since CPS jumps through chain->impl[].cont as its continuation-
- * passing mechanism. JIT is one fused function and never reads that
- * field -- this exists purely to satisfy the assert. */
-static void jit_op_chain_dummy_func(void)
-{
-}
-
-/* DITHER (Task 6): the matrix pointer is a compile-time-known 64-bit
- * address, too small to need its own const section but with no
- * dedicated 64-bit-immediate instruction sequence available in rasm.h
- * (no movz/movk helper) -- reuse jit_push_v128()'s adr+ldr data pool
- * mechanism (pointer in the low 8 bytes, zero-padded) instead of
- * inventing a second one, and remember which entry it landed in so
- * load_constants() can also read it back with a scalar (GPR) ldr, not
- * just the vector one every other data-pool entry gets. */
-static void jit_push_dither_ptr(SwsAArch64Context *s, void *ptr)
-{
-    uint8_t padded[16] = { 0 };
-    memcpy(padded, &ptr, sizeof(ptr));
-    jit_push_v128(s, padded, &s->dither_data_idx);
-}
-
-/* Replicate a value up to a full 32-bit lane, based on its logical
- * element width -- e.g. a u8 value 0xab becomes 0xabababab, ready to
- * broadcast into any vector width via a plain 4S dup. */
-static uint32_t expand_to_u32(SwsPixelType type, uint32_t val)
-{
+    /* Expand to u32. */
     switch (type) {
-    case SWS_PIXEL_U8:
-        val = val | (val <<  8);
-        av_fallthrough;
-    case SWS_PIXEL_U16:
-        val = val | (val << 16);
-        break;
+    case SWS_PIXEL_U8:  val = val | (val <<  8); av_fallthrough;
+    case SWS_PIXEL_U16: val = val | (val << 16); break;
     }
-    return val;
-}
 
-static RasmOp jit_push_imm(SwsAArch64Context *s, SwsPixelType type, uint32_t val)
-{
-    val = expand_to_u32(type, val);
-
-    /* Check whether we already have it */
+    /* Check if we already have it. */
     for (int i = 0; i < s->imm_count; i++) {
         if (s->imm[i].val == val)
             return s->imm[i].op;
     }
 
-    /* Add it to our data and create a new vector -- auto-picked, same
-     * reasoning as jit_push_v128() above. */
-    av_assert0(s->imm_count < SWS_AARCH64_MAX_IMM);
+    /* Add it to our data and create a new vector. */
     int idx = s->imm_count++;
     s->imm[idx].val = val;
-    s->imm[idx].op  = a64reg_vec(&s->regstate, -1);
+    s->imm[idx].op  = a64reg_unclobbered_vec(&s->regstate);
 
     return s->imm[idx].op;
 }
 
-/* CLEAR (Task 5): unlike jit_push_imm()/jit_push_v128(), the value must
- * land in a *specific* register (whatever the consumer already
- * expects -- see the SwsAArch64ClearHoist comment in ops_asmgen.h for
- * why), not a shared, deduped constant-pool slot. */
-static void jit_push_clear_hoist(SwsAArch64Context *s, RasmOp target,
-                                 SwsPixelType type, uint32_t val)
-{
-    if (rasm_op_type(target) != AARCH64_OP_VEC)
-        return;
+/**
+ * The end result is a single vector with the value broadcast over all elements.
+ * It could either movi to broadcast the value directly, or
+ * it saves one 32-bit element into the constant data, which will be dup'd into a vector.
+ * In the second case, keep track of which vci/vcj from the constant data, and return a new RasmOp,
+ * which will be filled in load_constants().
+ */
 
-    av_assert0(s->clear_hoist_count < SWS_AARCH64_MAX_CLEAR_HOIST);
-    int idx = s->clear_hoist_count++;
-    s->clear_hoist[idx].target = target;
-    s->clear_hoist[idx].val    = expand_to_u32(type, val);
+/* Returns a RasmOp with the value broadcast to all elements. */
+static RasmOp jit_push_vimm(SwsAArch64Context *s, SwsPixelType type, uint32_t val)
+{
+    /* Expand to u32. */
+    switch (type) {
+    case SWS_PIXEL_U8:  val = val | (val <<  8); av_fallthrough;
+    case SWS_PIXEL_U16: val = val | (val << 16); break;
+    }
+
+    /* Check if we already have it. */
+    for (int i = 0; i < s->imm_count; i++) {
+        if (s->imm[i].val == val)
+            return s->imm[i].op;
+    }
+
+    RasmOp op = a64reg_unclobbered_vec(&s->regstate);
+    int idx = s->imm_count++;
+    s->imm[idx].op = op;
+
+    /* Check if it's movi-encodable. */
+    uint32_t val8 = (uint8_t) val;
+    if (val == val8) {
+        s->imm[idx].movi = SWS_PIXEL_U32;
+    } else if (val == val8 * 0x00010001u) {
+        s->imm[idx].movi = SWS_PIXEL_U16;
+    } else if (val == val8 * 0x01010101u) {
+        s->imm[idx].movi = SWS_PIXEL_U8;
+    } else {
+        s->imm[idx].movi = SWS_PIXEL_NONE;
+    }
+
+    if (s->imm[idx].movi != SWS_PIXEL_NONE) {
+        s->imm[idx].val    = val8;
+    } else {
+        s->imm[idx].val    = val;
+        s->imm[idx].src_op = jit_push_data(s, SWS_PIXEL_U32, val);
+    }
+
+    /* Add it to our data and create a new vector. */
+
+    return s->imm[idx].op;
 }
 
 /*********************************************************************/
@@ -1058,26 +1000,18 @@ static int aarch64_jit_setup_banks(SwsAArch64Context *s, const SwsAArch64OpImplP
     return 0;
 }
 
-/* Pass 2 of 2 (order doesn't matter -- forward for simplicity): decide
- * constants. Runs as a genuinely separate loop over every op, called
- * only after aarch64_jit_setup_banks() has completed for the *entire*
- * chain (see aarch64_jit_compile()) -- so two things are guaranteed
- * true here that weren't true when this used to be interleaved into
- * the same per-op call as banks:
- *   1. Every op's dl/sl/sh/dh are already fully decided, so CLEAR's
- *      hoisting (which needs regs->dl[i], a banks decision) always
- *      finds it ready, regardless of this op's position in the chain.
- *   2. s->regstate's "used" bitmap reflects *exactly* what value-flow
- *      needs -- nothing more -- so jit_push_imm()/jit_push_v128()'s
- *      auto-picked registers (a64reg_vec(rs, -1)) only ever claim a
- *      register value-flow genuinely isn't using, instead of a fixed
- *      range reserved unconditionally regardless of actual usage. */
-
 static uint32_t get_priv(const SwsOpPriv *priv, SwsPixelType type, int i)
 {
     return (type == SWS_PIXEL_U8)  ? priv->u8[i]
          : (type == SWS_PIXEL_U16) ? priv->u16[i]
          :                           priv->u32[i];
+}
+
+static uint32_t get_umax(SwsPixelType type)
+{
+    return (type == SWS_PIXEL_U8)  ? 0x000000ff
+         : (type == SWS_PIXEL_U16) ? 0x0000ffff
+         :                           0xffffffff;
 }
 
 static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -1098,99 +1032,71 @@ static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpI
 
     switch (p->uop) {
     case SWS_UOP_READ_BIT:
-        regs->vk[0] = jit_push_v128(s, res->priv.data, NULL);   /* shift_vec */
-        regs->vk[1] = jit_push_imm(s, SWS_PIXEL_U8, 1);         /* bitmask_vec */
+        regs->vk[0] = jit_push_v128(s, res->priv.data);
+        regs->vk[1] = jit_push_vimm(s, SWS_PIXEL_U8, 1);
         break;
     case SWS_UOP_READ_NIBBLE:
-        regs->vk[0] = jit_push_imm(s, SWS_PIXEL_U8, 0x0f);      /* nibble_mask */
+        regs->vk[0] = jit_push_vimm(s, SWS_PIXEL_U8, 0x0f);
         break;
     case SWS_UOP_WRITE_BIT:
-        regs->vk[0] = jit_push_v128(s, res->priv.data, NULL);   /* shift_vec */
+        regs->vk[0] = jit_push_v128(s, res->priv.data);
         break;
     case SWS_UOP_UNPACK:
         LOOP_MASK(p, i) {
             uint32_t val = (1u << p->par.pack.pattern[i]) - 1;
-            regs->vk[i] = jit_push_imm(s, p->type, val);
+            regs->vk[i] = jit_push_vimm(s, p->type, val);
         }
         break;
-    case SWS_UOP_CLEAR: {
-        /* Compile-time-known per component, same three cases
-         * emit_clear() (ops_asmgen.c, CPS) tells apart at runtime --
-         * matches ops_impl_conv.c's SWS_UOP_CLEAR translation, which
-         * only ever sets .one for the type's exact all-ones pattern. */
-        uint32_t maxval = (p->type == SWS_PIXEL_U8)  ? UINT8_MAX
-                        : (p->type == SWS_PIXEL_U16) ? UINT16_MAX
-                        :                              UINT32_MAX;
+    case SWS_UOP_CLEAR:
         LOOP_MASK(p, i) {
             uint32_t val = (p->par.clear.zero & SWS_COMP(i)) ? 0
-                         : (p->par.clear.one  & SWS_COMP(i)) ? maxval
-                         : (p->type == SWS_PIXEL_U8)  ? res->priv.u8[i]
-                         : (p->type == SWS_PIXEL_U16) ? res->priv.u16[i]
-                         :                              res->priv.u32[i]; /* U32 or F32: same union offset */
-            jit_push_clear_hoist(s, regs->dl[i], p->type, val);
-            if (s->use_vh)
-                jit_push_clear_hoist(s, regs->dh[i], p->type, val);
+                         : (p->par.clear.one  & SWS_COMP(i)) ? get_umax(p->type)
+                         :                                     get_priv(&res->priv, p->type, i);
+            if (p->type == SWS_PIXEL_F32) {
+                regs->vk[i] = jit_push_elem(s, p->type, val);
+            } else {
+                regs->vk[i] = jit_push_vimm(s, p->type, val);
+            }
         }
         break;
-    }
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
         LOOP_MASK(p, i) {
             uint32_t val = get_priv(&res->priv, p->type, i);
-            regs->vk[i] = jit_push_imm(s, p->type, val);
+            if (p->type == SWS_PIXEL_F32) {
+                regs->vk[i] = jit_push_elem(s, p->type, val);
+            } else {
+                regs->vk[i] = jit_push_vimm(s, p->type, val);
+            }
         }
         break;
     case SWS_UOP_SCALE: {
         uint32_t val = get_priv(&res->priv, p->type, 0);
-        regs->vk[0] = jit_push_imm(s, p->type, val);   /* scale_vec */
+        if (p->type == SWS_PIXEL_F32) {
+            regs->vk[0] = jit_push_elem(s, p->type, val);
+        } else {
+            regs->vk[0] = jit_push_vimm(s, p->type, val);
+        }
         break;
     }
-#if 0
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA: {
-        /* Coefficients are compile-time-known (computed by
-         * aarch64_setup_linear(), shared with CPS, into a malloc'd
-         * float array at res->priv.ptr, packed in (row, column) order
-         * with column 4 -- the offset term -- first per row). Push
-         * each non-zero coefficient individually through
-         * jit_push_lin_coeff() into regs->lin[i][jj]: this dedupes by
-         * exact scalar value across the *entire* chain (not just
-         * within one op's group of 4, the way the old per-4-group
-         * jit_push_v128() did), while still packing four unrelated
-         * distinct values per physical register/data-pool entry
-         * instead of jit_push_imm()'s one-register-per-value cost
-         * (LINEAR alone can have up to 4*5 = 20 distinct values). */
-        const float *coeffs = (const float *) res->priv.ptr;
+        const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
         int i_coeff = 0;
-        for (int i = 0; i < 4; i++) {
+        LOOP_MASK(p, i) {
             for (int j = 0; j < 5; j++) {
-                const int jj = (j == 0) ? 4 : (j - 1);
-                if (p->par.lin.zero & SWS_MASK(i, jj))
+                bool is_offset = (j == 0);
+                int src_j = is_offset ? 4 : (j - 1);
+                if (p->par.lin.zero & SWS_MASK(i, src_j))
                     continue;
-                uint32_t bits;
-                memcpy(&bits, &coeffs[i_coeff++], sizeof(bits));
-                regs->lin[i][jj] = jit_push_lin_coeff(s, bits);
+                regs->linear_vcoeff[i][j] = jit_push_elem(s, SWS_PIXEL_U32, coeffs[i_coeff++].u32);
             }
         }
-        res->free(&res->priv);
-        break;
     }
-#endif
-    case SWS_UOP_DITHER: {
-        /* The matrix is too large to inline as compile-time data (up to
-         * (16+15)*16*4 bytes) -- unlike LINEAR's coefficients, the
-         * malloc'd buffer (res->priv.ptr) must stay alive and get read
-         * through a pointer every call, so it must NOT be freed here.
-         * Ownership instead transfers to s->chain, which frees it later
-         * via ff_sws_op_chain_free_cb() when the compiled op itself is
-         * torn down (see aarch64_jit_compile()). */
-        int ret = ff_sws_op_chain_append(s->chain, jit_op_chain_dummy_func,
-                                         res->free, &res->priv);
-        if (ret < 0)
-            return ret;
-        jit_push_dither_ptr(s, res->priv.ptr);
+    case SWS_UOP_DITHER:
+        regs->dither_ptr = a64reg_unclobbered_gpx(&s->regstate);
+        // TODO load res->priv.ptr into regs->dither_ptr (should I emit here?)
         break;
-    }
     default:
         break;
     }
@@ -1326,7 +1232,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     }
 
     /* Pass 2: constants, over every op -- only now, with pass 1 fully
-     * decided for the *entire* chain, so jit_push_imm()/jit_push_v128()
+     * decided for the *entire* chain, so jit_push_vimm()/jit_push_v128()
      * auto-pick registers value-flow genuinely isn't using instead of
      * reserving a fixed range upfront regardless of actual usage (see
      * aarch64_jit_setup_constants()'s own comment for the full reasoning). */
@@ -1347,6 +1253,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
 
     // TODO free res
 
+#if 0
 printf("[%s][%d] %s()\n", __FILE__, __LINE__, __func__);
 
     /* add all ops */
@@ -1358,6 +1265,7 @@ printf("[%s][%d] %s()\n", __FILE__, __LINE__, __func__);
     }
 
 printf("[%s][%d] %s()\n", __FILE__, __LINE__, __func__);
+#endif
     /* Emit data pool, immediates, and hoisted CLEAR values -- always
      * (not gated on any specific count): load_constants() already
      * no-ops each section it finds empty, and gating on an explicit

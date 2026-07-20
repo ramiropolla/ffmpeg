@@ -355,12 +355,6 @@ static RasmOp swizzle_a64op(SwsAArch64OpRegs *regs, int8_t n, uint8_t vh, bool d
     return dst ? regs->dl[n] : regs->sl[n];
 }
 
-static bool swizzle_same_reg(RasmOp a, RasmOp b)
-{
-    return rasm_op_type(a) == AARCH64_OP_VEC && rasm_op_type(b) == AARCH64_OP_VEC &&
-           a64op_vec_n(a) == a64op_vec_n(b);
-}
-
 static void swizzle_emit(SwsAArch64Context *s, SwsAArch64OpRegs *regs,
                          int8_t dst, int8_t src)
 {
@@ -368,14 +362,8 @@ static void swizzle_emit(SwsAArch64Context *s, SwsAArch64OpRegs *regs,
     RasmOp src_op[2] = { swizzle_a64op(regs, src, 0, false), swizzle_a64op(regs, src, 1, false) };
     RasmOp dst_op[2] = { swizzle_a64op(regs, dst, 0, true),  swizzle_a64op(regs, dst, 1, true) };
 
-    /* dst and src can end up as the same physical register (a whole-chain
-     * allocator is free to choose that, unlike CPS's fixed banks, where a
-     * real move's dst/src are always genuinely different registers) -- a
-     * true no-op relabeling needs no instruction. */
-    if (!swizzle_same_reg(dst_op[0], src_op[0])) {
-        i_mov(r, dst_op[0], src_op[0]); CMTF("%s = %s;", PRINT_SWIZZLE_V(dst, 0), PRINT_SWIZZLE_V(src, 0));
-    }
-    if (s->use_vh && !swizzle_same_reg(dst_op[1], src_op[1])) {
+    i_mov    (r, dst_op[0], src_op[0]); CMTF("%s = %s;", PRINT_SWIZZLE_V(dst, 0), PRINT_SWIZZLE_V(src, 0));
+    if (s->use_vh) {
         i_mov(r, dst_op[1], src_op[1]); CMTF("%s = %s;", PRINT_SWIZZLE_V(dst, 1), PRINT_SWIZZLE_V(src, 1));
     }
 }
