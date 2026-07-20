@@ -31,226 +31,6 @@
 #include "ops_asmgen.c"
 
 /*********************************************************************/
-/* Immediates. */
-
-static RasmOp jit_push_v128(SwsAArch64Context *s, void *val, int *out_idx);
-
-/* Whether `val` can be built with a single 32-bit `mov` (the movz/movn
- * aliases -- one 16-bit half set/cleared, the other half all-zero/
- * all-one). Deliberately conservative: it does NOT check the full
- * AArch64 logical/bitmask-immediate encoding (a rotated run of 1s at a
- * power-of-2 element size), which `mov` can also alias to `orr` for --
- * that rotate+run-length math is easy to get subtly wrong by hand, and
- * every value this rejects still gets built correctly via the data
- * pool below, just with one spare register/instruction instead of the
- * cleverer encoding. What this must never do is fall through to a
- * movz+movk pair -- some assemblers auto-expand `mov` with an arbitrary
- * immediate into exactly that, which is the one thing callers here are
- * explicitly avoiding. */
-static bool mov_imm_fits_single_insn(uint32_t val)
-{
-    if ((val & 0xffff0000u) == 0 || (val & 0x0000ffffu) == 0)
-        return true;
-    uint32_t inv = ~val;
-    if ((inv & 0xffff0000u) == 0 || (inv & 0x0000ffffu) == 0)
-        return true;
-    return false;
-}
-
-/* Whether `val`, broadcast to all lanes of a vector, can be built with
- * a single `movi` -- cheaper than mov_imm_fits_single_insn()'s mov+dup
- * (no GPR touched at all). Deliberately narrow: rasm's `i_movi` has no
- * operand slot for AArch64's "lsl #n"/"msl #n" shift qualifier (every
- * existing i_movi() callsite in this codebase only ever uses the
- * implicit-LSL#0 form), so this only tries the three shapes reachable
- * without one: byte-replicate (.16b), and a single byte in the low
- * position with the rest of the halfword/word zeroed (.8h / .4s). Real
- * `movi` can also reach shifted-byte, MSL, and per-byte-0/ff .2d
- * patterns that this rejects -- those fall through to
- * mov_imm_fits_single_insn() or the data pool instead, same as any
- * other value this doesn't recognize. */
-static bool can_movi_broadcast(uint32_t val)
-{
-    uint8_t b0 = (val      ) & 0xff;
-    uint8_t b1 = (val >>  8) & 0xff;
-    uint8_t b2 = (val >> 16) & 0xff;
-    uint8_t b3 = (val >> 24) & 0xff;
-
-    return (b0 == b1 && b1 == b2 && b2 == b3) /* .16b, imm8 = b0 */
-        || (b1 == 0  && b3 == 0  && b0 == b2) /* .8h,  imm8 = b0, lsl #0 */
-        || (b1 == 0  && b2 == 0  && b3 == 0); /* .4s,  imm8 = b0, lsl #0 */
-}
-
-/* Emits the movi chosen by can_movi_broadcast() -- caller must have
- * already confirmed it returns true for `val`. */
-static void emit_movi_broadcast(RasmContext *r, RasmOp target, uint32_t val)
-{
-    uint8_t b0 = (val      ) & 0xff;
-    uint8_t b1 = (val >>  8) & 0xff;
-    uint8_t b2 = (val >> 16) & 0xff;
-    uint8_t b3 = (val >> 24) & 0xff;
-
-    if (b0 == b1 && b1 == b2 && b2 == b3)
-        i_movi(r, v_16b(target), IMM(b0));
-    else if (b1 == 0 && b3 == 0 && b0 == b2)
-        i_movi(r, v_8h(target), IMM(b0));
-    else
-        i_movi(r, v_4s(target), IMM(b0)); /* b1==b2==b3==0, guaranteed by can_movi_broadcast() */
-}
-
-/* Emit load instructions for all collected immediates (v27..v31),
- * hoisted CLEAR values, and 128-bit data pool vectors (v8..v15) before
- * the inner loop. Uses tmp0 as a scratch GPR to build each immediate
- * and as the base pointer for adr + ldr of the data pool.
- *
- * Priority per value: a single `movi` when the shape allows it (no GPR
- * touched at all); otherwise a single `mov`+`dup` (no data pool slot
- * spent); otherwise routed through the const data pool -- broadcast
- * once as a 16-byte {val,val,val,val} entry via jit_push_v128() (this
- * must happen before the "data pool" section below builds/finalizes
- * its packed buffer, so every such push is done up front) and read
- * back into its real target register from there. Never a movk
- * sequence either way. */
-static void load_constants(SwsAArch64Context *s)
-{
-    RasmContext *r = s->rctx;
-
-    /* (target register, data-pool index) pairs for immediates/CLEAR
-     * values that didn't fit a single mov -- their real ldr (into
-     * `target`, not jit_push_v128()'s own throwaway auto-picked
-     * register) has to wait until the "data pool" section below has
-     * computed `ptr`. */
-    struct { RasmOp target; int idx; } pool_load[SWS_AARCH64_MAX_IMM + SWS_AARCH64_MAX_CLEAR_HOIST];
-    int pool_load_count = 0;
-
-    for (int i = 0; i < s->imm_count; i++) {
-        if (can_movi_broadcast(s->imm[i].val) || mov_imm_fits_single_insn(s->imm[i].val))
-            continue;
-        uint32_t words[4] = { s->imm[i].val, s->imm[i].val, s->imm[i].val, s->imm[i].val };
-        pool_load[pool_load_count].target = s->imm[i].op;
-        jit_push_v128(s, words, &pool_load[pool_load_count].idx);
-        pool_load_count++;
-    }
-    for (int i = 0; i < s->clear_hoist_count; i++) {
-        if (can_movi_broadcast(s->clear_hoist[i].val) || mov_imm_fits_single_insn(s->clear_hoist[i].val))
-            continue;
-        uint32_t val = s->clear_hoist[i].val;
-        uint32_t words[4] = { val, val, val, val };
-        pool_load[pool_load_count].target = s->clear_hoist[i].target;
-        jit_push_v128(s, words, &pool_load[pool_load_count].idx);
-        pool_load_count++;
-    }
-
-    if (s->imm_count) {
-        rasm_add_comment(r, "immediates");
-
-        RasmOp tmp = a64op_w(s->tmp0);
-        for (int i = 0; i < s->imm_count; i++) {
-            if (can_movi_broadcast(s->imm[i].val)) {
-                emit_movi_broadcast(r, s->imm[i].op, s->imm[i].val);
-                continue;
-            }
-            if (!mov_imm_fits_single_insn(s->imm[i].val))
-                continue; /* loaded from the data pool below instead */
-            i_mov(r, tmp, IMM((int32_t) s->imm[i].val));
-            i_dup(r, v_4s(s->imm[i].op), tmp);
-        }
-    }
-
-    if (s->clear_hoist_count) {
-        /* CLEAR (Task 5): each entry's target is whatever register the
-         * consumer already expects -- e.g. one lane of a WRITE_PACKED
-         * st4's contiguous block -- not a shared pool slot, so (unlike
-         * immediates above) there's no dedup and every entry gets its
-         * own movi, or mov + dup, or data-pool load. */
-        rasm_add_comment(r, "clear hoist");
-
-        RasmOp tmp = a64op_w(s->tmp0);
-        for (int i = 0; i < s->clear_hoist_count; i++) {
-            if (can_movi_broadcast(s->clear_hoist[i].val)) {
-                emit_movi_broadcast(r, s->clear_hoist[i].target, s->clear_hoist[i].val);
-                continue;
-            }
-            if (!mov_imm_fits_single_insn(s->clear_hoist[i].val))
-                continue; /* loaded from the data pool below instead */
-            i_mov(r, tmp, IMM((int32_t) s->clear_hoist[i].val));
-            i_dup(r, v_4s(s->clear_hoist[i].target), tmp);
-        }
-    }
-
-    if (s->data_count) {
-        rasm_add_comment(r, "data pool");
-
-        /* s->data[] isn't itself a tightly packed array of 16-byte
-         * vectors (SwsAArch64ConstVec also carries a RasmOp field), so
-         * pack just the value bytes into a temporary contiguous buffer
-         * before handing it to rasm_add_data() (which memdup()s it
-         * immediately, so it doesn't need to outlive this call). */
-        uint8_t packed[SWS_AARCH64_MAX_DATA_VECS][16];
-        for (int i = 0; i < s->data_count; i++)
-            memcpy(packed[i], s->data[i].val, 16);
-
-        /* Creating the const entry switches the current node away from
-         * the function body, so save/restore it around it. */
-        RasmNode *saved_node = rasm_get_current_node(r);
-        int data_label = rasm_const_begin(r, "ldata");
-        rasm_add_data(r, packed, s->data_count * 4, RASM_DATA_WORD);
-        rasm_set_current_node(r, saved_node);
-
-        RasmOp ptr = s->tmp0;
-        i_adr(r, ptr, rasm_op_label(data_label));
-        for (int i = 0; i < s->data_count; i++)
-            i_ldr(r, v_q(s->data[i].op), a64op_off(ptr, (int16_t) (i * 16)));
-
-        /* Immediates/CLEAR values routed through the pool above (not
-         * every jit_push_v128() caller -- LINEAR/READ_BIT/etc already
-         * read their own s->data[i].op directly) also land in their
-         * real target register here, from the same pool/ptr. */
-        for (int i = 0; i < pool_load_count; i++) {
-            i_ldr(r, v_q(pool_load[i].target),
-                  a64op_off(ptr, (int16_t) (pool_load[i].idx * 16)));
-        }
-
-        /* DITHER (Task 6): the matrix pointer piggybacks on this same
-         * pool entry (see jit_push_dither_ptr()) -- also read it back
-         * as a scalar (GPR) into the persistent dither_src_ptr, from
-         * the exact same pool offset the vector load above just used. */
-        if (s->dither_data_idx >= 0) {
-            i_ldr(r, s->dither_src_ptr,
-                  a64op_off(ptr, (int16_t) (s->dither_data_idx * 16)));
-        }
-    }
-
-#if 0
-    if (s->lin_coeff_count) {
-        /* SWS_UOP_LINEAR/SWS_UOP_LINEAR_FMA (Task 7): a separate pool
-         * from the data pool above -- jit_push_lin_coeff() fills
-         * lin_coeff[]/lin_coeff_vec[] incrementally, four raw scalar
-         * values at a time sharing one physical register, unlike
-         * s->data[]'s one-caller-supplies-a-complete-16-byte-blob
-         * model. Unused trailing lanes in the last register are
-         * padded with 0 and never read (regs->lin[][] only ever
-         * indexes lanes jit_push_lin_coeff() actually filled). */
-        rasm_add_comment(r, "linear coefficients");
-
-        int num_vecs = (s->lin_coeff_count + 3) / 4;
-        uint32_t padded[SWS_AARCH64_MAX_LIN_COEFF] = { 0 };
-        memcpy(padded, s->lin_coeff, s->lin_coeff_count * sizeof(uint32_t));
-
-        RasmNode *saved_node = rasm_get_current_node(r);
-        int coeff_label = rasm_const_begin(r, "lcoeff");
-        rasm_add_data(r, padded, num_vecs * 4, RASM_DATA_WORD);
-        rasm_set_current_node(r, saved_node);
-
-        RasmOp ptr = s->tmp0;
-        i_adr(r, ptr, rasm_op_label(coeff_label));
-        for (int i = 0; i < num_vecs; i++)
-            i_ldr(r, v_q(s->lin_coeff_vec[i]), a64op_off(ptr, (int16_t) (i * 16)));
-    }
-#endif
-}
-
-/*********************************************************************/
 static const char op_type_names[SWS_UOP_TYPE_NB][16] = {
     [SWS_UOP_READ_BIT      ] = "read_bit",
     [SWS_UOP_READ_NIBBLE   ] = "read_nibble",
@@ -341,11 +121,7 @@ printf("[%s][%d] %s() %s\n", __FILE__, __LINE__, __func__, op_type_names[p->uop]
     case SWS_UOP_LSHIFT:       asmgen_op_lshift(s, p, regs);       break;
     case SWS_UOP_RSHIFT:       asmgen_op_rshift(s, p, regs);       break;
     case SWS_UOP_CLEAR:
-        /* Hoisted entirely into the one-time setup section (Task 5,
-         * see aarch64_jit_setup_constants() and load_constants()) --
-         * no per-iteration instruction needed,
-         * asmgen_op_clear()/emit_clear() (which read a runtime-loaded
-         * vk[0] that JIT never sets up for CLEAR) must not run here. */
+        // TODO
         break;
     case SWS_UOP_TO_U8:        asmgen_op_convert(s, p, regs);      break;
     case SWS_UOP_TO_U16:       asmgen_op_convert(s, p, regs);      break;
@@ -370,59 +146,33 @@ printf("[%s][%d] %s() %s\n", __FILE__, __LINE__, __func__, op_type_names[p->uop]
 int ff_sws_jit_assemble_llvm(const char *asm_src, uint8_t **out_text, size_t *out_size);
 
 /*********************************************************************/
-/**
- * The end result is a single vector with the data copied verbatim.
- * Returns new RasmOp which will just ld1.
- */
-
 /* Returns a RasmOp with the entire 128-bit sequence. */
 static RasmOp jit_push_v128(SwsAArch64Context *s, void *val)
 {
     /* Check if we already have it. */
     for (int i = 0; i < s->data_count; i++) {
-        if (!memcmp(&s->data[i].val, val, 16)) {
+        if (!memcmp(&s->data[i].vec, val, 16)) {
             return s->data[i].op;
         }
     }
 
     /* Add it to our data and create a new vector. */
     int idx = s->data_count++;
-    memcpy(s->data[idx].val, val, 16);
-    s->data[idx].op = a64reg_unclobbered_vec(&s->regstate);
+    memcpy(&s->data[idx].vec, val, 16);
+    s->data[idx].op = v_q(a64reg_unclobbered_vec(&s->regstate));
 
     return s->data[idx].op;
 }
 
-/* Returns a RasmOp 
-static RasmOp jit_push_data(SwsAArch64Context *s, SwsPixelType type, uint32_t val)
+/* Returns a RasmOp with the u64. */
+static RasmOp jit_push_u64(SwsAArch64Context *s, uint64_t val)
 {
-    /* Expand to u32. */
-    switch (type) {
-    case SWS_PIXEL_U8:  val = val | (val <<  8); av_fallthrough;
-    case SWS_PIXEL_U16: val = val | (val << 16); break;
-    }
-
-    /* Check if we already have it. */
-    for (int i = 0; i < s->imm_count; i++) {
-        if (s->imm[i].val == val)
-            return s->imm[i].op;
-    }
-
     /* Add it to our data and create a new vector. */
-    int idx = s->imm_count++;
-    s->imm[idx].val = val;
-    s->imm[idx].op  = a64reg_unclobbered_vec(&s->regstate);
-
-    return s->imm[idx].op;
+    int idx = s->data_count++;
+    s->data[idx].vec.u64[0] = val;
+    s->data[idx].op = a64reg_unclobbered_gpx(&s->regstate);
+    return s->data[idx].op;
 }
-
-/**
- * The end result is a single vector with the value broadcast over all elements.
- * It could either movi to broadcast the value directly, or
- * it saves one 32-bit element into the constant data, which will be dup'd into a vector.
- * In the second case, keep track of which vci/vcj from the constant data, and return a new RasmOp,
- * which will be filled in load_constants().
- */
 
 /* Returns a RasmOp with the value broadcast to all elements. */
 static RasmOp jit_push_vimm(SwsAArch64Context *s, SwsPixelType type, uint32_t val)
@@ -433,38 +183,63 @@ static RasmOp jit_push_vimm(SwsAArch64Context *s, SwsPixelType type, uint32_t va
     case SWS_PIXEL_U16: val = val | (val << 16); break;
     }
 
+    /* TODO use movi for movi-encodable immediates. */
+    /* TODO use mov+dup. */
+
+    SwsAArch64Vector vec = { .u32 = { val, val, val, val } };
+    return jit_push_v128(s, &vec);
+}
+
+static RasmOp jit_push_elem(SwsAArch64Context *s, SwsPixelType type, uint32_t val)
+{
     /* Check if we already have it. */
-    for (int i = 0; i < s->imm_count; i++) {
-        if (s->imm[i].val == val)
-            return s->imm[i].op;
+    for (int i = 0; i < s->data_count; i++) {
+        for (int j = 0; j < 4; j++) {
+            if (s->data[i].vec.u32[j] == val)
+                return a64op_elem(v_4s(s->data[i].op), j);
+        }
     }
 
-    RasmOp op = a64reg_unclobbered_vec(&s->regstate);
-    int idx = s->imm_count++;
-    s->imm[idx].op = op;
-
-    /* Check if it's movi-encodable. */
-    uint32_t val8 = (uint8_t) val;
-    if (val == val8) {
-        s->imm[idx].movi = SWS_PIXEL_U32;
-    } else if (val == val8 * 0x00010001u) {
-        s->imm[idx].movi = SWS_PIXEL_U16;
-    } else if (val == val8 * 0x01010101u) {
-        s->imm[idx].movi = SWS_PIXEL_U8;
+    int idx = s->elem_count++;
+    int data_idx;
+    int data_elem;
+    if (!(idx & 3)) {
+        data_idx  = s->data_count;
+        data_elem = 0;
+        SwsAArch64Vector dummy = { 0 };
+        jit_push_v128(s, &dummy);
     } else {
-        s->imm[idx].movi = SWS_PIXEL_NONE;
+        data_idx  = s->elem[idx - 1].data_idx;
+        data_elem = s->elem[idx - 1].data_elem + 1;
     }
+    s->elem[idx].data_idx  = data_idx;
+    s->elem[idx].data_elem = data_elem;
+    s->data[data_idx].vec.u32[data_elem] = val;
 
-    if (s->imm[idx].movi != SWS_PIXEL_NONE) {
-        s->imm[idx].val    = val8;
-    } else {
-        s->imm[idx].val    = val;
-        s->imm[idx].src_op = jit_push_data(s, SWS_PIXEL_U32, val);
+    return a64op_elem(v_4s(s->data[data_idx].op), data_elem);
+}
+
+static void load_constants(SwsAArch64Context *s)
+{
+    RasmContext *r = s->rctx;
+    AArch64RegState *rs = &s->regstate;
+
+    /* Emit data. */
+    int ldata = rasm_const_begin(r, "ldata");
+    for (int i = 0; i < s->data_count; i++)
+        rasm_add_data(r, &s->data[i].vec, 4, RASM_DATA_WORD);
+
+    /* Load data. */
+    RasmNode *saved = rasm_set_current_node(r, s->setup);
+    rasm_add_comment(r, "load constants");
+    RasmOp ptr = a64reg_gpx(rs, -1);
+    i_adr(r, ptr, rasm_op_label(ldata));
+    for (int i = 0; i < s->data_count; i++) {
+        RasmOp base = a64op_off(ptr, i * 16);
+        i_ldr(r, s->data[i].op, base);
     }
-
-    /* Add it to our data and create a new vector. */
-
-    return s->imm[idx].op;
+    a64reg_gpr_free(rs, ptr);
+    s->setup = rasm_set_current_node(r, saved);
 }
 
 /*********************************************************************/
@@ -555,9 +330,6 @@ static bool vec_regs_contiguous(const RasmOp *regs, int n)
     return true;
 }
 
-/* Pass 1 of 2 (backward, over every op): decide value-flow registers
- * (sl/sh/dl/dh) only. Constants are deliberately NOT decided here
- * anymore -- see aarch64_jit_setup_constants() below for why. */
 static int aarch64_jit_setup_banks(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                    SwsAArch64OpRegs *regs, int i, SwsCompMask imask, SwsCompMask omask)
 {
@@ -1092,10 +864,11 @@ static int aarch64_jit_setup_constants(SwsAArch64Context *s, const SwsAArch64OpI
                 regs->linear_vcoeff[i][j] = jit_push_elem(s, SWS_PIXEL_U32, coeffs[i_coeff++].u32);
             }
         }
+        break;
     }
     case SWS_UOP_DITHER:
-        regs->dither_ptr = a64reg_unclobbered_gpx(&s->regstate);
-        // TODO load res->priv.ptr into regs->dither_ptr (should I emit here?)
+        printf("[%s][%d] %s() %p\n", __FILE__, __LINE__, __func__, res->priv.ptr);
+        regs->dither_ptr = jit_push_u64(s, (uint64_t) res->priv.ptr);
         break;
     default:
         break;
@@ -1186,8 +959,8 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         .sws             = ctx,
         .block_size      = block_size,
         .rctx            = r,
-        .chain           = chain,
-        .dither_data_idx = -1,
+//        .chain           = chain,
+//        .dither_data_idx = -1,
     };
 #endif
 
@@ -1231,11 +1004,6 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
             goto error;
     }
 
-    /* Pass 2: constants, over every op -- only now, with pass 1 fully
-     * decided for the *entire* chain, so jit_push_vimm()/jit_push_v128()
-     * auto-pick registers value-flow genuinely isn't using instead of
-     * reserving a fixed range upfront regardless of actual usage (see
-     * aarch64_jit_setup_constants()'s own comment for the full reasoning). */
     for (int i = 0; i < ops->num_ops; i++) {
         ret = aarch64_jit_setup_constants(&s, params, res, regs, i);
         if (ret < 0)
@@ -1253,7 +1021,6 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
 
     // TODO free res
 
-#if 0
 printf("[%s][%d] %s()\n", __FILE__, __LINE__, __func__);
 
     /* add all ops */
@@ -1265,16 +1032,9 @@ printf("[%s][%d] %s()\n", __FILE__, __LINE__, __func__);
     }
 
 printf("[%s][%d] %s()\n", __FILE__, __LINE__, __func__);
-#endif
-    /* Emit data pool, immediates, and hoisted CLEAR values -- always
-     * (not gated on any specific count): load_constants() already
-     * no-ops each section it finds empty, and gating on an explicit
-     * list of counts here has already once silently dropped a whole
-     * category (clear_hoist_count wasn't in this condition when Task 5
-     * added it, so CLEAR-only chains never actually got their hoisted
-     * mov+dup emitted at all -- caught while wiring up Task 6). */
-    rasm_set_current_node(r, s.setup);
-    load_constants(&s);
+
+    if (s.data_count)
+        load_constants(&s);
 
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
