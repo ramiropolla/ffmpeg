@@ -41,22 +41,18 @@ typedef struct SwsAArch64OpRegs {
 
 /*********************************************************************/
 typedef union SwsAArch64Vector {
-    uint8_t    u8 [16];
-    uint16_t   u16[ 8];
-    uint32_t   u32[ 4];
-    float      f32[ 4];
-    uint64_t   u64[ 2];
+    uint8_t  u8 [16];
+    uint16_t u16[ 8];
+    uint32_t u32[ 4];
+    float    f32[ 4];
+    uint64_t u64[ 2];
 } SwsAArch64Vector;
 
 typedef struct SwsAArch64ConstVec {
     SwsAArch64Vector vec;
     RasmOp op;
+    int    op_idx;  // for elems
 } SwsAArch64ConstVec;
-
-typedef struct SwsAArch64ConstVecElem {
-    int data_idx;
-    int data_elem;
-} SwsAArch64ConstVecElem;
 
 /*********************************************************************/
 typedef struct SwsAArch64Context {
@@ -87,10 +83,8 @@ typedef struct SwsAArch64Context {
     SwsAArch64OpRegs regs;
 
     /* JIT-related variables. */
-    SwsAArch64ConstVec     data[16];   // TODO 16
-    int                    data_count;
-    SwsAArch64ConstVecElem elem[64];   // TODO 64
-    int                    elem_count;
+    SwsAArch64ConstVec data[16];   // TODO 16
+    int                data_count;
 
     /* Read/Write data pointers and padding. */
     RasmOp in[4];
