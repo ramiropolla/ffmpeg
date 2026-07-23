@@ -204,7 +204,7 @@ static RasmOp jit_push_vimm(SwsAArch64Context *s, SwsPixelType type, uint32_t va
     }
 
     /* TODO use movi for movi-encodable immediates. */
-    /* TODO use mov+dup. */
+    /* TODO use mov+dup instead of taking up data. */
 
     SwsAArch64Vector vec = { .u32 = { val, val, val, val } };
     return jit_push_v128(s, &vec);
@@ -822,15 +822,11 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         if (ops->ops[i].op == SWS_OP_SWIZZLE)
             continue;
         ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params[i]);
-        if (ret < 0) {
-            printf("[%s][%d] %s() goto error\n", __FILE__, __LINE__, __func__);
+        if (ret < 0)
             goto error;
-        }
         ret = ff_sws_aarch64_setup(ops, block_size, i, &params[i], &res[i]);
-        if (ret < 0) {
-            printf("[%s][%d] %s() goto error\n", __FILE__, __LINE__, __func__);
+        if (ret < 0)
             goto error;
-        }
     }
 
     printf("%s -> %s\n",
@@ -852,18 +848,14 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
             continue;
         }
         ret = aarch64_jit_setup(&s, params, res, regs, i, imask, omask);
-        if (ret < 0) {
-            printf("[%s][%d] %s() goto error\n", __FILE__, __LINE__, __func__);
+        if (ret < 0)
             goto error;
-        }
     }
 
     /* create process */
     ret = aarch64_jit_process(&s, ops, imask, omask);
-    if (ret < 0) {
-        printf("[%s][%d] %s() goto error\n", __FILE__, __LINE__, __func__);
+    if (ret < 0)
         goto error;
-    }
 
     for (int i = 0; i < ops->num_ops; i++)
         print_regs(&params[i], &regs[i]);
@@ -878,10 +870,8 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
             continue;
         }
         ret = asmgen_op_jit(&s, &params[i], &regs[i]);
-        if (ret < 0) {
-            printf("[%s][%d] %s() goto error\n", __FILE__, __LINE__, __func__);
+        if (ret < 0)
             goto error;
-        }
     }
 
     if (s.data_count)
