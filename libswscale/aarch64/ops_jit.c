@@ -686,11 +686,7 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         break;
     case SWS_UOP_SCALE: {
         uint32_t val = get_priv(&res->priv, p->type, 0);
-        if (p->type == SWS_PIXEL_F32) {
-            regs->vk[0] = jit_push_elem(s, p->type, val);
-        } else {
-            regs->vk[0] = jit_push_vimm(s, p->type, val);
-        }
+        regs->vk[0] = jit_push_vimm(s, p->type, val);
         break;
     }
     case SWS_UOP_LINEAR:
