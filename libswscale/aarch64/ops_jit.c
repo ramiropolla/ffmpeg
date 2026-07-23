@@ -416,16 +416,32 @@ static void aarch64_jit_setup_swizzle(SwsAArch64Context *s, const SwsOp *op,
                 if (s->use_vh)
                     for (int i = 0; i < 4; i++) { if (SWS_OP_NEEDED(op, i)) { sh[op->swizzle.in[i]] = prev->dh[op->swizzle.in[i]]; dh[i] = sh[op->swizzle.in[i]]; } }
             } else {
-printf("[%s][%d] %s() XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n", __FILE__, __LINE__, __func__);
-#if 0
-                cc.comment("swizzle (copy)");
-                ctx->new_step();
-                LOOP_OUT   (i) if (i == op->swizzle.in[i]) vl[i] = src_vl[op->swizzle.in[i]];
-                LOOP_OUT_VH(i) if (i == op->swizzle.in[i]) vh[i] = src_vh[op->swizzle.in[i]];
-                LOOP_OUT   (i) if (i != op->swizzle.in[i]) new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
-                LOOP_OUT   (i) if (i != op->swizzle.in[i]) cc.mov(vl[i].b16(), src_vl[op->swizzle.in[i]].b16());
-                LOOP_OUT_VH(i) if (i != op->swizzle.in[i]) cc.mov(vh[i].b16(), src_vh[op->swizzle.in[i]].b16());
-#endif
+                /**
+                 * At least one input component is read by more than one
+                 * output component (e.g. duplicating a single gray
+                 * channel into several output channels) -- pure register
+                 * aliasing is not possible since a single physical
+                 * register cannot be "renamed" to two different logical
+                 * outputs. Slots that keep their own value are aliased
+                 * as usual; slots that need someone else's value get a
+                 * fresh register, copied by aarch64_jit_op_swizzle().
+                 */
+                for (int i = 0; i < 4; i++) {
+                    if (!SWS_OP_NEEDED(op, i))
+                        continue;
+                    if (op->swizzle.in[i] == i) {
+                        dl[i] = sl[i] = prev->dl[i];
+                        if (s->use_vh)
+                            dh[i] = sh[i] = prev->dh[i];
+                    } else {
+                        sl[i] = prev->dl[op->swizzle.in[i]];
+                        dl[i] = a64reg_vec(rs, -1);
+                        if (s->use_vh) {
+                            sh[i] = prev->dh[op->swizzle.in[i]];
+                            dh[i] = a64reg_vec(rs, -1);
+                        }
+                    }
+                }
             }
         }
 #endif
@@ -434,9 +450,7 @@ printf("[%s][%d] %s() XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n", __FILE__, __LINE__, 
 static void aarch64_jit_op_swizzle(SwsAArch64Context *s, const SwsOp *op,
                                    SwsAArch64OpRegs *regs, int block_size)
 {
-#if 0
     RasmContext *r = s->rctx;
-    AArch64RegState *rs = &s->regstate;
 
     size_t el_size = ff_sws_pixel_type_size(op->type);
     size_t total_size = block_size * el_size;
@@ -444,26 +458,35 @@ static void aarch64_jit_op_swizzle(SwsAArch64Context *s, const SwsOp *op,
     s->vec_size = FFMIN(total_size, 16);
     s->use_vh = (s->vec_size != total_size);
 
-    s->el_size = el_size;
-    s->el_count = s->vec_size / el_size;
-
-    RasmOp *sl = regs->sl;
-    RasmOp *sh = regs->sh;
-    RasmOp *dl = regs->dl;
-    RasmOp *dh = regs->dh;
-    RasmOp *vt = regs->vt;
+    /**
+     * Must match the reorder/copy decision made in
+     * aarch64_jit_setup_swizzle(): a pure reorder needs no instructions
+     * at all (it was handled entirely via register aliasing), while a
+     * copy (some input read by more than one output) needs a real mov
+     * for every slot that didn't keep its own value.
+     */
+    bool reorder = true;
+    bool used[4] = { false, false, false, false };
+    for (int i = 0; i < 4; i++) {
+        if (!SWS_OP_NEEDED(op, i))
+            continue;
+        if (used[op->swizzle.in[i]]) {
+            reorder = false;
+            break;
+        }
+        used[op->swizzle.in[i]] = true;
+    }
+    if (reorder)
+        return;
 
     for (int i = 0; i < 4; i++) {
-        if (SWS_OP_NEEDED(op, i)) {
-            if (op->swizzle.in[i] != i) {
-                i_mov16b(r, regs->dl[i], regs->sl[i]);
-                if (s->use_vh) {
-                    i_mov16b(r, regs->dh[i], regs->sh[i]);
-                }
+        if (SWS_OP_NEEDED(op, i) && op->swizzle.in[i] != i) {
+            i_mov16b(r, regs->dl[i], regs->sl[i]);
+            if (s->use_vh) {
+                i_mov16b(r, regs->dh[i], regs->sh[i]);
             }
         }
     }
-#endif
 }
 
 static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -643,8 +666,25 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         break;
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA: {
+        /**
+         * The output mask (p->mask) need not cover every input column
+         * that the matrix actually reads (e.g. a 3-in/1-out matrix like
+         * RGB -> gray only needs output row 0, but still reads input
+         * columns 0, 1 and 2). Alias every read column, not just the
+         * ones that are also written outputs.
+         */
+        SwsCompMask input_mask = 0;
+        LOOP_MASK(p, i) {
+            for (int j = 0; j < 4; j++) {
+                if (!(p->par.lin.zero & SWS_MASK(i, j)))
+                    input_mask |= SWS_COMP(j);
+            }
+        }
+
         LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        LOOP      (input_mask & ~p->mask, j) { sl[j] = prev->dl[j]; }
+        LOOP_VH(s, input_mask & ~p->mask, j) { sh[j] = prev->dh[j]; }
 
         SwsCompMask save_mask = 0;
         bool overwritten[4] = { false, false, false, false };
@@ -668,8 +708,24 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         break;
     }
     case SWS_UOP_DITHER:
-        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        /**
+         * p->mask only covers the components that actually get a dither
+         * offset (see the SWS_UOP_DITHER case in
+         * ff_sws_aarch64_ops_translate()); it is not the generic
+         * "needed downstream" mask like most other uops. Components not
+         * in p->mask still need their register propagated unchanged so
+         * later ops can read them.
+         */
+        for (int i = 0; i < 4; i++) {
+            if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE)
+                dl[i] = sl[i] = prev->dl[i];
+        }
+        if (s->use_vh) {
+            for (int i = 0; i < 4; i++) {
+                if (rasm_op_type(prev->dh[i]) != RASM_OP_NONE)
+                    dh[i] = sh[i] = prev->dh[i];
+            }
+        }
         alloc_scratch_vecs(rs, 2, vt);
         break;
     }
