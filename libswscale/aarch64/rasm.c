@@ -477,6 +477,16 @@ static int a64reg_pick_vec(uint32_t mask)
     return ff_ctz(avail & AARCH64_VEC_CALLEE_SAVED);
 }
 
+static int a64reg_pick_vec_bwd(uint32_t mask)
+{
+    uint32_t avail = ~mask;
+    av_assert0(avail);
+    /* Use callee-saved registers last. */
+    if (avail & ~AARCH64_VEC_CALLEE_SAVED)
+        return (31 - ff_clz(avail & ~AARCH64_VEC_CALLEE_SAVED));
+    return (31 - ff_clz(avail & AARCH64_VEC_CALLEE_SAVED));
+}
+
 RasmOp a64reg_vec(AArch64RegState *rs, int r)
 {
     if (r < 0) {
@@ -491,7 +501,7 @@ RasmOp a64reg_vec(AArch64RegState *rs, int r)
 
 RasmOp a64reg_unclobbered_vec(AArch64RegState *rs)
 {
-    int r = a64reg_pick_vec(rs->vec_clobbered);
+    int r = a64reg_pick_vec_bwd(rs->vec_clobbered);
     rs->vec_used      |= 1u << r;
     rs->vec_clobbered |= 1u << r;
     return a64op_vec(r);

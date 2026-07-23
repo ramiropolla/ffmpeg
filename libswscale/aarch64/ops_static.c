@@ -63,6 +63,18 @@ static int ff_ctz(uint32_t mask)
     return n;
 }
 
+static int ff_clz(uint32_t mask)
+{
+    if (!mask)
+        return 32;
+    int n = 0;
+    while (!(mask & 0x80000000u)) {
+        mask <<= 1;
+        n++;
+    }
+    return n;
+}
+
 static void av_freep(void *ptr)
 {
     void **pptr = (void **) ptr;
