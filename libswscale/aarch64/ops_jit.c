@@ -21,43 +21,19 @@
 #include <string.h>
 
 #include "../ops_chain.h"
+#include "../uops_list.h"
 
 #include "rasm.h"
 #include "ops_impl.h"
 #include "ops.h"
+#include "ops_asmgen.h"
+#include "ops_jit_llvm.h"
 
 /*********************************************************************/
-/* TODO no */
-#include "ops_asmgen.c"
-
-/*********************************************************************/
-static const char op_type_names[SWS_UOP_TYPE_NB][16] = {
-    [SWS_UOP_READ_BIT      ] = "read_bit",
-    [SWS_UOP_READ_NIBBLE   ] = "read_nibble",
-    [SWS_UOP_READ_PACKED   ] = "read_packed",
-    [SWS_UOP_READ_PLANAR   ] = "read_planar",
-    [SWS_UOP_WRITE_BIT     ] = "write_bit",
-    [SWS_UOP_WRITE_NIBBLE  ] = "write_nibble",
-    [SWS_UOP_WRITE_PACKED  ] = "write_packed",
-    [SWS_UOP_WRITE_PLANAR  ] = "write_planar",
-    [SWS_UOP_SWAP_BYTES    ] = "swap_bytes",
-    [SWS_UOP_UNPACK        ] = "unpack",
-    [SWS_UOP_PACK          ] = "pack",
-    [SWS_UOP_LSHIFT        ] = "lshift",
-    [SWS_UOP_RSHIFT        ] = "rshift",
-    [SWS_UOP_CLEAR         ] = "clear",
-    [SWS_UOP_TO_U8         ] = "to_u8",
-    [SWS_UOP_TO_U16        ] = "to_u16",
-    [SWS_UOP_TO_U32        ] = "to_u32",
-    [SWS_UOP_TO_F32        ] = "to_f32",
-    [SWS_UOP_EXPAND_PAIR   ] = "expand_pair",
-    [SWS_UOP_EXPAND_QUAD   ] = "expand_quad",
-    [SWS_UOP_MIN           ] = "min",
-    [SWS_UOP_MAX           ] = "max",
-    [SWS_UOP_SCALE         ] = "scale",
-    [SWS_UOP_LINEAR        ] = "linear",
-    [SWS_UOP_LINEAR_FMA    ] = "linear_fma",
-    [SWS_UOP_DITHER        ] = "dither",
+static const char *const op_type_names[SWS_UOP_TYPE_NB] = {
+#define UOP_NAME(OP, ABBR) [OP] = ABBR,
+    UOPS_LIST(UOP_NAME)
+#undef UOP_NAME
 };
 
 static bool vecs_are_contiguous(RasmOp *ops)
@@ -71,95 +47,62 @@ static bool vecs_are_contiguous(RasmOp *ops)
     return true;
 }
 
-static int asmgen_op_jit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                         SwsAArch64OpRegs *regs)
+/**
+ * The JIT backend allocates I/O vector registers on demand, so the
+ * source registers feeding SWS_UOP_WRITE_PACKED are not guaranteed to
+ * be contiguous, unlike the fixed register assignment used by the CPS
+ * (ops_static.c) backend. If needed, copy them into a contiguous run
+ * of registers before emitting the write.
+ */
+static void jit_fixup_write_packed(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                   SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
     AArch64RegState *rs = &s->regstate;
 
-    /**
-     * Set up vector register dimensions and reshape all vectors
-     * accordingly.
-     */
-    size_t el_size = ff_sws_pixel_type_size(p->type);
-    size_t total_size = p->block_size * el_size;
+    /* Count number of elems. */
+    int n = 0;
+    LOOP_MASK(p, i)
+        n++;
 
-    s->vec_size = FFMIN(total_size, 16);
-    s->use_vh = (s->vec_size != total_size);
+    if (!vecs_are_contiguous(regs->sl)) {
+        RasmOp sl[4] = { 0 };
+        a64reg_contiguous_vec(rs, n, sl);
+        LOOP_MASK(p, i) {
+            sl[i] = a64op_make_vec(a64op_vec_n(sl[i]), s->el_count, s->el_size);
+            i_mov(r, sl[i], regs->sl[i]);
+            a64reg_vec_free(rs, regs->sl[i]);
+            regs->sl[i] = sl[i];
+        }
+    }
+    if (s->use_vh && !vecs_are_contiguous(regs->sh)) {
+        RasmOp sh[4] = { 0 };
+        a64reg_contiguous_vec(rs, n, sh);
+        LOOP_MASK(p, i) {
+            sh[i] = a64op_make_vec(a64op_vec_n(sh[i]), s->el_count, s->el_size);
+            i_mov(r, sh[i], regs->sh[i]);
+            a64reg_vec_free(rs, regs->sh[i]);
+            regs->sh[i] = sh[i];
+        }
+    }
+}
 
-    s->el_size = el_size;
-    s->el_count = s->vec_size / el_size;
-    reshape_io_vectors(regs, s->el_count, el_size);
-    reshape_temp_vectors(regs, s->el_count, el_size);
-    reshape_const_vectors(regs, s->el_count, el_size);
+static int asmgen_op_jit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                         SwsAArch64OpRegs *regs)
+{
+    RasmContext *r = s->rctx;
+
+    ff_sws_aarch64_asmgen_setup_vecs(s, p, regs);
 
     rasm_add_commentf(r, (char[128]){0}, 128, "=> %s", op_type_names[p->uop]);
 
-    switch (p->uop) {
-    case SWS_UOP_READ_BIT:     asmgen_op_read_bit(s, p, regs);     break;
-    case SWS_UOP_READ_NIBBLE:  asmgen_op_read_nibble(s, p, regs);  break;
-    case SWS_UOP_READ_PACKED:  asmgen_op_read_packed(s, p, regs);  break;
-    case SWS_UOP_READ_PLANAR:  asmgen_op_read_planar(s, p, regs);  break;
-    case SWS_UOP_WRITE_BIT:    asmgen_op_write_bit(s, p, regs);    break;
-    case SWS_UOP_WRITE_NIBBLE: asmgen_op_write_nibble(s, p, regs); break;
-    case SWS_UOP_WRITE_PACKED: {
-        /* Count number of elems. */
-        int n = 0;
-        LOOP_MASK(p, i)
-            n++;
+    if (p->uop == SWS_UOP_WRITE_PACKED)
+        jit_fixup_write_packed(s, p, regs);
 
-        if (!vecs_are_contiguous(regs->sl)) {
-            RasmOp sl[4] = { 0 };
-            a64reg_contiguous_vec(rs, n, sl);
-            LOOP_MASK(p, i) {
-                sl[i] = a64op_make_vec(a64op_vec_n(sl[i]), s->el_count, s->el_size);
-                i_mov(r, sl[i], regs->sl[i]);
-                a64reg_vec_free(rs, regs->sl[i]);
-                regs->sl[i] = sl[i];
-            }
-        }
-        if (s->use_vh && !vecs_are_contiguous(regs->sh)) {
-            RasmOp sh[4] = { 0 };
-            a64reg_contiguous_vec(rs, n, sh);
-            LOOP_MASK(p, i) {
-                sh[i] = a64op_make_vec(a64op_vec_n(sh[i]), s->el_count, s->el_size);
-                i_mov(r, sh[i], regs->sh[i]);
-                a64reg_vec_free(rs, regs->sh[i]);
-                regs->sh[i] = sh[i];
-            }
-        }
-
-        asmgen_op_write_packed(s, p, regs);
-        break;
-    }
-    case SWS_UOP_WRITE_PLANAR: asmgen_op_write_planar(s, p, regs); break;
-    case SWS_UOP_SWAP_BYTES:   asmgen_op_swap_bytes(s, p, regs);   break;
-    case SWS_UOP_UNPACK:       asmgen_op_unpack(s, p, regs);       break;
-    case SWS_UOP_PACK:         asmgen_op_pack(s, p, regs);         break;
-    case SWS_UOP_LSHIFT:       asmgen_op_lshift(s, p, regs);       break;
-    case SWS_UOP_RSHIFT:       asmgen_op_rshift(s, p, regs);       break;
-    case SWS_UOP_CLEAR:        asmgen_op_clear(s, p, regs);        break;
-    case SWS_UOP_TO_U8:        asmgen_op_convert(s, p, regs);      break;
-    case SWS_UOP_TO_U16:       asmgen_op_convert(s, p, regs);      break;
-    case SWS_UOP_TO_U32:       asmgen_op_convert(s, p, regs);      break;
-    case SWS_UOP_TO_F32:       asmgen_op_convert(s, p, regs);      break;
-    case SWS_UOP_EXPAND_PAIR:  asmgen_op_expand(s, p, regs);       break;
-    case SWS_UOP_EXPAND_QUAD:  asmgen_op_expand(s, p, regs);       break;
-    case SWS_UOP_MIN:          asmgen_op_min(s, p, regs);          break;
-    case SWS_UOP_MAX:          asmgen_op_max(s, p, regs);          break;
-    case SWS_UOP_SCALE:        asmgen_op_scale(s, p, regs);        break;
-    case SWS_UOP_LINEAR:       asmgen_op_linear(s, p, regs);       break;
-    case SWS_UOP_LINEAR_FMA:   asmgen_op_linear(s, p, regs);       break;
-    case SWS_UOP_DITHER:       asmgen_op_dither(s, p, regs);       break;
-    /* TODO implement SWS_UOP_SHUFFLE */
-    default:
-        break;
-    }
+    ff_sws_aarch64_asmgen_op(s, p, regs);
 
     return 0;
 }
-
-int ff_sws_jit_assemble_llvm(const char *asm_src, uint8_t **out_text, size_t *out_size);
 
 /*********************************************************************/
 /* Returns a RasmOp with the entire 128-bit sequence. */
@@ -767,7 +710,7 @@ static int aarch64_jit_process(SwsAArch64Context *s, const SwsOpList *ops, SwsCo
              av_get_pix_fmt_name(ops->dst.format));
     rasm_func_begin(r, func_name, true, false);
 
-    asmgen_process(s, imask, omask);
+    ff_sws_aarch64_asmgen_process(s, imask, omask);
 
     return 0;
 }

@@ -46,17 +46,11 @@ extern "C" {
 #include "libavutil/error.h"
 #include "libavutil/log.h"
 #include "../jit.h"
+#include "ops_jit_llvm.h"
 }
 
 using namespace llvm;
 
-/**
- * Assemble AArch64 GAS-syntax text into a read+exec memory buffer.
- *
- * On success, sets *out_text to executable memory of *out_size bytes
- * that must be released with ff_sws_jit_free(*out_text, *out_size) and returns 0.
- * Returns a negative AVERROR code on failure.
- */
 extern "C"
 int ff_sws_jit_assemble_llvm(const char *src, uint8_t **out_text, size_t *out_size)
 {
