@@ -598,11 +598,18 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         LOOP_MASK_VH(s, p, i) { dh[i] = i ? a64reg_vec(rs, -1) : sh[i]; }
         break;
     case SWS_UOP_PACK:
+#if 0
         dl[0] = prev->dl[0];
         if (s->use_vh)
             dh[0] = prev->dh[0];
         LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; if (i) { a64reg_vec_free(rs, sl[i]); } }
         LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; if (i) { a64reg_vec_free(rs, sh[i]); } }
+#else
+        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { if (i) { a64reg_vec_free(rs, sl[i]); } }
+        LOOP_MASK_VH(s, p, i) { if (i) { a64reg_vec_free(rs, sh[i]); } }
+#endif
         break;
     case SWS_UOP_LSHIFT:
         LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
