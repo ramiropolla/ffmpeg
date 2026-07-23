@@ -652,6 +652,8 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         }
         LOOP      (save_mask, i) { dl[i] = a64reg_vec(rs, -1); }
         LOOP_VH(s, save_mask, i) { dh[i] = a64reg_vec(rs, -1); }
+        if (p->uop == SWS_UOP_LINEAR)
+            alloc_scratch_vecs(rs, 4, &vt[8]);
         LOOP      (save_mask, i) { a64reg_vec_free(rs, sl[i]); }
         LOOP_VH(s, save_mask, i) { a64reg_vec_free(rs, sh[i]); }
         break;
