@@ -342,6 +342,14 @@ static void aarch64_jit_setup_swizzle(SwsAArch64Context *s, const SwsOp *op,
     SwsAArch64OpRegs *prev = &regs[-1];
 
 #if 0
+    printf("[%s][%d] %s() needed=", __FILE__, __LINE__, __func__);
+    for (int i = 0; i < 4; i++)
+        printf("%d", SWS_OP_NEEDED(op, i) ? 1 : 0);
+    printf(" in=[%d,%d,%d,%d]\n",
+           op->swizzle.in[0], op->swizzle.in[1], op->swizzle.in[2], op->swizzle.in[3]);
+#endif
+
+#if 0
 #if 1
     printf("[%s][%d] %s() ", __FILE__, __LINE__, __func__);
     for (int i = 0; i < 4; i++) {
@@ -408,6 +416,7 @@ static void aarch64_jit_setup_swizzle(SwsAArch64Context *s, const SwsOp *op,
                 if (s->use_vh)
                     for (int i = 0; i < 4; i++) { if (SWS_OP_NEEDED(op, i)) { sh[op->swizzle.in[i]] = prev->dh[op->swizzle.in[i]]; dh[i] = sh[op->swizzle.in[i]]; } }
             } else {
+printf("[%s][%d] %s() XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n", __FILE__, __LINE__, __func__);
 #if 0
                 cc.comment("swizzle (copy)");
                 ctx->new_step();

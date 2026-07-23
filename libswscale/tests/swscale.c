@@ -273,6 +273,25 @@ static int scale_new(AVFrame *dst, const AVFrame *src,
         }
 
         ret = checked_sws_scale_frame(sws_src_dst, dst, src);
+#if 0
+        if (getenv("SWS_TEST_DUMP_BYTES")) {
+            fprintf(stderr, "[dump] %s -> %s backends=%d\n",
+                    av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format),
+                    opts->backends);
+            for (int pl = 0; pl < 4 && dst->data[pl]; pl++) {
+                fprintf(stderr, "  plane[%d] (linesize=%d):", pl, dst->linesize[pl]);
+                for (int b = 0; b < 32; b++)
+                    fprintf(stderr, " %02x", dst->data[pl][b]);
+                fprintf(stderr, "\n");
+            }
+            if (getenv("SWS_TEST_DUMP_SRC")) {
+                fprintf(stderr, "  src plane[0] (linesize=%d):", src->linesize[0]);
+                for (int b = 0; b < 32; b++)
+                    fprintf(stderr, " %02x", src->data[0][b]);
+                fprintf(stderr, "\n");
+            }
+        }
+#endif
     }
     *out_time = av_gettime_relative() - time;
 
@@ -1157,6 +1176,26 @@ int main(int argc, char **argv)
     sws_dst_out->flags = SWS_BILINEAR | SWS_BITEXACT | SWS_ACCURATE_RND;
     sws_ref_src->backends = SWS_BACKEND_ALL;
     sws_dst_out->backends = SWS_BACKEND_ALL;
+#if 0
+    {
+        /* Debug aid: allow overriding the auxiliary (ref/out) conversion
+         * backends independently of -backends, to isolate whether a bug
+         * comes from the backend under test or from the always-on
+         * verification conversions. */
+        const char *aux = getenv("SWS_TEST_AUX_BACKENDS");
+        if (aux) {
+            int aux_backends = (int) strtol(aux, NULL, 0);
+            sws_ref_src->backends = aux_backends;
+            sws_dst_out->backends = aux_backends;
+        }
+        const char *aux_ref = getenv("SWS_TEST_REF_SRC_BACKENDS");
+        if (aux_ref)
+            sws_ref_src->backends = (int) strtol(aux_ref, NULL, 0);
+        const char *aux_out = getenv("SWS_TEST_DST_OUT_BACKENDS");
+        if (aux_out)
+            sws_dst_out->backends = (int) strtol(aux_out, NULL, 0);
+    }
+#endif
 
     ref = av_frame_alloc();
     if (!ref)
