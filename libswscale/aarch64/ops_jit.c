@@ -667,24 +667,27 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA: {
         /**
-         * The output mask (p->mask) need not cover every input column
-         * that the matrix actually reads (e.g. a 3-in/1-out matrix like
-         * RGB -> gray only needs output row 0, but still reads input
-         * columns 0, 1 and 2). Alias every read column, not just the
-         * ones that are also written outputs.
+         * p->mask only covers rows the matrix actually computes (see
+         * the SWS_UOP_LINEAR/LINEAR_FMA case in
+         * ff_sws_aarch64_ops_translate()) -- it excludes both columns
+         * that are read as inputs but never written (e.g. a 3-in/1-out
+         * matrix like RGB -> gray only needs output row 0, but still
+         * reads input columns 0, 1 and 2), and rows that are pure
+         * identity passthroughs the matrix doesn't touch at all (e.g. a
+         * channel reorder with only one real coefficient row). Both
+         * need their register propagated unchanged so later ops can
+         * still read them.
          */
-        SwsCompMask input_mask = 0;
-        LOOP_MASK(p, i) {
-            for (int j = 0; j < 4; j++) {
-                if (!(p->par.lin.zero & SWS_MASK(i, j)))
-                    input_mask |= SWS_COMP(j);
-            }
-        }
-
         LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
-        LOOP      (input_mask & ~p->mask, j) { sl[j] = prev->dl[j]; }
-        LOOP_VH(s, input_mask & ~p->mask, j) { sh[j] = prev->dh[j]; }
+        for (int i = 0; i < 4; i++) {
+            if (SWS_COMP_TEST(p->mask, i))
+                continue;
+            if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE)
+                dl[i] = sl[i] = prev->dl[i];
+            if (s->use_vh && rasm_op_type(prev->dh[i]) != RASM_OP_NONE)
+                dh[i] = sh[i] = prev->dh[i];
+        }
 
         SwsCompMask save_mask = 0;
         bool overwritten[4] = { false, false, false, false };
