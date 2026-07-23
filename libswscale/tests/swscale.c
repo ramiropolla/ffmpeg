@@ -260,7 +260,7 @@ static int scale_new(AVFrame *dst, const AVFrame *src,
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Failed to setup %s ---> %s\n",
                av_get_pix_fmt_name(src->format), av_get_pix_fmt_name(dst->format));
-        return ret;
+        return AVERROR(EINVAL);
     }
 
     int64_t time = av_gettime_relative();

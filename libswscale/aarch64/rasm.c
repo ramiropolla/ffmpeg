@@ -497,6 +497,29 @@ RasmOp a64reg_unclobbered_vec(AArch64RegState *rs)
     return a64op_vec(r);
 }
 
+static int find_contiguous(uint32_t avail, int n)
+{
+    uint32_t mask = (1u << n) - 1;
+    for (int i = 0; i < 32 - n; i++) {
+        if ((avail & (mask << i)) == (mask << i))
+            return i;
+    }
+    return -1;
+}
+
+void a64reg_contiguous_vec(AArch64RegState *rs, int n, RasmOp *ops)
+{
+    uint32_t avail = ~rs->vec_used;
+    av_assert0(avail);
+    /* Use callee-saved registers last. */
+    int r = find_contiguous(avail & ~AARCH64_VEC_CALLEE_SAVED, n);
+    if (r < 0)
+        r = find_contiguous(avail, n);
+    av_assert0(r >= 0);
+    for (int i = 0; i < n; i++)
+        ops[i] = a64reg_vec(rs, r + i);
+}
+
 void a64reg_emit(RasmContext *rctx, const AArch64RegState *rs,
                  RasmNode *prologue, RasmNode *epilogue)
 {
