@@ -41,8 +41,6 @@ static const char op_type_names[SWS_UOP_TYPE_NB][16] = {
     [SWS_UOP_WRITE_PACKED  ] = "write_packed",
     [SWS_UOP_WRITE_PLANAR  ] = "write_planar",
     [SWS_UOP_SWAP_BYTES    ] = "swap_bytes",
-    [SWS_UOP_PERMUTE       ] = "permute",
-    [SWS_UOP_COPY          ] = "copy",
     [SWS_UOP_UNPACK        ] = "unpack",
     [SWS_UOP_PACK          ] = "pack",
     [SWS_UOP_LSHIFT        ] = "lshift",
@@ -137,8 +135,6 @@ printf("[%s][%d] %s() %s\n", __FILE__, __LINE__, __func__, op_type_names[p->uop]
     }
     case SWS_UOP_WRITE_PLANAR: asmgen_op_write_planar(s, p, regs); break;
     case SWS_UOP_SWAP_BYTES:   asmgen_op_swap_bytes(s, p, regs);   break;
-    case SWS_UOP_PERMUTE:      asmgen_op_move(s, p, regs);         break;
-    case SWS_UOP_COPY:         asmgen_op_move(s, p, regs);         break;
     case SWS_UOP_UNPACK:       asmgen_op_unpack(s, p, regs);       break;
     case SWS_UOP_PACK:         asmgen_op_pack(s, p, regs);         break;
     case SWS_UOP_LSHIFT:       asmgen_op_lshift(s, p, regs);       break;
@@ -345,6 +341,7 @@ static void aarch64_jit_setup_swizzle(SwsAArch64Context *s, const SwsOp *op,
     RasmOp *vt = regs->vt;
     SwsAArch64OpRegs *prev = &regs[-1];
 
+#if 0
 #if 1
     printf("[%s][%d] %s() ", __FILE__, __LINE__, __func__);
     for (int i = 0; i < 4; i++) {
@@ -387,11 +384,48 @@ static void aarch64_jit_setup_swizzle(SwsAArch64Context *s, const SwsOp *op,
             }
         }
     }
+#else
+        {
+            bool reorder = true;
+            bool used[4] = { false, false, false, false };
+            for (int i = 0; i < 4; i++) {
+                if (!SWS_OP_NEEDED(op, i))
+                    continue;
+                if (used[op->swizzle.in[i]]) {
+                    reorder = false;
+                    break;
+                }
+                used[op->swizzle.in[i]] = true;
+            }
+
+            // LOOP_IN(i) save_vector(ctx, &vet, i);
+            if (reorder) {
+                printf("[%s][%d] %s()\n", __FILE__, __LINE__, __func__);
+                // cc.comment("swizzle (reorder)");
+                // LOOP_OUT(i) vl[i] = src_vl[op->swizzle.in[i]];
+                for (int i = 0; i < 4; i++) { if (SWS_OP_NEEDED(op, i)) { sl[op->swizzle.in[i]] = prev->dl[op->swizzle.in[i]]; dl[i] = sl[op->swizzle.in[i]]; } }
+                // LOOP_OUT(i) vh[i] = src_vh[op->swizzle.in[i]];
+                if (s->use_vh)
+                    for (int i = 0; i < 4; i++) { if (SWS_OP_NEEDED(op, i)) { sh[op->swizzle.in[i]] = prev->dh[op->swizzle.in[i]]; dh[i] = sh[op->swizzle.in[i]]; } }
+            } else {
+#if 0
+                cc.comment("swizzle (copy)");
+                ctx->new_step();
+                LOOP_OUT   (i) if (i == op->swizzle.in[i]) vl[i] = src_vl[op->swizzle.in[i]];
+                LOOP_OUT_VH(i) if (i == op->swizzle.in[i]) vh[i] = src_vh[op->swizzle.in[i]];
+                LOOP_OUT   (i) if (i != op->swizzle.in[i]) new_vector(ctx, &vet, i, use_vh ? 0xff : 0x0f);
+                LOOP_OUT   (i) if (i != op->swizzle.in[i]) cc.mov(vl[i].b16(), src_vl[op->swizzle.in[i]].b16());
+                LOOP_OUT_VH(i) if (i != op->swizzle.in[i]) cc.mov(vh[i].b16(), src_vh[op->swizzle.in[i]].b16());
+#endif
+            }
+        }
+#endif
 }
 
 static void aarch64_jit_op_swizzle(SwsAArch64Context *s, const SwsOp *op,
                                    SwsAArch64OpRegs *regs, int block_size)
 {
+#if 0
     RasmContext *r = s->rctx;
     AArch64RegState *rs = &s->regstate;
 
@@ -420,6 +454,7 @@ static void aarch64_jit_op_swizzle(SwsAArch64Context *s, const SwsOp *op,
             }
         }
     }
+#endif
 }
 
 static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -511,49 +546,6 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
         alloc_scratch_vecs(rs, 2, vt);
         break;
-    case SWS_UOP_PERMUTE:
-    case SWS_UOP_COPY: {
-#if 0
-        /* Compute src/dst masks. */
-        SwsCompMask src_mask = 0;
-        SwsCompMask dst_mask = 0;
-        for (int i = 0; i < p->par.move.num_moves; i++) {
-            if (p->par.move.src[i] != -1)
-                src_mask |= SWS_COMP(i);
-            if (p->par.move.dst[i] != -1)
-                dst_mask |= SWS_COMP(i);
-        }
-
-        LOOP(src_mask, i) {
-            sl[i] = prev->dl[i];
-            if (s->use_vh)
-                sh[i] = prev->dh[i];
-        }
-        LOOP(dst_mask, i) {
-            if (src_mask & SWS_COMP(i)) {
-            }
-        }
-
-
-        LOOP_MASK      (p, i) {
-            dl[i] = n ? prev->dl[i] : a64reg_vec(rs, -1);
-        } else {
-            dl[i] = sl[i] = prev->dl[i];
-        }
-        LOOP_MASK_VH(s, p, i) {
-            dh[i] = n ? prev->dh[i] : a64reg_vec(rs, -1);
-        } else {
-            dh[i] = sh[i] = prev->dh[i];
-        }
-#endif
-
-        for (int i = 0; i < 4; i++) {
-            dl[i] = sl[i] = prev->dl[i];
-            dh[i] = sh[i] = prev->dh[i];
-        }
-        alloc_scratch_vecs(rs, 2, vt);
-        break;
-    }
     case SWS_UOP_SWAP_BYTES:
         LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
