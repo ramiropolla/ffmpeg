@@ -622,12 +622,12 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     case SWS_UOP_CLEAR:
         /* TODO factor clear into setup whenever possible. */
         LOOP_MASK      (p, i) {
-            dl[i] = n ? prev->dl[i] : a64reg_vec(rs, -1);
+            dl[i] = (n && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) ? prev->dl[i] : a64reg_vec(rs, -1);
         } else {
             dl[i] = sl[i] = prev->dl[i];
         }
         LOOP_MASK_VH(s, p, i) {
-            dh[i] = n ? prev->dh[i] : a64reg_vec(rs, -1);
+            dh[i] = (n && rasm_op_type(prev->dh[i]) != RASM_OP_NONE) ? prev->dh[i] : a64reg_vec(rs, -1);
         } else {
             dh[i] = sh[i] = prev->dh[i];
         }
