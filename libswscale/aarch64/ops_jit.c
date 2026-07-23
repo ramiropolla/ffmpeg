@@ -23,6 +23,8 @@
 #include "../ops_chain.h"
 #include "../uops_list.h"
 
+#include "../jit.h"
+
 #include "rasm.h"
 #include "ops_impl.h"
 #include "ops.h"
@@ -716,6 +718,35 @@ static int aarch64_jit_process(SwsAArch64Context *s, const SwsOpList *ops, SwsCo
 }
 
 /*********************************************************************/
+typedef struct AArch64JitPriv {
+    /* Executable buffer returned by ff_sws_jit_assemble_llvm(), released
+     * via ff_sws_jit_free() when the compiled op is torn down. */
+    void   *code;
+    size_t  code_size;
+
+    /**
+     * Dither matrices (malloc'd by ff_sws_aarch64_setup()) whose raw
+     * pointer, unlike every other op's private data, is baked into the
+     * compiled code and dereferenced at runtime (see the SWS_UOP_DITHER
+     * case in aarch64_jit_setup()). They must therefore stay alive for
+     * as long as `code` does, instead of being freed once compilation
+     * finishes.
+     */
+    void   *dither_data[SWS_MAX_OPS];
+    int     num_dither_data;
+} AArch64JitPriv;
+
+static void aarch64_jit_free(void *priv)
+{
+    AArch64JitPriv *p = priv;
+
+    for (int i = 0; i < p->num_dither_data; i++)
+        av_free(p->dither_data[i]);
+    if (p->code)
+        ff_sws_jit_free(p->code, p->code_size);
+    av_free(p);
+}
+
 static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
                                SwsCompiledOp *out)
 {
@@ -728,33 +759,26 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     /* Use at most two full vregs during the widest precision section */
     int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
 
-    /* Only DITHER (Task 6) ever appends to this -- it exists solely to
-     * keep its runtime matrix pointer (malloc'd by ff_sws_aarch64_setup(),
-     * too large to inline as compile-time data) alive until the compiled
-     * function itself is torn down; mirrors ops.c's aarch64_compile(). */
-    SwsOpChain *chain = ff_sws_op_chain_alloc();
-    if (!chain)
+    AArch64JitPriv *priv = av_mallocz(sizeof(*priv));
+    if (!priv)
         return AVERROR(ENOMEM);
 
     *out = (SwsCompiledOp) {
-        .priv        = chain,
+        .priv        = priv,
         .slice_align = 1,
-        .free        = ff_sws_op_chain_free_cb,
+        .free        = aarch64_jit_free,
         .block_size  = block_size,
     };
 
-#if 1
     RasmContext *r = rasm_alloc();
     if (!r) {
-        ff_sws_op_chain_free(chain);
-        return AVERROR(ENOMEM); // TODO check
+        aarch64_jit_free(priv);
+        return AVERROR(ENOMEM);
     }
 
     SwsAArch64Context s = {
-        .rctx            = r,
-//        .dither_data_idx = -1,
+        .rctx = r,
     };
-#endif
 
     /* Translate all ops into implementation parameters and setup all
      * constant data. */
@@ -766,10 +790,10 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
             continue;
         ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params[i]);
         if (ret < 0)
-            goto error;
+            goto cleanup;
         ret = ff_sws_aarch64_setup(ops, block_size, i, &params[i], &res[i]);
         if (ret < 0)
-            goto error;
+            goto cleanup;
     }
 
     printf("%s -> %s\n",
@@ -792,18 +816,32 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         }
         ret = aarch64_jit_setup(&s, params, res, regs, i, imask, omask);
         if (ret < 0)
-            goto error;
+            goto cleanup;
+
+        /**
+         * aarch64_jit_setup() has just consumed res[i].priv (if any):
+         * LINEAR copies its coefficients inline as compile-time
+         * constants, so its buffer can be released now, while DITHER
+         * instead bakes the raw pointer into the compiled code (see
+         * AArch64JitPriv above), so ownership of that one must be
+         * transferred to priv instead of freed here.
+         */
+        if (res[i].free) {
+            if (params[i].uop == SWS_UOP_DITHER)
+                priv->dither_data[priv->num_dither_data++] = res[i].priv.ptr;
+            else
+                res[i].free(&res[i].priv);
+            res[i].free = NULL;
+        }
     }
 
     /* create process */
     ret = aarch64_jit_process(&s, ops, imask, omask);
     if (ret < 0)
-        goto error;
+        goto cleanup;
 
     for (int i = 0; i < ops->num_ops; i++)
         print_regs(&params[i], &regs[i]);
-
-    // TODO free res
 
     /* add all ops */
     rasm_set_current_node(r, s.loop);
@@ -814,7 +852,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         }
         ret = asmgen_op_jit(&s, &params[i], &regs[i]);
         if (ret < 0)
-            goto error;
+            goto cleanup;
     }
 
     if (s.data_count)
@@ -828,23 +866,30 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         fputs(bp.str, stdout);
     }
 
-    uint8_t *text;
-    size_t text_size;
+    uint8_t *text = NULL;
+    size_t text_size = 0;
     ret = ff_sws_jit_assemble_llvm(bp.str, &text, &text_size);
     if (ret < 0) {
         printf("[%s][%d] %s() ASSEMBLE ERROR ret %d\n", __FILE__, __LINE__, __func__, ret);
-        // fputs(bp.str, stdout);
+    } else {
+        priv->code      = text;
+        priv->code_size = text_size;
+        out->func       = (SwsOpFunc) text;
+        out->cpu_flags  = AV_CPU_FLAG_NEON;
     }
 
     av_bprint_finalize(&bp, NULL);
 
-    out->func      = (SwsOpFunc) text;
-    out->cpu_flags = AV_CPU_FLAG_NEON;
-
-error:
+cleanup:
+    /* The RasmContext is only needed during code generation above; it
+     * has no bearing on the compiled function's runtime and is always
+     * safe to release here, whether compilation succeeded or not. */
+    rasm_free(&s.rctx);
     if (ret < 0) {
-        rasm_free(&s.rctx);
-        ff_sws_op_chain_free(chain);
+        for (int i = 0; i < ops->num_ops; i++)
+            if (res[i].free)
+                res[i].free(&res[i].priv);
+        aarch64_jit_free(priv);
     }
     return ret;
 }
