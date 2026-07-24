@@ -529,13 +529,9 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
     SwsCompMask op_mask = recompute_op_mask(op);
     SwsCompMask identity = op_mask & ~p->mask;
 
-    /* THIS CHUNK */
     if (prev) {
-        LOOP_MASK(p, i) {
-            if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
-                identity |= SWS_COMP(i);
-            }
-        }
+        /* Reuse registers that have already been allocated. */
+        LOOP_MASK(p, i) { identity |= (rasm_op_type(prev->dl[i]) != RASM_OP_NONE) ? SWS_COMP(i) : 0; }
         setup_mask_passthrough(s, identity, prev, regs);
     }
 
@@ -608,6 +604,10 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     /* Start passing through all components. */
     setup_mask_passthrough(s, SWS_COMP_ALL, prev, regs);
 
+    /**
+     * Relocate sources that would be clobbered while still being used.
+     * Also collect coefficients.
+     */
     SwsCompMask save_mask = 0;
     bool overwritten[4] = { false, false, false, false };
     const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
