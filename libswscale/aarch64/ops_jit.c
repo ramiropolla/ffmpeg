@@ -32,62 +32,57 @@
 #include "ops_jit_llvm.h"
 
 /*********************************************************************/
+/**
+ * Structured read and write instructions (ld2/ld3/ld4/st2/st3/st4),
+ * used by the packed read and write operations, require contiguous
+ * vectors. The read operation already has contiguous vectors because
+ * it is the first operation to be emitted, but there is no guarantee
+ * that the write operation will have contiguous vectors. We fix this
+ * here by ensuring the vectors are contiguous, allocating and moving
+ * to new registers if necessary.
+ * TODO fix this by implementing proper register tracking and automatic
+ *      register allocation.
+ */
+
+static void jit_make_contiguous_vecs(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                     RasmOp *sx)
+{
+    bool contiguous = true;
+    int n = 0;
+    LOOP_MASK(p, i) {
+        if (i && (a64op_vec_n(sx[i]) & 0x1f) != ((a64op_vec_n(sx[i - 1]) + 1) & 0x1f))
+            contiguous = false;
+        n++;
+    }
+    if (contiguous)
+        return;
+
+    RasmContext *r = s->rctx;
+    AArch64RegState *rs = &s->regstate;
+    RasmOp new_sx[4] = { 0 };
+    a64reg_contiguous_vec(rs, n, new_sx);
+    LOOP_MASK(p, i) {
+        new_sx[i] = a64op_make_vec(a64op_vec_n(new_sx[i]), s->el_count, s->el_size);
+        i_mov(r, new_sx[i], sx[i]);
+        a64reg_vec_free(rs, sx[i]);
+        sx[i] = new_sx[i];
+    }
+}
+
+static void jit_write_packed_fixup(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                   SwsAArch64OpRegs *regs)
+{
+    jit_make_contiguous_vecs    (s, p, regs->sl);
+    if (s->use_vh)
+        jit_make_contiguous_vecs(s, p, regs->sh);
+}
+
+/*********************************************************************/
 static const char *const op_type_names[SWS_UOP_TYPE_NB] = {
 #define UOP_NAME(OP, ABBR) [OP] = ABBR,
     UOPS_LIST(UOP_NAME)
 #undef UOP_NAME
 };
-
-static bool vecs_are_contiguous(RasmOp *ops)
-{
-    for (int i = 0; i < 4; i++) {
-        if (rasm_op_type(ops[i]) == RASM_OP_NONE)
-            break;
-        if (i && (a64op_vec_n(ops[i]) & 0x1f) != ((a64op_vec_n(ops[i - 1]) + 1) & 0x1f))
-            return false;
-    }
-    return true;
-}
-
-/**
- * The JIT backend allocates I/O vector registers on demand, so the
- * source registers feeding SWS_UOP_WRITE_PACKED are not guaranteed to
- * be contiguous, unlike the fixed register assignment used by the CPS
- * (ops_static.c) backend. If needed, copy them into a contiguous run
- * of registers before emitting the write.
- */
-static void jit_fixup_write_packed(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                                   SwsAArch64OpRegs *regs)
-{
-    RasmContext *r = s->rctx;
-    AArch64RegState *rs = &s->regstate;
-
-    /* Count number of elems. */
-    int n = 0;
-    LOOP_MASK(p, i)
-        n++;
-
-    if (!vecs_are_contiguous(regs->sl)) {
-        RasmOp sl[4] = { 0 };
-        a64reg_contiguous_vec(rs, n, sl);
-        LOOP_MASK(p, i) {
-            sl[i] = a64op_make_vec(a64op_vec_n(sl[i]), s->el_count, s->el_size);
-            i_mov(r, sl[i], regs->sl[i]);
-            a64reg_vec_free(rs, regs->sl[i]);
-            regs->sl[i] = sl[i];
-        }
-    }
-    if (s->use_vh && !vecs_are_contiguous(regs->sh)) {
-        RasmOp sh[4] = { 0 };
-        a64reg_contiguous_vec(rs, n, sh);
-        LOOP_MASK(p, i) {
-            sh[i] = a64op_make_vec(a64op_vec_n(sh[i]), s->el_count, s->el_size);
-            i_mov(r, sh[i], regs->sh[i]);
-            a64reg_vec_free(rs, regs->sh[i]);
-            regs->sh[i] = sh[i];
-        }
-    }
-}
 
 static int asmgen_op_jit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                          SwsAArch64OpRegs *regs)
@@ -99,7 +94,7 @@ static int asmgen_op_jit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     rasm_add_commentf(r, (char[128]){0}, 128, "=> %s", op_type_names[p->uop]);
 
     if (p->uop == SWS_UOP_WRITE_PACKED)
-        jit_fixup_write_packed(s, p, regs);
+        jit_write_packed_fixup(s, p, regs);
 
     ff_sws_aarch64_asmgen_op(s, p, regs);
 
