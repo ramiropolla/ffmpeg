@@ -515,10 +515,7 @@ static void asmgen_setup_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams
                               SwsImplResult *res)
 {
     setup_mask_passthrough(s, p->mask, prev, regs);
-
-    AArch64RegState *rs = &s->regstate;
-    LOOP_MASK      (p, i) { if (i) { a64reg_vec_free(rs, regs->sl[i]); } }
-    LOOP_MASK_VH(s, p, i) { if (i) { a64reg_vec_free(rs, regs->sh[i]); } }
+    setup_mask_free(s, p->mask & ~1u, regs);
 }
 
 static void asmgen_setup_shift(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
