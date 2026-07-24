@@ -627,7 +627,9 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
      * still read them.
      */
     setup_mask_passthrough(s, p->mask, prev, regs);
-    LOOP_MASK(p, i) {
+    for (int i = 0; i < 4; i++) {
+        if (SWS_COMP_TEST(p->mask, i))
+            continue;
         if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE)
             regs->dl[i] = regs->sl[i] = prev->dl[i];
         if (s->use_vh && rasm_op_type(prev->dh[i]) != RASM_OP_NONE)
@@ -647,8 +649,7 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
             overwritten[i] = true;
         }
     }
-    LOOP      (save_mask, i) { regs->dl[i] = a64reg_vec(rs, -1); }
-    LOOP_VH(s, save_mask, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+    setup_mask_read(s, save_mask, regs);
     if (p->uop == SWS_UOP_LINEAR)
         jit_alloc_vt(rs, 4, &regs->vt[8]);
     LOOP      (save_mask, i) { a64reg_vec_free(rs, regs->sl[i]); }
