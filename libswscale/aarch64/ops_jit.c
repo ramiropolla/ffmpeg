@@ -540,9 +540,9 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
                 identity |= SWS_COMP(i);
             }
         }
+        setup_mask_passthrough(s, identity, prev, regs);
     }
 
-    setup_mask_passthrough(s, identity, prev, regs);
     setup_mask_alloc(s, p->mask & ~identity, regs);
 
     /* constants */
