@@ -390,8 +390,7 @@ static uint32_t get_priv_val(const SwsOpPriv *priv, SwsPixelType type, int i)
 
 /* Set up register usage for operation. */
 static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                             SwsImplResult *res, SwsAArch64OpRegs *regs, int n,
-                             SwsCompMask imask, SwsCompMask omask)
+                             SwsImplResult *res, SwsAArch64OpRegs *regs, int n)
 {
     AArch64RegState *rs = &s->regstate;
 
@@ -416,7 +415,7 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     RasmOp *dl = regs->dl;
     RasmOp *dh = regs->dh;
     RasmOp *vt = regs->vt;
-    SwsAArch64OpRegs *prev = n ? &regs[-1] : regs;
+    SwsAArch64OpRegs *prev = n ? &regs[-1] : NULL;
     switch (p->uop) {
     case SWS_UOP_READ_PLANAR:
         LOOP_MASK      (p, i) { dl[i] = a64reg_vec(rs, -1); }
@@ -530,13 +529,19 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     case SWS_UOP_CLEAR:
         /* TODO factor clear into setup whenever possible. */
         LOOP_MASK      (p, i) {
-            dl[i] = (n && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) ? prev->dl[i] : a64reg_vec(rs, -1);
-        } else {
+            if (prev && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
+                dl[i] = prev->dl[i];
+            } else {
+                dl[i] = a64reg_vec(rs, -1);
+            }
+        } else if (prev) {
+            /* pass-through */
             dl[i] = sl[i] = prev->dl[i];
         }
         LOOP_MASK_VH(s, p, i) {
-            dh[i] = (n && rasm_op_type(prev->dh[i]) != RASM_OP_NONE) ? prev->dh[i] : a64reg_vec(rs, -1);
-        } else {
+            dh[i] = (prev && rasm_op_type(prev->dh[i]) != RASM_OP_NONE) ? prev->dh[i] : a64reg_vec(rs, -1);
+        } else if (prev) {
+            /* pass-through */
             dh[i] = sh[i] = prev->dh[i];
         }
         break;
@@ -807,7 +812,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
             aarch64_jit_setup_swizzle(&s, &ops->ops[i], &regs[i], block_size);
             continue;
         }
-        ret = aarch64_jit_setup(&s, params, res, regs, i, imask, omask);
+        ret = aarch64_jit_setup(&s, params, res, regs, i);
         if (ret < 0)
             goto cleanup;
 
