@@ -22,14 +22,13 @@
 
 #include "../ops_chain.h"
 #include "../uops_list.h"
-
 #include "../jit.h"
 
-#include "rasm.h"
-#include "ops_impl.h"
 #include "ops.h"
 #include "ops_asmgen.h"
+#include "ops_impl.h"
 #include "ops_jit_llvm.h"
+#include "rasm.h"
 
 /*********************************************************************/
 /**
@@ -91,21 +90,25 @@ static int asmgen_op_jit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 
     ff_sws_aarch64_asmgen_setup_vecs(s, p, regs);
 
-    rasm_add_commentf(r, (char[128]){0}, 128, "=> %s", op_type_names[p->uop]);
+    rasm_add_commentf(r, (char[32]){0}, 32, "%s() {", op_type_names[p->uop]);
 
     if (p->uop == SWS_UOP_WRITE_PACKED)
         jit_write_packed_fixup(s, p, regs);
 
     ff_sws_aarch64_asmgen_op(s, p, regs);
 
+    rasm_add_comment(r, "}");
+
     return 0;
 }
 
 /*********************************************************************/
-/* Returns a RasmOp with the entire 128-bit sequence. */
+/* Constant data */
+
+/* Returns a vector operand that holds the entire 128-bit sequence. */
 static RasmOp jit_push_v128(SwsAArch64Context *s, void *val)
 {
-    /* Check if we already have it. */
+    /* Check whether we already have it. */
     for (int i = 0; i < s->data_count; i++) {
         if (rasm_op_type(s->data[i].op) != AARCH64_OP_VEC)
             continue;
@@ -123,18 +126,7 @@ static RasmOp jit_push_v128(SwsAArch64Context *s, void *val)
     return s->data[idx].op;
 }
 
-/* Returns a RasmOp with the u64. */
-static RasmOp jit_push_u64(SwsAArch64Context *s, uint64_t val)
-{
-    /* Add it to our data and create a new vector. */
-    int idx = s->data_count++;
-    s->data[idx].vec.u64[0] = val;
-    s->data[idx].op     = a64reg_unclobbered_gpx(&s->regstate);
-    s->data[idx].op_idx = 2; // TODO
-    return s->data[idx].op;
-}
-
-/* Returns a RasmOp with the value broadcast to all elements. */
+/* Returns a vector operand that holds the 32-bit value broadcast to all elements. */
 static RasmOp jit_push_vimm(SwsAArch64Context *s, SwsPixelType type, uint32_t val)
 {
     /* Expand to u32. */
@@ -150,9 +142,10 @@ static RasmOp jit_push_vimm(SwsAArch64Context *s, SwsPixelType type, uint32_t va
     return jit_push_v128(s, &vec);
 }
 
+/* Returns a vector by-element operand that holds the 32-bit value. */
 static RasmOp jit_push_elem(SwsAArch64Context *s, SwsPixelType type, uint32_t val)
 {
-    /* Check if we already have it in data. */
+    /* Check whether we already have it in data. */
     for (int i = 0; i < s->data_count; i++) {
         if (rasm_op_type(s->data[i].op) != AARCH64_OP_VEC)
             continue;
@@ -162,7 +155,7 @@ static RasmOp jit_push_elem(SwsAArch64Context *s, SwsPixelType type, uint32_t va
         }
     }
 
-    /* Look for a hole. */
+    /* Check whether there's space left in a previously allocated vector. */
     for (int i = 0; i < s->data_count; i++) {
         if (rasm_op_type(s->data[i].op) != AARCH64_OP_VEC)
             continue;
@@ -182,7 +175,19 @@ static RasmOp jit_push_elem(SwsAArch64Context *s, SwsPixelType type, uint32_t va
     return a64op_elem(v_4s(s->data[idx].op), 0);
 }
 
-static void load_constants(SwsAArch64Context *s)
+/* Returns a GPR that holds the 64-bit value. */
+static RasmOp jit_push_u64(SwsAArch64Context *s, uint64_t val)
+{
+    /* Add it to our data and create a new GPR. */
+    int idx = s->data_count++;
+    s->data[idx].vec.u64[0] = val;
+    s->data[idx].op     = a64reg_unclobbered_gpx(&s->regstate);
+    s->data[idx].op_idx = 2;
+    return s->data[idx].op;
+}
+
+/* Emit const data and load it into registers at setup time. */
+static void jit_load_constants(SwsAArch64Context *s)
 {
     RasmContext *r = s->rctx;
     AArch64RegState *rs = &s->regstate;
@@ -206,59 +211,37 @@ static void load_constants(SwsAArch64Context *s)
 }
 
 /*********************************************************************/
-static const char *print_one_reg(char buf[16], RasmOp op)
+/* Debug logging. */
+
+static const char *print_reg(char buf[8], RasmOp op)
 {
     switch (rasm_op_type(op)) {
     case AARCH64_OP_GPR:
-        snprintf(buf, 16, "x%d", a64op_gpr_n(op));
+        snprintf(buf, 8, "x%-2d", a64op_gpr_n(op));
         break;
     case AARCH64_OP_VEC:
-        snprintf(buf, 16, "v%d", a64op_vec_n(op));
+        snprintf(buf, 8, "v%-2d", a64op_vec_n(op));
         break;
     default:
-        snprintf(buf, 16, "__");
+        snprintf(buf, 8, "___");
         break;
     }
     return buf;
 }
+#define PRINT_REG(op) print_reg((char[8]){0}, op)
 
-static void print_regs(const SwsAArch64OpImplParams *p, const SwsAArch64OpRegs *regs)
+static void print_io_regs(SwsContext *ctx, const SwsAArch64OpImplParams *p, const SwsAArch64OpRegs *regs)
 {
-    printf("[%-16s] { %s, %s, %s, %s } { %s, %s, %s, %s } -> { %s, %s, %s, %s } { %s, %s, %s, %s }\n",
+    av_log(ctx, AV_LOG_TRACE, "[%-18s] { %s %s %s %s } { %s %s %s %s } -> { %s %s %s %s } { %s %s %s %s }\n",
            op_type_names[p->uop],
-           print_one_reg((char[16]){0}, regs->sl[0]),
-           print_one_reg((char[16]){0}, regs->sl[1]),
-           print_one_reg((char[16]){0}, regs->sl[2]),
-           print_one_reg((char[16]){0}, regs->sl[3]),
-           print_one_reg((char[16]){0}, regs->sh[0]),
-           print_one_reg((char[16]){0}, regs->sh[1]),
-           print_one_reg((char[16]){0}, regs->sh[2]),
-           print_one_reg((char[16]){0}, regs->sh[3]),
-           print_one_reg((char[16]){0}, regs->dl[0]),
-           print_one_reg((char[16]){0}, regs->dl[1]),
-           print_one_reg((char[16]){0}, regs->dl[2]),
-           print_one_reg((char[16]){0}, regs->dl[3]),
-           print_one_reg((char[16]){0}, regs->dh[0]),
-           print_one_reg((char[16]){0}, regs->dh[1]),
-           print_one_reg((char[16]){0}, regs->dh[2]),
-           print_one_reg((char[16]){0}, regs->dh[3]));
+           PRINT_REG(regs->sl[0]), PRINT_REG(regs->sl[1]), PRINT_REG(regs->sl[2]), PRINT_REG(regs->sl[3]),
+           PRINT_REG(regs->sh[0]), PRINT_REG(regs->sh[1]), PRINT_REG(regs->sh[2]), PRINT_REG(regs->sh[3]),
+           PRINT_REG(regs->dl[0]), PRINT_REG(regs->dl[1]), PRINT_REG(regs->dl[2]), PRINT_REG(regs->dl[3]),
+           PRINT_REG(regs->dh[0]), PRINT_REG(regs->dh[1]), PRINT_REG(regs->dh[2]), PRINT_REG(regs->dh[3]));
 }
 
-static void alloc_scratch_vecs(AArch64RegState *rs, int count, RasmOp *out)
-{
-    for (int i = 0; i < count; i++)
-        out[i] = a64reg_vec(rs, -1);
-    for (int i = 0; i < count; i++)
-        a64reg_vec_free(rs, out[i]);
-}
-
-static uint32_t get_priv(const SwsOpPriv *priv, SwsPixelType type, int i)
-{
-    return (type == SWS_PIXEL_U8)  ? priv->u8[i]
-         : (type == SWS_PIXEL_U16) ? priv->u16[i]
-         :                           priv->u32[i];
-}
-
+/*********************************************************************/
+/* TODO */
 static void aarch64_jit_setup_swizzle(SwsAArch64Context *s, const SwsOp *op,
                                       SwsAArch64OpRegs *regs, int block_size)
 {
@@ -374,16 +357,41 @@ static void aarch64_jit_op_swizzle(SwsAArch64Context *s, const SwsOp *op,
     }
 }
 
+/*********************************************************************/
+/**
+ * Allocate registers and immediately free them.
+ * NOTE: this should be done as the last step in register allocation,
+ *       to prevent these temporary registers from being reused.
+ */
+static void jit_alloc_vt(AArch64RegState *rs, int n, RasmOp *out)
+{
+    for (int i = 0; i < n; i++)
+        out[i] = a64reg_vec(rs, -1);
+    for (int i = 0; i < n; i++)
+        a64reg_vec_free(rs, out[i]);
+}
+
+/* Get value from SwsOpPriv based on the pixel type. */
+static uint32_t get_priv_val(const SwsOpPriv *priv, SwsPixelType type, int i)
+{
+    return (type == SWS_PIXEL_U8)  ? priv->u8[i]
+         : (type == SWS_PIXEL_U16) ? priv->u16[i]
+         :                           priv->u32[i];
+}
+
+/* Set up register usage for operation. */
 static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsImplResult *res, SwsAArch64OpRegs *regs, int n,
                              SwsCompMask imask, SwsCompMask omask)
 {
     AArch64RegState *rs = &s->regstate;
 
+    /* TODO yikes */
     p += n;
     res += n;
     regs += n;
 
+    /* TODO repeated. */
     size_t el_size = ff_sws_pixel_type_size(p->type);
     size_t total_size = p->block_size * el_size;
 
@@ -437,12 +445,12 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     case SWS_UOP_READ_NIBBLE:
         LOOP_MASK      (p, i) { dl[i] = a64reg_vec(rs, -1); }
         LOOP_MASK_VH(s, p, i) { dh[i] = a64reg_vec(rs, -1); }
-        alloc_scratch_vecs(rs, 1, vt);
+        jit_alloc_vt(rs, 1, vt);
         break;
     case SWS_UOP_READ_BIT:
         LOOP_MASK      (p, i) { dl[i] = a64reg_vec(rs, -1); }
         LOOP_MASK_VH(s, p, i) { dh[i] = a64reg_vec(rs, -1); }
-        alloc_scratch_vecs(rs, 1, vt);
+        jit_alloc_vt(rs, 1, vt);
         break;
     case SWS_UOP_WRITE_PLANAR:
         LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
@@ -456,12 +464,12 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     case SWS_UOP_WRITE_NIBBLE:
         LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
-        alloc_scratch_vecs(rs, 2, vt);
+        jit_alloc_vt(rs, 2, vt);
         break;
     case SWS_UOP_WRITE_BIT:
         LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
-        alloc_scratch_vecs(rs, 2, vt);
+        jit_alloc_vt(rs, 2, vt);
         break;
     case SWS_UOP_SWAP_BYTES:
         LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
@@ -582,7 +590,7 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         LOOP      (save_mask, i) { dl[i] = a64reg_vec(rs, -1); }
         LOOP_VH(s, save_mask, i) { dh[i] = a64reg_vec(rs, -1); }
         if (p->uop == SWS_UOP_LINEAR)
-            alloc_scratch_vecs(rs, 4, &vt[8]);
+            jit_alloc_vt(rs, 4, &vt[8]);
         LOOP      (save_mask, i) { a64reg_vec_free(rs, sl[i]); }
         LOOP_VH(s, save_mask, i) { a64reg_vec_free(rs, sh[i]); }
         break;
@@ -606,7 +614,7 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
                     dh[i] = sh[i] = prev->dh[i];
             }
         }
-        alloc_scratch_vecs(rs, 2, vt);
+        jit_alloc_vt(rs, 2, vt);
         break;
     }
 
@@ -634,12 +642,12 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
         LOOP_MASK(p, i) {
-            uint32_t val = get_priv(&res->priv, p->type, i);
+            uint32_t val = get_priv_val(&res->priv, p->type, i);
             regs->vk[i] = jit_push_vimm(s, p->type, val);
         }
         break;
     case SWS_UOP_SCALE: {
-        uint32_t val = get_priv(&res->priv, p->type, 0);
+        uint32_t val = get_priv_val(&res->priv, p->type, 0);
         regs->vk[0] = jit_push_vimm(s, p->type, val);
         break;
     }
@@ -669,24 +677,9 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 }
 
 /*********************************************************************/
-static void asmgen_common_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
-{
-    AArch64RegState *rs = &s->regstate;
-
-    /* Loop iterator variables. */
-    s->bx        = a64reg_gpw(rs, 6);
-    s->y         = a64reg_gpw(rs, 3);  /* Reused from SwsOpFunc.y_start argument. */
-
-    /* Scratch registers. */
-    s->tmp0      = a64reg_gpx(rs, 16); /* IP0 */
-    s->tmp1      = a64reg_gpx(rs, 17); /* IP1 */
-}
-
 static void asmgen_process_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
     AArch64RegState *rs = &s->regstate;
-
-    asmgen_common_frame(s, imask, omask);
 
     /* SwsOpFunc arguments. */
     s->exec      = a64reg_argx(rs, 0); // const SwsOpExec *exec
@@ -695,6 +688,14 @@ static void asmgen_process_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCom
     s->y_start   = a64reg_argw(rs, 3); // int y_start
     s->bx_end    = a64reg_argw(rs, 4); // int bx_end
     s->y_end     = a64reg_argw(rs, 5); // int y_end
+
+    /* Loop iterator variables. */
+    s->bx        = a64reg_gpw(rs, 6);
+    s->y         = a64reg_gpw(rs, 3);  /* Reused from SwsOpFunc.y_start argument. */
+
+    /* Scratch registers. */
+    s->tmp0      = a64reg_gpx(rs, 16); /* IP0 */
+    s->tmp1      = a64reg_gpx(rs, 17); /* IP1 */
 }
 
 static int aarch64_jit_process(SwsAArch64Context *s, const SwsOpList *ops, SwsCompMask imask, SwsCompMask omask)
@@ -835,8 +836,12 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto cleanup;
 
-    for (int i = 0; i < ops->num_ops; i++)
-        print_regs(&params[i], &regs[i]);
+    /* Debug print input/output vectors. */
+    if (av_log_get_level() >= AV_LOG_TRACE) {
+        av_log(ctx, AV_LOG_TRACE, "JIT I/O register allocation:\n");
+        for (int i = 0; i < ops->num_ops; i++)
+            print_io_regs(ctx, &params[i], &regs[i]);
+    }
 
     /* add all ops */
     rasm_set_current_node(r, s.loop);
@@ -851,7 +856,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     }
 
     if (s.data_count)
-        load_constants(&s);
+        jit_load_constants(&s);
 
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
