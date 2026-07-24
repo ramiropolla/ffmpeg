@@ -332,16 +332,11 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
     s->el_count = s->vec_size / el_size;
 
     /* I/O */
-    RasmOp *sl = regs->sl;
-    RasmOp *sh = regs->sh;
-    RasmOp *dl = regs->dl;
-    RasmOp *dh = regs->dh;
-    RasmOp *vt = regs->vt;
-    SwsAArch64OpRegs *prev = n ? &regs[-1] : NULL;
+    const SwsAArch64OpRegs *prev = n ? &regs[-1] : NULL;
     switch (p->uop) {
     case SWS_UOP_READ_PLANAR:
-        LOOP_MASK      (p, i) { dl[i] = a64reg_vec(rs, -1); }
-        LOOP_MASK_VH(s, p, i) { dh[i] = a64reg_vec(rs, -1); }
+        LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
         break;
     case SWS_UOP_READ_PACKED: {
         /* Count number of elems. */
@@ -349,44 +344,44 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         LOOP_MASK(p, i)
             n++;
 
-        a64reg_contiguous_vec    (rs, n, dl);
+        a64reg_contiguous_vec    (rs, n, regs->dl);
         if (s->use_vh)
-            a64reg_contiguous_vec(rs, n, dh);
+            a64reg_contiguous_vec(rs, n, regs->dh);
         break;
     }
     case SWS_UOP_READ_NIBBLE:
-        LOOP_MASK      (p, i) { dl[i] = a64reg_vec(rs, -1); }
-        LOOP_MASK_VH(s, p, i) { dh[i] = a64reg_vec(rs, -1); }
-        jit_alloc_vt(rs, 1, vt);
+        LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+        jit_alloc_vt(rs, 1, regs->vt);
         /* constants */
         regs->vk[0] = jit_push_vimm(s, SWS_PIXEL_U8, 0x0f);
         break;
     case SWS_UOP_READ_BIT:
-        LOOP_MASK      (p, i) { dl[i] = a64reg_vec(rs, -1); }
-        LOOP_MASK_VH(s, p, i) { dh[i] = a64reg_vec(rs, -1); }
-        jit_alloc_vt(rs, 1, vt);
+        LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+        jit_alloc_vt(rs, 1, regs->vt);
         /* constants */
         regs->vk[0] = jit_push_v128(s, res->priv.data);
         regs->vk[1] = jit_push_vimm(s, SWS_PIXEL_U8, 1);
         break;
     case SWS_UOP_WRITE_PLANAR:
-        LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
         break;
     case SWS_UOP_WRITE_PACKED:
         /* TODO See jit_write_packed_fixup(). */
-        LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
         break;
     case SWS_UOP_WRITE_NIBBLE:
-        LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
-        jit_alloc_vt(rs, 2, vt);
+        LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+        jit_alloc_vt(rs, 2, regs->vt);
         break;
     case SWS_UOP_WRITE_BIT:
-        LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
-        jit_alloc_vt(rs, 2, vt);
+        LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+        jit_alloc_vt(rs, 2, regs->vt);
         /* constants */
         regs->vk[0] = jit_push_v128(s, res->priv.data);
         break;
@@ -411,33 +406,33 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         }
         /* Identity passthrough. */
         LOOP(identity, i) {
-            dl[i] = sl[i] = prev->dl[i];
+            regs->dl[i] = regs->sl[i] = prev->dl[i];
             if (s->use_vh)
-                dh[i] = sh[i] = prev->dh[i];
+                regs->dh[i] = regs->sh[i] = prev->dh[i];
         }
         /* Perform simple renames. */
         for (int i = 0; i < rename.num_moves; i++) {
             int src = rename.src[i];
             int dst = rename.dst[i];
-            dl[dst] = sl[src] = prev->dl[src];
+            regs->dl[dst] = regs->sl[src] = prev->dl[src];
             if (s->use_vh)
-                dh[dst] = sh[src] = prev->dh[src];
+                regs->dh[dst] = regs->sh[src] = prev->dh[src];
         }
         /* Replace moves list with remaining copies. */
         p->par.move = copy;
         p->mask = 0;
         for (int i = 0; i < copy.num_moves; i++) {
             int dst = copy.dst[i];
-            dl[dst] = a64reg_vec(rs, -1);
+            regs->dl[dst] = a64reg_vec(rs, -1);
             if (s->use_vh)
-                dh[dst] = a64reg_vec(rs, -1);
+                regs->dh[dst] = a64reg_vec(rs, -1);
             p->mask |= SWS_COMP(dst);
         }
         break;
     }
     case SWS_UOP_SWAP_BYTES:
-        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
         break;
     case SWS_UOP_EXPAND_PAIR:
     case SWS_UOP_EXPAND_QUAD:
@@ -456,20 +451,20 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         bool src_use_vh = (p->block_size * src_el_size) > 16;
         bool dst_use_vh = (p->block_size * dst_el_size) > 16;
         LOOP_MASK      (p, i) {
-            dl[i] = sl[i] = prev->dl[i];
+            regs->dl[i] = regs->sl[i] = prev->dl[i];
             if (src_use_vh) {
-                dh[i] = sh[i] = prev->dh[i];
+                regs->dh[i] = regs->sh[i] = prev->dh[i];
                 if (!dst_use_vh)
-                    a64reg_vec_free(rs, sh[i]);
+                    a64reg_vec_free(rs, regs->sh[i]);
             } else {
-                dh[i] = a64reg_vec(rs, -1);
+                regs->dh[i] = a64reg_vec(rs, -1);
             }
         }
         break;
     }
     case SWS_UOP_SCALE: {
-        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
         /* constants */
         uint32_t val = get_priv_val(&res->priv, p->type, 0);
         regs->vk[0] = jit_push_vimm(s, p->type, val);
@@ -477,8 +472,8 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
     }
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
-        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
         /* constants */
         LOOP_MASK      (p, i) {
             uint32_t val = get_priv_val(&res->priv, p->type, i);
@@ -486,11 +481,11 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         }
         break;
     case SWS_UOP_UNPACK:
-        sl[0] = prev->dl[0];
+        regs->sl[0] = prev->dl[0];
         if (s->use_vh)
-            sh[0] = prev->dh[0];
-        LOOP_MASK      (p, i) { dl[i] = i ? a64reg_vec(rs, -1) : sl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = i ? a64reg_vec(rs, -1) : sh[i]; }
+            regs->sh[0] = prev->dh[0];
+        LOOP_MASK      (p, i) { regs->dl[i] = i ? a64reg_vec(rs, -1) : regs->sl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = i ? a64reg_vec(rs, -1) : regs->sh[i]; }
         /* constants */
         LOOP_MASK      (p, i) {
             uint32_t val = (1u << p->par.pack.pattern[i]) - 1;
@@ -498,40 +493,40 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         }
         break;
     case SWS_UOP_PACK:
-        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
-        LOOP_MASK      (p, i) { if (i) { a64reg_vec_free(rs, sl[i]); } }
-        LOOP_MASK_VH(s, p, i) { if (i) { a64reg_vec_free(rs, sh[i]); } }
+        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { if (i) { a64reg_vec_free(rs, regs->sl[i]); } }
+        LOOP_MASK_VH(s, p, i) { if (i) { a64reg_vec_free(rs, regs->sh[i]); } }
         break;
     case SWS_UOP_LSHIFT:
-        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
         break;
     case SWS_UOP_RSHIFT:
-        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
         break;
     case SWS_UOP_CLEAR:
         /* TODO factor clear into setup whenever possible. */
         LOOP(op_mask, i) {
             if (p->mask & SWS_COMP(i)) {
                 if (prev && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
-                    dl[i] = prev->dl[i];
+                    regs->dl[i] = prev->dl[i];
                 } else {
-                    dl[i] = a64reg_vec(rs, -1);
+                    regs->dl[i] = a64reg_vec(rs, -1);
                 }
                 if (s->use_vh) {
                     if (prev && rasm_op_type(prev->dh[i]) != RASM_OP_NONE) {
-                        dh[i] = prev->dh[i];
+                        regs->dh[i] = prev->dh[i];
                     } else {
-                        dh[i] = a64reg_vec(rs, -1);
+                        regs->dh[i] = a64reg_vec(rs, -1);
                     }
                 }
             } else {
                 /* pass-through */
-                dl[i] = sl[i] = prev->dl[i];
+                regs->dl[i] = regs->sl[i] = prev->dl[i];
                 if (s->use_vh)
-                    dh[i] = sh[i] = prev->dh[i];
+                    regs->dh[i] = regs->sh[i] = prev->dh[i];
             }
         }
         /* constants */
@@ -551,15 +546,15 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
          * need their register propagated unchanged so later ops can
          * still read them.
          */
-        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
         for (int i = 0; i < 4; i++) {
             if (SWS_COMP_TEST(p->mask, i))
                 continue;
             if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE)
-                dl[i] = sl[i] = prev->dl[i];
+                regs->dl[i] = regs->sl[i] = prev->dl[i];
             if (s->use_vh && rasm_op_type(prev->dh[i]) != RASM_OP_NONE)
-                dh[i] = sh[i] = prev->dh[i];
+                regs->dh[i] = regs->sh[i] = prev->dh[i];
         }
 
         SwsCompMask save_mask = 0;
@@ -575,12 +570,12 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
                 overwritten[i] = true;
             }
         }
-        LOOP      (save_mask, i) { dl[i] = a64reg_vec(rs, -1); }
-        LOOP_VH(s, save_mask, i) { dh[i] = a64reg_vec(rs, -1); }
+        LOOP      (save_mask, i) { regs->dl[i] = a64reg_vec(rs, -1); }
+        LOOP_VH(s, save_mask, i) { regs->dh[i] = a64reg_vec(rs, -1); }
         if (p->uop == SWS_UOP_LINEAR)
-            jit_alloc_vt(rs, 4, &vt[8]);
-        LOOP      (save_mask, i) { a64reg_vec_free(rs, sl[i]); }
-        LOOP_VH(s, save_mask, i) { a64reg_vec_free(rs, sh[i]); }
+            jit_alloc_vt(rs, 4, &regs->vt[8]);
+        LOOP      (save_mask, i) { a64reg_vec_free(rs, regs->sl[i]); }
+        LOOP_VH(s, save_mask, i) { a64reg_vec_free(rs, regs->sh[i]); }
         /* constants */
         const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
         int i_coeff = 0;
@@ -596,9 +591,9 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         break;
     }
     case SWS_UOP_DITHER:
-        LOOP      (op_mask, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_VH(s, op_mask, i) { dh[i] = sh[i] = prev->dh[i]; }
-        jit_alloc_vt(rs, 2, vt);
+        LOOP      (op_mask, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+        LOOP_VH(s, op_mask, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+        jit_alloc_vt(rs, 2, regs->vt);
         /* constants */
         regs->dither_ptr = jit_push_u64(s, (uint64_t) res->priv.ptr);
         break;
