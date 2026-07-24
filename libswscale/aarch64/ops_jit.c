@@ -427,9 +427,6 @@ static void asmgen_setup_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImpl
                                     SwsImplResult *res)
 {
     passthrough_mask(s, p->mask, prev, regs);
-
-    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
 }
 
 static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p,
