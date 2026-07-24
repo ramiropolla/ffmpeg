@@ -280,26 +280,7 @@ static void print_io_regs(SwsContext *sws, const SwsAArch64OpImplParams *p, cons
 }
 
 /*********************************************************************/
-/**
- * Allocate registers and immediately free them.
- * NOTE: this should be done as the last step in register allocation,
- *       to prevent these temporary registers from being reused.
- */
-static void jit_alloc_vt(AArch64RegState *rs, int n, RasmOp *out)
-{
-    for (int i = 0; i < n; i++)
-        out[i] = a64reg_vec(rs, -1);
-    for (int i = 0; i < n; i++)
-        a64reg_vec_free(rs, out[i]);
-}
-
-/* Get value from SwsOpPriv based on the pixel type. */
-static uint32_t get_priv_val(const SwsOpPriv *priv, SwsPixelType type, int i)
-{
-    return (type == SWS_PIXEL_U8)  ? priv->u8[i]
-         : (type == SWS_PIXEL_U16) ? priv->u16[i]
-         :                           priv->u32[i];
-}
+/* Setup helpers. */
 
 /**
  * Recompute op_mask from SwsOp because SwsAArch64OpImplParams has dropped
@@ -315,6 +296,28 @@ static SwsCompMask recompute_op_mask(const SwsOp *op)
     return op_mask;
 }
 
+/* Get value from SwsOpPriv based on the pixel type. */
+static uint32_t get_priv_val(const SwsOpPriv *priv, SwsPixelType type, int i)
+{
+    return (type == SWS_PIXEL_U8)  ? priv->u8[i]
+         : (type == SWS_PIXEL_U16) ? priv->u16[i]
+         :                           priv->u32[i];
+}
+
+/**
+ * Allocate registers and immediately free them.
+ * NOTE: this should be done as the last step in register allocation,
+ *       to prevent these temporary registers from being reused.
+ */
+static void jit_alloc_vt(AArch64RegState *rs, int n, RasmOp *out)
+{
+    for (int i = 0; i < n; i++)
+        out[i] = a64reg_vec(rs, -1);
+    for (int i = 0; i < n; i++)
+        a64reg_vec_free(rs, out[i]);
+}
+
+/*********************************************************************/
 static void asmgen_setup_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                   const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                   SwsImplResult *res)
@@ -562,15 +565,14 @@ static void asmgen_setup_convert(SwsAArch64Context *s, const SwsAArch64OpImplPar
     size_t dst_el_size = ff_sws_pixel_type_size(to_type);
     bool src_use_vh = (p->block_size * src_el_size) > 16;
     bool dst_use_vh = (p->block_size * dst_el_size) > 16;
-    LOOP_MASK      (p, i) {
-        regs->dl[i] = regs->sl[i] = prev->dl[i];
-        if (src_use_vh) {
-            regs->dh[i] = regs->sh[i] = prev->dh[i];
-            if (!dst_use_vh)
-                a64reg_vec_free(rs, regs->sh[i]);
-        } else {
-            regs->dh[i] = a64reg_vec(rs, -1);
-        }
+    LOOP_MASK(p, i)       { dl[i] = sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+    if (src_use_vh && dst_use_vh) {
+        LOOP_MASK(p, i) { dh[i] = sh[i] = prev->dh[i]; }
+    } else if (!src_use_vh && dst_use_vh) {
+        LOOP_MASK(p, i) { dh[i] = a64reg_vec(rs, -1); }
+    } else if (src_use_vh && !dst_use_vh) {
+        LOOP_MASK(p, i) { sh[i] = prev->dh[i]; a64reg_vec_free(rs, sh[i]); }
     }
 }
 
