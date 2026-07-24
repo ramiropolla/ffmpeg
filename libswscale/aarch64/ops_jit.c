@@ -805,9 +805,7 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         ret = ff_sws_aarch64_setup(ops, block_size, i, &params[i], &res[i]);
         if (ret < 0)
             goto cleanup;
-    }
 
-    for (int i = 0; i < ops->num_ops; i++) {
         if (ops->ops[i].op == SWS_OP_SWIZZLE) {
             aarch64_jit_setup_swizzle(&s, &ops->ops[i], &regs[i], block_size);
             continue;
