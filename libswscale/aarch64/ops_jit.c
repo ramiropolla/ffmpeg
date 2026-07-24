@@ -325,14 +325,6 @@ static void setup_mask_alloc(SwsAArch64Context *s, SwsCompMask mask,
     LOOP_VH(s, mask, i) { regs->dh[i] = a64reg_vec(rs, -1); }
 }
 
-static void setup_mask_free(SwsAArch64Context *s, SwsCompMask mask,
-                            SwsAArch64OpRegs *regs)
-{
-    AArch64RegState *rs = &s->regstate;
-    LOOP      (mask, i) { a64reg_vec_free(rs, regs->sh[i]); }
-    LOOP_VH(s, mask, i) { a64reg_vec_free(rs, regs->sh[i]); }
-}
-
 static void setup_mask_write(SwsAArch64Context *s, SwsCompMask mask,
                              const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs)
 {
@@ -660,7 +652,8 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     setup_mask_alloc(s, save_mask, regs);
     if (p->uop == SWS_UOP_LINEAR)
         jit_alloc_vt(rs, 4, &regs->vt[8]);
-    setup_mask_free(s, save_mask, regs);
+    LOOP      (save_mask, i) { a64reg_vec_free(rs, regs->sl[i]); }
+    LOOP_VH(s, save_mask, i) { a64reg_vec_free(rs, regs->sh[i]); }
 
     /* constants */
     const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
