@@ -776,13 +776,9 @@ static int aarch64_jit_asmgen(SwsContext *sws, SwsAArch64JITContext *ctx, const 
     av_bprintf(&bp, "%s\n", asm_macros);
     rasm_print(ctx->s.rctx, &bp);
 
-    /* Debug log. */
-    if (av_log_get_level() >= AV_LOG_TRACE) {
-        av_log(sws, AV_LOG_TRACE, "JIT I/O register allocation:\n");
-        for (int i = 0; i < ops->num_ops; i++)
-            print_io_regs(sws, &ctx->params[i], &ctx->regs[i]);
+    /* Debug generated code. */
+    if (av_log_get_level() >= AV_LOG_TRACE)
         av_log(sws, AV_LOG_TRACE, "JIT generated code:\n%s", bp.str);
-    }
 
     int ret = ff_sws_jit_assemble_llvm(sws, bp.str, &ctx->code, &ctx->code_size, errstr);
     av_bprint_finalize(&bp, NULL);
@@ -835,6 +831,12 @@ static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
         if (ret < 0)
             goto error;
         aarch64_jit_op_setup(ctx, ops, i);
+    }
+    /* Debug registers. */
+    if (av_log_get_level() >= AV_LOG_TRACE) {
+        av_log(sws, AV_LOG_TRACE, "JIT I/O register allocation:\n");
+        for (int i = 0; i < ops->num_ops; i++)
+            print_io_regs(sws, &ctx->params[i], &ctx->regs[i]);
     }
 
     /* Generate JIT code and assemble it. */
