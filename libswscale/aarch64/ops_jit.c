@@ -627,9 +627,7 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
      * still read them.
      */
     setup_mask_passthrough(s, p->mask, prev, regs);
-    for (int i = 0; i < 4; i++) {
-        if (SWS_COMP_TEST(p->mask, i))
-            continue;
+    LOOP_MASK(p, i) {
         if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE)
             regs->dl[i] = regs->sl[i] = prev->dl[i];
         if (s->use_vh && rasm_op_type(prev->dh[i]) != RASM_OP_NONE)
