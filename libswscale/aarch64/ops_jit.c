@@ -317,8 +317,23 @@ static void jit_alloc_vt(AArch64RegState *rs, int n, RasmOp *out)
         a64reg_vec_free(rs, out[i]);
 }
 
-static void passthrough_mask(SwsAArch64Context *s, SwsCompMask mask,
+static void setup_mask_read(SwsAArch64Context *s, SwsCompMask mask,
+                            SwsAArch64OpRegs *regs)
+{
+    AArch64RegState *rs = &s->regstate;
+    LOOP      (mask, i) { regs->dl[i] = a64reg_vec(rs, -1); }
+    LOOP_VH(s, mask, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+}
+
+static void setup_mask_write(SwsAArch64Context *s, SwsCompMask mask,
                              const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs)
+{
+    LOOP      (mask, i) { regs->sl[i] = prev->dl[i]; }
+    LOOP_VH(s, mask, i) { regs->sh[i] = prev->dh[i]; }
+}
+
+static void setup_mask_passthrough(SwsAArch64Context *s, SwsCompMask mask,
+                                   const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs)
 {
     LOOP      (mask, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
     LOOP_VH(s, mask, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
@@ -329,10 +344,9 @@ static void asmgen_setup_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplPa
                                   const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                   SwsImplResult *res)
 {
-    AArch64RegState *rs = &s->regstate;
+    setup_mask_read(s, p->mask, regs);
 
-    LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+    AArch64RegState *rs = &s->regstate;
     jit_alloc_vt(rs, 1, regs->vt);
 
     /* constants */
@@ -344,10 +358,9 @@ static void asmgen_setup_read_nibble(SwsAArch64Context *s, const SwsAArch64OpImp
                                      const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                      SwsImplResult *res)
 {
-    AArch64RegState *rs = &s->regstate;
+    setup_mask_read(s, p->mask, regs);
 
-    LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+    AArch64RegState *rs = &s->regstate;
     jit_alloc_vt(rs, 1, regs->vt);
 
     /* constants */
@@ -358,13 +371,12 @@ static void asmgen_setup_read_packed(SwsAArch64Context *s, const SwsAArch64OpImp
                                      const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                      SwsImplResult *res)
 {
-    AArch64RegState *rs = &s->regstate;
-
     /* Count number of elems. */
     int n = 0;
     LOOP_MASK(p, i)
         n++;
 
+    AArch64RegState *rs = &s->regstate;
     a64reg_contiguous_vec    (rs, n, regs->dl);
     if (s->use_vh)
         a64reg_contiguous_vec(rs, n, regs->dh);
@@ -374,20 +386,16 @@ static void asmgen_setup_read_planar(SwsAArch64Context *s, const SwsAArch64OpImp
                                      const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                      SwsImplResult *res)
 {
-    AArch64RegState *rs = &s->regstate;
-
-    LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+    setup_mask_read(s, p->mask, regs);
 }
 
 static void asmgen_setup_write_bit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                    const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                    SwsImplResult *res)
 {
-    AArch64RegState *rs = &s->regstate;
+    setup_mask_write(s, p->mask, prev, regs);
 
-    LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+    AArch64RegState *rs = &s->regstate;
     jit_alloc_vt(rs, 2, regs->vt);
 
     /* constants */
@@ -398,10 +406,9 @@ static void asmgen_setup_write_nibble(SwsAArch64Context *s, const SwsAArch64OpIm
                                       const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                       SwsImplResult *res)
 {
-    AArch64RegState *rs = &s->regstate;
+    setup_mask_write(s, p->mask, prev, regs);
 
-    LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+    AArch64RegState *rs = &s->regstate;
     jit_alloc_vt(rs, 2, regs->vt);
 }
 
@@ -410,23 +417,21 @@ static void asmgen_setup_write_packed(SwsAArch64Context *s, const SwsAArch64OpIm
                                       SwsImplResult *res)
 {
     /* TODO See jit_write_packed_fixup(). */
-    LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+    setup_mask_write(s, p->mask, prev, regs);
 }
 
 static void asmgen_setup_write_planar(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                       const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                       SwsImplResult *res)
 {
-    LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+    setup_mask_write(s, p->mask, prev, regs);
 }
 
 static void asmgen_setup_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                     const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                     SwsImplResult *res)
 {
-    passthrough_mask(s, p->mask, prev, regs);
+    setup_mask_passthrough(s, p->mask, prev, regs);
 }
 
 static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p,
@@ -507,8 +512,7 @@ static void asmgen_setup_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams
 {
     AArch64RegState *rs = &s->regstate;
 
-    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+    setup_mask_passthrough(s, p->mask, prev, regs);
     LOOP_MASK      (p, i) { if (i) { a64reg_vec_free(rs, regs->sl[i]); } }
     LOOP_MASK_VH(s, p, i) { if (i) { a64reg_vec_free(rs, regs->sh[i]); } }
 }
@@ -517,8 +521,7 @@ static void asmgen_setup_shift(SwsAArch64Context *s, const SwsAArch64OpImplParam
                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                SwsImplResult *res)
 {
-    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+    setup_mask_passthrough(s, p->mask, prev, regs);
 }
 
 static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -589,8 +592,7 @@ static void asmgen_setup_clamp(SwsAArch64Context *s, const SwsAArch64OpImplParam
                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                SwsImplResult *res)
 {
-    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+    setup_mask_passthrough(s, p->mask, prev, regs);
 
     /* constants */
     LOOP_MASK      (p, i) {
@@ -603,8 +605,7 @@ static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParam
                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                SwsImplResult *res)
 {
-    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+    setup_mask_passthrough(s, p->mask, prev, regs);
 
     /* constants */
     uint32_t val = get_priv_val(&res->priv, p->type, 0);
@@ -629,8 +630,7 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
      * need their register propagated unchanged so later ops can
      * still read them.
      */
-    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+    setup_mask_passthrough(s, p->mask, prev, regs);
     for (int i = 0; i < 4; i++) {
         if (SWS_COMP_TEST(p->mask, i))
             continue;
