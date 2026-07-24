@@ -277,123 +277,6 @@ static void print_io_regs(SwsContext *sws, const SwsAArch64OpImplParams *p, cons
 }
 
 /*********************************************************************/
-/* TODO */
-static void aarch64_jit_setup_swizzle(SwsAArch64Context *s, const SwsOp *op,
-                                      SwsAArch64OpRegs *regs, int block_size)
-{
-    AArch64RegState *rs = &s->regstate;
-
-    size_t el_size = ff_sws_pixel_type_size(op->type);
-    size_t total_size = block_size * el_size;
-
-    s->vec_size = FFMIN(total_size, 16);
-    s->use_vh = (s->vec_size != total_size);
-
-    s->el_size = el_size;
-    s->el_count = s->vec_size / el_size;
-
-    RasmOp *sl = regs->sl;
-    RasmOp *sh = regs->sh;
-    RasmOp *dl = regs->dl;
-    RasmOp *dh = regs->dh;
-    RasmOp *vt = regs->vt;
-    SwsAArch64OpRegs *prev = &regs[-1];
-
-        {
-            bool reorder = true;
-            bool used[4] = { false, false, false, false };
-            for (int i = 0; i < 4; i++) {
-                if (!SWS_OP_NEEDED(op, i))
-                    continue;
-                if (used[op->swizzle.in[i]]) {
-                    reorder = false;
-                    break;
-                }
-                used[op->swizzle.in[i]] = true;
-            }
-
-            // LOOP_IN(i) save_vector(ctx, &vet, i);
-            if (reorder) {
-                // cc.comment("swizzle (reorder)");
-                // LOOP_OUT(i) vl[i] = src_vl[op->swizzle.in[i]];
-                for (int i = 0; i < 4; i++) { if (SWS_OP_NEEDED(op, i)) { sl[op->swizzle.in[i]] = prev->dl[op->swizzle.in[i]]; dl[i] = sl[op->swizzle.in[i]]; } }
-                // LOOP_OUT(i) vh[i] = src_vh[op->swizzle.in[i]];
-                if (s->use_vh)
-                    for (int i = 0; i < 4; i++) { if (SWS_OP_NEEDED(op, i)) { sh[op->swizzle.in[i]] = prev->dh[op->swizzle.in[i]]; dh[i] = sh[op->swizzle.in[i]]; } }
-            } else {
-                /**
-                 * At least one input component is read by more than one
-                 * output component (e.g. duplicating a single gray
-                 * channel into several output channels) -- pure register
-                 * aliasing is not possible since a single physical
-                 * register cannot be "renamed" to two different logical
-                 * outputs. Slots that keep their own value are aliased
-                 * as usual; slots that need someone else's value get a
-                 * fresh register, copied by aarch64_jit_op_swizzle().
-                 */
-                for (int i = 0; i < 4; i++) {
-                    if (!SWS_OP_NEEDED(op, i))
-                        continue;
-                    if (op->swizzle.in[i] == i) {
-                        dl[i] = sl[i] = prev->dl[i];
-                        if (s->use_vh)
-                            dh[i] = sh[i] = prev->dh[i];
-                    } else {
-                        sl[i] = prev->dl[op->swizzle.in[i]];
-                        dl[i] = a64reg_vec(rs, -1);
-                        if (s->use_vh) {
-                            sh[i] = prev->dh[op->swizzle.in[i]];
-                            dh[i] = a64reg_vec(rs, -1);
-                        }
-                    }
-                }
-            }
-        }
-}
-
-static void aarch64_jit_op_swizzle(SwsAArch64Context *s, const SwsOp *op,
-                                   SwsAArch64OpRegs *regs, int block_size)
-{
-    RasmContext *r = s->rctx;
-
-    size_t el_size = ff_sws_pixel_type_size(op->type);
-    size_t total_size = block_size * el_size;
-
-    s->vec_size = FFMIN(total_size, 16);
-    s->use_vh = (s->vec_size != total_size);
-
-    /**
-     * Must match the reorder/copy decision made in
-     * aarch64_jit_setup_swizzle(): a pure reorder needs no instructions
-     * at all (it was handled entirely via register aliasing), while a
-     * copy (some input read by more than one output) needs a real mov
-     * for every slot that didn't keep its own value.
-     */
-    bool reorder = true;
-    bool used[4] = { false, false, false, false };
-    for (int i = 0; i < 4; i++) {
-        if (!SWS_OP_NEEDED(op, i))
-            continue;
-        if (used[op->swizzle.in[i]]) {
-            reorder = false;
-            break;
-        }
-        used[op->swizzle.in[i]] = true;
-    }
-    if (reorder)
-        return;
-
-    for (int i = 0; i < 4; i++) {
-        if (SWS_OP_NEEDED(op, i) && op->swizzle.in[i] != i) {
-            i_mov16b(r, regs->dl[i], regs->sl[i]);
-            if (s->use_vh) {
-                i_mov16b(r, regs->dh[i], regs->sh[i]);
-            }
-        }
-    }
-}
-
-/*********************************************************************/
 /**
  * Allocate registers and immediately free them.
  * NOTE: this should be done as the last step in register allocation,
@@ -418,11 +301,22 @@ static uint32_t get_priv_val(const SwsOpPriv *priv, SwsPixelType type, int i)
 /* Set up register usage for operation. */
 static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, int n)
 {
-    SwsAArch64Context            *s    = &ctx->s;
-    const SwsAArch64OpImplParams *p    = &ctx->params[n];
-    SwsAArch64OpRegs             *regs = &ctx->regs[n];
-    SwsImplResult                *res  = &ctx->res[n];
-    AArch64RegState              *rs   = &s->regstate;
+    SwsAArch64Context      *s    = &ctx->s;
+    SwsAArch64OpImplParams *p    = &ctx->params[n];
+    SwsAArch64OpRegs       *regs = &ctx->regs[n];
+    SwsImplResult          *res  = &ctx->res[n];
+    const SwsOp            *op   = &ops->ops[n];
+    AArch64RegState        *rs   = &s->regstate;
+
+    /**
+     * Recompute op_mask from SwsOp because SwsAArch64OpImplParams has
+     * dropped passthrough information to prevent duplicates.
+     */
+    SwsCompMask op_mask = 0;
+    for (int i = 0; i < 4; i++) {
+        if (SWS_OP_NEEDED(op, i))
+            op_mask |= SWS_COMP(i);
+    }
 
     /* TODO repeated. */
     size_t el_size = ff_sws_pixel_type_size(p->type);
@@ -486,6 +380,54 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
         jit_alloc_vt(rs, 2, vt);
         break;
+    case SWS_UOP_PERMUTE:
+    case SWS_UOP_COPY: {
+        SwsMoveUOp permute = { 0 };
+        SwsMoveUOp copy = { 0 };
+
+        LOOP(op_mask, i) {
+            int src = op->swizzle.in[i];
+            bool overwritten = false;
+            for (int j = 0; j < i; j++) {
+                if ((op_mask & SWS_COMP(j)) && op->swizzle.in[j] == src) {
+                    overwritten = true;
+                    break;
+                }
+            }
+
+            SwsMoveUOp *list = overwritten ? &copy : &permute;
+            list->dst[list->num_moves] = i;
+            list->src[list->num_moves] = src;
+            list->num_moves++;
+
+            if (overwritten) {
+                dl[i] = a64reg_vec(rs, -1);
+                if (s->use_vh)
+                    dh[i] = a64reg_vec(rs, -1);
+            }
+        }
+
+        for (int i = 0; i < 4; i++) {
+            sl[i] = prev->dl[i];
+            if (s->use_vh)
+                sh[i] = prev->dh[i];
+        }
+
+        /* Pure renames: no instructions, just repoint the register handles. */
+        for (int i = 0; i < permute.num_moves; i++) {
+            dl[permute.dst[i]] = sl[permute.src[i]];
+            if (s->use_vh)
+                dh[permute.dst[i]] = sh[permute.src[i]];
+        }
+
+        /* Real copies: replace p->par.move so the existing asmgen_op_move()
+         * emits exactly these, unmodified. */
+        p->par.move = copy;
+        p->mask = 0;
+        for (int i = 0; i < copy.num_moves; i++)
+            p->mask |= SWS_COMP(copy.dst[i]);
+        break;
+    }
     case SWS_UOP_SWAP_BYTES:
         LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
@@ -553,21 +495,26 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         break;
     case SWS_UOP_CLEAR:
         /* TODO factor clear into setup whenever possible. */
-        LOOP_MASK      (p, i) {
-            if (prev && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
-                dl[i] = prev->dl[i];
+        LOOP(op_mask, i) {
+            if (p->mask & SWS_COMP(i)) {
+                if (prev && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
+                    dl[i] = prev->dl[i];
+                } else {
+                    dl[i] = a64reg_vec(rs, -1);
+                }
+                if (s->use_vh) {
+                    if (prev && rasm_op_type(prev->dh[i]) != RASM_OP_NONE) {
+                        dh[i] = prev->dh[i];
+                    } else {
+                        dh[i] = a64reg_vec(rs, -1);
+                    }
+                }
             } else {
-                dl[i] = a64reg_vec(rs, -1);
+                /* pass-through */
+                dl[i] = sl[i] = prev->dl[i];
+                if (s->use_vh)
+                    dh[i] = sh[i] = prev->dh[i];
             }
-        } else if (prev) {
-            /* pass-through */
-            dl[i] = sl[i] = prev->dl[i];
-        }
-        LOOP_MASK_VH(s, p, i) {
-            dh[i] = (prev && rasm_op_type(prev->dh[i]) != RASM_OP_NONE) ? prev->dh[i] : a64reg_vec(rs, -1);
-        } else if (prev) {
-            /* pass-through */
-            dh[i] = sh[i] = prev->dh[i];
         }
         break;
     case SWS_UOP_LINEAR:
@@ -778,10 +725,6 @@ static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
 
     /* Translate all ops into implementation parameters and setup registers. */
     for (int i = 0; i < ops->num_ops; i++) {
-        if (ops->ops[i].op == SWS_OP_SWIZZLE) {
-            aarch64_jit_setup_swizzle(&ctx->s, &ops->ops[i], &ctx->regs[i], block_size);
-            continue;
-        }
         ret = ff_sws_aarch64_ops_translate(sws, ops, i, block_size, &ctx->params[i]);
         if (ret < 0)
             goto error;
@@ -806,10 +749,6 @@ static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
     /* add all ops */
     rasm_set_current_node(ctx->s.rctx, ctx->s.loop);
     for (int i = 0; i < ops->num_ops; i++) {
-        if (ops->ops[i].op == SWS_OP_SWIZZLE) {
-            aarch64_jit_op_swizzle(&ctx->s, &ops->ops[i], &ctx->regs[i], block_size);
-            continue;
-        }
         ret = asmgen_op_jit(&ctx->s, &ctx->params[i], &ctx->regs[i]);
         if (ret < 0)
             goto error;
