@@ -194,8 +194,17 @@ static void jit_load_constants(SwsAArch64Context *s)
 
     /* Emit data. */
     int ldata = rasm_const_begin(r, "ldata");
-    for (int i = 0; i < s->data_count; i++)
-        rasm_add_data(r, &s->data[i].vec, 4, RASM_DATA_WORD);
+    for (int i = 0; i < s->data_count; i++) {
+        switch (rasm_op_type(s->data[i].op)) {
+        case AARCH64_OP_GPR:
+            rasm_add_data(r, &s->data[i].vec, 2, RASM_DATA_QUAD);
+            break;
+        case AARCH64_OP_VEC:
+        default:
+            rasm_add_data(r, &s->data[i].vec, 4, RASM_DATA_WORD);
+            break;
+        }
+    }
 
     /* Load data. */
     RasmNode *saved = rasm_set_current_node(r, s->setup);
