@@ -382,32 +382,38 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         break;
     case SWS_UOP_PERMUTE:
     case SWS_UOP_COPY: {
-        /* Split original swizzle into renames and copies. */
+        /* Split original swizzle into identity, renames, and copies. */
+        SwsCompMask identity = 0;
         SwsMoveUOp rename = { 0 };
         SwsMoveUOp copy = { 0 };
         bool overwritten[4] = { false, false, false, false };
         LOOP(op_mask, i) {
             int src = op->swizzle.in[i];
-            SwsMoveUOp *list = overwritten[src] ? &copy : &rename;
-            list->dst[list->num_moves] = i;
-            list->src[list->num_moves] = src;
-            list->num_moves++;
+            if (src == i) {
+                identity |= SWS_COMP(i);
+            } else {
+                SwsMoveUOp *list = overwritten[src] ? &copy : &rename;
+                list->dst[list->num_moves] = i;
+                list->src[list->num_moves] = src;
+                list->num_moves++;
+            }
             overwritten[src] = true;
         }
 
-        for (int i = 0; i < 4; i++) {
-            sl[i] = prev->dl[i];
+        /* Identity passthrough. */
+        LOOP(identity, i) {
+            dl[i] = sl[i] = prev->dl[i];
             if (s->use_vh)
-                sh[i] = prev->dh[i];
+                dh[i] = sh[i] = prev->dh[i];
         }
 
-        /* Perform simple register renames. */
+        /* Perform simple renames. */
         for (int i = 0; i < rename.num_moves; i++) {
             int src = rename.src[i];
             int dst = rename.dst[i];
-            dl[dst] = sl[src];
+            dl[dst] = sl[src] = prev->dl[src];
             if (s->use_vh)
-                dh[dst] = sh[src];
+                dh[dst] = sh[src] = prev->dh[src];
         }
 
         /* Replace moves list with remaining copies. */
@@ -415,10 +421,10 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         p->mask = 0;
         for (int i = 0; i < copy.num_moves; i++) {
             int dst = copy.dst[i];
-            p->mask |= SWS_COMP(dst);
             dl[dst] = a64reg_vec(rs, -1);
             if (s->use_vh)
                 dh[dst] = a64reg_vec(rs, -1);
+            p->mask |= SWS_COMP(dst);
         }
 
         break;
