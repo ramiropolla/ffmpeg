@@ -532,12 +532,9 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
     /* TODO factor clear into setup instead of performing dup. */
 
     SwsCompMask prev_op_mask = prev_op ? recompute_op_mask(prev_op) : 0;
-    SwsCompMask op_mask      = recompute_op_mask(op);
-    SwsCompMask identity     = op_mask &  prev_op_mask;
-    SwsCompMask alloc        = op_mask & ~prev_op_mask;
-
-    setup_mask_passthrough(s, identity, prev, regs);
-    setup_mask_alloc(s, alloc, regs);
+    SwsCompMask op_mask = recompute_op_mask(op);
+    setup_mask_passthrough(s, op_mask &  prev_op_mask, prev, regs);
+    setup_mask_alloc      (s, op_mask & ~prev_op_mask, regs);
 
     /* constants */
     regs->vk[0] = jit_push_v128(s, res->priv.data);
