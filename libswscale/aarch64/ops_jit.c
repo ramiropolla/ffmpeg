@@ -317,6 +317,13 @@ static void jit_alloc_vt(AArch64RegState *rs, int n, RasmOp *out)
         a64reg_vec_free(rs, out[i]);
 }
 
+static void passthrough_mask(SwsAArch64Context *s, SwsCompMask mask,
+                             const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs)
+{
+    LOOP      (mask, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+    LOOP_VH(s, mask, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+}
+
 /*********************************************************************/
 static void asmgen_setup_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                   const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
@@ -419,6 +426,8 @@ static void asmgen_setup_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImpl
                                     const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                     SwsImplResult *res)
 {
+    passthrough_mask(s, p->mask, prev, regs);
+
     LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
     LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
 }
