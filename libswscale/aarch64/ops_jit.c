@@ -382,9 +382,9 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         break;
     case SWS_UOP_PERMUTE:
     case SWS_UOP_COPY: {
-        SwsMoveUOp permute = { 0 };
+        /* Split original swizzle into renames and copies. */
+        SwsMoveUOp rename = { 0 };
         SwsMoveUOp copy = { 0 };
-
         LOOP(op_mask, i) {
             int src = op->swizzle.in[i];
             bool overwritten = false;
@@ -395,7 +395,7 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
                 }
             }
 
-            SwsMoveUOp *list = overwritten ? &copy : &permute;
+            SwsMoveUOp *list = overwritten ? &copy : &rename;
             list->dst[list->num_moves] = i;
             list->src[list->num_moves] = src;
             list->num_moves++;
@@ -413,19 +413,23 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
                 sh[i] = prev->dh[i];
         }
 
-        /* Pure renames: no instructions, just repoint the register handles. */
-        for (int i = 0; i < permute.num_moves; i++) {
-            dl[permute.dst[i]] = sl[permute.src[i]];
+        /* Perform simple register renames. */
+        for (int i = 0; i < rename.num_moves; i++) {
+            int src = rename.src[i];
+            int dst = rename.dst[i];
+            dl[dst] = sl[src];
             if (s->use_vh)
-                dh[permute.dst[i]] = sh[permute.src[i]];
+                dh[dst] = sh[src];
         }
 
-        /* Real copies: replace p->par.move so the existing asmgen_op_move()
-         * emits exactly these, unmodified. */
+        /* Replace moves list with remaining copies. */
         p->par.move = copy;
         p->mask = 0;
-        for (int i = 0; i < copy.num_moves; i++)
-            p->mask |= SWS_COMP(copy.dst[i]);
+        for (int i = 0; i < copy.num_moves; i++) {
+            int dst = copy.dst[i];
+            p->mask |= SWS_COMP(dst);
+        }
+
         break;
     }
     case SWS_UOP_SWAP_BYTES:
