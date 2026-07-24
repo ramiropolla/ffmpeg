@@ -31,6 +31,33 @@
 #include "rasm.h"
 
 /*********************************************************************/
+typedef struct SwsAArch64JITContext {
+    SwsAArch64Context s;
+
+    SwsAArch64OpImplParams params[SWS_MAX_OPS];
+    SwsAArch64OpRegs regs[SWS_MAX_OPS];
+    SwsImplResult res[SWS_MAX_OPS];
+
+    void   *code;
+    size_t  code_size;
+} SwsAArch64JITContext;
+
+static void aarch64_jit_free(void *priv)
+{
+    if (priv) {
+        SwsAArch64JITContext *ctx = priv;
+        rasm_free(&ctx->s.rctx);
+        for (int i = 0; i < SWS_MAX_OPS; i++) {
+            if (ctx->res[i].free)
+                ctx->res[i].free(&ctx->res[i].priv);
+        }
+        if (ctx->code)
+            ff_sws_jit_free(ctx->code, ctx->code_size);
+        av_free(ctx);
+    }
+}
+
+/*********************************************************************/
 /**
  * Structured read and write instructions (ld2/ld3/ld4/st2/st3/st4),
  * used by the packed read and write operations, require contiguous
@@ -239,9 +266,9 @@ static const char *print_reg(char buf[8], RasmOp op)
 }
 #define PRINT_REG(op) print_reg((char[8]){0}, op)
 
-static void print_io_regs(SwsContext *ctx, const SwsAArch64OpImplParams *p, const SwsAArch64OpRegs *regs)
+static void print_io_regs(SwsContext *sws, const SwsAArch64OpImplParams *p, const SwsAArch64OpRegs *regs)
 {
-    av_log(ctx, AV_LOG_TRACE, "[%-18s] { %s %s %s %s } { %s %s %s %s } -> { %s %s %s %s } { %s %s %s %s }\n",
+    av_log(sws, AV_LOG_TRACE, "[%-18s] { %s %s %s %s } { %s %s %s %s } -> { %s %s %s %s } { %s %s %s %s }\n",
            op_type_names[p->uop],
            PRINT_REG(regs->sl[0]), PRINT_REG(regs->sl[1]), PRINT_REG(regs->sl[2]), PRINT_REG(regs->sl[3]),
            PRINT_REG(regs->sh[0]), PRINT_REG(regs->sh[1]), PRINT_REG(regs->sh[2]), PRINT_REG(regs->sh[3]),
@@ -396,7 +423,6 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 
     /* TODO yikes */
     p += n;
-    res += n;
     regs += n;
 
     /* TODO repeated. */
@@ -716,36 +742,7 @@ static int aarch64_jit_process(SwsAArch64Context *s, const SwsOpList *ops, SwsCo
 }
 
 /*********************************************************************/
-typedef struct AArch64JitPriv {
-    /* Executable buffer returned by ff_sws_jit_assemble_llvm(), released
-     * via ff_sws_jit_free() when the compiled op is torn down. */
-    void   *code;
-    size_t  code_size;
-
-    /**
-     * Dither matrices (malloc'd by ff_sws_aarch64_setup()) whose raw
-     * pointer, unlike every other op's private data, is baked into the
-     * compiled code and dereferenced at runtime (see the SWS_UOP_DITHER
-     * case in aarch64_jit_setup()). They must therefore stay alive for
-     * as long as `code` does, instead of being freed once compilation
-     * finishes.
-     */
-    void   *dither_data[SWS_MAX_OPS];
-    int     num_dither_data;
-} AArch64JitPriv;
-
-static void aarch64_jit_free(void *priv)
-{
-    AArch64JitPriv *p = priv;
-
-    for (int i = 0; i < p->num_dither_data; i++)
-        av_free(p->dither_data[i]);
-    if (p->code)
-        ff_sws_jit_free(p->code, p->code_size);
-    av_free(p);
-}
-
-static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
+static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
                                SwsCompiledOp *out)
 {
     int ret;
@@ -754,113 +751,81 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
+    SwsAArch64JITContext *ctx = av_mallocz(sizeof(*ctx));
+    if (!ctx)
+        return AVERROR(ENOMEM);
+
+    ctx->s.rctx = rasm_alloc();
+    if (!ctx->s.rctx) {
+        ret = AVERROR(ENOMEM);
+        goto error;
+    }
+
+    av_log(sws, AV_LOG_DEBUG, "JIT compile: %s -> %s\n",
+           av_get_pix_fmt_name(ops->src.format),
+           av_get_pix_fmt_name(ops->dst.format));
+
     /* Use at most two full vregs during the widest precision section */
     int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
 
-    AArch64JitPriv *priv = av_mallocz(sizeof(*priv));
-    if (!priv)
-        return AVERROR(ENOMEM);
-
-    *out = (SwsCompiledOp) {
-        .priv        = priv,
-        .slice_align = 1,
-        .free        = aarch64_jit_free,
-        .block_size  = block_size,
-    };
-
-    RasmContext *r = rasm_alloc();
-    if (!r) {
-        aarch64_jit_free(priv);
-        return AVERROR(ENOMEM);
-    }
-
-    SwsAArch64Context s = {
-        .rctx = r,
-    };
-
-    printf("%s -> %s\n",
-           av_get_pix_fmt_name(ops->src.format),
-           av_get_pix_fmt_name(ops->dst.format));
+    /* Allocate all registers. */
 
     const SwsOp *read      = ff_sws_op_list_input(ops);
     const SwsOp *write     = ff_sws_op_list_output(ops);
     const int read_planes  = read ? ff_sws_rw_op_planes(read) : 0;
     const int write_planes = ff_sws_rw_op_planes(write);
-    SwsCompMask imask = SWS_COMP_MASK(read_planes > 0,  read_planes > 1,  read_planes > 2,  read_planes > 3);
-    SwsCompMask omask = SWS_COMP_MASK(write_planes > 0, write_planes > 1, write_planes > 2, write_planes > 3);
+    SwsCompMask imask = SWS_COMP_ELEMS(read_planes);
+    SwsCompMask omask = SWS_COMP_ELEMS(write_planes);
 
-    asmgen_process_frame(&s, imask, omask);
+    asmgen_process_frame(&ctx->s, imask, omask);
 
-    /* Translate all ops into implementation parameters and setup all
-     * constant data. */
-    SwsAArch64OpImplParams params[SWS_MAX_OPS] = { 0 };
-    SwsAArch64OpRegs regs[SWS_MAX_OPS] = { 0 };
-    SwsImplResult res[SWS_MAX_OPS] = { 0 };
+    /* Translate all ops into implementation parameters and setup registers. */
     for (int i = 0; i < ops->num_ops; i++) {
-        if (ops->ops[i].op == SWS_OP_SWIZZLE)
-            continue;
-        ret = ff_sws_aarch64_ops_translate(ctx, ops, i, block_size, &params[i]);
-        if (ret < 0)
-            goto cleanup;
-        ret = ff_sws_aarch64_setup(ops, block_size, i, &params[i], &res[i]);
-        if (ret < 0)
-            goto cleanup;
-
         if (ops->ops[i].op == SWS_OP_SWIZZLE) {
-            aarch64_jit_setup_swizzle(&s, &ops->ops[i], &regs[i], block_size);
+            aarch64_jit_setup_swizzle(&ctx->s, &ops->ops[i], &ctx->regs[i], block_size);
             continue;
         }
-        ret = aarch64_jit_setup(&s, params, res, regs, i);
+        ret = ff_sws_aarch64_ops_translate(sws, ops, i, block_size, &ctx->params[i]);
         if (ret < 0)
-            goto cleanup;
-
-        /**
-         * aarch64_jit_setup() has just consumed res[i].priv (if any):
-         * LINEAR copies its coefficients inline as compile-time
-         * constants, so its buffer can be released now, while DITHER
-         * instead bakes the raw pointer into the compiled code (see
-         * AArch64JitPriv above), so ownership of that one must be
-         * transferred to priv instead of freed here.
-         */
-        if (res[i].free) {
-            if (params[i].uop == SWS_UOP_DITHER)
-                priv->dither_data[priv->num_dither_data++] = res[i].priv.ptr;
-            else
-                res[i].free(&res[i].priv);
-            res[i].free = NULL;
-        }
+            goto error;
+        ret = ff_sws_aarch64_setup(ops, block_size, i, &ctx->params[i], &ctx->res[i]);
+        if (ret < 0)
+            goto error;
+        ret = aarch64_jit_setup(&ctx->s, ctx->params, &ctx->res[i], ctx->regs, i);
+        if (ret < 0)
+            goto error;
     }
-
-    /* create process */
-    ret = aarch64_jit_process(&s, ops, imask, omask);
-    if (ret < 0)
-        goto cleanup;
 
     /* Debug print input/output vectors. */
     if (av_log_get_level() >= AV_LOG_TRACE) {
-        av_log(ctx, AV_LOG_TRACE, "JIT I/O register allocation:\n");
+        av_log(sws, AV_LOG_TRACE, "JIT I/O register allocation:\n");
         for (int i = 0; i < ops->num_ops; i++)
-            print_io_regs(ctx, &params[i], &regs[i]);
+            print_io_regs(sws, &ctx->params[i], &ctx->regs[i]);
     }
+
+    /* create process */
+    ret = aarch64_jit_process(&ctx->s, ops, imask, omask);
+    if (ret < 0)
+        goto error;
 
     /* add all ops */
-    rasm_set_current_node(r, s.loop);
+    rasm_set_current_node(ctx->s.rctx, ctx->s.loop);
     for (int i = 0; i < ops->num_ops; i++) {
         if (ops->ops[i].op == SWS_OP_SWIZZLE) {
-            aarch64_jit_op_swizzle(&s, &ops->ops[i], &regs[i], block_size);
+            aarch64_jit_op_swizzle(&ctx->s, &ops->ops[i], &ctx->regs[i], block_size);
             continue;
         }
-        ret = asmgen_op_jit(&s, &params[i], &regs[i]);
+        ret = asmgen_op_jit(&ctx->s, &ctx->params[i], &ctx->regs[i]);
         if (ret < 0)
-            goto cleanup;
+            goto error;
     }
 
-    if (s.data_count)
-        jit_load_constants(&s);
+    if (ctx->s.data_count)
+        jit_load_constants(&ctx->s);
 
     AVBPrint bp;
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
-    rasm_print(s.rctx, &bp);
+    rasm_print(ctx->s.rctx, &bp);
 
     if (1 || getenv("SWS_JIT_DUMP")) {
         fputs(bp.str, stdout);
@@ -870,27 +835,27 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
     size_t text_size = 0;
     ret = ff_sws_jit_assemble_llvm(bp.str, &text, &text_size);
     if (ret < 0) {
+        // TODO
         printf("[%s][%d] %s() ASSEMBLE ERROR ret %d\n", __FILE__, __LINE__, __func__, ret);
     } else {
-        priv->code      = text;
-        priv->code_size = text_size;
-        out->func       = (SwsOpFunc) text;
-        out->cpu_flags  = AV_CPU_FLAG_NEON;
+        *out = (SwsCompiledOp) {
+            .priv        = ctx,
+            .slice_align = 1,
+            .free        = aarch64_jit_free,
+            .block_size  = block_size,
+            .func        = (SwsOpFunc) text,
+            .cpu_flags   = AV_CPU_FLAG_NEON,
+        };
+
+        ctx->code      = text;
+        ctx->code_size = text_size;
     }
 
     av_bprint_finalize(&bp, NULL);
 
-cleanup:
-    /* The RasmContext is only needed during code generation above; it
-     * has no bearing on the compiled function's runtime and is always
-     * safe to release here, whether compilation succeeded or not. */
-    rasm_free(&s.rctx);
-    if (ret < 0) {
-        for (int i = 0; i < ops->num_ops; i++)
-            if (res[i].free)
-                res[i].free(&res[i].priv);
-        aarch64_jit_free(priv);
-    }
+error:
+    if (ret < 0)
+        aarch64_jit_free(ctx);
     return ret;
 }
 
