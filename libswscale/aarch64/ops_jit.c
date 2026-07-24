@@ -410,24 +410,6 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     s->el_size = el_size;
     s->el_count = s->vec_size / el_size;
 
-    /* GPRs */
-    switch (p->uop) {
-    case SWS_UOP_READ_BIT:
-    case SWS_UOP_READ_NIBBLE:
-    case SWS_UOP_READ_PLANAR:
-    case SWS_UOP_READ_PACKED:
-        LOOP(imask, i) { s->in     [i] = a64reg_gpx(rs, -1); }
-        LOOP(imask, i) { s->in_bump[i] = a64reg_gpx(rs, -1); }
-        break;
-    case SWS_UOP_WRITE_BIT:
-    case SWS_UOP_WRITE_NIBBLE:
-    case SWS_UOP_WRITE_PACKED:
-    case SWS_UOP_WRITE_PLANAR:
-        LOOP(omask, i) { s->out     [i] = a64reg_gpx(rs, -1); }
-        LOOP(omask, i) { s->out_bump[i] = a64reg_gpx(rs, -1); }
-        break;
-    }
-
     /* I/O */
     RasmOp *sl = regs->sl;
     RasmOp *sh = regs->sh;
@@ -705,6 +687,12 @@ static void asmgen_process_frame(SwsAArch64Context *s, SwsCompMask imask, SwsCom
     /* Scratch registers. */
     s->tmp0      = a64reg_gpx(rs, 16); /* IP0 */
     s->tmp1      = a64reg_gpx(rs, 17); /* IP1 */
+
+    /* GPRs */
+    LOOP(imask, i) { s->in      [i] = a64reg_gpx(rs, -1); }
+    LOOP(imask, i) { s->in_bump [i] = a64reg_gpx(rs, -1); }
+    LOOP(omask, i) { s->out     [i] = a64reg_gpx(rs, -1); }
+    LOOP(omask, i) { s->out_bump[i] = a64reg_gpx(rs, -1); }
 }
 
 static int aarch64_jit_process(SwsAArch64Context *s, const SwsOpList *ops, SwsCompMask imask, SwsCompMask omask)
