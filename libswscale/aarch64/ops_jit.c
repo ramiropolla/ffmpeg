@@ -301,6 +301,382 @@ static uint32_t get_priv_val(const SwsOpPriv *priv, SwsPixelType type, int i)
          :                           priv->u32[i];
 }
 
+/**
+ * Recompute op_mask from SwsOp because SwsAArch64OpImplParams has dropped
+ * passthrough information to prevent duplicates.
+ */
+static SwsCompMask recompute_op_mask(const SwsOp *op)
+{
+    SwsCompMask op_mask = 0;
+    for (int i = 0; i < 4; i++) {
+        if (SWS_OP_NEEDED(op, i))
+            op_mask |= SWS_COMP(i);
+    }
+    return op_mask;
+}
+
+static void asmgen_setup_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                  const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                  SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+    jit_alloc_vt(rs, 1, regs->vt);
+
+    /* constants */
+    regs->vk[0] = jit_push_v128(s, res->priv.data);
+    regs->vk[1] = jit_push_vimm(s, SWS_PIXEL_U8, 1);
+}
+
+static void asmgen_setup_read_nibble(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                     const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                     SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+    jit_alloc_vt(rs, 1, regs->vt);
+
+    /* constants */
+    regs->vk[0] = jit_push_vimm(s, SWS_PIXEL_U8, 0x0f);
+}
+
+static void asmgen_setup_read_packed(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                     const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                     SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    /* Count number of elems. */
+    int n = 0;
+    LOOP_MASK(p, i)
+        n++;
+
+    a64reg_contiguous_vec    (rs, n, regs->dl);
+    if (s->use_vh)
+        a64reg_contiguous_vec(rs, n, regs->dh);
+}
+
+static void asmgen_setup_read_planar(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                     const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                     SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+}
+
+static void asmgen_setup_write_bit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                   const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                   SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+    jit_alloc_vt(rs, 2, regs->vt);
+
+    /* constants */
+    regs->vk[0] = jit_push_v128(s, res->priv.data);
+}
+
+static void asmgen_setup_write_nibble(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                      const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                      SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+    jit_alloc_vt(rs, 2, regs->vt);
+}
+
+static void asmgen_setup_write_packed(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                      const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                      SwsImplResult *res)
+{
+    /* TODO See jit_write_packed_fixup(). */
+    LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+}
+
+static void asmgen_setup_write_planar(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                      const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                      SwsImplResult *res)
+{
+    LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
+}
+
+static void asmgen_setup_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                    const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                    SwsImplResult *res)
+{
+    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+}
+
+static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p,
+                                 const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                 SwsImplResult *res, const SwsOp *op)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    /* Split original swizzle into identity, renames, and copies. */
+    SwsCompMask identity = 0;
+    SwsMoveUOp rename = { 0 };
+    SwsMoveUOp copy = { 0 };
+    bool overwritten[4] = { false, false, false, false };
+    SwsCompMask op_mask = recompute_op_mask(op);
+    LOOP(op_mask, i) {
+        int src = op->swizzle.in[i];
+        if (src == i) {
+            identity |= SWS_COMP(i);
+        } else {
+            SwsMoveUOp *list = overwritten[src] ? &copy : &rename;
+            list->dst[list->num_moves] = i;
+            list->src[list->num_moves] = src;
+            list->num_moves++;
+        }
+        overwritten[src] = true;
+    }
+
+    /* Identity passthrough. */
+    LOOP(identity, i) {
+        regs->dl[i] = regs->sl[i] = prev->dl[i];
+        if (s->use_vh)
+            regs->dh[i] = regs->sh[i] = prev->dh[i];
+    }
+
+    /* Perform simple renames. */
+    for (int i = 0; i < rename.num_moves; i++) {
+        int src = rename.src[i];
+        int dst = rename.dst[i];
+        regs->dl[dst] = regs->sl[src] = prev->dl[src];
+        if (s->use_vh)
+            regs->dh[dst] = regs->sh[src] = prev->dh[src];
+    }
+
+    /* Replace moves list with remaining copies. */
+    p->par.move = copy;
+    p->mask = 0;
+    for (int i = 0; i < copy.num_moves; i++) {
+        int dst = copy.dst[i];
+        regs->dl[dst] = a64reg_vec(rs, -1);
+        if (s->use_vh)
+            regs->dh[dst] = a64reg_vec(rs, -1);
+        p->mask |= SWS_COMP(dst);
+    }
+}
+
+static void asmgen_setup_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    regs->sl[0] = prev->dl[0];
+    if (s->use_vh)
+        regs->sh[0] = prev->dh[0];
+    LOOP_MASK      (p, i) { regs->dl[i] = i ? a64reg_vec(rs, -1) : regs->sl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = i ? a64reg_vec(rs, -1) : regs->sh[i]; }
+
+    /* constants */
+    LOOP_MASK      (p, i) {
+        uint32_t val = (1u << p->par.pack.pattern[i]) - 1;
+        regs->vk[i] = jit_push_vimm(s, p->type, val);
+    }
+}
+
+static void asmgen_setup_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                              const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                              SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+    LOOP_MASK      (p, i) { if (i) { a64reg_vec_free(rs, regs->sl[i]); } }
+    LOOP_MASK_VH(s, p, i) { if (i) { a64reg_vec_free(rs, regs->sh[i]); } }
+}
+
+static void asmgen_setup_shift(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                               const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                               SwsImplResult *res)
+{
+    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+}
+
+static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                               const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                               SwsImplResult *res, const SwsOp *op)
+{
+    /* TODO factor clear into setup instead of performing dup. */
+    AArch64RegState *rs = &s->regstate;
+
+    SwsCompMask op_mask = recompute_op_mask(op);
+    LOOP(op_mask, i) {
+        if (p->mask & SWS_COMP(i)) {
+            if (prev && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
+                regs->dl[i] = prev->dl[i];
+            } else {
+                regs->dl[i] = a64reg_vec(rs, -1);
+            }
+            if (s->use_vh) {
+                if (prev && rasm_op_type(prev->dh[i]) != RASM_OP_NONE) {
+                    regs->dh[i] = prev->dh[i];
+                } else {
+                    regs->dh[i] = a64reg_vec(rs, -1);
+                }
+            }
+        } else {
+            /* pass-through */
+            regs->dl[i] = regs->sl[i] = prev->dl[i];
+            if (s->use_vh)
+                regs->dh[i] = regs->sh[i] = prev->dh[i];
+        }
+    }
+
+    /* constants */
+    regs->vk[0] = jit_push_v128(s, res->priv.data);
+}
+
+static void asmgen_setup_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                 const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                 SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    SwsPixelType to_type = (p->uop == SWS_UOP_EXPAND_PAIR) ? SWS_PIXEL_U16
+                         : (p->uop == SWS_UOP_EXPAND_QUAD) ? SWS_PIXEL_U32
+                         : (p->uop == SWS_UOP_TO_U8)       ? SWS_PIXEL_U8
+                         : (p->uop == SWS_UOP_TO_U16)      ? SWS_PIXEL_U16
+                         : (p->uop == SWS_UOP_TO_U32)      ? SWS_PIXEL_U32
+                         :                                   SWS_PIXEL_F32;
+    size_t src_el_size = s->el_size;
+    size_t dst_el_size = ff_sws_pixel_type_size(to_type);
+    bool src_use_vh = (p->block_size * src_el_size) > 16;
+    bool dst_use_vh = (p->block_size * dst_el_size) > 16;
+    LOOP_MASK      (p, i) {
+        regs->dl[i] = regs->sl[i] = prev->dl[i];
+        if (src_use_vh) {
+            regs->dh[i] = regs->sh[i] = prev->dh[i];
+            if (!dst_use_vh)
+                a64reg_vec_free(rs, regs->sh[i]);
+        } else {
+            regs->dh[i] = a64reg_vec(rs, -1);
+        }
+    }
+}
+
+static void asmgen_setup_clamp(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                               const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                               SwsImplResult *res)
+{
+    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+
+    /* constants */
+    LOOP_MASK      (p, i) {
+        uint32_t val = get_priv_val(&res->priv, p->type, i);
+        regs->vk[i] = jit_push_vimm(s, p->type, val);
+    }
+}
+
+static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                               const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                               SwsImplResult *res)
+{
+    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+
+    /* constants */
+    uint32_t val = get_priv_val(&res->priv, p->type, 0);
+    regs->vk[0] = jit_push_vimm(s, p->type, val);
+}
+
+static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                SwsImplResult *res)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    /**
+     * p->mask only covers rows the matrix actually computes (see
+     * the SWS_UOP_LINEAR/LINEAR_FMA case in
+     * ff_sws_aarch64_ops_translate()) -- it excludes both columns
+     * that are read as inputs but never written (e.g. a 3-in/1-out
+     * matrix like RGB -> gray only needs output row 0, but still
+     * reads input columns 0, 1 and 2), and rows that are pure
+     * identity passthroughs the matrix doesn't touch at all (e.g. a
+     * channel reorder with only one real coefficient row). Both
+     * need their register propagated unchanged so later ops can
+     * still read them.
+     */
+    LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+    for (int i = 0; i < 4; i++) {
+        if (SWS_COMP_TEST(p->mask, i))
+            continue;
+        if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE)
+            regs->dl[i] = regs->sl[i] = prev->dl[i];
+        if (s->use_vh && rasm_op_type(prev->dh[i]) != RASM_OP_NONE)
+            regs->dh[i] = regs->sh[i] = prev->dh[i];
+    }
+
+    SwsCompMask save_mask = 0;
+    bool overwritten[4] = { false, false, false, false };
+    LOOP_MASK(p, i) {
+        for (int j = 0; j < 5; j++) {
+            bool is_offset = (j == 0);
+            int src_j = is_offset ? 4 : (j - 1);
+            if (p->par.lin.zero & SWS_MASK(i, src_j))
+                continue;
+            if (!is_offset && overwritten[src_j])
+                save_mask |= SWS_COMP(src_j);
+            overwritten[i] = true;
+        }
+    }
+    LOOP      (save_mask, i) { regs->dl[i] = a64reg_vec(rs, -1); }
+    LOOP_VH(s, save_mask, i) { regs->dh[i] = a64reg_vec(rs, -1); }
+    if (p->uop == SWS_UOP_LINEAR)
+        jit_alloc_vt(rs, 4, &regs->vt[8]);
+    LOOP      (save_mask, i) { a64reg_vec_free(rs, regs->sl[i]); }
+    LOOP_VH(s, save_mask, i) { a64reg_vec_free(rs, regs->sh[i]); }
+    /* constants */
+    const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
+    int i_coeff = 0;
+    LOOP_MASK(p, i) {
+        for (int j = 0; j < 5; j++) {
+            bool is_offset = (j == 0);
+            int src_j = is_offset ? 4 : (j - 1);
+            if (p->par.lin.zero & SWS_MASK(i, src_j))
+                continue;
+            regs->linear_vcoeff[i][j] = jit_push_elem(s, SWS_PIXEL_U32, coeffs[i_coeff++].u32);
+        }
+    }
+}
+
+static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
+                                SwsImplResult *res, const SwsOp *op)
+{
+    AArch64RegState *rs = &s->regstate;
+
+    SwsCompMask op_mask = recompute_op_mask(op);
+    LOOP      (op_mask, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
+    LOOP_VH(s, op_mask, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+    jit_alloc_vt(rs, 2, regs->vt);
+
+    /* constants */
+    regs->dither_ptr = jit_push_u64(s, (uint64_t) res->priv.ptr);
+}
+
 /* Set up register usage for operation. */
 static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, int n)
 {
@@ -309,17 +685,6 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
     SwsAArch64OpRegs       *regs = &ctx->regs[n];
     SwsImplResult          *res  = &ctx->res[n];
     const SwsOp            *op   = &ops->ops[n];
-    AArch64RegState        *rs   = &s->regstate;
-
-    /**
-     * Recompute op_mask from SwsOp because SwsAArch64OpImplParams has
-     * dropped passthrough information to prevent duplicates.
-     */
-    SwsCompMask op_mask = 0;
-    for (int i = 0; i < 4; i++) {
-        if (SWS_OP_NEEDED(op, i))
-            op_mask |= SWS_COMP(i);
-    }
 
     /* TODO repeated. */
     size_t el_size = ff_sws_pixel_type_size(p->type);
@@ -333,269 +698,37 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
 
     /* I/O */
     const SwsAArch64OpRegs *prev = n ? &regs[-1] : NULL;
+
     switch (p->uop) {
-    case SWS_UOP_READ_PLANAR:
-        LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
-        break;
-    case SWS_UOP_READ_PACKED: {
-        /* Count number of elems. */
-        int n = 0;
-        LOOP_MASK(p, i)
-            n++;
-
-        a64reg_contiguous_vec    (rs, n, regs->dl);
-        if (s->use_vh)
-            a64reg_contiguous_vec(rs, n, regs->dh);
-        break;
-    }
-    case SWS_UOP_READ_NIBBLE:
-        LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
-        jit_alloc_vt(rs, 1, regs->vt);
-        /* constants */
-        regs->vk[0] = jit_push_vimm(s, SWS_PIXEL_U8, 0x0f);
-        break;
-    case SWS_UOP_READ_BIT:
-        LOOP_MASK      (p, i) { regs->dl[i] = a64reg_vec(rs, -1); }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
-        jit_alloc_vt(rs, 1, regs->vt);
-        /* constants */
-        regs->vk[0] = jit_push_v128(s, res->priv.data);
-        regs->vk[1] = jit_push_vimm(s, SWS_PIXEL_U8, 1);
-        break;
-    case SWS_UOP_WRITE_PLANAR:
-        LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
-        break;
-    case SWS_UOP_WRITE_PACKED:
-        /* TODO See jit_write_packed_fixup(). */
-        LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
-        break;
-    case SWS_UOP_WRITE_NIBBLE:
-        LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
-        jit_alloc_vt(rs, 2, regs->vt);
-        break;
-    case SWS_UOP_WRITE_BIT:
-        LOOP_MASK      (p, i) { regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->sh[i] = prev->dh[i]; }
-        jit_alloc_vt(rs, 2, regs->vt);
-        /* constants */
-        regs->vk[0] = jit_push_v128(s, res->priv.data);
-        break;
-    case SWS_UOP_PERMUTE:
-    case SWS_UOP_COPY: {
-        /* Split original swizzle into identity, renames, and copies. */
-        SwsCompMask identity = 0;
-        SwsMoveUOp rename = { 0 };
-        SwsMoveUOp copy = { 0 };
-        bool overwritten[4] = { false, false, false, false };
-        LOOP(op_mask, i) {
-            int src = op->swizzle.in[i];
-            if (src == i) {
-                identity |= SWS_COMP(i);
-            } else {
-                SwsMoveUOp *list = overwritten[src] ? &copy : &rename;
-                list->dst[list->num_moves] = i;
-                list->src[list->num_moves] = src;
-                list->num_moves++;
-            }
-            overwritten[src] = true;
-        }
-        /* Identity passthrough. */
-        LOOP(identity, i) {
-            regs->dl[i] = regs->sl[i] = prev->dl[i];
-            if (s->use_vh)
-                regs->dh[i] = regs->sh[i] = prev->dh[i];
-        }
-        /* Perform simple renames. */
-        for (int i = 0; i < rename.num_moves; i++) {
-            int src = rename.src[i];
-            int dst = rename.dst[i];
-            regs->dl[dst] = regs->sl[src] = prev->dl[src];
-            if (s->use_vh)
-                regs->dh[dst] = regs->sh[src] = prev->dh[src];
-        }
-        /* Replace moves list with remaining copies. */
-        p->par.move = copy;
-        p->mask = 0;
-        for (int i = 0; i < copy.num_moves; i++) {
-            int dst = copy.dst[i];
-            regs->dl[dst] = a64reg_vec(rs, -1);
-            if (s->use_vh)
-                regs->dh[dst] = a64reg_vec(rs, -1);
-            p->mask |= SWS_COMP(dst);
-        }
-        break;
-    }
-    case SWS_UOP_SWAP_BYTES:
-        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
-        break;
-    case SWS_UOP_EXPAND_PAIR:
-    case SWS_UOP_EXPAND_QUAD:
-    case SWS_UOP_TO_U8:
-    case SWS_UOP_TO_U16:
-    case SWS_UOP_TO_U32:
-    case SWS_UOP_TO_F32: {
-        SwsPixelType to_type = (p->uop == SWS_UOP_EXPAND_PAIR) ? SWS_PIXEL_U16
-                             : (p->uop == SWS_UOP_EXPAND_QUAD) ? SWS_PIXEL_U32
-                             : (p->uop == SWS_UOP_TO_U8)       ? SWS_PIXEL_U8
-                             : (p->uop == SWS_UOP_TO_U16)      ? SWS_PIXEL_U16
-                             : (p->uop == SWS_UOP_TO_U32)      ? SWS_PIXEL_U32
-                             :                                   SWS_PIXEL_F32;
-        size_t src_el_size = s->el_size;
-        size_t dst_el_size = ff_sws_pixel_type_size(to_type);
-        bool src_use_vh = (p->block_size * src_el_size) > 16;
-        bool dst_use_vh = (p->block_size * dst_el_size) > 16;
-        LOOP_MASK      (p, i) {
-            regs->dl[i] = regs->sl[i] = prev->dl[i];
-            if (src_use_vh) {
-                regs->dh[i] = regs->sh[i] = prev->dh[i];
-                if (!dst_use_vh)
-                    a64reg_vec_free(rs, regs->sh[i]);
-            } else {
-                regs->dh[i] = a64reg_vec(rs, -1);
-            }
-        }
-        break;
-    }
-    case SWS_UOP_SCALE: {
-        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
-        /* constants */
-        uint32_t val = get_priv_val(&res->priv, p->type, 0);
-        regs->vk[0] = jit_push_vimm(s, p->type, val);
-        break;
-    }
-    case SWS_UOP_MIN:
-    case SWS_UOP_MAX:
-        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
-        /* constants */
-        LOOP_MASK      (p, i) {
-            uint32_t val = get_priv_val(&res->priv, p->type, i);
-            regs->vk[i] = jit_push_vimm(s, p->type, val);
-        }
-        break;
-    case SWS_UOP_UNPACK:
-        regs->sl[0] = prev->dl[0];
-        if (s->use_vh)
-            regs->sh[0] = prev->dh[0];
-        LOOP_MASK      (p, i) { regs->dl[i] = i ? a64reg_vec(rs, -1) : regs->sl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = i ? a64reg_vec(rs, -1) : regs->sh[i]; }
-        /* constants */
-        LOOP_MASK      (p, i) {
-            uint32_t val = (1u << p->par.pack.pattern[i]) - 1;
-            regs->vk[i] = jit_push_vimm(s, p->type, val);
-        }
-        break;
-    case SWS_UOP_PACK:
-        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
-        LOOP_MASK      (p, i) { if (i) { a64reg_vec_free(rs, regs->sl[i]); } }
-        LOOP_MASK_VH(s, p, i) { if (i) { a64reg_vec_free(rs, regs->sh[i]); } }
-        break;
-    case SWS_UOP_LSHIFT:
-        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
-        break;
-    case SWS_UOP_RSHIFT:
-        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
-        break;
-    case SWS_UOP_CLEAR:
-        /* TODO factor clear into setup whenever possible. */
-        LOOP(op_mask, i) {
-            if (p->mask & SWS_COMP(i)) {
-                if (prev && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
-                    regs->dl[i] = prev->dl[i];
-                } else {
-                    regs->dl[i] = a64reg_vec(rs, -1);
-                }
-                if (s->use_vh) {
-                    if (prev && rasm_op_type(prev->dh[i]) != RASM_OP_NONE) {
-                        regs->dh[i] = prev->dh[i];
-                    } else {
-                        regs->dh[i] = a64reg_vec(rs, -1);
-                    }
-                }
-            } else {
-                /* pass-through */
-                regs->dl[i] = regs->sl[i] = prev->dl[i];
-                if (s->use_vh)
-                    regs->dh[i] = regs->sh[i] = prev->dh[i];
-            }
-        }
-        /* constants */
-        regs->vk[0] = jit_push_v128(s, res->priv.data);
-        break;
-    case SWS_UOP_LINEAR:
-    case SWS_UOP_LINEAR_FMA: {
-        /**
-         * p->mask only covers rows the matrix actually computes (see
-         * the SWS_UOP_LINEAR/LINEAR_FMA case in
-         * ff_sws_aarch64_ops_translate()) -- it excludes both columns
-         * that are read as inputs but never written (e.g. a 3-in/1-out
-         * matrix like RGB -> gray only needs output row 0, but still
-         * reads input columns 0, 1 and 2), and rows that are pure
-         * identity passthroughs the matrix doesn't touch at all (e.g. a
-         * channel reorder with only one real coefficient row). Both
-         * need their register propagated unchanged so later ops can
-         * still read them.
-         */
-        LOOP_MASK      (p, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
-        for (int i = 0; i < 4; i++) {
-            if (SWS_COMP_TEST(p->mask, i))
-                continue;
-            if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE)
-                regs->dl[i] = regs->sl[i] = prev->dl[i];
-            if (s->use_vh && rasm_op_type(prev->dh[i]) != RASM_OP_NONE)
-                regs->dh[i] = regs->sh[i] = prev->dh[i];
-        }
-
-        SwsCompMask save_mask = 0;
-        bool overwritten[4] = { false, false, false, false };
-        LOOP_MASK(p, i) {
-            for (int j = 0; j < 5; j++) {
-                bool is_offset = (j == 0);
-                int src_j = is_offset ? 4 : (j - 1);
-                if (p->par.lin.zero & SWS_MASK(i, src_j))
-                    continue;
-                if (!is_offset && overwritten[src_j])
-                    save_mask |= SWS_COMP(src_j);
-                overwritten[i] = true;
-            }
-        }
-        LOOP      (save_mask, i) { regs->dl[i] = a64reg_vec(rs, -1); }
-        LOOP_VH(s, save_mask, i) { regs->dh[i] = a64reg_vec(rs, -1); }
-        if (p->uop == SWS_UOP_LINEAR)
-            jit_alloc_vt(rs, 4, &regs->vt[8]);
-        LOOP      (save_mask, i) { a64reg_vec_free(rs, regs->sl[i]); }
-        LOOP_VH(s, save_mask, i) { a64reg_vec_free(rs, regs->sh[i]); }
-        /* constants */
-        const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
-        int i_coeff = 0;
-        LOOP_MASK(p, i) {
-            for (int j = 0; j < 5; j++) {
-                bool is_offset = (j == 0);
-                int src_j = is_offset ? 4 : (j - 1);
-                if (p->par.lin.zero & SWS_MASK(i, src_j))
-                    continue;
-                regs->linear_vcoeff[i][j] = jit_push_elem(s, SWS_PIXEL_U32, coeffs[i_coeff++].u32);
-            }
-        }
-        break;
-    }
-    case SWS_UOP_DITHER:
-        LOOP      (op_mask, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-        LOOP_VH(s, op_mask, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
-        jit_alloc_vt(rs, 2, regs->vt);
-        /* constants */
-        regs->dither_ptr = jit_push_u64(s, (uint64_t) res->priv.ptr);
+    case SWS_UOP_READ_BIT:     asmgen_setup_read_bit(s, p, prev, regs, res);     break;
+    case SWS_UOP_READ_NIBBLE:  asmgen_setup_read_nibble(s, p, prev, regs, res);  break;
+    case SWS_UOP_READ_PACKED:  asmgen_setup_read_packed(s, p, prev, regs, res);  break;
+    case SWS_UOP_READ_PLANAR:  asmgen_setup_read_planar(s, p, prev, regs, res);  break;
+    case SWS_UOP_WRITE_BIT:    asmgen_setup_write_bit(s, p, prev, regs, res);    break;
+    case SWS_UOP_WRITE_NIBBLE: asmgen_setup_write_nibble(s, p, prev, regs, res); break;
+    case SWS_UOP_WRITE_PACKED: asmgen_setup_write_packed(s, p, prev, regs, res); break;
+    case SWS_UOP_WRITE_PLANAR: asmgen_setup_write_planar(s, p, prev, regs, res); break;
+    case SWS_UOP_SWAP_BYTES:   asmgen_setup_swap_bytes(s, p, prev, regs, res);   break;
+    case SWS_UOP_PERMUTE:      asmgen_setup_swizzle(s, p, prev, regs, res, op);  break;
+    case SWS_UOP_COPY:         asmgen_setup_swizzle(s, p, prev, regs, res, op);  break;
+    case SWS_UOP_UNPACK:       asmgen_setup_unpack(s, p, prev, regs, res);       break;
+    case SWS_UOP_PACK:         asmgen_setup_pack(s, p, prev, regs, res);         break;
+    case SWS_UOP_LSHIFT:       asmgen_setup_shift(s, p, prev, regs, res);        break;
+    case SWS_UOP_RSHIFT:       asmgen_setup_shift(s, p, prev, regs, res);        break;
+    case SWS_UOP_CLEAR:        asmgen_setup_clear(s, p, prev, regs, res, op);    break;
+    case SWS_UOP_TO_U8:        asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_TO_U16:       asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_TO_U32:       asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_TO_F32:       asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_EXPAND_PAIR:  asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_EXPAND_QUAD:  asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_MIN:          asmgen_setup_clamp(s, p, prev, regs, res);        break;
+    case SWS_UOP_MAX:          asmgen_setup_clamp(s, p, prev, regs, res);        break;
+    case SWS_UOP_SCALE:        asmgen_setup_scale(s, p, prev, regs, res);        break;
+    case SWS_UOP_LINEAR:       asmgen_setup_linear(s, p, prev, regs, res);       break;
+    case SWS_UOP_LINEAR_FMA:   asmgen_setup_linear(s, p, prev, regs, res);       break;
+    case SWS_UOP_DITHER:       asmgen_setup_dither(s, p, prev, regs, res, op);   break;
+    default:
         break;
     }
 }
