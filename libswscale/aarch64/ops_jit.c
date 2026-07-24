@@ -778,6 +778,19 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         .rctx = r,
     };
 
+    printf("%s -> %s\n",
+           av_get_pix_fmt_name(ops->src.format),
+           av_get_pix_fmt_name(ops->dst.format));
+
+    const SwsOp *read      = ff_sws_op_list_input(ops);
+    const SwsOp *write     = ff_sws_op_list_output(ops);
+    const int read_planes  = read ? ff_sws_rw_op_planes(read) : 0;
+    const int write_planes = ff_sws_rw_op_planes(write);
+    SwsCompMask imask = SWS_COMP_MASK(read_planes > 0,  read_planes > 1,  read_planes > 2,  read_planes > 3);
+    SwsCompMask omask = SWS_COMP_MASK(write_planes > 0, write_planes > 1, write_planes > 2, write_planes > 3);
+
+    asmgen_process_frame(&s, imask, omask);
+
     /* Translate all ops into implementation parameters and setup all
      * constant data. */
     SwsAArch64OpImplParams params[SWS_MAX_OPS] = { 0 };
@@ -793,19 +806,6 @@ static int aarch64_jit_compile(SwsContext *ctx, const SwsOpList *ops,
         if (ret < 0)
             goto cleanup;
     }
-
-    printf("%s -> %s\n",
-           av_get_pix_fmt_name(ops->src.format),
-           av_get_pix_fmt_name(ops->dst.format));
-
-    const SwsOp *read      = ff_sws_op_list_input(ops);
-    const SwsOp *write     = ff_sws_op_list_output(ops);
-    const int read_planes  = read ? ff_sws_rw_op_planes(read) : 0;
-    const int write_planes = ff_sws_rw_op_planes(write);
-    SwsCompMask imask = SWS_COMP_MASK(read_planes > 0,  read_planes > 1,  read_planes > 2,  read_planes > 3);
-    SwsCompMask omask = SWS_COMP_MASK(write_planes > 0, write_planes > 1, write_planes > 2, write_planes > 3);
-
-    asmgen_process_frame(&s, imask, omask);
 
     for (int i = 0; i < ops->num_ops; i++) {
         if (ops->ops[i].op == SWS_OP_SWIZZLE) {
