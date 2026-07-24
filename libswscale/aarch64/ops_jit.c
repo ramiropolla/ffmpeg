@@ -559,12 +559,12 @@ static void asmgen_setup_convert(SwsAArch64Context *s, const SwsAArch64OpImplPar
     bool dst_use_vh = (p->block_size * dst_el_size) > 16;
 
     setup_mask_passthrough(s, p->mask, prev, regs);
-    if (src_use_vh && dst_use_vh) {
-        LOOP_MASK(p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
-    } else if (!src_use_vh && dst_use_vh) {
-        LOOP_MASK(p, i) { regs->dh[i] = a64reg_vec(rs, -1); }
-    } else if (src_use_vh && !dst_use_vh) {
-        LOOP_MASK(p, i) {
+    LOOP_MASK(p, i) {
+        if (src_use_vh && dst_use_vh) {
+            regs->dh[i] = regs->sh[i] = prev->dh[i];
+        } else if (!src_use_vh && dst_use_vh) {
+            regs->dh[i] = a64reg_vec(rs, -1);
+        } else if (src_use_vh && !dst_use_vh) {
             regs->sh[i] = prev->dh[i];
             a64reg_vec_free(rs, regs->sh[i]);
         }
