@@ -416,14 +416,13 @@ static uint32_t get_priv_val(const SwsOpPriv *priv, SwsPixelType type, int i)
 }
 
 /* Set up register usage for operation. */
-static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                             SwsImplResult *res, SwsAArch64OpRegs *regs, int n)
+static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, int n)
 {
-    AArch64RegState *rs = &s->regstate;
-
-    /* TODO yikes */
-    p += n;
-    regs += n;
+    SwsAArch64Context            *s    = &ctx->s;
+    const SwsAArch64OpImplParams *p    = &ctx->params[n];
+    SwsAArch64OpRegs             *regs = &ctx->regs[n];
+    SwsImplResult                *res  = &ctx->res[n];
+    AArch64RegState              *rs   = &s->regstate;
 
     /* TODO repeated. */
     size_t el_size = ff_sws_pixel_type_size(p->type);
@@ -694,8 +693,6 @@ static int aarch64_jit_setup(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     default:
         break;
     }
-
-    return 0;
 }
 
 /*********************************************************************/
@@ -791,9 +788,7 @@ static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
         ret = ff_sws_aarch64_setup(ops, block_size, i, &ctx->params[i], &ctx->res[i]);
         if (ret < 0)
             goto error;
-        ret = aarch64_jit_setup(&ctx->s, ctx->params, &ctx->res[i], ctx->regs, i);
-        if (ret < 0)
-            goto error;
+        aarch64_jit_setup(ctx, ops, i);
     }
 
     /* Debug print input/output vectors. */
