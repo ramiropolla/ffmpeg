@@ -495,13 +495,8 @@ static void asmgen_setup_unpack(SwsAArch64Context *s, const SwsAArch64OpImplPara
                                 const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                 SwsImplResult *res)
 {
-    AArch64RegState *rs = &s->regstate;
-
-    regs->sl[0] = prev->dl[0];
-    if (s->use_vh)
-        regs->sh[0] = prev->dh[0];
-    LOOP_MASK      (p, i) { regs->dl[i] = i ? a64reg_vec(rs, -1) : regs->sl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = i ? a64reg_vec(rs, -1) : regs->sh[i]; }
+    setup_mask_passthrough(s, 1u, prev, regs);
+    setup_mask_alloc(s, p->mask & ~1u, regs);
 
     /* constants */
     LOOP_MASK      (p, i) {
