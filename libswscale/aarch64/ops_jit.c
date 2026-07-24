@@ -533,6 +533,10 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
     AArch64RegState *rs = &s->regstate;
 
     SwsCompMask op_mask = recompute_op_mask(op);
+    SwsCompMask identity = op_mask & ~p->mask;
+
+    setup_mask_passthrough(s, identity, prev, regs);
+
     LOOP(op_mask, i) {
         if (p->mask & SWS_COMP(i)) {
             if (prev && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
@@ -547,11 +551,6 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
                     regs->dh[i] = a64reg_vec(rs, -1);
                 }
             }
-        } else {
-            /* pass-through */
-            regs->dl[i] = regs->sl[i] = prev->dl[i];
-            if (s->use_vh)
-                regs->dh[i] = regs->sh[i] = prev->dh[i];
         }
     }
 
