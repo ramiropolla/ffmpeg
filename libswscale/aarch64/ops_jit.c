@@ -527,7 +527,7 @@ static void asmgen_setup_shift(SwsAArch64Context *s, const SwsAArch64OpImplParam
 
 static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
-                               SwsImplResult *res, const SwsOp *op, const SwsOp *prev_op)
+                               SwsImplResult *res, const SwsOp *op)
 {
     /* TODO factor clear into setup instead of performing dup. */
     AArch64RegState *rs = &s->regstate;
@@ -687,13 +687,12 @@ static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplPara
 /* Set up registers for operation. */
 static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, int n)
 {
-    SwsAArch64Context      *s       = &ctx->s;
-    SwsAArch64OpImplParams *p       = &ctx->params[n];
-    const SwsAArch64OpRegs *prev    = n ? &ctx->regs[n - 1] : NULL;
-    SwsAArch64OpRegs       *regs    = &ctx->regs[n];
-    SwsImplResult          *res     = &ctx->res[n];
-    const SwsOp            *prev_op = n ? &ops->ops[n - 1] : NULL;
-    const SwsOp            *op      = &ops->ops[n];
+    SwsAArch64Context      *s    = &ctx->s;
+    SwsAArch64OpImplParams *p    = &ctx->params[n];
+    const SwsAArch64OpRegs *prev = n ? &ctx->regs[n - 1] : NULL;
+    SwsAArch64OpRegs       *regs = &ctx->regs[n];
+    SwsImplResult          *res  = &ctx->res[n];
+    const SwsOp            *op   = &ops->ops[n];
 
     /* TODO repeated. */
     size_t el_size = ff_sws_pixel_type_size(p->type);
@@ -706,34 +705,34 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
     s->el_count = s->vec_size / el_size;
 
     switch (p->uop) {
-    case SWS_UOP_READ_BIT:     asmgen_setup_read_bit(s, p, prev, regs, res);           break;
-    case SWS_UOP_READ_NIBBLE:  asmgen_setup_read_nibble(s, p, prev, regs, res);        break;
-    case SWS_UOP_READ_PACKED:  asmgen_setup_read_packed(s, p, prev, regs, res);        break;
-    case SWS_UOP_READ_PLANAR:  asmgen_setup_read_planar(s, p, prev, regs, res);        break;
-    case SWS_UOP_WRITE_BIT:    asmgen_setup_write_bit(s, p, prev, regs, res);          break;
-    case SWS_UOP_WRITE_NIBBLE: asmgen_setup_write_nibble(s, p, prev, regs, res);       break;
-    case SWS_UOP_WRITE_PACKED: asmgen_setup_write_packed(s, p, prev, regs, res);       break;
-    case SWS_UOP_WRITE_PLANAR: asmgen_setup_write_planar(s, p, prev, regs, res);       break;
-    case SWS_UOP_SWAP_BYTES:   asmgen_setup_swap_bytes(s, p, prev, regs, res);         break;
-    case SWS_UOP_PERMUTE:      asmgen_setup_swizzle(s, p, prev, regs, res, op);        break;
-    case SWS_UOP_COPY:         asmgen_setup_swizzle(s, p, prev, regs, res, op);        break;
-    case SWS_UOP_UNPACK:       asmgen_setup_unpack(s, p, prev, regs, res);             break;
-    case SWS_UOP_PACK:         asmgen_setup_pack(s, p, prev, regs, res);               break;
-    case SWS_UOP_LSHIFT:       asmgen_setup_shift(s, p, prev, regs, res);              break;
-    case SWS_UOP_RSHIFT:       asmgen_setup_shift(s, p, prev, regs, res);              break;
-    case SWS_UOP_CLEAR:        asmgen_setup_clear(s, p, prev, regs, res, op, prev_op); break;
-    case SWS_UOP_TO_U8:        asmgen_setup_convert(s, p, prev, regs, res);            break;
-    case SWS_UOP_TO_U16:       asmgen_setup_convert(s, p, prev, regs, res);            break;
-    case SWS_UOP_TO_U32:       asmgen_setup_convert(s, p, prev, regs, res);            break;
-    case SWS_UOP_TO_F32:       asmgen_setup_convert(s, p, prev, regs, res);            break;
-    case SWS_UOP_EXPAND_PAIR:  asmgen_setup_convert(s, p, prev, regs, res);            break;
-    case SWS_UOP_EXPAND_QUAD:  asmgen_setup_convert(s, p, prev, regs, res);            break;
-    case SWS_UOP_MIN:          asmgen_setup_clamp(s, p, prev, regs, res);              break;
-    case SWS_UOP_MAX:          asmgen_setup_clamp(s, p, prev, regs, res);              break;
-    case SWS_UOP_SCALE:        asmgen_setup_scale(s, p, prev, regs, res);              break;
-    case SWS_UOP_LINEAR:       asmgen_setup_linear(s, p, prev, regs, res);             break;
-    case SWS_UOP_LINEAR_FMA:   asmgen_setup_linear(s, p, prev, regs, res);             break;
-    case SWS_UOP_DITHER:       asmgen_setup_dither(s, p, prev, regs, res, op);         break;
+    case SWS_UOP_READ_BIT:     asmgen_setup_read_bit(s, p, prev, regs, res);     break;
+    case SWS_UOP_READ_NIBBLE:  asmgen_setup_read_nibble(s, p, prev, regs, res);  break;
+    case SWS_UOP_READ_PACKED:  asmgen_setup_read_packed(s, p, prev, regs, res);  break;
+    case SWS_UOP_READ_PLANAR:  asmgen_setup_read_planar(s, p, prev, regs, res);  break;
+    case SWS_UOP_WRITE_BIT:    asmgen_setup_write_bit(s, p, prev, regs, res);    break;
+    case SWS_UOP_WRITE_NIBBLE: asmgen_setup_write_nibble(s, p, prev, regs, res); break;
+    case SWS_UOP_WRITE_PACKED: asmgen_setup_write_packed(s, p, prev, regs, res); break;
+    case SWS_UOP_WRITE_PLANAR: asmgen_setup_write_planar(s, p, prev, regs, res); break;
+    case SWS_UOP_SWAP_BYTES:   asmgen_setup_swap_bytes(s, p, prev, regs, res);   break;
+    case SWS_UOP_PERMUTE:      asmgen_setup_swizzle(s, p, prev, regs, res, op);  break;
+    case SWS_UOP_COPY:         asmgen_setup_swizzle(s, p, prev, regs, res, op);  break;
+    case SWS_UOP_UNPACK:       asmgen_setup_unpack(s, p, prev, regs, res);       break;
+    case SWS_UOP_PACK:         asmgen_setup_pack(s, p, prev, regs, res);         break;
+    case SWS_UOP_LSHIFT:       asmgen_setup_shift(s, p, prev, regs, res);        break;
+    case SWS_UOP_RSHIFT:       asmgen_setup_shift(s, p, prev, regs, res);        break;
+    case SWS_UOP_CLEAR:        asmgen_setup_clear(s, p, prev, regs, res, op);    break;
+    case SWS_UOP_TO_U8:        asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_TO_U16:       asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_TO_U32:       asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_TO_F32:       asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_EXPAND_PAIR:  asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_EXPAND_QUAD:  asmgen_setup_convert(s, p, prev, regs, res);      break;
+    case SWS_UOP_MIN:          asmgen_setup_clamp(s, p, prev, regs, res);        break;
+    case SWS_UOP_MAX:          asmgen_setup_clamp(s, p, prev, regs, res);        break;
+    case SWS_UOP_SCALE:        asmgen_setup_scale(s, p, prev, regs, res);        break;
+    case SWS_UOP_LINEAR:       asmgen_setup_linear(s, p, prev, regs, res);       break;
+    case SWS_UOP_LINEAR_FMA:   asmgen_setup_linear(s, p, prev, regs, res);       break;
+    case SWS_UOP_DITHER:       asmgen_setup_dither(s, p, prev, regs, res, op);   break;
     default:
         break;
     }
