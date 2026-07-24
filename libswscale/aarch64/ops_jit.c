@@ -460,7 +460,11 @@ static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p
     }
 
     /* Identity passthrough. */
-    setup_mask_passthrough(s, identity, prev, regs);
+    LOOP(identity, i) {
+        regs->dl[i] = regs->sl[i] = prev->dl[i];
+        if (s->use_vh)
+            regs->dh[i] = regs->sh[i] = prev->dh[i];
+    }
 
     /* Perform simple renames. */
     for (int i = 0; i < rename.num_moves; i++) {
