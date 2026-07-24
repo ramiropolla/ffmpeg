@@ -510,9 +510,9 @@ static void asmgen_setup_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams
                               const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                               SwsImplResult *res)
 {
-    AArch64RegState *rs = &s->regstate;
-
     setup_mask_passthrough(s, p->mask, prev, regs);
+
+    AArch64RegState *rs = &s->regstate;
     LOOP_MASK      (p, i) { if (i) { a64reg_vec_free(rs, regs->sl[i]); } }
     LOOP_MASK_VH(s, p, i) { if (i) { a64reg_vec_free(rs, regs->sh[i]); } }
 }
@@ -574,8 +574,8 @@ static void asmgen_setup_convert(SwsAArch64Context *s, const SwsAArch64OpImplPar
     size_t dst_el_size = ff_sws_pixel_type_size(to_type);
     bool src_use_vh = (p->block_size * src_el_size) > 16;
     bool dst_use_vh = (p->block_size * dst_el_size) > 16;
-    LOOP_MASK(p, i)       { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-    LOOP_MASK_VH(s, p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+
+    setup_mask_passthrough(s, p->mask, prev, regs);
     if (src_use_vh && dst_use_vh) {
         LOOP_MASK(p, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
     } else if (!src_use_vh && dst_use_vh) {
@@ -677,11 +677,10 @@ static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplPara
                                 const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                 SwsImplResult *res, const SwsOp *op)
 {
-    AArch64RegState *rs = &s->regstate;
-
     SwsCompMask op_mask = recompute_op_mask(op);
-    LOOP      (op_mask, i) { regs->dl[i] = regs->sl[i] = prev->dl[i]; }
-    LOOP_VH(s, op_mask, i) { regs->dh[i] = regs->sh[i] = prev->dh[i]; }
+    setup_mask_passthrough(s, op_mask, prev, regs);
+
+    AArch64RegState *rs = &s->regstate;
     jit_alloc_vt(rs, 2, regs->vt);
 
     /* constants */
