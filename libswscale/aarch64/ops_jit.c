@@ -460,11 +460,7 @@ static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p
     }
 
     /* Identity passthrough. */
-    LOOP(identity, i) {
-        regs->dl[i] = regs->sl[i] = prev->dl[i];
-        if (s->use_vh)
-            regs->dh[i] = regs->sh[i] = prev->dh[i];
-    }
+    setup_mask_passthrough(s, identity, prev, regs);
 
     /* Perform simple renames. */
     for (int i = 0; i < rename.num_moves; i++) {
@@ -595,7 +591,7 @@ static void asmgen_setup_clamp(SwsAArch64Context *s, const SwsAArch64OpImplParam
     setup_mask_passthrough(s, p->mask, prev, regs);
 
     /* constants */
-    LOOP_MASK      (p, i) {
+    LOOP_MASK(p, i) {
         uint32_t val = get_priv_val(&res->priv, p->type, i);
         regs->vk[i] = jit_push_vimm(s, p->type, val);
     }
