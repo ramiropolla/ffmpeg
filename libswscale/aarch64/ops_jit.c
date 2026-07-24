@@ -66,8 +66,6 @@ static void aarch64_jit_free(void *priv)
  * that the write operation will have contiguous vectors. We fix this
  * here by ensuring the vectors are contiguous, allocating and moving
  * to new registers if necessary.
- * TODO fix this by implementing proper register tracking and automatic
- *      register allocation.
  */
 
 static void jit_make_contiguous_vecs(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -119,6 +117,11 @@ static int asmgen_op_jit(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 
     rasm_add_commentf(r, (char[32]){0}, 32, "%s() {", op_type_names[p->uop]);
 
+    /**
+     * Ensure packed write operations work on contiguous vectors.
+     * TODO fix this by implementing proper register tracking and automatic
+     *      register allocation.
+     */
     if (p->uop == SWS_UOP_WRITE_PACKED)
         jit_write_packed_fixup(s, p, regs);
 
@@ -355,18 +358,23 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         LOOP_MASK      (p, i) { dl[i] = a64reg_vec(rs, -1); }
         LOOP_MASK_VH(s, p, i) { dh[i] = a64reg_vec(rs, -1); }
         jit_alloc_vt(rs, 1, vt);
+        /* constants */
+        regs->vk[0] = jit_push_vimm(s, SWS_PIXEL_U8, 0x0f);
         break;
     case SWS_UOP_READ_BIT:
         LOOP_MASK      (p, i) { dl[i] = a64reg_vec(rs, -1); }
         LOOP_MASK_VH(s, p, i) { dh[i] = a64reg_vec(rs, -1); }
         jit_alloc_vt(rs, 1, vt);
+        /* constants */
+        regs->vk[0] = jit_push_v128(s, res->priv.data);
+        regs->vk[1] = jit_push_vimm(s, SWS_PIXEL_U8, 1);
         break;
     case SWS_UOP_WRITE_PLANAR:
         LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
         break;
     case SWS_UOP_WRITE_PACKED:
-        // TODO
+        /* TODO See jit_write_packed_fixup(). */
         LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
         break;
@@ -379,6 +387,8 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         LOOP_MASK      (p, i) { sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { sh[i] = prev->dh[i]; }
         jit_alloc_vt(rs, 2, vt);
+        /* constants */
+        regs->vk[0] = jit_push_v128(s, res->priv.data);
         break;
     case SWS_UOP_PERMUTE:
     case SWS_UOP_COPY: {
@@ -399,14 +409,12 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
             }
             overwritten[src] = true;
         }
-
         /* Identity passthrough. */
         LOOP(identity, i) {
             dl[i] = sl[i] = prev->dl[i];
             if (s->use_vh)
                 dh[i] = sh[i] = prev->dh[i];
         }
-
         /* Perform simple renames. */
         for (int i = 0; i < rename.num_moves; i++) {
             int src = rename.src[i];
@@ -415,7 +423,6 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
             if (s->use_vh)
                 dh[dst] = sh[src] = prev->dh[src];
         }
-
         /* Replace moves list with remaining copies. */
         p->par.move = copy;
         p->mask = 0;
@@ -426,7 +433,6 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
                 dh[dst] = a64reg_vec(rs, -1);
             p->mask |= SWS_COMP(dst);
         }
-
         break;
     }
     case SWS_UOP_SWAP_BYTES:
@@ -449,29 +455,35 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         size_t dst_el_size = ff_sws_pixel_type_size(to_type);
         bool src_use_vh = (p->block_size * src_el_size) > 16;
         bool dst_use_vh = (p->block_size * dst_el_size) > 16;
-
-        LOOP_MASK(p, i)     { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; } // TODO remove tmp needed?
-        if (src_use_vh && dst_use_vh) {
-            LOOP_MASK(p, i) { dh[i] = sh[i] = prev->dh[i]; }
-        } else if (!src_use_vh && dst_use_vh) {
-            LOOP_MASK(p, i) { dh[i] = a64reg_vec(rs, -1); }
-        } else if (src_use_vh && !dst_use_vh) {
-            LOOP_MASK(p, i) { sh[i] = prev->dh[i]; a64reg_vec_free(rs, sh[i]); }
+        LOOP_MASK      (p, i) {
+            dl[i] = sl[i] = prev->dl[i];
+            if (src_use_vh) {
+                dh[i] = sh[i] = prev->dh[i];
+                if (!dst_use_vh)
+                    a64reg_vec_free(rs, sh[i]);
+            } else {
+                dh[i] = a64reg_vec(rs, -1);
+            }
         }
         break;
     }
-    case SWS_UOP_SCALE:
+    case SWS_UOP_SCALE: {
         LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        /* constants */
+        uint32_t val = get_priv_val(&res->priv, p->type, 0);
+        regs->vk[0] = jit_push_vimm(s, p->type, val);
         break;
+    }
     case SWS_UOP_MIN:
-        LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
-        LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
-        break;
     case SWS_UOP_MAX:
         LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
         LOOP_MASK_VH(s, p, i) { dh[i] = sh[i] = prev->dh[i]; }
+        /* constants */
+        LOOP_MASK      (p, i) {
+            uint32_t val = get_priv_val(&res->priv, p->type, i);
+            regs->vk[i] = jit_push_vimm(s, p->type, val);
+        }
         break;
     case SWS_UOP_UNPACK:
         sl[0] = prev->dl[0];
@@ -479,6 +491,11 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
             sh[0] = prev->dh[0];
         LOOP_MASK      (p, i) { dl[i] = i ? a64reg_vec(rs, -1) : sl[i]; }
         LOOP_MASK_VH(s, p, i) { dh[i] = i ? a64reg_vec(rs, -1) : sh[i]; }
+        /* constants */
+        LOOP_MASK      (p, i) {
+            uint32_t val = (1u << p->par.pack.pattern[i]) - 1;
+            regs->vk[i] = jit_push_vimm(s, p->type, val);
+        }
         break;
     case SWS_UOP_PACK:
         LOOP_MASK      (p, i) { dl[i] = sl[i] = prev->dl[i]; }
@@ -517,6 +534,8 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
                     dh[i] = sh[i] = prev->dh[i];
             }
         }
+        /* constants */
+        regs->vk[0] = jit_push_v128(s, res->priv.data);
         break;
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA: {
@@ -562,66 +581,7 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
             jit_alloc_vt(rs, 4, &vt[8]);
         LOOP      (save_mask, i) { a64reg_vec_free(rs, sl[i]); }
         LOOP_VH(s, save_mask, i) { a64reg_vec_free(rs, sh[i]); }
-        break;
-    }
-    case SWS_UOP_DITHER:
-        /**
-         * p->mask only covers the components that actually get a dither
-         * offset (see the SWS_UOP_DITHER case in
-         * ff_sws_aarch64_ops_translate()); it is not the generic
-         * "needed downstream" mask like most other uops. Components not
-         * in p->mask still need their register propagated unchanged so
-         * later ops can read them.
-         */
-        for (int i = 0; i < 4; i++) {
-            if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE)
-                dl[i] = sl[i] = prev->dl[i];
-        }
-        if (s->use_vh) {
-            for (int i = 0; i < 4; i++) {
-                if (rasm_op_type(prev->dh[i]) != RASM_OP_NONE)
-                    dh[i] = sh[i] = prev->dh[i];
-            }
-        }
-        jit_alloc_vt(rs, 2, vt);
-        break;
-    }
-
-    /* constants */
-    switch (p->uop) {
-    case SWS_UOP_READ_BIT:
-        regs->vk[0] = jit_push_v128(s, res->priv.data);
-        regs->vk[1] = jit_push_vimm(s, SWS_PIXEL_U8, 1);
-        break;
-    case SWS_UOP_READ_NIBBLE:
-        regs->vk[0] = jit_push_vimm(s, SWS_PIXEL_U8, 0x0f);
-        break;
-    case SWS_UOP_WRITE_BIT:
-        regs->vk[0] = jit_push_v128(s, res->priv.data);
-        break;
-    case SWS_UOP_UNPACK:
-        LOOP_MASK(p, i) {
-            uint32_t val = (1u << p->par.pack.pattern[i]) - 1;
-            regs->vk[i] = jit_push_vimm(s, p->type, val);
-        }
-        break;
-    case SWS_UOP_CLEAR:
-        regs->vk[0] = jit_push_v128(s, res->priv.data);
-        break;
-    case SWS_UOP_MIN:
-    case SWS_UOP_MAX:
-        LOOP_MASK(p, i) {
-            uint32_t val = get_priv_val(&res->priv, p->type, i);
-            regs->vk[i] = jit_push_vimm(s, p->type, val);
-        }
-        break;
-    case SWS_UOP_SCALE: {
-        uint32_t val = get_priv_val(&res->priv, p->type, 0);
-        regs->vk[0] = jit_push_vimm(s, p->type, val);
-        break;
-    }
-    case SWS_UOP_LINEAR:
-    case SWS_UOP_LINEAR_FMA: {
+        /* constants */
         const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
         int i_coeff = 0;
         LOOP_MASK(p, i) {
@@ -636,9 +596,11 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         break;
     }
     case SWS_UOP_DITHER:
+        LOOP      (op_mask, i) { dl[i] = sl[i] = prev->dl[i]; }
+        LOOP_VH(s, op_mask, i) { dh[i] = sh[i] = prev->dh[i]; }
+        jit_alloc_vt(rs, 2, vt);
+        /* constants */
         regs->dither_ptr = jit_push_u64(s, (uint64_t) res->priv.ptr);
-        break;
-    default:
         break;
     }
 }
