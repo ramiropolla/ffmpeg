@@ -529,6 +529,7 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
     SwsCompMask op_mask = recompute_op_mask(op);
     SwsCompMask identity = op_mask & ~p->mask;
 
+    /* THIS CHUNK */
     if (prev) {
         LOOP_MASK(p, i) {
             if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
@@ -604,30 +605,13 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
 {
     AArch64RegState *rs = &s->regstate;
 
-    /**
-     * p->mask only covers rows the matrix actually computes (see
-     * the SWS_UOP_LINEAR/LINEAR_FMA case in
-     * ff_sws_aarch64_ops_translate()) -- it excludes both columns
-     * that are read as inputs but never written (e.g. a 3-in/1-out
-     * matrix like RGB -> gray only needs output row 0, but still
-     * reads input columns 0, 1 and 2), and rows that are pure
-     * identity passthroughs the matrix doesn't touch at all (e.g. a
-     * channel reorder with only one real coefficient row). Both
-     * need their register propagated unchanged so later ops can
-     * still read them.
-     */
-    setup_mask_passthrough(s, p->mask, prev, regs);
-    for (int i = 0; i < 4; i++) {
-        if (SWS_COMP_TEST(p->mask, i))
-            continue;
-        if (rasm_op_type(prev->dl[i]) != RASM_OP_NONE)
-            regs->dl[i] = regs->sl[i] = prev->dl[i];
-        if (s->use_vh && rasm_op_type(prev->dh[i]) != RASM_OP_NONE)
-            regs->dh[i] = regs->sh[i] = prev->dh[i];
-    }
+    /* Start passing through all components. */
+    setup_mask_passthrough(s, SWS_COMP_ALL, prev, regs);
 
     SwsCompMask save_mask = 0;
     bool overwritten[4] = { false, false, false, false };
+    const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
+    int i_coeff = 0;
     LOOP_MASK(p, i) {
         for (int j = 0; j < 5; j++) {
             bool is_offset = (j == 0);
@@ -637,25 +621,14 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
             if (!is_offset && overwritten[src_j])
                 save_mask |= SWS_COMP(src_j);
             overwritten[i] = true;
+            /* constants */
+            regs->linear_vcoeff[i][j] = jit_push_elem(s, SWS_PIXEL_U32, coeffs[i_coeff++].u32);
         }
     }
     setup_mask_alloc(s, save_mask, regs);
     if (p->uop == SWS_UOP_LINEAR)
         jit_alloc_vt(rs, 4, &regs->vt[8]);
     setup_mask_free(s, save_mask, regs);
-
-    /* constants */
-    const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
-    int i_coeff = 0;
-    LOOP_MASK(p, i) {
-        for (int j = 0; j < 5; j++) {
-            bool is_offset = (j == 0);
-            int src_j = is_offset ? 4 : (j - 1);
-            if (p->par.lin.zero & SWS_MASK(i, src_j))
-                continue;
-            regs->linear_vcoeff[i][j] = jit_push_elem(s, SWS_PIXEL_U32, coeffs[i_coeff++].u32);
-        }
-    }
 }
 
 static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
