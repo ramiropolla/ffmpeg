@@ -385,26 +385,21 @@ static void aarch64_jit_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, i
         /* Split original swizzle into renames and copies. */
         SwsMoveUOp rename = { 0 };
         SwsMoveUOp copy = { 0 };
+        bool overwritten[4] = { false, false, false, false };
         LOOP(op_mask, i) {
             int src = op->swizzle.in[i];
-            bool overwritten = false;
-            for (int j = 0; j < i; j++) {
-                if ((op_mask & SWS_COMP(j)) && op->swizzle.in[j] == src) {
-                    overwritten = true;
-                    break;
-                }
-            }
 
-            SwsMoveUOp *list = overwritten ? &copy : &rename;
+            SwsMoveUOp *list = overwritten[src] ? &copy : &rename;
             list->dst[list->num_moves] = i;
             list->src[list->num_moves] = src;
             list->num_moves++;
 
-            if (overwritten) {
+            if (overwritten[src]) {
                 dl[i] = a64reg_vec(rs, -1);
                 if (s->use_vh)
                     dh[i] = a64reg_vec(rs, -1);
             }
+            overwritten[src] = true;
         }
 
         for (int i = 0; i < 4; i++) {
