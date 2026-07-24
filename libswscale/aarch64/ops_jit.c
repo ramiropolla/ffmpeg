@@ -530,14 +530,27 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
                                SwsImplResult *res, const SwsOp *op, const SwsOp *prev_op)
 {
     /* TODO factor clear into setup instead of performing dup. */
+    AArch64RegState *rs = &s->regstate;
 
-    SwsCompMask prev_op_mask = prev_op ? recompute_op_mask(prev_op) : 0;
-    SwsCompMask op_mask      = recompute_op_mask(op);
-    SwsCompMask identity     = op_mask &  prev_op_mask;
-    SwsCompMask alloc        = op_mask & ~prev_op_mask;
+    SwsCompMask op_mask = recompute_op_mask(op);
+    SwsCompMask identity = op_mask & ~p->mask;
 
     setup_mask_passthrough(s, identity, prev, regs);
-    setup_mask_alloc(s, alloc, regs);
+
+    LOOP_MASK(p, i) {
+        if (prev && rasm_op_type(prev->dl[i]) != RASM_OP_NONE) {
+            regs->dl[i] = regs->sl[i] = prev->dl[i];
+        } else {
+            regs->dl[i] = a64reg_vec(rs, -1);
+        }
+        if (s->use_vh) {
+            if (prev && rasm_op_type(prev->dh[i]) != RASM_OP_NONE) {
+                regs->dh[i] = regs->sh[i] = prev->dh[i];
+            } else {
+                regs->dh[i] = a64reg_vec(rs, -1);
+            }
+        }
+    }
 
     /* constants */
     regs->vk[0] = jit_push_v128(s, res->priv.data);
