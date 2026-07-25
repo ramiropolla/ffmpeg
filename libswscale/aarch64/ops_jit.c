@@ -400,8 +400,6 @@ static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p
                                  const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                  SwsImplResult *res, const SwsOp *op)
 {
-    AArch64RegState *rs = &s->regstate;
-
     /* Split original swizzle into identity, renames, and copies. */
     SwsCompMask identity = 0;
     SwsMoveUOp rename = { 0 };
@@ -438,11 +436,9 @@ static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p
     p->mask = 0;
     for (int i = 0; i < copy.num_moves; i++) {
         int dst = copy.dst[i];
-        regs->dl[dst] = a64reg_vec(rs, -1);
-        if (s->use_vh)
-            regs->dh[dst] = a64reg_vec(rs, -1);
         p->mask |= SWS_COMP(dst);
     }
+    setup_mask_alloc(s, p->mask, regs);
 }
 
 static void asmgen_setup_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
