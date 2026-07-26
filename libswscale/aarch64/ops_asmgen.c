@@ -268,9 +268,9 @@ static void asmgen_op_read_packed_n(SwsAArch64Context *s, const SwsAArch64OpImpl
     RasmContext *r = s->rctx;
 
     switch (p->mask) {
-    case SWS_COMP_ELEMS(2): i_ld2(r, vv_2(vx[0], vx[1]),               a64op_post(s->in[0], s->vec_size * 2)); break;
-    case SWS_COMP_ELEMS(3): i_ld3(r, vv_3(vx[0], vx[1], vx[2]),        a64op_post(s->in[0], s->vec_size * 3)); break;
-    case SWS_COMP_ELEMS(4): i_ld4(r, vv_4(vx[0], vx[1], vx[2], vx[3]), a64op_post(s->in[0], s->vec_size * 4)); break;
+    case SWS_COMP_ELEMS(2): i_ld2(r, a64op_veclist(vx, 2), a64op_post(s->in[0], s->vec_size * 2)); break;
+    case SWS_COMP_ELEMS(3): i_ld3(r, a64op_veclist(vx, 3), a64op_post(s->in[0], s->vec_size * 3)); break;
+    case SWS_COMP_ELEMS(4): i_ld4(r, a64op_veclist(vx, 4), a64op_post(s->in[0], s->vec_size * 4)); break;
     }
 }
 
@@ -359,9 +359,9 @@ static void asmgen_op_write_packed_n(SwsAArch64Context *s, const SwsAArch64OpImp
     RasmContext *r = s->rctx;
 
     switch (p->mask) {
-    case SWS_COMP_ELEMS(2): i_st2(r, vv_2(vx[0], vx[1]),               a64op_post(s->out[0], s->vec_size * 2)); break;
-    case SWS_COMP_ELEMS(3): i_st3(r, vv_3(vx[0], vx[1], vx[2]),        a64op_post(s->out[0], s->vec_size * 3)); break;
-    case SWS_COMP_ELEMS(4): i_st4(r, vv_4(vx[0], vx[1], vx[2], vx[3]), a64op_post(s->out[0], s->vec_size * 4)); break;
+    case SWS_COMP_ELEMS(2): i_st2(r, a64op_veclist(vx, 2), a64op_post(s->out[0], s->vec_size * 2)); break;
+    case SWS_COMP_ELEMS(3): i_st3(r, a64op_veclist(vx, 3), a64op_post(s->out[0], s->vec_size * 3)); break;
+    case SWS_COMP_ELEMS(4): i_st4(r, a64op_veclist(vx, 4), a64op_post(s->out[0], s->vec_size * 4)); break;
     }
 }
 
