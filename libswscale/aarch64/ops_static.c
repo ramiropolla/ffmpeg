@@ -271,7 +271,7 @@ static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParam
     RasmOp priv_ptr = s->tmp0;
     i_add (r, priv_ptr, s->impl, IMM(offsetof_impl_priv));          CMT("v128 *scale_vec_ptr = &impl->priv;");
     asmgen_set_load_cont_node(s);
-    i_ld1r(r, vv_1(scale_vec), a64op_base(priv_ptr));               CMT("v128 scale_vec = broadcast(*scale_vec_ptr);");
+    i_ld1r(r, a64op_veclist(&scale_vec, 1), a64op_base(priv_ptr));  CMT("v128 scale_vec = broadcast(*scale_vec_ptr);");
 }
 
 static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -284,17 +284,11 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     RasmOp *vt = regs->vt;
 
     RasmOp ptr = s->tmp0;
-    RasmOp coeff_veclist;
 
     /* Preload coefficients from impl->priv. */
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
-    switch (num_vregs) {
-    case 1: coeff_veclist = vv_1(vc[0]);                      break;
-    case 2: coeff_veclist = vv_2(vc[0], vc[1]);               break;
-    case 3: coeff_veclist = vv_3(vc[0], vc[1], vc[2]);        break;
-    case 4: coeff_veclist = vv_4(vc[0], vc[1], vc[2], vc[3]); break;
-    }
+    RasmOp coeff_veclist = a64op_veclist(vc, num_vregs);
     i_ldr(r, ptr, IMPL_PRIV(s));                            CMT("v128 *vcoeff_ptr = impl->priv.ptr;");
     asmgen_set_load_cont_node(s);
     i_ld1(r, coeff_veclist, a64op_base(ptr));               CMT("coeff_veclist = *vcoeff_ptr;");

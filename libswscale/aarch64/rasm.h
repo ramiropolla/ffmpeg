@@ -444,28 +444,26 @@ static inline RasmOp a64op_vec2s (uint8_t n) { return a64op_make_vec(n,  2,  4);
 static inline RasmOp a64op_vec4s (uint8_t n) { return a64op_make_vec(n,  4,  4); }
 static inline RasmOp a64op_vec2d (uint8_t n) { return a64op_make_vec(n,  2,  8); }
 
+/* Check whether the vectors in ops are contiguous. */
+static inline bool a64op_contiguous_vecs(const RasmOp *ops, uint8_t num_regs)
+{
+    for (int i = 1; i < num_regs; i++) {
+        if (((a64op_vec_n(ops[i - 1]) + 1) & 0x1f) != a64op_vec_n(ops[i]))
+            return false;
+    }
+    return true;
+}
+
 /**
  * Create register-list operand for structured load/store instructions.
  * Registers must be consecutive.
  */
-static inline RasmOp a64op_veclist(RasmOp op0, RasmOp op1, RasmOp op2, RasmOp op3)
+static inline RasmOp a64op_veclist(const RasmOp *ops, uint8_t num_regs)
 {
-    av_assert0(rasm_op_type(op0) != RASM_OP_NONE);
-    uint8_t num_regs = 1;
-    if (rasm_op_type(op1) != RASM_OP_NONE) {
-        av_assert0(((a64op_vec_n(op0) + 1) & 0x1f) == a64op_vec_n(op1));
-        num_regs++;
-        if (rasm_op_type(op2) != RASM_OP_NONE) {
-            av_assert0(((a64op_vec_n(op1) + 1) & 0x1f) == a64op_vec_n(op2));
-            num_regs++;
-            if (rasm_op_type(op3) != RASM_OP_NONE) {
-                av_assert0(((a64op_vec_n(op2) + 1) & 0x1f) == a64op_vec_n(op3));
-                num_regs++;
-            }
-        }
-    }
-    op0.u8[3] = num_regs;
-    return op0;
+    av_assert0(a64op_contiguous_vecs(ops, num_regs));
+    RasmOp op = ops[0];
+    op.u8[3] = num_regs;
+    return op;
 }
 
 /* by-element modifier */
@@ -491,12 +489,6 @@ static inline RasmOp v_8h (RasmOp op) { return a64op_vec8h (a64op_vec_n(op)); }
 static inline RasmOp v_2s (RasmOp op) { return a64op_vec2s (a64op_vec_n(op)); }
 static inline RasmOp v_4s (RasmOp op) { return a64op_vec4s (a64op_vec_n(op)); }
 static inline RasmOp v_2d (RasmOp op) { return a64op_vec2d (a64op_vec_n(op)); }
-
-/* register-list modifiers */
-static inline RasmOp vv_1(RasmOp op0)                                     { return a64op_veclist(op0, OPN, OPN, OPN); }
-static inline RasmOp vv_2(RasmOp op0, RasmOp op1)                         { return a64op_veclist(op0, op1, OPN, OPN); }
-static inline RasmOp vv_3(RasmOp op0, RasmOp op1, RasmOp op2)             { return a64op_veclist(op0, op1, op2, OPN); }
-static inline RasmOp vv_4(RasmOp op0, RasmOp op1, RasmOp op2, RasmOp op3) { return a64op_veclist(op0, op1, op2, op3); }
 
 /**
  * This helper structure is used to mimic the assembler syntax for vector
