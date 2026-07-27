@@ -25,11 +25,6 @@
 /*********************************************************************/
 /* Helpers functions. */
 
-/* Looping when s->use_vh is set. */
-#define LOOP_VH(s, mask, idx) if (s->use_vh) LOOP(mask, idx)
-#define LOOP_MASK_VH(s, p, idx) if (s->use_vh) LOOP_MASK(p, idx)
-#define LOOP_MASK_BWD_VH(s, p, idx) if (s->use_vh) LOOP_MASK_BWD(p, idx)
-
 /* Inline rasm comments. */
 #define CMT(comment)   rasm_annotate(r, comment)
 #define CMTF(fmt, ...) rasm_annotatef(r, (char[128]){0}, 128, fmt, __VA_ARGS__)
@@ -60,7 +55,28 @@ static void reshape_const_vectors(SwsAArch64OpRegs *regs, int el_count, int el_s
 }
 
 /*********************************************************************/
-static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
+void ff_sws_aarch64_asmgen_setup_vecs(SwsAArch64Context *s, const SwsAArch64OpImplParams *p)
+{
+    size_t el_size = ff_sws_pixel_type_size(p->type);
+    size_t total_size = p->block_size * el_size;
+
+    s->vec_size = FFMIN(total_size, 16);
+    s->use_vh = (s->vec_size != total_size);
+
+    s->el_size = el_size;
+    s->el_count = s->vec_size / el_size;
+}
+
+/*********************************************************************/
+void ff_sws_aarch64_asmgen_reshape_vecs(SwsAArch64Context *s, SwsAArch64OpRegs *regs)
+{
+    reshape_io_vectors(regs, s->el_count, s->el_size);
+    reshape_temp_vectors(regs, s->el_count, s->el_size);
+    reshape_const_vectors(regs, s->el_count, s->el_size);
+}
+
+/*********************************************************************/
+void ff_sws_aarch64_asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
     RasmContext *r = s->rctx;
 
@@ -964,5 +980,44 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 
         last_y_off = y_off;
         prev_i = i;
+    }
+}
+
+/*********************************************************************/
+void ff_sws_aarch64_asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                              SwsAArch64OpRegs *regs)
+{
+    switch (p->uop) {
+    case SWS_UOP_READ_BIT:     asmgen_op_read_bit(s, p, regs);     break;
+    case SWS_UOP_READ_NIBBLE:  asmgen_op_read_nibble(s, p, regs);  break;
+    case SWS_UOP_READ_PACKED:  asmgen_op_read_packed(s, p, regs);  break;
+    case SWS_UOP_READ_PLANAR:  asmgen_op_read_planar(s, p, regs);  break;
+    case SWS_UOP_WRITE_BIT:    asmgen_op_write_bit(s, p, regs);    break;
+    case SWS_UOP_WRITE_NIBBLE: asmgen_op_write_nibble(s, p, regs); break;
+    case SWS_UOP_WRITE_PACKED: asmgen_op_write_packed(s, p, regs); break;
+    case SWS_UOP_WRITE_PLANAR: asmgen_op_write_planar(s, p, regs); break;
+    case SWS_UOP_SWAP_BYTES:   asmgen_op_swap_bytes(s, p, regs);   break;
+    case SWS_UOP_PERMUTE:      asmgen_op_move(s, p, regs);         break;
+    case SWS_UOP_COPY:         asmgen_op_move(s, p, regs);         break;
+    case SWS_UOP_UNPACK:       asmgen_op_unpack(s, p, regs);       break;
+    case SWS_UOP_PACK:         asmgen_op_pack(s, p, regs);         break;
+    case SWS_UOP_LSHIFT:       asmgen_op_lshift(s, p, regs);       break;
+    case SWS_UOP_RSHIFT:       asmgen_op_rshift(s, p, regs);       break;
+    case SWS_UOP_CLEAR:        asmgen_op_clear(s, p, regs);        break;
+    case SWS_UOP_TO_U8:        asmgen_op_convert(s, p, regs);      break;
+    case SWS_UOP_TO_U16:       asmgen_op_convert(s, p, regs);      break;
+    case SWS_UOP_TO_U32:       asmgen_op_convert(s, p, regs);      break;
+    case SWS_UOP_TO_F32:       asmgen_op_convert(s, p, regs);      break;
+    case SWS_UOP_EXPAND_PAIR:  asmgen_op_expand(s, p, regs);       break;
+    case SWS_UOP_EXPAND_QUAD:  asmgen_op_expand(s, p, regs);       break;
+    case SWS_UOP_MIN:          asmgen_op_min(s, p, regs);          break;
+    case SWS_UOP_MAX:          asmgen_op_max(s, p, regs);          break;
+    case SWS_UOP_SCALE:        asmgen_op_scale(s, p, regs);        break;
+    case SWS_UOP_LINEAR:       asmgen_op_linear(s, p, regs);       break;
+    case SWS_UOP_LINEAR_FMA:   asmgen_op_linear(s, p, regs);       break;
+    case SWS_UOP_DITHER:       asmgen_op_dither(s, p, regs);       break;
+    /* TODO implement SWS_UOP_SHUFFLE */
+    default:
+        break;
     }
 }
