@@ -22,6 +22,7 @@
 #define SWSCALE_AARCH64_OPS_ASMGEN_H
 
 #include "rasm.h"
+#include "ops_impl.h"
 
 /*********************************************************************/
 typedef struct SwsAArch64OpRegs {
@@ -83,5 +84,17 @@ typedef struct SwsAArch64Context {
     size_t vec_size;
     bool use_vh;
 } SwsAArch64Context;
+
+void ff_sws_aarch64_asmgen_setup_vecs(SwsAArch64Context *s, const SwsAArch64OpImplParams *p);
+void ff_sws_aarch64_asmgen_reshape_vecs(SwsAArch64Context *s, SwsAArch64OpRegs *regs);
+
+void ff_sws_aarch64_asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask);
+void ff_sws_aarch64_asmgen_op(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                              SwsAArch64OpRegs *regs);
+
+/* Looping when s->use_vh is set. */
+#define LOOP_VH(s, mask, idx) if (s->use_vh) LOOP(mask, idx)
+#define LOOP_MASK_VH(s, p, idx) if (s->use_vh) LOOP_MASK(p, idx)
+#define LOOP_MASK_BWD_VH(s, p, idx) if (s->use_vh) LOOP_MASK_BWD(p, idx)
 
 #endif /* SWSCALE_AARCH64_OPS_ASMGEN_H */
