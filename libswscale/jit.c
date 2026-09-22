@@ -37,6 +37,10 @@
 
 #if HAVE_MMAP && HAVE_MPROTECT && defined(MAP_ANONYMOUS)
 
+#if defined(__APPLE__)
+#   include <libkern/OSCacheControl.h>
+#endif
+
 void *ff_sws_jit_alloc(size_t size)
 {
     void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE,
@@ -50,6 +54,11 @@ int ff_sws_jit_protect(void *ptr, size_t size)
 {
     if (mprotect(ptr, size, PROT_READ | PROT_EXEC) == -1)
         return AVERROR(errno);
+#if defined(__APPLE__)
+    sys_icache_invalidate(ptr, size);
+#elif defined(__GNUC__) || defined(__clang__)
+    __builtin___clear_cache((char *) ptr, (char *) ptr + size);
+#endif
     return 0;
 }
 
@@ -72,6 +81,8 @@ int ff_sws_jit_protect(void *ptr, size_t size)
 {
     DWORD old_protect;
     if (!VirtualProtect(ptr, size, PAGE_EXECUTE_READ, &old_protect))
+        return AVERROR(EINVAL);
+    if (!FlushInstructionCache(GetCurrentProcess(), ptr, size))
         return AVERROR(EINVAL);
     return 0;
 }
