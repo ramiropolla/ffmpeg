@@ -7371,14 +7371,14 @@ enabled libvorbis         && require_pkg_config libvorbis vorbis vorbis/codec.h 
 enabled llvm              && {
     enabled aarch64 || die "ERROR: --enable-llvm is only supported on aarch64"
     llvm_cflags=$($llvm_config --cflags 2>/dev/null)
-    llvm_libs=$($llvm_config --ldflags --libs --system-libs AArch64 MC MCParser Object 2>/dev/null)
+    llvm_libs=$($llvm_config --ldflags --libs --system-libs AArch64 Target Object 2>/dev/null)
     llvm_fail_message=""
     if ! is_in --link-static $llvm_config && ! is_in --link-shared $llvm_config; then
         llvm_fail_message="
 Note: llvm-config defaults to linking its shared library; to link statically, add --llvm-config=\"$llvm_config --link-static\"."
     fi
-    check_lib_cxx llvm "llvm/MC/MCAsmInfo.h" "llvm::MCAsmInfo" $llvm_cflags $llvm_libs "-lstdc++" || die "ERROR: LLVM not found$llvm_fail_message"
-    add_cxxflags $llvm_cflags
+    check_lib llvm "llvm-c/TargetMachine.h llvm-c/Object.h" "LLVMCreateTargetMachine LLVMCreateBinary" $llvm_cflags $llvm_libs "-lstdc++" || die "ERROR: LLVM not found$llvm_fail_message"
+    add_cflags $llvm_cflags
     llvm_extralibs="$llvm_libs -lstdc++"
 }
 enabled whisper           && require_pkg_config whisper "whisper >= 1.7.5" whisper.h whisper_init_from_file_with_params
