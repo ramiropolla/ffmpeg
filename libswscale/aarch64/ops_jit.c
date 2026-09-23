@@ -782,6 +782,14 @@ static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
+    /* SwsAArch64JITContext is hardcoded to a max of SWS_MAX_OPS ops */
+    if (ops->num_ops > SWS_MAX_OPS) {
+        av_log(sws, AV_LOG_DEBUG,
+               "ops->num_ops (%d) > SWS_MAX_OPS (%d)\n",
+               ops->num_ops, SWS_MAX_OPS);
+        return AVERROR(ENOTSUP);
+    }
+
     SwsAArch64JITContext *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
         return AVERROR(ENOMEM);
