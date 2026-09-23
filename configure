@@ -2044,6 +2044,7 @@ EXTERNAL_LIBRARY_VERSION3_LIST="
     libopencore_amrnb
     libopencore_amrwb
     libvo_amrwbenc
+    llvm
     mbedtls
     rkmpp
 "
@@ -2139,7 +2140,6 @@ EXTERNAL_LIBRARY_LIST="
     libzimg
     libzmq
     libzvbi
-    llvm
     lv2
     mediacodec
     ohcodec
