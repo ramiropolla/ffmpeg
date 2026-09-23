@@ -55,7 +55,7 @@ int ff_sws_jit_assemble_llvm(void *logctx, const char *src,
                              uint8_t **out_text, size_t *out_size,
                              AVBPrint *errstr)
 {
-    static const char triple_name[] = "aarch64-unknown-linux-gnu";
+    static const char triple_name[] = "aarch64-none-elf";
 
     struct LLVMOpaqueTargetMachine *machine = NULL;
     struct LLVMOpaqueContext *llvm_ctx = NULL;
