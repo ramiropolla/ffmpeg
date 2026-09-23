@@ -459,6 +459,8 @@ static int regstate_exhausted(AArch64RegState *rs)
 
 static int pick_avail(uint32_t avail, AArch64RegPick pick)
 {
+    if (!avail)
+        return -1;
     switch (pick) {
         case AARCH64_REG_PICK_LOWEST:
             return ff_ctz(avail);
