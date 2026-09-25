@@ -395,36 +395,31 @@ static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p
                                  const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
                                  SwsImplResult *res, const SwsOp *op)
 {
+    /* The moves list will be repopulated with the remaining copies. */
+    p->par.move = (SwsMoveUOp) { 0 };
+    p->mask = 0;
+
     /* Split original swizzle into renames and copies. */
-    SwsMoveUOp rename = { 0 };
-    SwsMoveUOp copy = { 0 };
+    SwsMoveUOp *copy = &p->par.move;
     bool overwritten[4] = { false, false, false, false };
     SwsCompMask op_mask = recompute_op_mask(op);
-    LOOP(op_mask, i) {
-        int src = op->swizzle.in[i];
-        SwsMoveUOp *list = overwritten[src] ? &copy : &rename;
-        list->dst[list->num_moves] = i;
-        list->src[list->num_moves] = src;
-        list->num_moves++;
-        overwritten[src] = true;
+    LOOP(op_mask, dst) {
+        int src = op->swizzle.in[dst];
+        if (!overwritten[src]) {
+            /* Perform simple renames. */
+            regs->dl[dst] = regs->sl[src] = prev->dl[src];
+            if (s->use_vh)
+                regs->dh[dst] = regs->sh[src] = prev->dh[src];
+            overwritten[src] = true;
+        } else {
+            /* Populate list of remaining copies. */
+            copy->dst[copy->num_moves] = dst;
+            copy->src[copy->num_moves] = src;
+            copy->num_moves++;
+            p->mask |= SWS_COMP(dst);
+        }
     }
 
-    /* Perform simple renames. */
-    for (int i = 0; i < rename.num_moves; i++) {
-        int src = rename.src[i];
-        int dst = rename.dst[i];
-        regs->dl[dst] = regs->sl[src] = prev->dl[src];
-        if (s->use_vh)
-            regs->dh[dst] = regs->sh[src] = prev->dh[src];
-    }
-
-    /* Replace moves list with remaining copies. */
-    p->par.move = copy;
-    p->mask = 0;
-    for (int i = 0; i < copy.num_moves; i++) {
-        int dst = copy.dst[i];
-        p->mask |= SWS_COMP(dst);
-    }
     setup_mask_alloc(s, p->mask, regs);
 }
 
