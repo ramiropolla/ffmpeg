@@ -34,7 +34,10 @@ fate-sws-yuv-range: CMD = framecrc \
 ifeq ($(CONFIG_UNSTABLE),yes)
 SWS_UNSTABLE_BACKENDS-yes              += c memcpy
 SWS_UNSTABLE_BACKENDS-$(ARCH_X86)      += x86
-SWS_UNSTABLE_BACKENDS-$(ARCH_AARCH64)  += aarch64
+ifeq ($(ARCH_AARCH64),yes)
+SWS_UNSTABLE_BACKENDS-yes              += aarch64
+SWS_UNSTABLE_BACKENDS-$(CONFIG_LLVM)   += aarch64_jit
+endif
 SWS_UNSTABLE_BACKENDS-$(CONFIG_VULKAN) += spirv
 
 # This self-check currently fails for legacy swscale, so pass SWS_UNSTABLE to use the new code
