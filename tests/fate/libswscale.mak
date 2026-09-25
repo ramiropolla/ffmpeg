@@ -31,17 +31,28 @@ fate-sws-yuv-range: CMD = framecrc \
   -frames 1 \
   -vf scale=in_color_matrix=bt601:in_range=limited:out_color_matrix=bt601:out_range=full:flags=+accurate_rnd+bitexact
 
+ifeq ($(CONFIG_UNSTABLE),yes)
+SWS_UNSTABLE_BACKENDS-yes              += c memcpy
+SWS_UNSTABLE_BACKENDS-$(ARCH_X86)      += x86
+SWS_UNSTABLE_BACKENDS-$(ARCH_AARCH64)  += aarch64
+SWS_UNSTABLE_BACKENDS-$(CONFIG_VULKAN) += spirv
+
 # This self-check currently fails for legacy swscale, so pass SWS_UNSTABLE to use the new code
-FATE_LIBSWSCALE-$(CONFIG_UNSTABLE) += fate-sws-unscaled
-fate-sws-unscaled: libswscale/tests/swscale$(EXESUF)
-fate-sws-unscaled: CMD = run libswscale/tests/swscale$(EXESUF) -scaler none -backends unstable -v 16
-fate-sws-unscaled: REF = /dev/null
+FATE_SWS_UNSCALED := $(SWS_UNSTABLE_BACKENDS-yes:%=fate-sws-unscaled-%)
+$(FATE_SWS_UNSCALED): libswscale/tests/swscale$(EXESUF)
+$(FATE_SWS_UNSCALED): CMD = run libswscale/tests/swscale$(EXESUF) -scaler none -backends $(@:fate-sws-unscaled-%=%) -v 16
+$(FATE_SWS_UNSCALED): REF = /dev/null
+fate-sws-unscaled: $(FATE_SWS_UNSCALED)
 
 # Run only 2% of swscale tests to keep the run time short, and only check for failure
-FATE_LIBSWSCALE-$(CONFIG_UNSTABLE) += fate-sws-unstable
-fate-sws-unstable: libswscale/tests/swscale$(EXESUF)
-fate-sws-unstable: CMD = run libswscale/tests/swscale$(EXESUF) -backends unstable -p 0.02 -v 16
-fate-sws-unstable: REF = /dev/null
+FATE_SWS_UNSTABLE := $(SWS_UNSTABLE_BACKENDS-yes:%=fate-sws-unstable-%)
+$(FATE_SWS_UNSTABLE): libswscale/tests/swscale$(EXESUF)
+$(FATE_SWS_UNSTABLE): CMD = run libswscale/tests/swscale$(EXESUF) -backends $(@:fate-sws-unstable-%=%) -p 0.02 -v 16
+$(FATE_SWS_UNSTABLE): REF = /dev/null
+fate-sws-unstable: $(FATE_SWS_UNSTABLE)
+
+FATE_LIBSWSCALE += $(FATE_SWS_UNSCALED) $(FATE_SWS_UNSTABLE)
+endif
 
 ifneq ($(HAVE_BIGENDIAN),yes)
 
