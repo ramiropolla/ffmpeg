@@ -509,9 +509,10 @@ static void asmgen_setup_convert(SwsAArch64Context *s, const SwsAArch64OpImplPar
 
 static void asmgen_setup_clamp(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
-                               SwsImplResult *res)
+                               SwsImplResult *res, const SwsOp *op)
 {
-    setup_mask_passthrough(s, p->mask, prev, regs);
+    SwsCompMask op_mask = recompute_op_mask(op);
+    setup_mask_passthrough(s, op_mask, prev, regs);
 
     /* constants */
     LOOP_MASK(p, i) {
@@ -616,8 +617,8 @@ static void aarch64_jit_op_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops
     case SWS_UOP_TO_F32:       asmgen_setup_convert(s, p, prev, regs, res);      break;
     case SWS_UOP_EXPAND_PAIR:  asmgen_setup_convert(s, p, prev, regs, res);      break;
     case SWS_UOP_EXPAND_QUAD:  asmgen_setup_convert(s, p, prev, regs, res);      break;
-    case SWS_UOP_MIN:          asmgen_setup_clamp(s, p, prev, regs, res);        break;
-    case SWS_UOP_MAX:          asmgen_setup_clamp(s, p, prev, regs, res);        break;
+    case SWS_UOP_MIN:          asmgen_setup_clamp(s, p, prev, regs, res, op);    break;
+    case SWS_UOP_MAX:          asmgen_setup_clamp(s, p, prev, regs, res, op);    break;
     case SWS_UOP_SCALE:        asmgen_setup_scale(s, p, prev, regs, res);        break;
     case SWS_UOP_LINEAR:       asmgen_setup_linear(s, p, prev, regs, res);       break;
     case SWS_UOP_LINEAR_FMA:   asmgen_setup_linear(s, p, prev, regs, res);       break;
