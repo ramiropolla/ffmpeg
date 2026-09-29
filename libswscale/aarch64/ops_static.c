@@ -81,24 +81,6 @@ static void *av_memdup(const void *p, size_t size)
     return ptr;
 }
 
-#include "libavutil/dynarray.h"
-
-static void *av_dynarray2_add(void **tab_ptr, int *nb_ptr, size_t elem_size,
-                              const uint8_t *elem_data)
-{
-    uint8_t *tab_elem_data = NULL;
-
-    FF_DYNARRAY_ADD(INT_MAX, elem_size, *tab_ptr, *nb_ptr, {
-        tab_elem_data = (uint8_t *)*tab_ptr + (*nb_ptr) * elem_size;
-        if (elem_data)
-            memcpy(tab_elem_data, elem_data, elem_size);
-    }, {
-        av_freep(tab_ptr);
-        *nb_ptr = 0;
-    });
-    return tab_elem_data;
-}
-
 #include "libavutil/bprint.c"
 
 /*********************************************************************/

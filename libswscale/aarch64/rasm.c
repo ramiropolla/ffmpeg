@@ -20,11 +20,31 @@
 
 #include "rasm.h"
 
+#include <limits.h>
 #include <stdarg.h>
 
+#include "libavutil/dynarray.h"
 #include "libavutil/error.h"
 #include "libavutil/macros.h"
 #include "libavutil/mem.h"
+
+/*********************************************************************/
+/* Array allocator helper */
+
+static void *grow_array(RasmContext *rctx, void **ptr, int *nb_elems,
+                        size_t elem_size)
+{
+    if (rctx->error)
+        return NULL;
+
+    void *elem = NULL;
+    FF_DYNARRAY_ADD(INT_MAX, elem_size, *ptr, *nb_elems, {
+        elem = (uint8_t *) *ptr + (size_t) *nb_elems * elem_size;
+    }, {
+        rctx->error = AVERROR(ENOMEM);
+    });
+    return elem;
+}
 
 /*********************************************************************/
 /* Main runtime assembler context */
@@ -249,6 +269,16 @@ RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node)
 /*********************************************************************/
 /* Top-level IR entries */
 
+static RasmEntry *add_entry(RasmContext *rctx, RasmEntryType type)
+{
+    RasmEntry *entry = grow_array(rctx, (void **) &rctx->entries,
+                                  &rctx->num_entries,
+                                  sizeof(*rctx->entries));
+    if (entry)
+        entry->type = type;
+    return entry;
+}
+
 int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
                     bool jumpable)
 {
@@ -256,15 +286,9 @@ int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
         return rctx->error;
 
     /* Grow entries array. */
-    RasmEntry *entry = av_dynarray2_add((void **) &rctx->entries,
-                                        &rctx->num_entries,
-                                        sizeof(*rctx->entries), NULL);
-    if (!entry) {
-        rctx->error = AVERROR(ENOMEM);
+    RasmEntry *entry = add_entry(rctx, RASM_ENTRY_FUNC);
+    if (!entry)
         return rctx->error;
-    }
-
-    entry->type = RASM_ENTRY_FUNC;
 
     int id = rasm_new_label(rctx, name);
 
@@ -288,15 +312,9 @@ int rasm_const_begin(RasmContext *rctx, const char *name)
         return rctx->error;
 
     /* Grow entries array. */
-    RasmEntry *entry = av_dynarray2_add((void **) &rctx->entries,
-                                        &rctx->num_entries,
-                                        sizeof(*rctx->entries), NULL);
-    if (!entry) {
-        rctx->error = AVERROR(ENOMEM);
+    RasmEntry *entry = add_entry(rctx, RASM_ENTRY_CONST);
+    if (!entry)
         return rctx->error;
-    }
-
-    entry->type = RASM_ENTRY_CONST;
 
     int id = rasm_new_label(rctx, name);
 
@@ -373,8 +391,8 @@ int rasm_new_label(RasmContext *rctx, const char *name)
     ret = rctx->num_labels;
 
     /* Grow labels array. */
-    char **p = av_dynarray2_add((void **) &rctx->labels, &rctx->num_labels,
-                                sizeof(*rctx->labels), NULL);
+    char **p = grow_array(rctx, (void **) &rctx->labels, &rctx->num_labels,
+                          sizeof(*rctx->labels));
     if (!p) {
         ret = AVERROR(ENOMEM);
         goto error;
