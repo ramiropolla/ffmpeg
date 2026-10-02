@@ -236,17 +236,24 @@ static void aarch64_jit_data(SwsAArch64Context *s)
 /* Setup helpers. */
 
 /**
- * Recompute op_mask from SwsOp because SwsAArch64OpImplParams has dropped
- * passthrough information to prevent duplicates.
+ * Compute the mask of components that hold a value after the given
+ * operation, based on the output registers assigned to it. SwsUOp only
+ * describes the components affected by each operation, so this is used
+ * to determine which components must be passed through.
  */
-static SwsCompMask recompute_op_mask(const SwsOp *op)
+static SwsCompMask live_mask(const SwsAArch64OpImplParams *p,
+                             const SwsAArch64OpRegs *regs)
 {
-    SwsCompMask op_mask = 0;
+    /* SWS_UOP_PACK combines all components into the first one. */
+    if (p->uop == SWS_UOP_PACK)
+        return SWS_COMP(0);
+
+    SwsCompMask mask = 0;
     for (int i = 0; i < 4; i++) {
-        if (SWS_OP_NEEDED(op, i))
-            op_mask |= SWS_COMP(i);
+        if (rasm_op_type(regs->dl[i]) != RASM_OP_NONE)
+            mask |= SWS_COMP(i);
     }
-    return op_mask;
+    return mask;
 }
 
 /* Get value from SwsOpPriv based on the pixel type. */
@@ -393,8 +400,17 @@ static void asmgen_setup_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImpl
 
 static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p,
                                  const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
-                                 SwsImplResult *res, const SwsOp *op)
+                                 SwsImplResult *res, const SwsUOp *uop)
 {
+    /* Compute the original source component for each component. */
+    int idx[4 + 1] = { 0, 1, 2, 3, -1 }; /* +1 for temporary register */
+    const SwsMoveUOp *move = &uop->par.move;
+    for (int i = 0; i < move->num_moves; i++) {
+        int dst = (move->dst[i] < 0) ? 4 : move->dst[i];
+        int src = (move->src[i] < 0) ? 4 : move->src[i];
+        idx[dst] = idx[src];
+    }
+
     /* The moves list will be repopulated with the remaining copies. */
     p->par.move = (SwsMoveUOp) { 0 };
     p->mask = 0;
@@ -402,9 +418,9 @@ static void asmgen_setup_swizzle(SwsAArch64Context *s, SwsAArch64OpImplParams *p
     /* Split original swizzle into renames and copies. */
     SwsMoveUOp *copy = &p->par.move;
     bool overwritten[4] = { false, false, false, false };
-    SwsCompMask op_mask = recompute_op_mask(op);
-    LOOP(op_mask, dst) {
-        int src = op->swizzle.in[dst];
+    LOOP(uop->mask, dst) {
+        int src = idx[dst];
+        av_assert0(src >= 0);
         if (!overwritten[src]) {
             /* Perform simple renames. */
             regs->dl[dst] = regs->sl[src] = prev->dl[src];
@@ -454,20 +470,13 @@ static void asmgen_setup_shift(SwsAArch64Context *s, const SwsAArch64OpImplParam
 
 static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
-                               SwsImplResult *res, const SwsOp *op)
+                               SwsImplResult *res, SwsCompMask live)
 {
     /* TODO factor clear into setup instead of performing dup. */
 
-    SwsCompMask op_mask = recompute_op_mask(op);
-    SwsCompMask identity = op_mask & ~p->mask;
-
-    if (prev) {
-        /* Reuse registers that have already been allocated. */
-        LOOP_MASK(p, i) { identity |= (rasm_op_type(prev->dl[i]) != RASM_OP_NONE) ? SWS_COMP(i) : 0; }
-        setup_mask_passthrough(s, identity, prev, regs);
-    }
-
-    setup_mask_alloc(s, p->mask & ~identity, regs);
+    /* Reuse registers that have already been allocated. */
+    setup_mask_passthrough(s, live, prev, regs);
+    setup_mask_alloc(s, p->mask & ~live, regs);
 
     /* constants */
     regs->vk[0] = jit_push_v128(s, res->priv.data);
@@ -504,10 +513,9 @@ static void asmgen_setup_convert(SwsAArch64Context *s, const SwsAArch64OpImplPar
 
 static void asmgen_setup_clamp(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
-                               SwsImplResult *res, const SwsOp *op)
+                               SwsImplResult *res, SwsCompMask live)
 {
-    SwsCompMask op_mask = recompute_op_mask(op);
-    setup_mask_passthrough(s, op_mask, prev, regs);
+    setup_mask_passthrough(s, live, prev, regs);
 
     /* constants */
     LOOP_MASK(p, i) {
@@ -529,7 +537,7 @@ static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParam
 
 static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                 const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
-                                SwsImplResult *res)
+                                SwsImplResult *res, const SwsUOp *uop)
 {
     AArch64RegState *rs = &s->regstate;
 
@@ -537,14 +545,21 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     setup_mask_passthrough(s, SWS_COMP_ALL, prev, regs);
 
     /**
+     * Integer mul/mla by element does not exist for 8-bit elements, and
+     * requires the element register to be in v0-v15 for 16-bit elements.
+     * For these types, the coefficients are broadcast into full vectors
+     * instead.
+     */
+    const bool dup_coeffs = (p->type == SWS_PIXEL_U8 || p->type == SWS_PIXEL_U16);
+
+    /**
      * Relocate sources that would be clobbered while still being used.
      * Also collect coefficients.
      */
     SwsCompMask save_mask = 0;
     bool overwritten[4] = { false, false, false, false };
-    const SwsPixel *coeffs = (const SwsPixel *) res->priv.ptr;
-    int i_coeff = 0;
     LOOP_MASK(p, i) {
+        bool first = true;
         for (int j = 0; j < 5; j++) {
             bool is_offset = (j == 0);
             int src_j = is_offset ? 4 : (j - 1);
@@ -554,7 +569,26 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
                 save_mask |= SWS_COMP(src_j);
             overwritten[i] = true;
             /* constants */
-            regs->linear_vcoeff[i][j] = jit_push_elem(s, SWS_PIXEL_U32, coeffs[i_coeff++].u32);
+            const SwsPixel px = uop->data.mat4x5[i][src_j];
+            if (!dup_coeffs) {
+                regs->linear_vcoeff[i][j] = jit_push_elem(s, SWS_PIXEL_U32, px.u32);
+            } else {
+                /**
+                 * The first coefficient of a row is not used as a
+                 * multiplication operand if it is one (move). If it is an
+                 * offset, it is broadcast from the first element.
+                 */
+                bool is_one = !is_offset && (p->par.lin.one & SWS_MASK(i, src_j));
+                if (!(first && is_one)) {
+                    uint32_t val = (p->type == SWS_PIXEL_U8) ? px.u8 : px.u16;
+                    RasmOp vcoeff = jit_push_vimm(s, p->type, val);
+                    vcoeff = a64op_make_vec(a64op_vec_n(vcoeff), s->el_count, s->el_size);
+                    if (is_offset)
+                        vcoeff = a64op_elem(vcoeff, 0);
+                    regs->linear_vcoeff[i][j] = vcoeff;
+                }
+            }
+            first = false;
         }
     }
     setup_mask_alloc(s, save_mask, regs);
@@ -565,10 +599,9 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
 
 static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                 const SwsAArch64OpRegs *prev, SwsAArch64OpRegs *regs,
-                                SwsImplResult *res, const SwsOp *op)
+                                SwsImplResult *res, SwsCompMask live)
 {
-    SwsCompMask op_mask = recompute_op_mask(op);
-    setup_mask_passthrough(s, op_mask, prev, regs);
+    setup_mask_passthrough(s, live, prev, regs);
 
     AArch64RegState *rs = &s->regstate;
     jit_alloc_vt(rs, 2, regs->vt);
@@ -578,14 +611,14 @@ static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplPara
 }
 
 /* Set up registers for operation. */
-static void aarch64_jit_op_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops, int n)
+static int aarch64_jit_op_setup(SwsAArch64JITContext *ctx, const SwsUOp *uop, int n)
 {
     SwsAArch64Context      *s    = &ctx->s;
     SwsAArch64OpImplParams *p    = &ctx->params[n];
     const SwsAArch64OpRegs *prev = n ? &ctx->regs[n - 1] : NULL;
     SwsAArch64OpRegs       *regs = &ctx->regs[n];
     SwsImplResult          *res  = &ctx->res[n];
-    const SwsOp            *op   = &ops->ops[n];
+    SwsCompMask             live = n ? live_mask(&ctx->params[n - 1], prev) : 0;
 
     ff_sws_aarch64_asmgen_setup_vecs(s, p);
 
@@ -599,28 +632,30 @@ static void aarch64_jit_op_setup(SwsAArch64JITContext *ctx, const SwsOpList *ops
     case SWS_UOP_WRITE_PACKED: asmgen_setup_write_packed(s, p, prev, regs, res); break;
     case SWS_UOP_WRITE_PLANAR: asmgen_setup_write_planar(s, p, prev, regs, res); break;
     case SWS_UOP_SWAP_BYTES:   asmgen_setup_swap_bytes(s, p, prev, regs, res);   break;
-    case SWS_UOP_PERMUTE:      asmgen_setup_swizzle(s, p, prev, regs, res, op);  break;
-    case SWS_UOP_COPY:         asmgen_setup_swizzle(s, p, prev, regs, res, op);  break;
+    case SWS_UOP_PERMUTE:      asmgen_setup_swizzle(s, p, prev, regs, res, uop); break;
+    case SWS_UOP_COPY:         asmgen_setup_swizzle(s, p, prev, regs, res, uop); break;
     case SWS_UOP_UNPACK:       asmgen_setup_unpack(s, p, prev, regs, res);       break;
     case SWS_UOP_PACK:         asmgen_setup_pack(s, p, prev, regs, res);         break;
     case SWS_UOP_LSHIFT:       asmgen_setup_shift(s, p, prev, regs, res);        break;
     case SWS_UOP_RSHIFT:       asmgen_setup_shift(s, p, prev, regs, res);        break;
-    case SWS_UOP_CLEAR:        asmgen_setup_clear(s, p, prev, regs, res, op);    break;
+    case SWS_UOP_CLEAR:        asmgen_setup_clear(s, p, prev, regs, res, live);  break;
     case SWS_UOP_TO_U8:        asmgen_setup_convert(s, p, prev, regs, res);      break;
     case SWS_UOP_TO_U16:       asmgen_setup_convert(s, p, prev, regs, res);      break;
     case SWS_UOP_TO_U32:       asmgen_setup_convert(s, p, prev, regs, res);      break;
     case SWS_UOP_TO_F32:       asmgen_setup_convert(s, p, prev, regs, res);      break;
     case SWS_UOP_EXPAND_PAIR:  asmgen_setup_convert(s, p, prev, regs, res);      break;
     case SWS_UOP_EXPAND_QUAD:  asmgen_setup_convert(s, p, prev, regs, res);      break;
-    case SWS_UOP_MIN:          asmgen_setup_clamp(s, p, prev, regs, res, op);    break;
-    case SWS_UOP_MAX:          asmgen_setup_clamp(s, p, prev, regs, res, op);    break;
+    case SWS_UOP_MIN:          asmgen_setup_clamp(s, p, prev, regs, res, live);  break;
+    case SWS_UOP_MAX:          asmgen_setup_clamp(s, p, prev, regs, res, live);  break;
     case SWS_UOP_SCALE:        asmgen_setup_scale(s, p, prev, regs, res);        break;
-    case SWS_UOP_LINEAR:       asmgen_setup_linear(s, p, prev, regs, res);       break;
-    case SWS_UOP_LINEAR_FMA:   asmgen_setup_linear(s, p, prev, regs, res);       break;
-    case SWS_UOP_DITHER:       asmgen_setup_dither(s, p, prev, regs, res, op);   break;
+    case SWS_UOP_LINEAR:       asmgen_setup_linear(s, p, prev, regs, res, uop);  break;
+    case SWS_UOP_LINEAR_FMA:   asmgen_setup_linear(s, p, prev, regs, res, uop);  break;
+    case SWS_UOP_DITHER:       asmgen_setup_dither(s, p, prev, regs, res, live); break;
     default:
-        break;
+        return AVERROR(ENOTSUP);
     }
+
+    return 0;
 }
 
 /*********************************************************************/
@@ -653,15 +688,11 @@ static void aarch64_jit_process_frame(SwsAArch64Context *s,
 }
 
 /*********************************************************************/
-static void aarch64_jit_process(SwsAArch64Context *s, const SwsOpList *ops,
+static void aarch64_jit_process(SwsAArch64Context *s, const char *func_name,
                                 SwsCompMask imask, SwsCompMask omask)
 {
     RasmContext *r = s->rctx;
-    char func_name[128];
 
-    snprintf(func_name, sizeof(func_name), "jit_process_%s_%s_neon",
-             av_get_pix_fmt_name(ops->src.format),
-             av_get_pix_fmt_name(ops->dst.format));
     rasm_func_begin(r, func_name, true, false);
 
     ff_sws_aarch64_asmgen_process(s, imask, omask);
@@ -728,15 +759,16 @@ static void print_io_regs(SwsContext *sws, const SwsAArch64OpImplParams *p, cons
 }
 
 /*********************************************************************/
-static int aarch64_jit_asmgen(SwsContext *sws, SwsAArch64JITContext *ctx, const SwsOpList *ops,
-                              SwsCompMask imask, SwsCompMask omask, AVBPrint *errstr)
+static int aarch64_jit_asmgen(SwsContext *sws, SwsAArch64JITContext *ctx, int num_ops,
+                              const char *func_name, SwsCompMask imask, SwsCompMask omask,
+                              AVBPrint *errstr)
 {
     /* Create process function. */
-    aarch64_jit_process(&ctx->s, ops, imask, omask);
+    aarch64_jit_process(&ctx->s, func_name, imask, omask);
 
     /* Add all ops into main loop. */
     rasm_set_current_node(ctx->s.rctx, ctx->s.loop);
-    for (int i = 0; i < ops->num_ops; i++)
+    for (int i = 0; i < num_ops; i++)
         aarch64_jit_op(&ctx->s, &ctx->params[i], &ctx->regs[i]);
 
     /* Emit const data and load it into registers at setup time. */
@@ -777,20 +809,16 @@ error:
 }
 
 /*********************************************************************/
-static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
-                               SwsCompiledOp *out)
+static int aarch64_jit_compile_uops(SwsContext *sws, const SwsUOpList *uops,
+                                    const char *func_name, SwsCompiledOp *out)
 {
     int ret;
 
-    const int cpu_flags = av_get_cpu_flags();
-    if (!(cpu_flags & AV_CPU_FLAG_NEON))
-        return AVERROR(ENOTSUP);
-
     /* SwsAArch64JITContext is hardcoded to a max of SWS_MAX_OPS ops */
-    if (ops->num_ops > SWS_MAX_OPS) {
+    if (uops->num_ops > SWS_MAX_OPS) {
         av_log(sws, AV_LOG_DEBUG,
-               "ops->num_ops (%d) > SWS_MAX_OPS (%d)\n",
-               ops->num_ops, SWS_MAX_OPS);
+               "uops->num_ops (%d) > SWS_MAX_OPS (%d)\n",
+               uops->num_ops, SWS_MAX_OPS);
         return AVERROR(ENOTSUP);
     }
 
@@ -804,43 +832,36 @@ static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
         goto error;
     }
 
-    av_log(sws, AV_LOG_DEBUG, "JIT compile: %s -> %s\n",
-           av_get_pix_fmt_name(ops->src.format),
-           av_get_pix_fmt_name(ops->dst.format));
-
     /* Use at most two full vregs during the widest precision section */
-    int block_size = (ff_sws_op_list_max_size(ops) == 4) ? 8 : 16;
+    int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
 
     /* Setup process frame. */
-    const SwsOp *read      = ff_sws_op_list_input(ops);
-    const SwsOp *write     = ff_sws_op_list_output(ops);
-    const int read_planes  = read ? ff_sws_rw_op_planes(read) : 0;
-    const int write_planes = ff_sws_rw_op_planes(write);
-    SwsCompMask imask = SWS_COMP_ELEMS(read_planes);
-    SwsCompMask omask = SWS_COMP_ELEMS(write_planes);
+    SwsCompMask imask = uops->planes_in;
+    SwsCompMask omask = uops->planes_out;
     aarch64_jit_process_frame(&ctx->s, imask, omask);
 
     /* Translate all ops into implementation parameters and setup registers. */
-    for (int i = 0; i < ops->num_ops; i++) {
-        ret = ff_sws_aarch64_ops_translate(sws, ops, i, block_size, &ctx->params[i]);
+    for (int i = 0; i < uops->num_ops; i++) {
+        const SwsUOp *uop = &uops->ops[i];
+        ff_sws_aarch64_ops_translate(uop, block_size, &ctx->params[i]);
+        ret = ff_sws_aarch64_setup(uop, &ctx->params[i], &ctx->res[i]);
         if (ret < 0)
             goto error;
-        ret = ff_sws_aarch64_setup(ops, block_size, i, &ctx->params[i], &ctx->res[i]);
+        ret = aarch64_jit_op_setup(ctx, uop, i);
         if (ret < 0)
             goto error;
-        aarch64_jit_op_setup(ctx, ops, i);
     }
     /* Debug registers. */
     if (av_log_get_level() >= AV_LOG_TRACE) {
         av_log(sws, AV_LOG_TRACE, "JIT I/O register allocation:\n");
-        for (int i = 0; i < ops->num_ops; i++)
+        for (int i = 0; i < uops->num_ops; i++)
             print_io_regs(sws, &ctx->params[i], &ctx->regs[i]);
     }
 
     /* Generate JIT code and assemble it. */
     AVBPrint errstr;
     av_bprint_init(&errstr, 0, AV_BPRINT_SIZE_UNLIMITED);
-    ret = aarch64_jit_asmgen(sws, ctx, ops, imask, omask, &errstr);
+    ret = aarch64_jit_asmgen(sws, ctx, uops->num_ops, func_name, imask, omask, &errstr);
     if (ret < 0)
         av_log(sws, AV_LOG_TRACE, "LLVM JIT error log:\n%s", errstr.str);
     av_bprint_finalize(&errstr, NULL);
@@ -859,6 +880,39 @@ static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
 error:
     if (ret < 0)
         aarch64_jit_free(ctx);
+    return ret;
+}
+
+/*********************************************************************/
+static int aarch64_jit_compile(SwsContext *sws, const SwsOpList *ops,
+                               SwsCompiledOp *out)
+{
+    const int cpu_flags = av_get_cpu_flags();
+    if (!(cpu_flags & AV_CPU_FLAG_NEON))
+        return AVERROR(ENOTSUP);
+
+    SwsUOpList *uops = ff_sws_uop_list_alloc();
+    if (!uops)
+        return AVERROR(ENOMEM);
+
+    const SwsUOpFlags flags = (sws->flags & SWS_BITEXACT) ? 0 : SWS_UOP_FLAG_FMA;
+    int ret = ff_sws_ops_translate(sws, ops, flags, uops);
+    if (ret < 0)
+        goto error;
+
+    av_log(sws, AV_LOG_DEBUG, "JIT compile: %s -> %s\n",
+           av_get_pix_fmt_name(ops->src.format),
+           av_get_pix_fmt_name(ops->dst.format));
+
+    char func_name[128];
+    snprintf(func_name, sizeof(func_name), "jit_process_%s_%s_neon",
+             av_get_pix_fmt_name(ops->src.format),
+             av_get_pix_fmt_name(ops->dst.format));
+
+    ret = aarch64_jit_compile_uops(sws, uops, func_name, out);
+
+error:
+    ff_sws_uop_list_free(&uops);
     return ret;
 }
 
