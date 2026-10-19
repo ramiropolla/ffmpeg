@@ -159,27 +159,27 @@
 %endmacro
 
 %macro DECL_U8_TO_U16 1
-    DECL_OP %1, u8_to_u16_x                             , SWS_PIXEL_U8 , SWS_UOP_TO_U16          , 0x1
-    DECL_OP %1, u8_to_u16_xyz                           , SWS_PIXEL_U8 , SWS_UOP_TO_U16          , 0x7
-    DECL_OP %1, u8_to_u16_yzw                           , SWS_PIXEL_U8 , SWS_UOP_TO_U16          , 0xe
-    DECL_OP %1, u8_to_u16_xyzw                          , SWS_PIXEL_U8 , SWS_UOP_TO_U16          , 0xf
+    DECL_OP %1, u8_to_u16_x                             , SWS_PIXEL_U8 , SWS_UOP_TO_U16          , 0x1, 0
+    DECL_OP %1, u8_to_u16_xyz                           , SWS_PIXEL_U8 , SWS_UOP_TO_U16          , 0x7, 0
+    DECL_OP %1, u8_to_u16_yzw                           , SWS_PIXEL_U8 , SWS_UOP_TO_U16          , 0xe, 0
+    DECL_OP %1, u8_to_u16_xyzw                          , SWS_PIXEL_U8 , SWS_UOP_TO_U16          , 0xf, 0
 %endmacro
 
 %macro DECL_U8_TO_U32 1
-    DECL_OP %1, u8_to_u32_x                             , SWS_PIXEL_U8 , SWS_UOP_TO_U32          , 0x1
-    DECL_OP %1, u8_to_u32_xyz                           , SWS_PIXEL_U8 , SWS_UOP_TO_U32          , 0x7
+    DECL_OP %1, u8_to_u32_x                             , SWS_PIXEL_U8 , SWS_UOP_TO_U32          , 0x1, 0
+    DECL_OP %1, u8_to_u32_xyz                           , SWS_PIXEL_U8 , SWS_UOP_TO_U32          , 0x7, 0
 %endmacro
 
 %macro DECL_U8_TO_F32 1
-    DECL_OP %1, u8_to_f32_x                             , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x1
-    DECL_OP %1, u8_to_f32_y                             , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x2
-    DECL_OP %1, u8_to_f32_xy                            , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x3
-    DECL_OP %1, u8_to_f32_z                             , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x4
-    DECL_OP %1, u8_to_f32_xyz                           , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x7
-    DECL_OP %1, u8_to_f32_yw                            , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0xa
-    DECL_OP %1, u8_to_f32_zw                            , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0xc
-    DECL_OP %1, u8_to_f32_yzw                           , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0xe
-    DECL_OP %1, u8_to_f32_xyzw                          , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0xf
+    DECL_OP %1, u8_to_f32_x                             , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x1, 0
+    DECL_OP %1, u8_to_f32_y                             , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x2, 0
+    DECL_OP %1, u8_to_f32_xy                            , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x3, 0
+    DECL_OP %1, u8_to_f32_z                             , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x4, 0
+    DECL_OP %1, u8_to_f32_xyz                           , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0x7, 0
+    DECL_OP %1, u8_to_f32_yw                            , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0xa, 0
+    DECL_OP %1, u8_to_f32_zw                            , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0xc, 0
+    DECL_OP %1, u8_to_f32_yzw                           , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0xe, 0
+    DECL_OP %1, u8_to_f32_xyzw                          , SWS_PIXEL_U8 , SWS_UOP_TO_F32          , 0xf, 0
 %endmacro
 
 %macro DECL_U8_SCALE 1
@@ -361,24 +361,24 @@
 %endmacro
 
 %macro DECL_U16_TO_U8 1
-    DECL_OP %1, u16_to_u8_xyz                           , SWS_PIXEL_U16, SWS_UOP_TO_U8           , 0x7
+    DECL_OP %1, u16_to_u8_xyz                           , SWS_PIXEL_U16, SWS_UOP_TO_U8           , 0x7, 0
 %endmacro
 
 %macro DECL_U16_TO_U16 1
 %endmacro
 
 %macro DECL_U16_TO_U32 1
-    DECL_OP %1, u16_to_u32_x                            , SWS_PIXEL_U16, SWS_UOP_TO_U32          , 0x1
-    DECL_OP %1, u16_to_u32_xyz                          , SWS_PIXEL_U16, SWS_UOP_TO_U32          , 0x7
+    DECL_OP %1, u16_to_u32_x                            , SWS_PIXEL_U16, SWS_UOP_TO_U32          , 0x1, 0
+    DECL_OP %1, u16_to_u32_xyz                          , SWS_PIXEL_U16, SWS_UOP_TO_U32          , 0x7, 0
 %endmacro
 
 %macro DECL_U16_TO_F32 1
-    DECL_OP %1, u16_to_f32_x                            , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0x1
-    DECL_OP %1, u16_to_f32_y                            , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0x2
-    DECL_OP %1, u16_to_f32_xy                           , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0x3
-    DECL_OP %1, u16_to_f32_xyz                          , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0x7
-    DECL_OP %1, u16_to_f32_yzw                          , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0xe
-    DECL_OP %1, u16_to_f32_xyzw                         , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0xf
+    DECL_OP %1, u16_to_f32_x                            , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0x1, 0
+    DECL_OP %1, u16_to_f32_y                            , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0x2, 0
+    DECL_OP %1, u16_to_f32_xy                           , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0x3, 0
+    DECL_OP %1, u16_to_f32_xyz                          , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0x7, 0
+    DECL_OP %1, u16_to_f32_yzw                          , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0xe, 0
+    DECL_OP %1, u16_to_f32_xyzw                         , SWS_PIXEL_U16, SWS_UOP_TO_F32          , 0xf, 0
 %endmacro
 
 %macro DECL_U16_SCALE 1
@@ -557,20 +557,20 @@
 %endmacro
 
 %macro DECL_U32_TO_U16 1
-    DECL_OP %1, u32_to_u16_y                            , SWS_PIXEL_U32, SWS_UOP_TO_U16          , 0x2
-    DECL_OP %1, u32_to_u16_z                            , SWS_PIXEL_U32, SWS_UOP_TO_U16          , 0x4
-    DECL_OP %1, u32_to_u16_xyz                          , SWS_PIXEL_U32, SWS_UOP_TO_U16          , 0x7
-    DECL_OP %1, u32_to_u16_yzw                          , SWS_PIXEL_U32, SWS_UOP_TO_U16          , 0xe
+    DECL_OP %1, u32_to_u16_y                            , SWS_PIXEL_U32, SWS_UOP_TO_U16          , 0x2, 0
+    DECL_OP %1, u32_to_u16_z                            , SWS_PIXEL_U32, SWS_UOP_TO_U16          , 0x4, 0
+    DECL_OP %1, u32_to_u16_xyz                          , SWS_PIXEL_U32, SWS_UOP_TO_U16          , 0x7, 0
+    DECL_OP %1, u32_to_u16_yzw                          , SWS_PIXEL_U32, SWS_UOP_TO_U16          , 0xe, 0
 %endmacro
 
 %macro DECL_U32_TO_U32 1
 %endmacro
 
 %macro DECL_U32_TO_F32 1
-    DECL_OP %1, u32_to_f32_y                            , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0x2
-    DECL_OP %1, u32_to_f32_z                            , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0x4
-    DECL_OP %1, u32_to_f32_xyz                          , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0x7
-    DECL_OP %1, u32_to_f32_yzw                          , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0xe
+    DECL_OP %1, u32_to_f32_y                            , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0x2, 0
+    DECL_OP %1, u32_to_f32_z                            , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0x4, 0
+    DECL_OP %1, u32_to_f32_xyz                          , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0x7, 0
+    DECL_OP %1, u32_to_f32_yzw                          , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0xe, 0
 %endmacro
 
 %macro DECL_U32_SCALE 1
@@ -694,29 +694,31 @@
 %endmacro
 
 %macro DECL_F32_TO_U8 1
-    DECL_OP %1, f32_to_u8_x                             , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x1
-    DECL_OP %1, f32_to_u8_xy                            , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x3
-    DECL_OP %1, f32_to_u8_xyz                           , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x7
-    DECL_OP %1, f32_to_u8_xw                            , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x9
-    DECL_OP %1, f32_to_u8_yzw                           , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0xe
-    DECL_OP %1, f32_to_u8_xyzw                          , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0xf
+    DECL_OP %1, f32_to_u8_x                             , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x1, 0
+    DECL_OP %1, f32_to_u8_xy                            , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x3, 0
+    DECL_OP %1, f32_to_u8_xyz                           , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x7, 0
+    DECL_OP %1, f32_to_u8_xw                            , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x9, 0
+    DECL_OP %1, f32_to_u8_yzw                           , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0xe, 0
+    DECL_OP %1, f32_to_u8_xyzw                          , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0xf, 0
 %endmacro
 
 %macro DECL_F32_TO_U16 1
-    DECL_OP %1, f32_to_u16_x                            , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0x1
-    DECL_OP %1, f32_to_u16_xy                           , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0x3
-    DECL_OP %1, f32_to_u16_xyz                          , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0x7
-    DECL_OP %1, f32_to_u16_xw                           , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0x9
-    DECL_OP %1, f32_to_u16_yzw                          , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0xe
-    DECL_OP %1, f32_to_u16_xyzw                         , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0xf
+    DECL_OP %1, f32_to_u16_x                            , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0x1, 0
+    DECL_OP %1, f32_to_u16_xy                           , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0x3, 0
+    DECL_OP %1, f32_to_u16_xyz                          , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0x7, 0
+    DECL_OP %1, f32_to_u16_xw                           , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0x9, 0
+    DECL_OP %1, f32_to_u16_yzw                          , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0xe, 0
+    DECL_OP %1, f32_to_u16_xyzw                         , SWS_PIXEL_F32, SWS_UOP_TO_U16          , 0xf, 0
 %endmacro
 
 %macro DECL_F32_TO_U32 1
-    DECL_OP %1, f32_to_u32_x                            , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x1
-    DECL_OP %1, f32_to_u32_xyz                          , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x7
-    DECL_OP %1, f32_to_u32_xw                           , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x9
-    DECL_OP %1, f32_to_u32_yzw                          , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0xe
-    DECL_OP %1, f32_to_u32_xyzw                         , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0xf
+    DECL_OP %1, f32_to_u32_x                            , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x1, 0
+    DECL_OP %1, f32_to_u32_xyz                          , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x7, 0
+    DECL_OP %1, f32_to_u32_xw                           , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x9, 0
+    DECL_OP %1, f32_to_u32_xw_full                      , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x9, 1
+    DECL_OP %1, f32_to_u32_yzw                          , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0xe, 0
+    DECL_OP %1, f32_to_u32_xyzw                         , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0xf, 0
+    DECL_OP %1, f32_to_u32_xyzw_full                    , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0xf, 1
 %endmacro
 
 %macro DECL_F32_TO_F32 1

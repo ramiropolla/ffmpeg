@@ -64,6 +64,12 @@ static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
         /* par.lin.exact is currently unused by asmgen_op_linear(). */
         out->par.lin.exact = 0;
         break;
+    case SWS_UOP_TO_U32:
+    case SWS_UOP_TO_F32:
+        /* The aarch64 conversions are unsigned and handle the full u32
+         * range, so full_range makes no difference. */
+        out->par.convert.full_range = 0;
+        break;
     default:
         break;
     }

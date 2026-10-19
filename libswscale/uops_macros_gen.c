@@ -81,6 +81,12 @@ static void print_params(AVBPrint *bp, const SwsUOp *uop, bool designated)
     case SWS_UOP_RSHIFT:
         FMT("par.shift.amount", "%u", par->shift.amount);
         break;
+    case SWS_UOP_TO_U8:
+    case SWS_UOP_TO_U16:
+    case SWS_UOP_TO_U32:
+    case SWS_UOP_TO_F32:
+        FMT("par.convert.full_range", "%u", par->convert.full_range);
+        break;
     case SWS_UOP_PERMUTE:
     case SWS_UOP_COPY:
         FMT("par.move.num_moves", "%d", par->move.num_moves);

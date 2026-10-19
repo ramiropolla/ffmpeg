@@ -77,6 +77,13 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
     case SWS_UOP_RSHIFT:
         av_bprintf(&bp, "_%u", par->shift.amount);
         break;
+    case SWS_UOP_TO_U8:
+    case SWS_UOP_TO_U16:
+    case SWS_UOP_TO_U32:
+    case SWS_UOP_TO_F32:
+        if (par->convert.full_range)
+            av_bprintf(&bp, "_full");
+        break;
     case SWS_UOP_PERMUTE:
     case SWS_UOP_COPY:
         av_bprint_chars(&bp, '_', 1);
@@ -542,6 +549,24 @@ static int translate_linear_op(SwsContext *ctx, SwsUOpList *ops,
     return ff_sws_uop_list_append(ops, &uop);
 }
 
+/**
+ * Whether all components in mask are known to fit in a signed 32-bit
+ * integer. Floating point values are limited to 2^30 instead, to leave
+ * headroom for rounding errors relative to the tracked range.
+ */
+static bool fits_int32(SwsPixelType type, const SwsOpPad inputs[4], SwsCompMask mask)
+{
+    const int64_t limit = type == SWS_PIXEL_F32 ? (1 << 30) : INT32_MAX;
+    for (int i = 0; i < 4; i++) {
+        if (!SWS_COMP_TEST(mask, i))
+            continue;
+        const AVRational64 max = inputs[i].max;
+        if (!max.den || ff_cmp_q64(max, ff_make_q64(limit, 1)) > 0)
+            return false;
+    }
+    return true;
+}
+
 static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
                         const SwsOp *op, const SwsOpPad inputs[4])
 {
@@ -577,6 +602,9 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         case SWS_PIXEL_U32: uop.uop = SWS_UOP_TO_U32; break;
         case SWS_PIXEL_F32: uop.uop = SWS_UOP_TO_F32; break;
         }
+        if ((uop.type == SWS_PIXEL_U32 && op->convert.to == SWS_PIXEL_F32) ||
+            (uop.type == SWS_PIXEL_F32 && op->convert.to == SWS_PIXEL_U32))
+            uop.par.convert.full_range = !fits_int32(uop.type, inputs, uop.mask);
         break;
     case SWS_OP_UNPACK:
     case SWS_OP_PACK:

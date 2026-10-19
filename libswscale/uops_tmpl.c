@@ -439,7 +439,7 @@ SWS_FOR_STRUCT(PX, COPY,    DECL_ENTRY)
  *********************/
 
 #define DECL_CAST(DST, dst)                                                     \
-    DECL_FUNC(to_##dst, const SwsCompMask mask)                                 \
+    DECL_FUNC(to_##dst, const SwsCompMask mask, const bool full_range)          \
     {                                                                           \
         block_t xx, yy, zz, ww;                                                 \
                                                                                 \
