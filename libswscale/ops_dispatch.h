@@ -118,6 +118,7 @@ typedef struct SwsCompiledOp {
     /* Execution parameters for all functions */
     int slice_align; /* slice height alignment */
     int cpu_flags;   /* active set of CPU flags (informative) */
+    bool shuffle;    /* implemented as a single packed shuffle (informative) */
 
     /* Execution parameters for non-opaque functions only */
     int block_size;     /* number of pixels processed per iteration */

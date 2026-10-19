@@ -650,6 +650,7 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
         const SwsUOp *uop = &uops->ops[0];
         ret = translate_shuffle(uop, mmsize, out);
         if (ret >= 0) {
+            out->shuffle = true;
             char name[SWS_UOP_NAME_MAX];
             ff_sws_uop_name(uop, name);
             av_log(ctx, AV_LOG_VERBOSE, "Using x86 packed shuffle fast path: %s\n", name);
