@@ -474,8 +474,20 @@ int main(int argc, char *argv[])
     graph->ctx = ctx;
     ctx->opaque = &root;
 
-    ret = ff_sws_enum_op_lists(ctx, graph, NULL, AV_PIX_FMT_NONE, AV_PIX_FMT_NONE,
-                               register_op);
+    /* Enumerate over every combination of flags that changes the ops */
+    static const SwsFlags flags_list[] = {
+        0,
+        SWS_ACCURATE_RND,
+        SWS_BITEXACT,
+        SWS_ACCURATE_RND | SWS_BITEXACT,
+    };
+    for (int i = 0; i < FF_ARRAY_ELEMS(flags_list); i++) {
+        ctx->flags = flags_list[i];
+        ret = ff_sws_enum_op_lists(ctx, graph, NULL, AV_PIX_FMT_NONE,
+                                   AV_PIX_FMT_NONE, register_op);
+        if (ret < 0)
+            break;
+    }
 
     /**
      * Generate a C file with all the unique function parameter entries
