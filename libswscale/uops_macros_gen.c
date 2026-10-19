@@ -194,7 +194,8 @@ static int register_uop(struct EnumPriv *s, const SwsUOp *uop)
     return 0;
 }
 
-static int register_flags(SwsContext *ctx, const SwsOpList *ops, SwsUOpFlags flags)
+static int register_flags(SwsContext *ctx, const SwsOpList *ops,
+                          SwsUOpFlags flags, bool type_invariant_u8)
 {
     SwsUOpList *uops = ff_sws_uop_list_alloc();
     if (!uops)
@@ -205,7 +206,10 @@ static int register_flags(SwsContext *ctx, const SwsOpList *ops, SwsUOpFlags fla
         goto fail;
 
     for (int i = 0; i < uops->num_ops; i++) {
-        ret = register_uop(ctx->opaque, &uops->ops[i]);
+        SwsUOp *uop = &uops->ops[i];
+        if (type_invariant_u8 && ff_sws_uop_is_type_invariant(uop->uop))
+            uop->type = SWS_PIXEL_U8;
+        ret = register_uop(ctx->opaque, uop);
         if (ret < 0)
             goto fail;
     }
@@ -224,6 +228,7 @@ typedef struct Backend {
     const char *name;
     const char *guard; /* include guard for the generated C header */
     SwsUOpFlags flags[2]; /* all flag combinations used by the backend */
+    bool type_invariant_u8; /* backend runs type-invariant uops as u8 */
 } Backend;
 
 static const Backend backends[] = {
@@ -238,6 +243,7 @@ static const Backend backends[] = {
             COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB,
             COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_FMA, /* FMA3 */
         },
+        .type_invariant_u8 = true,
     },
 };
 
@@ -257,7 +263,8 @@ static int register_uops(SwsContext *ctx, const SwsOpList *ops,
     for (int i = 0; i < FF_ARRAY_ELEMS(s->backend->flags); i++) {
         if (!s->backend->flags[i])
             break;
-        int ret = register_flags(ctx, ops, s->backend->flags[i]);
+        int ret = register_flags(ctx, ops, s->backend->flags[i],
+                                 s->backend->type_invariant_u8);
         if (ret < 0)
             return ret;
     }
