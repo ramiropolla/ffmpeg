@@ -287,6 +287,14 @@ typedef struct SwsLut3DUOp {
     int dynamic;
 } SwsLut3DUOp;
 
+typedef struct SwsConvertUOp {
+    /**
+     * Set for u32 -> f32 and f32 -> u32 conversions if the values may not
+     * fit in a signed 32-bit integer.
+     */
+    uint8_t full_range;
+} SwsConvertUOp;
+
 /**
  * Computes (1 << size_log2) + MAX(y_offset). The dither matrix attached to
  * the SwsUOp is always pre-padded to this number of lines.
@@ -303,6 +311,7 @@ typedef union SwsUOpParams {
     SwsLinearUOp    lin;
     SwsDitherUOp    dither;
     SwsLut3DUOp     lut3d;
+    SwsConvertUOp   convert; /* for SWS_UOP_TO_* */
 } SwsUOpParams;
 
 typedef struct SwsUOp {

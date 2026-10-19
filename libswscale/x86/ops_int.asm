@@ -516,7 +516,7 @@ IF V2,  pmovzxbw %2, %4
         vpermq %1, %1, q3120
 %endmacro
 
-%macro CAST_TO 0
+%macro CAST_TO 1 ; full_range
 %ifidn UOP, SWS_UOP_TO_U8
     %assign BITS_TO 8
 %elifidn UOP, SWS_UOP_TO_U16

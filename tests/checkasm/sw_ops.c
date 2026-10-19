@@ -571,6 +571,11 @@ static void check_cast(const char *name, const SwsUOp *uop)
     if (isize < osize || !ff_sws_pixel_type_is_int(dst))
         range = 0;
 
+    /* u32 <-> f32 conversions without full_range only need to handle values
+     * that fit in a signed 32-bit integer, or up to 2^30 for floats */
+    if (isize == 4 && osize == 4 && !uop->par.convert.full_range)
+        range = uop->type == SWS_PIXEL_F32 ? 1 << 30 : INT32_MAX;
+
     check_uop(name, uop, uop->mask, uop->mask, MK_RANGES(range));
 }
 
