@@ -1,1 +1,1 @@
-supported=59644/71824 memcpy=28 aarch64=57216 memcpy+aarch64=1780 noop=620 shuffle=0 crc=0xde3c5d68
+supported=69712/71824 memcpy=28 aarch64=66804 memcpy+aarch64=2260 noop=620 shuffle=0 crc=0xb6bcdaf1
