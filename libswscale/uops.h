@@ -336,6 +336,23 @@ static inline int ff_sws_uop_cmp_v(const void *a, const void *b)
 }
 
 /**
+ * Whether the result of a uop only depends on the bit pattern of its data,
+ * and not on its pixel type. Backends may implement these as u8, with the
+ * block size scaled by the pixel size.
+ */
+static inline bool ff_sws_uop_is_type_invariant(SwsUOpType uop)
+{
+    switch (uop) {
+    case SWS_UOP_READ_PLANAR:
+    case SWS_UOP_WRITE_PLANAR:
+    case SWS_UOP_CLEAR:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
  * Generate a unique name for a SwsUOp.
  */
 #define SWS_UOP_NAME_MAX 64
