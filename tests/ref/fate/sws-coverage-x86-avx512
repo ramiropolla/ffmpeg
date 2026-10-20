@@ -1,1 +1,1 @@
-supported=62544/69696 memcpy=28 x86=59804 memcpy+x86=2100 noop=612 shuffle=1608 crc=0x0c207a87
+supported=69696/69696 memcpy=28 x86=66796 memcpy+x86=2260 noop=612 shuffle=1608 crc=0x493d5e57
