@@ -30,6 +30,7 @@
 #include "libavutil/cpu.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
+#include "libavutil/crc.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/lfg.h"
@@ -47,6 +48,7 @@
 
 #include "libswscale/swscale.h"
 #include "libswscale/format.h"
+#include "libswscale/swscale_internal.h"
 
 #define IMPL_NEW    0
 #define IMPL_LEGACY 1
@@ -77,6 +79,7 @@ struct options {
     int api;
     int pretty;
     int backends;
+    int coverage;
 };
 
 struct mode {
@@ -132,6 +135,13 @@ static struct {
     double speedup_min;
     double speedup_max;
     int speedup_count;
+
+    int coverage_total;
+    int coverage_supported;
+    int coverage_shuffle;
+    int coverage_noop;
+    int coverage_backends[SWS_BACKEND_ALL + 1]; /* indexed by set of backends */
+    uint32_t coverage_crc;
 
     struct runner *runners;
     AVFrame *ref;
@@ -631,6 +641,154 @@ static int init_frame(AVFrame **pframe, const AVFrame *ref,
     return 0;
 }
 
+static const char *backend_name(SwsBackend backend)
+{
+    switch (backend) {
+    case SWS_BACKEND_LEGACY:  return "legacy";
+    case SWS_BACKEND_C:       return "c";
+    case SWS_BACKEND_MEMCPY:  return "memcpy";
+    case SWS_BACKEND_X86:     return "x86";
+    case SWS_BACKEND_AARCH64: return "aarch64";
+    case SWS_BACKEND_SPIRV:   return "spirv";
+    default:                  return "unknown";
+    }
+}
+
+/* Appends the backend, CPU flags and kind of each pass in graph to bp, and
+ * returns whether any pass is a packed shuffle */
+static int describe_passes(AVBPrint *bp, const SwsGraph *graph)
+{
+    int shuffle = 0;
+
+    if (graph->noop) {
+        av_bprintf(bp, " noop");
+        return 0;
+    }
+
+    for (int i = 0; i < graph->num_passes; i++) {
+        const SwsPass *pass = graph->passes[i];
+        av_bprintf(bp, "%s %s/0x%x%s", i ? "," : "",
+                   backend_name(pass->backend), pass->cpu_flags,
+                   pass->shuffle ? "/shuffle" : "");
+        shuffle |= pass->shuffle;
+    }
+
+    return shuffle;
+}
+
+/* Prints the coverage summary, with the supported conversions broken down by
+ * the set of backends their passes use */
+static void print_coverage(void)
+{
+    printf("supported=%d/%d", state.coverage_supported, state.coverage_total);
+    for (int set = 1; set < FF_ARRAY_ELEMS(state.coverage_backends); set++) {
+        if (!state.coverage_backends[set])
+            continue;
+        int first = 1;
+        printf(" ");
+        for (int bit = 0; bit < 32; bit++) {
+            if (!(set & (1 << bit)))
+                continue;
+            printf("%s%s", first ? "" : "+", backend_name(1 << bit));
+            first = 0;
+        }
+        printf("=%d", state.coverage_backends[set]);
+    }
+    printf(" noop=%d shuffle=%d crc=0x%08"PRIx32"\n",
+           state.coverage_noop, state.coverage_shuffle, state.coverage_crc);
+}
+
+/* Sets up the src -> dst conversion without running it, and records whether
+ * the selected backends support it, and which passes they use */
+static int check_coverage(struct runner *runner, const struct test_case *t,
+                          const struct mode *mode, const struct options *opts)
+{
+    const AVFrame *ref = state.ref;
+    SwsContext *sws_src_dst = runner->sws_src_dst;
+    AVFrame *src = NULL;
+    AVFrame *dst = NULL;
+    char line[512];
+    AVBPrint bp;
+    int ret;
+
+    ret = init_frame(&src, ref, ref->width, ref->height, t->src_fmt);
+    if (ret < 0)
+        goto error;
+    ret = init_frame(&dst, ref, t->dst_w, t->dst_h, t->dst_fmt);
+    if (ret < 0)
+        goto error;
+
+    sws_src_dst->flags      = mode->flags;
+    sws_src_dst->dither     = mode->dither;
+    sws_src_dst->scaler     = mode->scaler;
+    sws_src_dst->scaler_sub = mode->scaler_sub;
+    sws_src_dst->threads    = opts->threads;
+    sws_src_dst->backends   = opts->backends;
+
+    ret = sws_frame_setup(sws_src_dst, dst, src);
+    if (ret < 0 && ret != AVERROR(ENOTSUP))
+        goto error;
+
+    av_bprint_init_for_buffer(&bp, line, sizeof(line));
+    print_test_params(&bp, src, dst, mode, opts);
+    av_bprintf(&bp, ", ");
+    state.coverage_total++;
+    if (ret >= 0) {
+        const SwsGraph *graph = sws_internal(sws_src_dst)->graph[0];
+        av_bprintf(&bp, "supported:");
+        state.coverage_supported++;
+        state.coverage_shuffle += describe_passes(&bp, graph);
+        if (graph->noop)
+            state.coverage_noop++;
+        else
+            state.coverage_backends[graph->backend & SWS_BACKEND_ALL]++;
+    } else {
+        av_bprintf(&bp, "unsupported");
+    }
+
+    state.coverage_crc = av_crc(av_crc_get_table(AV_CRC_32_IEEE_LE),
+                                state.coverage_crc,
+                                (const uint8_t *) line, strlen(line) + 1);
+
+    if (av_log_get_level() >= AV_LOG_INFO) {
+        printf("%s\n", line);
+        fflush(stdout);
+    }
+
+    ret = 0;
+
+error:
+    av_frame_free(&src);
+    av_frame_free(&dst);
+    return ret;
+}
+
+/* Flags that change the generated operations, checked for each conversion
+ * unless -flags is set */
+static const SwsFlags coverage_flags[] = {
+    0,
+    SWS_ACCURATE_RND,
+    SWS_BITEXACT,
+    SWS_ACCURATE_RND | SWS_BITEXACT,
+};
+
+static int run_coverage(struct runner *runner, const struct test_case *t,
+                        const struct options *opts)
+{
+    if (opts->flags >= 0)
+        return check_coverage(runner, t, &t->mode, opts);
+
+    for (int i = 0; i < FF_ARRAY_ELEMS(coverage_flags); i++) {
+        struct mode flags_mode = t->mode;
+        flags_mode.flags |= coverage_flags[i];
+        int ret = check_coverage(runner, t, &flags_mode, opts);
+        if (ret < 0)
+            return ret;
+    }
+
+    return 0;
+}
+
 /* Runs a series of ref -> src -> dst -> out, and compares out vs ref */
 static int run_test(struct runner *runner, const struct test_case *t,
                     const struct options *opts)
@@ -654,6 +812,9 @@ static int run_test(struct runner *runner, const struct test_case *t,
     const float expected_loss = get_loss(ssim_expected);
 
     struct test_results r = { 0 };
+
+    if (opts->coverage)
+        return run_coverage(runner, t, opts);
 
     if (!src || src->format != t->src_fmt) {
         av_frame_free(&runner->src);
@@ -1149,6 +1310,11 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
                     "       Uses the specified cpuflags in the tests\n"
                     "   -pretty <1 or 0>\n"
                     "       Align fields while printing results\n"
+                    "   -coverage <1 or 0>\n"
+                    "       Only set up each conversion without running it, and print how many\n"
+                    "       of them are supported, along with a checksum of the supported set\n"
+                    "       Unless -flags is set, each conversion is checked with and without\n"
+                    "       accurate_rnd and bitexact\n"
                     "   -v <level>\n"
                     "       Enable log verbosity at given level\n"
             );
@@ -1282,6 +1448,8 @@ static int parse_options(int argc, char **argv, struct options *opts, FILE **fp)
             opts->prob = atof(argv[i + 1]);
         } else if (!strcmp(argv[i], "-pretty")) {
             opts->pretty = atoi(argv[i + 1]);
+        } else if (!strcmp(argv[i], "-coverage")) {
+            opts->coverage = atoi(argv[i + 1]);
         } else if (!strcmp(argv[i], "-v")) {
             av_log_set_level(atoi(argv[i + 1]));
         } else {
@@ -1290,6 +1458,13 @@ bad_option:
             ret = AVERROR(EINVAL);
             goto end;
         }
+    }
+
+    if (opts->coverage &&
+        (state.hw_device_ctx || opts->api == IMPL_LEGACY || opts->runners > 1)) {
+        fprintf(stderr, "-coverage is not supported with -hw, -api legacy or multiple runners\n");
+        ret = AVERROR(EINVAL);
+        goto end;
     }
 
     if (opts->w < 0 || opts->h < 0) {
@@ -1358,9 +1533,14 @@ int main(int argc, char **argv)
     state.ref->height = opts.h;
     state.ref->format = AV_PIX_FMT_YUVA444P;
 
-    ret = init_ref(state.ref, &opts);
-    if (ret < 0)
-        goto error;
+    /* Coverage only uses the frame properties of ref. Skip filling it, since
+     * that runs a conversion with the forced cpuflags, which the host CPU may
+     * not support. */
+    if (!opts.coverage) {
+        ret = init_ref(state.ref, &opts);
+        if (ret < 0)
+            goto error;
+    }
 
     if (opts.runners > 1) {
         ret = av_thread_message_queue_alloc(&state.queue, opts.runners,
@@ -1379,6 +1559,9 @@ int main(int argc, char **argv)
     } else {
         ret = run_tests(&opts);
     }
+
+    if (opts.coverage && ret >= 0)
+        print_coverage();
 
     /* fall through */
 error:
