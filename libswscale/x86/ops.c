@@ -473,6 +473,8 @@ SWS_FOR_STRUCT(U8,  TO_F32, DECL_ENTRY, EXT, NULL, NULL)                        
 SWS_FOR_STRUCT(F32, TO_U8,  DECL_ENTRY, EXT, NULL, NULL)                        \
 SWS_FOR_STRUCT(U16, TO_F32, DECL_ENTRY, EXT, NULL, NULL)                        \
 SWS_FOR_STRUCT(F32, TO_U16, DECL_ENTRY, EXT, NULL, NULL)                        \
+SWS_FOR_STRUCT(U32, TO_F32, DECL_ENTRY, EXT, NULL, NULL)                        \
+SWS_FOR_STRUCT(F32, TO_U32, DECL_ENTRY, EXT, NULL, NULL)                        \
 SWS_FOR_STRUCT(U8,  READ_PLANAR_FH, DECL_ENTRY, EXT, NULL, setup_filter_h)      \
 SWS_FOR_STRUCT(U16, READ_PLANAR_FH, DECL_ENTRY, EXT, NULL, setup_filter_h)      \
 SWS_FOR_STRUCT(F32, READ_PLANAR_FH, DECL_ENTRY, EXT, NULL, setup_filter_h)      \
@@ -498,6 +500,8 @@ static const SwsUOpTable uops_f32##EXT = {                                      
         SWS_FOR(F32, TO_U8,  REF_ENTRY, EXT)                                    \
         SWS_FOR(U16, TO_F32, REF_ENTRY, EXT)                                    \
         SWS_FOR(F32, TO_U16, REF_ENTRY, EXT)                                    \
+        SWS_FOR(U32, TO_F32, REF_ENTRY, EXT)                                    \
+        SWS_FOR(F32, TO_U32, REF_ENTRY, EXT)                                    \
         SWS_FOR(U8,  READ_PLANAR_FH, REF_ENTRY, _4x4##EXT)                      \
         SWS_FOR(U16, READ_PLANAR_FH, REF_ENTRY, _4x4##EXT)                      \
         SWS_FOR(F32, READ_PLANAR_FH, REF_ENTRY, _4x4##EXT)                      \

@@ -59,6 +59,9 @@ mask4: times 32 db 0x0F
 const1b  equ mask1
 const1w: times 16 dw 0x1
 
+cvt_2p16: dd 0x47800000 ; 65536.0f
+cvt_2p31: dd 0x4F000000 ; 2147483648.0f
+
 SECTION .text
 
 ;---------------------------------------------------------
@@ -516,6 +519,31 @@ IF V2,  pmovzxbw %2, %4
         vpermq %1, %1, q3120
 %endmacro
 
+; AVX2 only converts between floats and signed 32-bit integers, so convert
+; unsigned values >= 2^31 separately.
+
+%macro cvtud2ps 1 ; reg; expects m9 = 65536.0f and m10 = 0
+        ; m8 holds the high 16 bits and %1 the low 16 bits; m8 * 65536.0f is
+        ; exact, so the addition rounds only once
+        psrld m8, %1, 16
+        pblendw %1, %1, m10, 0xAA
+        vcvtdq2ps m8, m8
+        vcvtdq2ps %1, %1
+        mulps m8, m8, m9
+        addps %1, %1, m8
+%endmacro
+
+%macro cvttps2ud 1 ; reg; expects m9 = 2147483648.0f
+        ; values of %1 >= 2^31 convert to 0x80000000; fill in the low bits
+        ; from the conversion of %1 - 2^31 (m8)
+        subps m8, %1, m9
+        cvttps2dq %1, %1
+        cvttps2dq m8, m8
+        psrad m10, %1, 31
+        pand m8, m8, m10
+        por %1, %1, m8
+%endmacro
+
 %macro CAST_TO 1 ; full_range
 %ifidn UOP, SWS_UOP_TO_U8
     %assign BITS_TO 8
@@ -527,6 +555,17 @@ IF V2,  pmovzxbw %2, %4
 
         LOAD_CONT tmp0q
 %ifidn TYPE, SWS_PIXEL_F32
+  %if BITS_TO == 32 && %1
+        vbroadcastss m9, [cvt_2p31]
+IF X,   cvttps2ud mx
+IF Y,   cvttps2ud my
+IF Z,   cvttps2ud mz
+IF W,   cvttps2ud mw
+IF X,   cvttps2ud mx2
+IF Y,   cvttps2ud my2
+IF Z,   cvttps2ud mz2
+IF W,   cvttps2ud mw2
+  %else
 IF X,   cvttps2dq mx, mx
 IF Y,   cvttps2dq my, my
 IF Z,   cvttps2dq mz, mz
@@ -535,6 +574,7 @@ IF X,   cvttps2dq mx2, mx2
 IF Y,   cvttps2dq my2, my2
 IF Z,   cvttps2dq mz2, mz2
 IF W,   cvttps2dq mw2, mw2
+  %endif
 %endif
 %if BITS != BITS_TO
         ; integer size conversion
@@ -548,6 +588,18 @@ IF1 W,  cast %+ BITS %+ to %+ BITS_TO mw, mw2, xmw, xmw2
     %endif
 %endif
 %ifidn UOP, SWS_UOP_TO_F32
+  %if %1 ; only set for u32 inputs
+        vbroadcastss m9, [cvt_2p16]
+        pxor m10, m10
+IF X,   cvtud2ps mx
+IF Y,   cvtud2ps my
+IF Z,   cvtud2ps mz
+IF W,   cvtud2ps mw
+IF X,   cvtud2ps mx2
+IF Y,   cvtud2ps my2
+IF Z,   cvtud2ps mz2
+IF W,   cvtud2ps mw2
+  %else
 IF X,   vcvtdq2ps mx, mx
 IF Y,   vcvtdq2ps my, my
 IF Z,   vcvtdq2ps mz, mz
@@ -556,6 +608,7 @@ IF X,   vcvtdq2ps mx2, mx2
 IF Y,   vcvtdq2ps my2, my2
 IF Z,   vcvtdq2ps mz2, mz2
 IF W,   vcvtdq2ps mw2, mw2
+  %endif
 %endif
         CONTINUE tmp0q
 %endmacro
