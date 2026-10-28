@@ -228,10 +228,17 @@ int ff_sws_dither_height(const SwsDitherUOp *dither)
     return (1 << dither->size_log2) + max_offset;
 }
 
+typedef struct TranslateCtx {
+    SwsContext *ctx;
+    SwsUOpFlags flags;
+    SwsUOpTestFunc test_uop;
+    unsigned cpu_flags;
+} TranslateCtx;
+
 /* Conditionally promotes a pixel type to integer only if allowed by the flags */
-static SwsPixelType pixel_type_to_int(SwsUOpFlags flags, const SwsPixelType type)
+static SwsPixelType pixel_type_to_int(const TranslateCtx *t, const SwsPixelType type)
 {
-    if (!(flags & SWS_UOP_FLAG_PUNNING))
+    if (!(t->flags & SWS_UOP_FLAG_PUNNING))
         return type;
 
     switch (ff_sws_pixel_type_size(type)) {
@@ -277,11 +284,11 @@ static bool exact_prod(SwsPixel coef, const SwsOpPad *input)
     return false;
 }
 
-static bool check_filter_fma(SwsContext *ctx, SwsUOpFlags flags, const SwsOp *op)
+static bool check_filter_fma(const TranslateCtx *t, const SwsOp *op)
 {
-    if (!(flags & SWS_UOP_FLAG_FMA))
+    if (!(t->flags & SWS_UOP_FLAG_FMA))
         return false;
-    if (!(ctx->flags & SWS_BITEXACT))
+    if (!(t->ctx->flags & SWS_BITEXACT))
         return true;
     if (!ff_sws_pixel_type_is_int(op->rw.type))
         return false;
@@ -295,8 +302,7 @@ static bool check_filter_fma(SwsContext *ctx, SwsUOpFlags flags, const SwsOp *op
     return max_val * SWS_FILTER_SCALE <= (1 << 22);
 }
 
-static int translate_rw_op(SwsContext *ctx, SwsUOpList *ops, SwsUOpFlags flags,
-                           const SwsOp *op)
+static int translate_rw_op(const TranslateCtx *t, SwsUOpList *ops, const SwsOp *op)
 {
     SwsUOp uop = {
         .type = op->rw.type,
@@ -306,7 +312,7 @@ static int translate_rw_op(SwsContext *ctx, SwsUOpList *ops, SwsUOpFlags flags,
 
     /* Non-filtered reads don't care about the exact pixel contents */
     if (!op->rw.filter.op)
-        uop.type = pixel_type_to_int(flags, op->rw.type);
+        uop.type = pixel_type_to_int(t, op->rw.type);
 
     const bool is_read = op->op == SWS_OP_READ;
     if (op->rw.filter.op) {
@@ -316,7 +322,7 @@ static int translate_rw_op(SwsContext *ctx, SwsUOpList *ops, SwsUOpFlags flags,
         uop.data.kernel = av_refstruct_ref(op->rw.filter.kernel);
         if (op->rw.filter.op == SWS_OP_FILTER_H) {
             uop.uop = SWS_UOP_READ_PLANAR_FH;
-        } else if (check_filter_fma(ctx, flags, op)) {
+        } else if (check_filter_fma(t, op)) {
             uop.uop = SWS_UOP_READ_PLANAR_FV_FMA;
         } else {
             uop.uop = SWS_UOP_READ_PLANAR_FV;
@@ -326,7 +332,7 @@ static int translate_rw_op(SwsContext *ctx, SwsUOpList *ops, SwsUOpFlags flags,
             return AVERROR(ENOTSUP);
         uop.uop = is_read ? SWS_UOP_READ_PACKED : SWS_UOP_WRITE_PACKED;
     } else if (op->rw.mode == SWS_RW_PALETTE) {
-        if (!(flags & SWS_UOP_FLAG_READ_PALETTE) || op->rw.frac || !is_read)
+        if (!(t->flags & SWS_UOP_FLAG_READ_PALETTE) || op->rw.frac || !is_read)
             return AVERROR(ENOTSUP);
         uop.uop = SWS_UOP_READ_PALETTE;
     } else if (op->rw.frac == 3) {
@@ -359,11 +365,11 @@ static int count_idx(const int *arr, size_t size, int val)
     return num;
 }
 
-static int translate_swizzle(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *op)
+static int translate_swizzle(const TranslateCtx *t, SwsUOpList *ops, const SwsOp *op)
 {
     SwsUOp uop = {
         .uop  = SWS_UOP_PERMUTE,
-        .type = pixel_type_to_int(flags, ff_sws_op_input_type(op)),
+        .type = pixel_type_to_int(t, ff_sws_op_input_type(op)),
         .mask = ff_sws_comp_mask_needed(op),
     };
     SwsMoveUOp *par = &uop.par.move;
@@ -453,7 +459,7 @@ static int translate_swizzle(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *op
     return ff_sws_uop_list_append(ops, &uop);
 }
 
-static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *op)
+static int translate_dither_op(const TranslateCtx *t, SwsUOpList *ops, const SwsOp *op)
 {
     SwsUOp uop = {
         .type = ff_sws_op_input_type(op),
@@ -461,7 +467,7 @@ static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *
         .par.dither.size_log2 = op->dither.size_log2,
     };
 
-    if ((flags & SWS_UOP_FLAG_ADD) && op->dither.size_log2 == 0) {
+    if ((t->flags & SWS_UOP_FLAG_ADD) && op->dither.size_log2 == 0) {
         /* Constant offset */
         const SwsPixel val = ff_sws_pixel_from_q64(uop.type, op->dither.matrix[0]);
         uop.uop = SWS_UOP_ADD;
@@ -501,9 +507,8 @@ static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *
     return ff_sws_uop_list_append(ops, &uop);
 }
 
-static int translate_linear_op(SwsContext *ctx, SwsUOpList *ops,
-                               SwsUOpFlags flags, const SwsOp *op,
-                               const SwsOpPad inputs[4])
+static int translate_linear_op(const TranslateCtx *t, SwsUOpList *ops,
+                               const SwsOp *op, const SwsOpPad inputs[4])
 {
     SwsUOp uop = {
         .type = ff_sws_op_input_type(op),
@@ -512,7 +517,7 @@ static int translate_linear_op(SwsContext *ctx, SwsUOpList *ops,
 
     const SwsPixel one = ff_sws_pixel_from_q64(uop.type, (AVRational64) {1, 1});
     const uint32_t mask = ff_sws_linear_mask(&op->lin);
-    const bool bitexact = ctx->flags & SWS_BITEXACT;
+    const bool bitexact = t->ctx->flags & SWS_BITEXACT;
     uint32_t exact = 0;
 
     for (int i = 0; i < 4; i++) {
@@ -539,7 +544,7 @@ static int translate_linear_op(SwsContext *ctx, SwsUOpList *ops,
         }
     }
 
-    if ((flags & SWS_UOP_FLAG_FMA) && !ff_sws_pixel_type_is_int(uop.type)) {
+    if ((t->flags & SWS_UOP_FLAG_FMA) && !ff_sws_pixel_type_is_int(uop.type)) {
         /* multiplication by 1 and 0 are always exact by definition */
         uop.uop = SWS_UOP_LINEAR_FMA;
         uop.par.lin.exact = exact | uop.par.lin.zero | uop.par.lin.one;
@@ -548,7 +553,7 @@ static int translate_linear_op(SwsContext *ctx, SwsUOpList *ops,
     return ff_sws_uop_list_append(ops, &uop);
 }
 
-static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
+static int translate_op(const TranslateCtx *t, SwsUOpList *uops,
                         const SwsOp *op, const SwsOpPad inputs[4])
 {
     switch (op->op) {
@@ -557,13 +562,13 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         return AVERROR(ENOTSUP); /* always handled by subpass splitting */
     case SWS_OP_READ:
     case SWS_OP_WRITE:
-        return translate_rw_op(ctx, uops, flags, op);
+        return translate_rw_op(t, uops, op);
     case SWS_OP_SWIZZLE:
-        return translate_swizzle(uops, flags, op);
+        return translate_swizzle(t, uops, op);
     case SWS_OP_DITHER:
-        return translate_dither_op(uops, flags, op);
+        return translate_dither_op(t, uops, op);
     case SWS_OP_LINEAR:
-        return translate_linear_op(ctx, uops, flags, op, inputs);
+        return translate_linear_op(t, uops, op, inputs);
     default:
         break;
     }
@@ -608,7 +613,7 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             const AVRational64 v = op->clear.value[i];
             const SwsPixelType type = op->clear.type[i];
             const SwsPixel px = ff_sws_pixel_from_q64(type, v);
-            uop.type = pixel_type_to_int(flags, type);
+            uop.type = pixel_type_to_int(t, type);
             uop.data.vec4[i] = ff_sws_pixel_expand32(type, px);
             if (v.num == 0)
                 uop.par.clear.zero |= SWS_COMP(i);
@@ -631,7 +636,7 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         break;
     case SWS_OP_SWAP_BYTES:
         uop.uop = SWS_UOP_SWAP_BYTES;
-        uop.type = pixel_type_to_int(flags, uop.type);
+        uop.type = pixel_type_to_int(t, uop.type);
         break;
     case SWS_OP_LUT_3D:
         uop.uop = SWS_UOP_LUT_3D;
@@ -650,6 +655,12 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
                          SwsUOpFlags flags, SwsUOpTestFunc test_uop,
                          unsigned cpu_flags, SwsUOpList *uops)
 {
+    const TranslateCtx t = {
+        .ctx       = ctx,
+        .flags     = flags,
+        .test_uop  = test_uop,
+        .cpu_flags = cpu_flags,
+    };
     int ret;
     const SwsOpPad *inputs = ops->inputs;
     for (int n = 0; n < ops->num_ops; n++) {
@@ -662,7 +673,7 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
                 uops->pixel_size_max = pixel_size;
         }
 
-        ret = translate_op(ctx, uops, flags, op, inputs);
+        ret = translate_op(&t, uops, op, inputs);
         if (ret < 0)
             return ret;
         inputs = op->outputs;
