@@ -40,7 +40,6 @@ static int print_ops(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
         return AVERROR(ENOMEM);
 
     const SwsUOpFlags flags = SWS_UOP_FLAG_EXPAND_BIT
-                            | SWS_UOP_FLAG_READ_PALETTE
                             | SWS_UOP_FLAG_PUNNING;
     int ret = ff_sws_ops_translate(ctx, ops, flags, ff_sws_test_uop_c, 0, uops);
     if (ret == AVERROR(ENOTSUP))

@@ -332,7 +332,7 @@ static int translate_rw_op(const TranslateCtx *t, SwsUOpList *ops, const SwsOp *
             return AVERROR(ENOTSUP);
         uop.uop = is_read ? SWS_UOP_READ_PACKED : SWS_UOP_WRITE_PACKED;
     } else if (op->rw.mode == SWS_RW_PALETTE) {
-        if (!(t->flags & SWS_UOP_FLAG_READ_PALETTE) || op->rw.frac || !is_read)
+        if (op->rw.frac || !is_read)
             return AVERROR(ENOTSUP);
         uop.uop = SWS_UOP_READ_PALETTE;
     } else if (op->rw.frac == 3) {

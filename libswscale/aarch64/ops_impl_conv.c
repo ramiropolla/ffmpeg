@@ -30,6 +30,13 @@
 static int test_uop_aarch64(const SwsUOp *uop, unsigned cpu_flags,
                             SwsUOpLimits *limits)
 {
+    switch (uop->uop) {
+    case SWS_UOP_READ_PALETTE:
+        return AVERROR(ENOTSUP);
+    default:
+        break;
+    }
+
     return 0;
 }
 

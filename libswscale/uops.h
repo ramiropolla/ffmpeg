@@ -161,7 +161,6 @@ typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_FMA          = (1 << 0), /* platform supports FMA ops */
     SWS_UOP_FLAG_PSHUFB       = (1 << 1), /* platform supports pshufb equivalent */
     SWS_UOP_FLAG_EXPAND_BIT   = (1 << 2), /* backend implements SWS_UOP_EXPAND_BIT */
-    SWS_UOP_FLAG_READ_PALETTE = (1 << 3), /* backend implements SWS_UOP_READ_PALETTE */
     SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
 } SwsUOpFlagBits;
 
