@@ -32,6 +32,7 @@ static int test_uop_aarch64(const SwsUOp *uop, unsigned cpu_flags,
 {
     switch (uop->uop) {
     case SWS_UOP_READ_PALETTE:
+    case SWS_UOP_EXPAND_BIT:
         return AVERROR(ENOTSUP);
     default:
         break;

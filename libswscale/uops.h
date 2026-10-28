@@ -160,7 +160,6 @@ typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_NONE         = 0,
     SWS_UOP_FLAG_FMA          = (1 << 0), /* platform supports FMA ops */
     SWS_UOP_FLAG_PSHUFB       = (1 << 1), /* platform supports pshufb equivalent */
-    SWS_UOP_FLAG_EXPAND_BIT   = (1 << 2), /* backend implements SWS_UOP_EXPAND_BIT */
     SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
 } SwsUOpFlagBits;
 
@@ -398,7 +397,9 @@ int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limit
 /**
  * Called internally by ff_sws_ops_translate().
  */
-int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpFlags flags, SwsUOpList *uops);
+int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpFlags flags,
+                             SwsUOpTestFunc test_uop, unsigned cpu_flags,
+                             SwsUOpList *uops);
 
 /**
  * Print the micro-ops of a compiled list at the given log level.
