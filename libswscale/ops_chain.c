@@ -100,6 +100,7 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
                 .type = entry->type,
                 .mask = entry->mask,
                 .par  = entry->par,
+                .bytes = table->bytes ? table->bytes : uop->bytes,
             };
 
             if (ff_sws_uop_cmp(uop, &entry_uop) != 0)

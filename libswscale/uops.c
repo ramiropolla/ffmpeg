@@ -38,6 +38,8 @@ int ff_sws_uop_cmp(const SwsUOp *a, const SwsUOp *b)
         return (int) a->type - b->type;
     if (a->uop != b->uop)
         return (int) a->uop - b->uop;
+    if (a->bytes != b->bytes)
+        return a->bytes - b->bytes;
     if (a->mask != b->mask)
         return (int) a->mask - b->mask;
     return memcmp(&a->par, &b->par, sizeof(a->par));
@@ -136,6 +138,9 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
         av_bprintf(&bp, "_%s", par->lut3d.dynamic ? "dynamic" : "static");
         break;
     }
+
+    if (op->bytes)
+        av_bprintf(&bp, "_m%d", op->bytes);
 
     av_assert0(av_bprint_is_complete(&bp));
 }

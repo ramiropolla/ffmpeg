@@ -312,6 +312,12 @@ typedef struct SwsUOp {
     SwsCompMask mask;
     SwsUOpParams par;
 
+    /**
+     * Number of bytes per component processed at once, for the largest pixel
+     * type involved in this uop, or 0 if unsized.
+     */
+    int bytes;
+
     /* Constant data for this uop; not part of the unique identifier */
     union {
         SwsFilterWeights *kernel;   /* refstruct */
