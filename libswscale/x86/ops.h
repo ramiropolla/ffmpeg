@@ -26,11 +26,26 @@
  * so it must not depend on any x86-specific code or build configuration.
  */
 
+#include "libavutil/error.h"
+
 #include "../uops.h"
 
 static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags,
                                SwsUOpLimits *limits)
 {
+    switch (uop->uop) {
+    case SWS_UOP_TO_U32:
+    case SWS_UOP_TO_F32:
+        /* Conversions between U32 and F32 are not implemented */
+        if (uop->type == SWS_PIXEL_U32 || uop->type == SWS_PIXEL_F32)
+            return AVERROR(ENOTSUP);
+        break;
+    case SWS_UOP_LUT_3D:
+        return AVERROR(ENOTSUP);
+    default:
+        break;
+    }
+
     return 0;
 }
 

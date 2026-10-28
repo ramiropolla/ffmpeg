@@ -104,9 +104,7 @@
     DECL_OP %1, u8_permute_xy_xy_zw                     , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0x3, 2, 0, 1, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0
     DECL_OP %1, u8_permute_xyz_x_w                      , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0x7, 1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0
     DECL_OP %1, u8_permute_xyz_y_w                      , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0x7, 1, 1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0
-    DECL_OP %1, u8_permute_xyz_xy_yw                    , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0x7, 2, 0, 1, 0, 0, 0, 0, 1, 3, 0, 0, 0, 0
     DECL_OP %1, u8_permute_xyz_yx_xw                    , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0x7, 2, 1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0
-    DECL_OP %1, u8_permute_xyz_xyz_yzw                  , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0x7, 3, 0, 1, 2, 0, 0, 0, 1, 2, 3, 0, 0, 0
     DECL_OP %1, u8_permute_xyz_xtyz_wyzt                , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0x7, 4, 0, -1, 1, 2, 0, 0, 3, 1, 2, -1, 0, 0
     DECL_OP %1, u8_permute_yzw_y_x                      , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0xe, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     DECL_OP %1, u8_permute_yzw_z_x                      , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0xe, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
@@ -123,7 +121,6 @@
     DECL_OP %1, u8_permute_xyzw_txzy_xzyt               , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0xf, 4, -1, 0, 2, 1, 0, 0, 0, 2, 1, -1, 0, 0
     DECL_OP %1, u8_permute_xyzw_txzw_xzwt               , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0xf, 4, -1, 0, 2, 3, 0, 0, 0, 2, 3, -1, 0, 0
     DECL_OP %1, u8_permute_xyzw_txwz_xwzt               , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0xf, 4, -1, 0, 3, 2, 0, 0, 0, 3, 2, -1, 0, 0
-    DECL_OP %1, u8_permute_xyzw_tyzw_yzwt               , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0xf, 4, -1, 1, 2, 3, 0, 0, 1, 2, 3, -1, 0, 0
     DECL_OP %1, u8_permute_xyzw_txyzw_xyzwt             , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0xf, 5, -1, 0, 1, 2, 3, 0, 0, 1, 2, 3, -1, 0
     DECL_OP %1, u8_permute_xyzw_txwyz_xwyzt             , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0xf, 5, -1, 0, 3, 1, 2, 0, 0, 3, 1, 2, -1, 0
     DECL_OP %1, u8_permute_xyzw_txwzy_xwzyt             , SWS_PIXEL_U8 , SWS_UOP_PERMUTE         , 0xf, 5, -1, 0, 3, 2, 1, 0, 0, 3, 2, 1, -1, 0
@@ -520,7 +517,6 @@
     DECL_OP %1, u32_permute_xyz_x_w                     , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0x7, 1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0
     DECL_OP %1, u32_permute_xyz_y_w                     , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0x7, 1, 1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0
     DECL_OP %1, u32_permute_xyz_xz_zw                   , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0x7, 2, 0, 2, 0, 0, 0, 0, 2, 3, 0, 0, 0, 0
-    DECL_OP %1, u32_permute_xyz_zx_xw                   , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0x7, 2, 2, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0
     DECL_OP %1, u32_permute_xyz_xyz_yzw                 , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0x7, 3, 0, 1, 2, 0, 0, 0, 1, 2, 3, 0, 0, 0
     DECL_OP %1, u32_permute_xyz_xzy_zyw                 , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0x7, 3, 0, 2, 1, 0, 0, 0, 2, 1, 3, 0, 0, 0
     DECL_OP %1, u32_permute_xyz_xtyz_wyzt               , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0x7, 4, 0, -1, 1, 2, 0, 0, 3, 1, 2, -1, 0, 0
@@ -543,8 +539,6 @@
     DECL_OP %1, u32_permute_xyzw_txyz_xyzt              , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0xf, 4, -1, 0, 1, 2, 0, 0, 0, 1, 2, -1, 0, 0
     DECL_OP %1, u32_permute_xyzw_txzy_xzyt              , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0xf, 4, -1, 0, 2, 1, 0, 0, 0, 2, 1, -1, 0, 0
     DECL_OP %1, u32_permute_xyzw_txyzw_xyzwt            , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0xf, 5, -1, 0, 1, 2, 3, 0, 0, 1, 2, 3, -1, 0
-    DECL_OP %1, u32_permute_xyzw_txwyz_xwyzt            , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0xf, 5, -1, 0, 3, 1, 2, 0, 0, 3, 1, 2, -1, 0
-    DECL_OP %1, u32_permute_xyzw_txwzy_xwzyt            , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0xf, 5, -1, 0, 3, 2, 1, 0, 0, 3, 2, 1, -1, 0
     DECL_OP %1, u32_permute_xyzw_txwtyz_xwtyzt          , SWS_PIXEL_U32, SWS_UOP_PERMUTE         , 0xf, 6, -1, 0, 3, -1, 1, 2, 0, 3, -1, 1, 2, -1
 %endmacro
 
@@ -586,10 +580,6 @@
 %endmacro
 
 %macro DECL_U32_TO_F32 1
-    DECL_OP %1, u32_to_f32_y                            , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0x2
-    DECL_OP %1, u32_to_f32_z                            , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0x4
-    DECL_OP %1, u32_to_f32_xyz                          , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0x7
-    DECL_OP %1, u32_to_f32_yzw                          , SWS_PIXEL_U32, SWS_UOP_TO_F32          , 0xe
 %endmacro
 
 %macro DECL_U32_SCALE 1
@@ -628,9 +618,7 @@
 %macro DECL_U32_CLEAR 1
     DECL_OP %1, u32_clear_x_x                           , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x1, 0x00000, 0x00000
     DECL_OP %1, u32_clear_y_x                           , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x2, 0x00000, 0x00000
-    DECL_OP %1, u32_clear_xz_xx                         , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x5, 0x00000, 0x00000
     DECL_OP %1, u32_clear_w_x                           , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x8, 0x00000, 0x00000
-    DECL_OP %1, u32_clear_yw_xx                         , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0xa, 0x00000, 0x00000
     DECL_OP %1, u32_clear_xyw_xxx                       , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0xb, 0x00000, 0x00000
     DECL_OP %1, u32_clear_xzw_xxx                       , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0xd, 0x00000, 0x00000
 %endmacro
@@ -738,11 +726,6 @@
 %endmacro
 
 %macro DECL_F32_TO_U32 1
-    DECL_OP %1, f32_to_u32_x                            , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x1
-    DECL_OP %1, f32_to_u32_xyz                          , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x7
-    DECL_OP %1, f32_to_u32_xw                           , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0x9
-    DECL_OP %1, f32_to_u32_yzw                          , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0xe
-    DECL_OP %1, f32_to_u32_xyzw                         , SWS_PIXEL_F32, SWS_UOP_TO_U32          , 0xf
 %endmacro
 
 %macro DECL_F32_TO_F32 1
@@ -784,7 +767,6 @@
     DECL_OP %1, f32_max_x                               , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x1
     DECL_OP %1, f32_max_xy                              , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x3
     DECL_OP %1, f32_max_xyz                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x7
-    DECL_OP %1, f32_max_w                               , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x8
     DECL_OP %1, f32_max_xw                              , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x9
     DECL_OP %1, f32_max_xyzw                            , SWS_PIXEL_F32, SWS_UOP_MAX             , 0xf
 %endmacro
@@ -815,7 +797,6 @@
     DECL_OP %1, f32_linear_xyz_x000x_0x00x_00x0x        , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbadae
     DECL_OP %1, f32_linear_xyz_x0000_0x000_00x00        , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbefbe
     DECL_OP %1, f32_linear_xyz_10x0x_1xx0x_1x00x        , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x7, 0x40421, 0xbb10a
-    DECL_OP %1, f32_linear_w_000x0                      , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x8, 0x01041, 0xbefbe
     DECL_OP %1, f32_linear_xw_x000x_000x0               , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x9, 0x01040, 0xbefae
     DECL_OP %1, f32_linear_xw_xxx00_000x0               , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x9, 0x01040, 0xbefb8
     DECL_OP %1, f32_linear_xyzw_xxx0x_xxx0x_xxx0x_000x0 , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0xf, 0x00000, 0xba108
@@ -854,7 +835,6 @@
     DECL_OP %1, f32_linear_fma_xyz_x0000_0x000_00x00    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40000, 0xbefbe, 0xfefbe
     DECL_OP %1, f32_linear_fma_xyz_10x0x_1xx0x_1x00x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40421, 0xbb10a, 0xfb52b
     DECL_OP %1, f32_linear_fma_xyz_10X0x_1XX0x_1X00x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40421, 0xbb10a, 0xfbdef
-    DECL_OP %1, f32_linear_fma_w_000x0                  , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x8, 0x01041, 0xbefbe, 0xbffff
     DECL_OP %1, f32_linear_fma_xw_x000x_000x0           , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x9, 0x01040, 0xbefae, 0xbffee
     DECL_OP %1, f32_linear_fma_xw_X000x_000x0           , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x9, 0x01040, 0xbefae, 0xbffef
     DECL_OP %1, f32_linear_fma_xw_xxx00_000x0           , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x9, 0x01040, 0xbefb8, 0xbfff8
@@ -882,9 +862,7 @@
     DECL_OP %1, f32_dither_xw_0_3_16x16                 , SWS_PIXEL_F32, SWS_UOP_DITHER          , 0x9, 0, 0, 0, 3, 4
     DECL_OP %1, f32_dither_xw_0_5_16x16                 , SWS_PIXEL_F32, SWS_UOP_DITHER          , 0x9, 0, 0, 0, 5, 4
     DECL_OP %1, f32_dither_yzw_0_3_2_16x16              , SWS_PIXEL_F32, SWS_UOP_DITHER          , 0xe, 0, 0, 3, 2, 4
-    DECL_OP %1, f32_dither_yzw_2_0_3_16x16              , SWS_PIXEL_F32, SWS_UOP_DITHER          , 0xe, 0, 2, 0, 3, 4
     DECL_OP %1, f32_dither_yzw_2_3_0_16x16              , SWS_PIXEL_F32, SWS_UOP_DITHER          , 0xe, 0, 2, 3, 0, 4
-    DECL_OP %1, f32_dither_xyzw_0_0_0_3_16x16           , SWS_PIXEL_F32, SWS_UOP_DITHER          , 0xf, 0, 0, 0, 3, 4
     DECL_OP %1, f32_dither_xyzw_0_3_2_5_16x16           , SWS_PIXEL_F32, SWS_UOP_DITHER          , 0xf, 0, 3, 2, 5, 4
     DECL_OP %1, f32_dither_xyzw_2_3_0_5_16x16           , SWS_PIXEL_F32, SWS_UOP_DITHER          , 0xf, 2, 3, 0, 5, 4
     DECL_OP %1, f32_dither_xyzw_3_0_2_5_16x16           , SWS_PIXEL_F32, SWS_UOP_DITHER          , 0xf, 3, 0, 2, 5, 4
@@ -894,8 +872,4 @@
 %endmacro
 
 %macro DECL_F32_LUT_3D 1
-    DECL_OP %1, f32_lut_3d_xyz_static                   , SWS_PIXEL_F32, SWS_UOP_LUT_3D          , 0x7, 0
-    DECL_OP %1, f32_lut_3d_xyz_dynamic                  , SWS_PIXEL_F32, SWS_UOP_LUT_3D          , 0x7, 1
-    DECL_OP %1, f32_lut_3d_xyzw_static                  , SWS_PIXEL_F32, SWS_UOP_LUT_3D          , 0xf, 0
-    DECL_OP %1, f32_lut_3d_xyzw_dynamic                 , SWS_PIXEL_F32, SWS_UOP_LUT_3D          , 0xf, 1
 %endmacro
