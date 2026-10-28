@@ -262,7 +262,7 @@ static int register_uops(SwsContext *ctx, const SwsOpList *ops,
         if (!s->backend->flags[i])
             break;
         int ret = register_flags(ctx, ops, s->backend->flags[i], s->backend->test_uop);
-        if (ret < 0)
+        if (ret < 0 && ret != AVERROR(ENOTSUP)) /* may depend on the CPU */
             return ret;
     }
 
