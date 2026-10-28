@@ -27,6 +27,12 @@
 
 #include "ops_impl.h"
 
+static int test_uop_aarch64(const SwsUOp *uop, unsigned cpu_flags,
+                            SwsUOpLimits *limits)
+{
+    return 0;
+}
+
 /**
  * Convert SwsUOp to a SwsAArch64OpImplParams. Read the comments regarding
  * SwsAArch64OpImplParams in ops_impl.h for more information.

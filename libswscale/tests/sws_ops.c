@@ -43,7 +43,7 @@ static int print_ops(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
                             | SWS_UOP_FLAG_READ_PALETTE
                             | SWS_UOP_FLAG_ADD
                             | SWS_UOP_FLAG_PUNNING;
-    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    int ret = ff_sws_ops_translate(ctx, ops, flags, ff_sws_test_uop_c, 0, uops);
     if (ret == AVERROR(ENOTSUP))
         goto fail;
 

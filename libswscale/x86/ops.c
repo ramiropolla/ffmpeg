@@ -26,6 +26,7 @@
 
 #include "../ops_chain.h"
 #include "../uops.h"
+#include "ops.h"
 #include "uops_macros.h"
 
 static int setup_rw_packed(const SwsImplParams *params, SwsImplResult *out)
@@ -722,7 +723,7 @@ static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp 
     if (!uops)
         return AVERROR(ENOMEM);
 
-    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    int ret = ff_sws_ops_translate(ctx, ops, flags, test_uop_x86, cpu_flags, uops);
     if (ret < 0)
         goto fail;
 

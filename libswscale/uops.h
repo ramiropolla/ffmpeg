@@ -364,6 +364,32 @@ void ff_sws_uop_list_remove_at(SwsUOpList *uops, int index, int count);
 /* Takes over ownership of `uop` and sets it to {0}, even on failure. */
 int ff_sws_uop_list_append(SwsUOpList *uops, SwsUOp *uop);
 
+typedef struct SwsUOpLimits {
+    /**
+     * Range of supported values for SwsUOp.bytes. Must be a power of two,
+     * or zero for backends without size annotations.
+     */
+    int min_bytes;
+    int max_bytes;
+} SwsUOpLimits;
+
+/**
+ * Backend callback to test whether a uop is supported on a given set of CPU
+ * flags. This must be a pure function of its inputs, and may not depend on
+ * `uop->data`.
+ *
+ * `limits` is zero-initialized by the caller.
+ *
+ * Returns 0 if supported, or AVERROR(ENOTSUP).
+ */
+typedef int (*SwsUOpTestFunc)(const SwsUOp *uop, unsigned cpu_flags,
+                              SwsUOpLimits *limits);
+
+/**
+ * SwsUOpTestFunc for the C backend.
+ */
+int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limits);
+
 /**
  * Called internally by ff_sws_ops_translate().
  */
@@ -378,10 +404,14 @@ void ff_sws_uop_list_print(void *log_ctx, int log_level, const SwsUOpList *uops)
  * Translate a list of operations down to micro-ops, which can be further
  * optimized and then directly executed by backends.
  *
+ * @param test_uop  Backend callback for testing uop support.
+ * @param cpu_flags CPU flags to pass to `test_uop`.
+ *
  * Return 0 or a negative error code.
  */
 int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
-                         SwsUOpFlags flags, SwsUOpList *uops);
+                         SwsUOpFlags flags, SwsUOpTestFunc test_uop,
+                         unsigned cpu_flags, SwsUOpList *uops);
 
 /**
  * Compute a shuffle mask for `pshufb`-style ASM functions, by repeating

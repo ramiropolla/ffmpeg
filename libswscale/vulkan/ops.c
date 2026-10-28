@@ -1267,6 +1267,12 @@ fail:
     return err;
 }
 
+static int test_uop_spirv(const SwsUOp *uop, unsigned cpu_flags,
+                          SwsUOpLimits *limits)
+{
+    return 0;
+}
+
 static int compile_ops_spirv(SwsContext *sws, const SwsOpList *ops,
                              SwsCompiledOp *out)
 {
@@ -1293,7 +1299,7 @@ static int compile_ops_spirv(SwsContext *sws, const SwsOpList *ops,
         goto fail;
     }
 
-    err = ff_sws_ops_translate(sws, ops, SWS_UOP_FLAG_ADD, uops);
+    err = ff_sws_ops_translate(sws, ops, SWS_UOP_FLAG_ADD, test_uop_spirv, 0, uops);
     if (err < 0)
         goto fail;
 

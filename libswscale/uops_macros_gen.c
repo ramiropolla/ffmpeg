@@ -39,6 +39,7 @@
 #include "swscale.h"
 #include "uops.h"
 #include "uops_list.h"
+#include "x86/ops.h"
 
 static const struct {
     char full[32];
@@ -194,13 +195,14 @@ static int register_uop(struct EnumPriv *s, const SwsUOp *uop)
     return 0;
 }
 
-static int register_flags(SwsContext *ctx, const SwsOpList *ops, SwsUOpFlags flags)
+static int register_flags(SwsContext *ctx, const SwsOpList *ops, SwsUOpFlags flags,
+                          SwsUOpTestFunc test_uop)
 {
     SwsUOpList *uops = ff_sws_uop_list_alloc();
     if (!uops)
         return AVERROR(ENOMEM);
 
-    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    int ret = ff_sws_ops_translate(ctx, ops, flags, test_uop, 0, uops);
     if (ret < 0)
         goto fail;
 
@@ -224,6 +226,7 @@ typedef struct Backend {
     const char *name;
     const char *guard; /* include guard for the generated C header */
     SwsUOpFlags flags[2]; /* all flag combinations used by the backend */
+    SwsUOpTestFunc test_uop;
 } Backend;
 
 static const Backend backends[] = {
@@ -231,6 +234,7 @@ static const Backend backends[] = {
         .name  = "c",
         .guard = "SWSCALE_UOPS_MACROS_H",
         .flags = { COMMON_FLAGS },
+        .test_uop = ff_sws_test_uop_c,
     }, {
         .name  = "x86",
         .guard = "SWSCALE_X86_UOPS_MACROS_H",
@@ -238,6 +242,7 @@ static const Backend backends[] = {
             COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB,
             COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_FMA, /* FMA3 */
         },
+        .test_uop = test_uop_x86,
     },
 };
 
@@ -257,7 +262,7 @@ static int register_uops(SwsContext *ctx, const SwsOpList *ops,
     for (int i = 0; i < FF_ARRAY_ELEMS(s->backend->flags); i++) {
         if (!s->backend->flags[i])
             break;
-        int ret = register_flags(ctx, ops, s->backend->flags[i]);
+        int ret = register_flags(ctx, ops, s->backend->flags[i], s->backend->test_uop);
         if (ret < 0)
             return ret;
     }

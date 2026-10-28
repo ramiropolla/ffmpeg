@@ -647,8 +647,10 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
 }
 
 int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
-                         SwsUOpFlags flags, SwsUOpList *uops)
+                         SwsUOpFlags flags, SwsUOpTestFunc test_uop,
+                         unsigned cpu_flags, SwsUOpList *uops)
 {
+    int ret;
     const SwsOpPad *inputs = ops->inputs;
     for (int n = 0; n < ops->num_ops; n++) {
         const SwsOp *op = &ops->ops[n];
@@ -660,11 +662,22 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
                 uops->pixel_size_max = pixel_size;
         }
 
-        int ret = translate_op(ctx, uops, flags, op, inputs);
+        ret = translate_op(ctx, uops, flags, op, inputs);
         if (ret < 0)
             return ret;
         inputs = op->outputs;
     }
 
-    return ff_sws_uop_list_optimize(ctx, flags, uops);
+    ret = ff_sws_uop_list_optimize(ctx, flags, uops);
+    if (ret < 0)
+        return ret;
+
+    for (int i = 0; i < uops->num_ops; i++) {
+        SwsUOpLimits limits = {0};
+        ret = test_uop(&uops->ops[i], cpu_flags, &limits);
+        if (ret < 0)
+            return ret;
+    }
+
+    return 0;
 }

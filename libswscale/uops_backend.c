@@ -171,6 +171,11 @@ fail:
     return ret;
 }
 
+int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limits)
+{
+    return 0;
+}
+
 static int compile_ops_c(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
 {
     SwsUOpList *uops = ff_sws_uop_list_alloc();
@@ -181,7 +186,7 @@ static int compile_ops_c(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *o
                             | SWS_UOP_FLAG_READ_PALETTE
                             | SWS_UOP_FLAG_ADD
                             | SWS_UOP_FLAG_PUNNING;
-    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    int ret = ff_sws_ops_translate(ctx, ops, flags, ff_sws_test_uop_c, 0, uops);
     if (ret < 0)
         goto fail;
 
