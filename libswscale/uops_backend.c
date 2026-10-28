@@ -173,6 +173,13 @@ fail:
 
 int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limits)
 {
+    switch (uop->uop) {
+    case SWS_UOP_RW_SHUFFLE:
+        return AVERROR(ENOTSUP);
+    default:
+        break;
+    }
+
     return 0;
 }
 

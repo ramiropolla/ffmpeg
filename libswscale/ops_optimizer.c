@@ -1106,15 +1106,13 @@ retry:
     }
 
     /* Try promoting the entire uop list to a packed shuffle operation */
-    if (flags & SWS_UOP_FLAG_PSHUFB) {
-        SwsUOp shuffle;
-        int ret = solve_shuffle(uops, &shuffle);
-        if (ret >= 0) {
-            ff_sws_uop_list_remove_at(uops, 0, uops->num_ops);
-            return ff_sws_uop_list_append(uops, &shuffle);
-        } else if (ret < 0 && ret != AVERROR(ENOTSUP)) {
-            return ret;
-        }
+    SwsUOp shuffle;
+    int ret = solve_shuffle(uops, &shuffle);
+    if (ret >= 0 && ff_sws_uop_supported(test_uop, cpu_flags, &shuffle)) {
+        ff_sws_uop_list_remove_at(uops, 0, uops->num_ops);
+        return ff_sws_uop_list_append(uops, &shuffle);
+    } else if (ret < 0 && ret != AVERROR(ENOTSUP)) {
+        return ret;
     }
 
     return 0;
