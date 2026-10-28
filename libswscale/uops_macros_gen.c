@@ -219,7 +219,7 @@ fail:
 
 enum {
     COMMON_FLAGS = SWS_UOP_FLAG_EXPAND_BIT | SWS_UOP_FLAG_READ_PALETTE |
-                   SWS_UOP_FLAG_ADD | SWS_UOP_FLAG_PUNNING,
+                   SWS_UOP_FLAG_PUNNING,
 };
 
 typedef struct Backend {

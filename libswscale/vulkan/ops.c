@@ -1299,7 +1299,7 @@ static int compile_ops_spirv(SwsContext *sws, const SwsOpList *ops,
         goto fail;
     }
 
-    err = ff_sws_ops_translate(sws, ops, SWS_UOP_FLAG_ADD, test_uop_spirv, 0, uops);
+    err = ff_sws_ops_translate(sws, ops, SWS_UOP_FLAG_NONE, test_uop_spirv, 0, uops);
     if (err < 0)
         goto fail;
 

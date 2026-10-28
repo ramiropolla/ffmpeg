@@ -467,18 +467,19 @@ static int translate_dither_op(const TranslateCtx *t, SwsUOpList *ops, const Sws
         .par.dither.size_log2 = op->dither.size_log2,
     };
 
-    if ((t->flags & SWS_UOP_FLAG_ADD) && op->dither.size_log2 == 0) {
+    if (op->dither.size_log2 == 0) {
         /* Constant offset */
         const SwsPixel val = ff_sws_pixel_from_q64(uop.type, op->dither.matrix[0]);
-        uop.uop = SWS_UOP_ADD;
+        SwsUOp add = { .type = uop.type, .uop = SWS_UOP_ADD };
         for (int i = 0; i < 4; i++) {
             if (!SWS_OP_NEEDED(op, i) || op->dither.y_offset[i] < 0)
                 continue;
-            uop.mask |= SWS_COMP(i);
-            uop.data.vec4[i] = val;
+            add.mask |= SWS_COMP(i);
+            add.data.vec4[i] = val;
         }
 
-        return ff_sws_uop_list_append(ops, &uop);
+        if (ff_sws_uop_supported(t->test_uop, t->cpu_flags, &add))
+            return ff_sws_uop_list_append(ops, &add);
     }
 
     const int size = 1 << op->dither.size_log2;

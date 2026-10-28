@@ -201,7 +201,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     if (!uops)
         return AVERROR(ENOMEM);
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING | SWS_UOP_FLAG_ADD;
+    SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING;
     if (!(ctx->flags & SWS_BITEXACT))
         flags |= SWS_UOP_FLAG_FMA;
     ret = ff_sws_ops_translate(ctx, ops, flags, test_uop_aarch64, 0, uops);

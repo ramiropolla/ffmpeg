@@ -162,7 +162,6 @@ typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_PSHUFB       = (1 << 1), /* platform supports pshufb equivalent */
     SWS_UOP_FLAG_EXPAND_BIT   = (1 << 2), /* backend implements SWS_UOP_EXPAND_BIT */
     SWS_UOP_FLAG_READ_PALETTE = (1 << 3), /* backend implements SWS_UOP_READ_PALETTE */
-    SWS_UOP_FLAG_ADD          = (1 << 4), /* backend implements SWS_UOP_ADD */
     SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
 } SwsUOpFlagBits;
 
@@ -384,6 +383,13 @@ typedef struct SwsUOpLimits {
  */
 typedef int (*SwsUOpTestFunc)(const SwsUOp *uop, unsigned cpu_flags,
                               SwsUOpLimits *limits);
+
+static inline bool ff_sws_uop_supported(SwsUOpTestFunc test_uop,
+                                        unsigned cpu_flags, const SwsUOp *uop)
+{
+    SwsUOpLimits limits = {0};
+    return test_uop(uop, cpu_flags, &limits) >= 0;
+}
 
 /**
  * SwsUOpTestFunc for the C backend.
