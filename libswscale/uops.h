@@ -328,6 +328,27 @@ typedef struct SwsUOp {
 } SwsUOp;
 
 /**
+ * Returns the pixel type of the values output by a uop.
+ */
+static inline SwsPixelType ff_sws_uop_output_type(const SwsUOp *uop)
+{
+    switch (uop->uop) {
+    case SWS_UOP_TO_U8:         return SWS_PIXEL_U8;
+    case SWS_UOP_TO_U16:        return SWS_PIXEL_U16;
+    case SWS_UOP_TO_U32:        return SWS_PIXEL_U32;
+    case SWS_UOP_TO_F32:        return SWS_PIXEL_F32;
+    case SWS_UOP_EXPAND_PAIR:   return SWS_PIXEL_U16;
+    case SWS_UOP_EXPAND_QUAD:   return SWS_PIXEL_U32;
+    case SWS_UOP_READ_PLANAR_FH:
+    case SWS_UOP_READ_PLANAR_FV:
+    case SWS_UOP_READ_PLANAR_FV_FMA:
+        return uop->par.filter.type;
+    default:
+        return uop->type;
+    }
+}
+
+/**
  * Compare two SwsUOps for equality (excluding constant data).
  */
 int ff_sws_uop_cmp(const SwsUOp *a, const SwsUOp *b);
