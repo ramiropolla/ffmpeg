@@ -84,7 +84,8 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
 
     SwsImplParams params = {
         .ctx = ctx,
-        .uop = uop
+        .uop = uop,
+        .pixels = block_size,
     };
 
     for (int n = 0; !match && n < num_tables; n++) {

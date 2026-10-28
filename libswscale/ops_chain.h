@@ -103,6 +103,7 @@ typedef struct SwsImplParams {
     const SwsUOpTable *table;
     const SwsUOp *uop;
     SwsContext *ctx;
+    int pixels; /* number of pixels per block */
 } SwsImplParams;
 
 typedef struct SwsImplResult {
