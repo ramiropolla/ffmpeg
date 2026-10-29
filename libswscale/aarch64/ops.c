@@ -227,6 +227,11 @@ error:
 }
 
 /*********************************************************************/
+static int resolve_uops_aarch64(SwsUOpList *uops, int pixels)
+{
+    return ff_sws_uop_list_resolve(uops, test_uop_aarch64, 0, pixels);
+}
+
 static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,
                                SwsCompiledOp *out)
 {
@@ -254,5 +259,6 @@ const SwsOpBackend backend_aarch64 = {
     .flags        = SWS_BACKEND_AARCH64,
     .compile      = compile_ops_aarch64,
     .compile_uops = compile_uops_aarch64,
+    .resolve_uops = resolve_uops_aarch64,
     .hw_format    = AV_PIX_FMT_NONE,
 };

@@ -144,8 +144,15 @@ typedef struct SwsOpBackend {
 
     /**
      * Alternative to `compile` that takes a list of micro-ops directly.
+     * The list must have been resolved by `resolve_uops`.
      */
     int (*compile_uops)(SwsContext *ctx, const SwsUOpList *uops, SwsCompiledOp *out);
+
+    /**
+     * Resolve a list of micro-ops for this backend, as by
+     * ff_sws_uop_list_resolve(). Required if `compile_uops` is set.
+     */
+    int (*resolve_uops)(SwsUOpList *uops, int pixels);
 
     /**
      * If NONE, backend only supports software frames.

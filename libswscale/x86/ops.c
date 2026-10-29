@@ -721,6 +721,11 @@ fail:
     return ret;
 }
 
+static int resolve_uops_x86(SwsUOpList *uops, int pixels)
+{
+    return ff_sws_uop_list_resolve(uops, test_uop_x86, get_uop_cpu_flags(), pixels);
+}
+
 static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
 {
     const int cpu_flags = av_get_cpu_flags();
@@ -753,5 +758,6 @@ const SwsOpBackend backend_x86 = {
     .flags          = SWS_BACKEND_X86,
     .compile        = compile_ops_x86,
     .compile_uops   = compile_uops_x86,
+    .resolve_uops   = resolve_uops_x86,
     .hw_format      = AV_PIX_FMT_NONE,
 };

@@ -183,6 +183,11 @@ int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limit
     return 0;
 }
 
+static int resolve_uops_c(SwsUOpList *uops, int pixels)
+{
+    return ff_sws_uop_list_resolve(uops, ff_sws_test_uop_c, 0, pixels);
+}
+
 static int compile_ops_c(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
 {
     SwsUOpList *uops = ff_sws_uop_list_alloc();
@@ -206,5 +211,6 @@ const SwsOpBackend backend_c = {
     .flags          = SWS_BACKEND_C,
     .compile        = compile_ops_c,
     .compile_uops   = compile_uops_c,
+    .resolve_uops   = resolve_uops_c,
     .hw_format      = AV_PIX_FMT_NONE,
 };
