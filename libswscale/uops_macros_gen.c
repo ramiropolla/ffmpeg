@@ -27,6 +27,7 @@
 #endif
 
 #include "libavutil/bprint.h"
+#include "libavutil/cpu.h"
 #include "libavutil/error.h"
 #include "libavutil/macros.h"
 #include "libavutil/mem.h"
@@ -197,13 +198,13 @@ static int register_uop(struct EnumPriv *s, const SwsUOp *uop)
 }
 
 static int register_flags(SwsContext *ctx, const SwsOpList *ops, SwsUOpFlags flags,
-                          SwsUOpTestFunc test_uop)
+                          SwsUOpTestFunc test_uop, unsigned cpu_flags)
 {
     SwsUOpList *uops = ff_sws_uop_list_alloc();
     if (!uops)
         return AVERROR(ENOMEM);
 
-    int ret = ff_sws_ops_translate(ctx, ops, flags, test_uop, 0, uops);
+    int ret = ff_sws_ops_translate(ctx, ops, flags, test_uop, cpu_flags, uops);
     if (ret < 0)
         goto fail;
 
@@ -222,10 +223,15 @@ enum {
     COMMON_FLAGS = SWS_UOP_FLAG_PUNNING,
 };
 
+typedef struct BackendConfig {
+    SwsUOpFlags flags;
+    unsigned cpu_flags;
+} BackendConfig;
+
 typedef struct Backend {
     const char *name;
     const char *guard; /* include guard for the generated C header */
-    SwsUOpFlags flags[2]; /* all flag combinations used by the backend */
+    BackendConfig configs[2]; /* all flag combinations used by the backend */
     SwsUOpTestFunc test_uop;
 } Backend;
 
@@ -233,14 +239,14 @@ static const Backend backends[] = {
     {
         .name  = "c",
         .guard = "SWSCALE_UOPS_MACROS_H",
-        .flags = { COMMON_FLAGS },
+        .configs = { { COMMON_FLAGS } },
         .test_uop = ff_sws_test_uop_c,
     }, {
         .name  = "x86",
         .guard = "SWSCALE_X86_UOPS_MACROS_H",
-        .flags = {
-            COMMON_FLAGS,
-            COMMON_FLAGS | SWS_UOP_FLAG_FMA, /* FMA3 */
+        .configs = {
+            { COMMON_FLAGS },
+            { COMMON_FLAGS | SWS_UOP_FLAG_FMA, AV_CPU_FLAG_FMA3 },
         },
         .test_uop = test_uop_x86,
     },
@@ -259,10 +265,12 @@ static int register_uops(SwsContext *ctx, const SwsOpList *ops,
                          SwsCompiledOp *out)
 {
     const struct EnumPriv *s = ctx->opaque;
-    for (int i = 0; i < FF_ARRAY_ELEMS(s->backend->flags); i++) {
-        if (!s->backend->flags[i])
+    for (int i = 0; i < FF_ARRAY_ELEMS(s->backend->configs); i++) {
+        const BackendConfig *config = &s->backend->configs[i];
+        if (!config->flags)
             break;
-        int ret = register_flags(ctx, ops, s->backend->flags[i], s->backend->test_uop);
+        int ret = register_flags(ctx, ops, config->flags, s->backend->test_uop,
+                                 config->cpu_flags);
         if (ret < 0 && ret != AVERROR(ENOTSUP)) /* may depend on the CPU */
             return ret;
     }
