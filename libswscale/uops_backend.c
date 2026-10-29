@@ -142,6 +142,8 @@ static void process_c(const SwsOpExec *exec, const void *priv,
 static int compile_uops_c(SwsContext *ctx, const SwsUOpList *uops, SwsCompiledOp *out)
 {
     int ret;
+    if (uops->pixels != SWS_BLOCK_SIZE)
+        return AVERROR(EINVAL);
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)
@@ -180,6 +182,8 @@ int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limit
         break;
     }
 
+    /* All uops process a fixed number of pixels per block */
+    limits->min_bytes = limits->max_bytes = SWS_BLOCK_SIZE * ff_sws_uop_pixel_size_max(uop);
     return 0;
 }
 
