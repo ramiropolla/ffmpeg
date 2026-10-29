@@ -684,9 +684,15 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         return ret;
 
+    return ff_sws_uop_list_resolve(uops, test_uop, cpu_flags);
+}
+
+int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
+                            unsigned cpu_flags)
+{
     for (int i = 0; i < uops->num_ops; i++) {
         SwsUOpLimits limits = {0};
-        ret = test_uop(&uops->ops[i], cpu_flags, &limits);
+        int ret = test_uop(&uops->ops[i], cpu_flags, &limits);
         if (ret < 0)
             return ret;
     }

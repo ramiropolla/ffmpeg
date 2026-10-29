@@ -405,6 +405,15 @@ int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpTestFunc test_uop,
 void ff_sws_uop_list_print(void *log_ctx, int log_level, const SwsUOpList *uops);
 
 /**
+ * Test all uops in a list for support by the backend. Called internally by
+ * ff_sws_ops_translate().
+ *
+ * Returns 0 or a negative error code.
+ */
+int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
+                            unsigned cpu_flags);
+
+/**
  * Translate a list of operations down to micro-ops, which can be further
  * optimized and then directly executed by backends.
  *
