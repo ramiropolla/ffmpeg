@@ -147,10 +147,11 @@ static void check_compiled(const Test *test,
     /**
      * We can't use `check_func()` alone because the actual function pointer
      * may be a wrapper or entry point shared by multiple implementations.
-     * Solve it by hashing in the active CPU flags as well.
+     * Solve it by hashing in the active CPU flags and block size as well.
      */
     uintptr_t id = (uintptr_t) comp_new->func;
     id ^= (id << 6) + (id >> 2) + 0x9e3779b97f4a7c15 + comp_new->cpu_flags;
+    id ^= (id << 6) + (id >> 2) + 0x9e3779b97f4a7c15 + comp_new->block_size;
     if (!check_key(id, "%s", test->name))
         return;
 
@@ -289,7 +290,8 @@ static void check_compiled(const Test *test,
     bench(comp_new->func, &exec, comp_new->priv, 0, 0, PIXELS / comp_new->block_size, LINES);
 }
 
-static int resolve_uops(const Test *test, SwsUOpList *uops)
+static int resolve_uops(const Test *test, const SwsOpBackend *backend,
+                        int pixels, SwsUOpList *uops)
 {
     SwsUOp *ops = uops->ops;
     av_assert0(test->num_uops <= MAX_UOPS);
@@ -310,7 +312,7 @@ static int resolve_uops(const Test *test, SwsUOpList *uops)
             uops->pixel_size_max = pixel_size;
     }
 
-    return 0;
+    return backend->resolve_uops(uops, pixels);
 }
 
 static void run_test(const Test *test)
@@ -337,7 +339,7 @@ static void run_test(const Test *test)
 
     /* Always compile `ops` using the C backend as a reference */
     SwsCompiledOp comp_ref = {0};
-    int ret = resolve_uops(test, &oplist);
+    int ret = resolve_uops(test, backend_ref, 0, &oplist);
     if (ret >= 0)
         ret = backend_ref->compile_uops(ctx, &oplist, &comp_ref);
     if (ret < 0) {
@@ -357,19 +359,35 @@ static void run_test(const Test *test)
         if (!backend->compile_uops)
             continue;
 
-        SwsCompiledOp comp_new = {0};
-        int ret = backend->compile_uops(ctx, &oplist, &comp_new);
-        if (ret == AVERROR(ENOTSUP)) {
-            continue;
-        } else if (ret < 0) {
-            fail();
-            goto done;
-        }
+        int pixels = 0; /* pick the largest supported size in first iter */
+        do {
+            ret = resolve_uops(test, backend, pixels, &oplist);
+            if (ret == AVERROR(ENOTSUP)) {
+                break;
+            } else if (ret < 0) {
+                fail();
+                goto done;
+            }
 
-        /* Distinguish backends from each other even with same CPU flags */
-        checkasm_set_func_variant("%s_%s", backend->name, checkasm_get_cpu_suffix());
-        check_compiled(test, &comp_ref, &comp_new);
-        ff_sws_compiled_op_unref(&comp_new);
+            SwsCompiledOp comp_new = {0};
+            ret = backend->compile_uops(ctx, &oplist, &comp_new);
+            if (ret == AVERROR(ENOTSUP)) {
+                continue;
+            } else if (ret < 0) {
+                ff_sws_compiled_op_unref(&comp_new);
+                fail();
+                goto done;
+            }
+
+            /* Distinguish backends from each other even with same CPU flags */
+            checkasm_set_func_variant("w%d_%s_%s", oplist.pixels, backend->name,
+                                      checkasm_get_cpu_suffix());
+            check_compiled(test, &comp_ref, &comp_new);
+            ff_sws_compiled_op_unref(&comp_new);
+
+            av_assert0(!pixels || oplist.pixels == pixels);
+            pixels = oplist.pixels >> 1;
+        } while (pixels);
     }
 
 done:
