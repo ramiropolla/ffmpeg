@@ -349,6 +349,16 @@ static inline SwsPixelType ff_sws_uop_output_type(const SwsUOp *uop)
 }
 
 /**
+ * Returns the size of the largest pixel type processed by a uop.
+ */
+static inline int ff_sws_uop_pixel_size_max(const SwsUOp *uop)
+{
+    const int size_in  = ff_sws_pixel_type_size(uop->type);
+    const int size_out = ff_sws_pixel_type_size(ff_sws_uop_output_type(uop));
+    return FFMAX(size_in, size_out);
+}
+
+/**
  * Compare two SwsUOps for equality (excluding constant data).
  */
 int ff_sws_uop_cmp(const SwsUOp *a, const SwsUOp *b);
