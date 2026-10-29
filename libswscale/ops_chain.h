@@ -151,7 +151,6 @@ static inline void ff_sws_op_priv_pack_refptr(SwsImplResult *out, const void *da
 
 struct SwsUOpTable {
     unsigned cpu_flags;   /* required CPU flags for this table */
-    int block_size;       /* fixed block size of this table */
     int bytes;            /* fixed uop size of this table, in bytes, or 0 */
     const SwsUOpEntry *entries[]; /* terminated by NULL */
 };

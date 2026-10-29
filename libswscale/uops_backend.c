@@ -96,7 +96,6 @@
     /* end of macro */
 
 static const SwsUOpTable uop_table = {
-    .block_size = SWS_BLOCK_SIZE,
     .entries = {
         REF_ALL_UOPS(U8)
         REF_ALL_UOPS(U16)

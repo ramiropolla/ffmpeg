@@ -90,8 +90,7 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
 
     for (int n = 0; !match && n < num_tables; n++) {
         const SwsUOpTable *table = params.table = tables[n];
-        if (table->block_size && table->block_size != block_size ||
-            table->cpu_flags & ~cpu_flags)
+        if (table->cpu_flags & ~cpu_flags)
             continue;
 
         for (int i = 0; table->entries[i]; i++) {
