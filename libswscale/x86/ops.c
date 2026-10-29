@@ -575,19 +575,6 @@ static unsigned get_uop_cpu_flags(void)
     return cpu_flags;
 }
 
-static int get_mmsize(void)
-{
-    const int cpu_flags = av_get_cpu_flags();
-    if (EXTERNAL_AVX512(cpu_flags))
-        return 64;
-    else if (EXTERNAL_AVX2(cpu_flags))
-        return 32;
-    else if (EXTERNAL_SSE4(cpu_flags))
-        return 16;
-    else
-        return AVERROR(ENOTSUP);
-}
-
 static int movsize(const int bytes, const int mmsize)
 {
     return bytes <= 4  ? 4  : /* movd */
@@ -665,7 +652,7 @@ do {                                                                            
 
 static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiledOp *out)
 {
-    int ret, mmsize = get_mmsize();
+    int ret, mmsize = get_mmsize(get_uop_cpu_flags());
     if (mmsize < 0)
         return mmsize;
 
@@ -729,7 +716,7 @@ static int resolve_uops_x86(SwsUOpList *uops, int pixels)
 static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
 {
     const int cpu_flags = av_get_cpu_flags();
-    const int mmsize = get_mmsize();
+    const int mmsize = get_mmsize(get_uop_cpu_flags());
     if (mmsize < 0)
         return mmsize;
 

@@ -26,9 +26,22 @@
  * so it must not depend on any x86-specific code or build configuration.
  */
 
+#include "libavutil/cpu.h"
 #include "libavutil/error.h"
 
 #include "../uops.h"
+
+static inline int get_mmsize(unsigned cpu_flags)
+{
+    if (cpu_flags & AV_CPU_FLAG_AVX512)
+        return 64;
+    else if (cpu_flags & AV_CPU_FLAG_AVX2)
+        return 32;
+    else if (cpu_flags & AV_CPU_FLAG_SSE4)
+        return 16;
+    else
+        return AVERROR(ENOTSUP);
+}
 
 static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags,
                                SwsUOpLimits *limits)
