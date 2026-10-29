@@ -558,6 +558,23 @@ SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx2,       NULL, NULL)
 SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx512,     NULL, NULL)
 SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx512icl,  NULL, NULL)
 
+/* CPU flags for test_uop_x86(), excluding instruction sets disabled at build time */
+static unsigned get_uop_cpu_flags(void)
+{
+    unsigned cpu_flags = av_get_cpu_flags();
+    if (!EXTERNAL_SSE4(cpu_flags))
+        cpu_flags &= ~AV_CPU_FLAG_SSE4;
+    if (!EXTERNAL_AVX2(cpu_flags))
+        cpu_flags &= ~AV_CPU_FLAG_AVX2;
+    if (!EXTERNAL_FMA3(cpu_flags))
+        cpu_flags &= ~AV_CPU_FLAG_FMA3;
+    if (!EXTERNAL_AVX512(cpu_flags))
+        cpu_flags &= ~AV_CPU_FLAG_AVX512;
+    if (!EXTERNAL_AVX512ICL(cpu_flags))
+        cpu_flags &= ~AV_CPU_FLAG_AVX512ICL;
+    return cpu_flags;
+}
+
 static int get_mmsize(void)
 {
     const int cpu_flags = av_get_cpu_flags();
@@ -719,7 +736,8 @@ static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp 
     if (!uops)
         return AVERROR(ENOMEM);
 
-    int ret = ff_sws_ops_translate(ctx, ops, flags, test_uop_x86, cpu_flags, uops);
+    int ret = ff_sws_ops_translate(ctx, ops, flags, test_uop_x86,
+                                   get_uop_cpu_flags(), uops);
     if (ret < 0)
         goto fail;
 
