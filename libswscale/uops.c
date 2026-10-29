@@ -684,11 +684,11 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         return ret;
 
-    return ff_sws_uop_list_resolve(uops, test_uop, cpu_flags);
+    return ff_sws_uop_list_resolve(uops, test_uop, cpu_flags, 0);
 }
 
 int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
-                            unsigned cpu_flags)
+                            unsigned cpu_flags, int pixels)
 {
     int pixels_min = 0, pixels_max = INT_MAX;
     if (uops->pixels)
@@ -712,8 +712,12 @@ int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
     }
 
     /* Use the largest number of pixels supported by all sized uops */
-    const int pixels = pixels_max < INT_MAX ? pixels_max : 0;
-    if (pixels < pixels_min)
+    if (pixels_max == INT_MAX)
+        pixels = 0; /* unsized */
+    else if (!pixels)
+        pixels = pixels_max;
+
+    if (pixels < pixels_min || pixels > pixels_max)
         return AVERROR(ENOTSUP);
 
     for (int i = 0; i < uops->num_ops; i++) {
