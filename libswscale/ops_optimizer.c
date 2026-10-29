@@ -1058,9 +1058,8 @@ static bool is_scale(const SwsUOp *op, int64_t val)
     }
 }
 
-int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpFlags flags,
-                             SwsUOpTestFunc test_uop, unsigned cpu_flags,
-                             SwsUOpList *uops)
+int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpTestFunc test_uop,
+                             unsigned cpu_flags, SwsUOpList *uops)
 {
     static const SwsUOp dummy = {0};
 
