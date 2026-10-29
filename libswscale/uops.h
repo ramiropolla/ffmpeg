@@ -399,6 +399,12 @@ typedef struct SwsUOpLimits {
      */
     int min_bytes;
     int max_bytes;
+
+    /**
+     * If set, execute the uop as this pixel type instead, at the same size
+     * in bytes. May be useful for e.g. planar reads or clears.
+     */
+    SwsPixelType type;
 } SwsUOpLimits;
 
 /**
@@ -442,7 +448,8 @@ void ff_sws_uop_list_print(void *log_ctx, int log_level, const SwsUOpList *uops)
  *
  * @param pixels The number of pixels per block, or 0 to pick the largest
  *
- * Returns 0 or a negative error code
+ * Returns 0 or a negative error code. On failure, this may have partially
+ * mutated `uops`.
  */
 int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
                             unsigned cpu_flags, int pixels);

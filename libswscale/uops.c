@@ -711,8 +711,10 @@ int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
             return 0;
         }
 
-        if (!limits.max_bytes)
+        if (!limits.max_bytes) {
+            av_assert0(!limits.type);
             continue; /* unsized */
+        }
 
         av_assert0(limits.min_bytes > 0 && limits.min_bytes <= limits.max_bytes);
         const int pixel_size = ff_sws_uop_pixel_size_max(uop);
@@ -720,6 +722,9 @@ int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
         const int max = limits.max_bytes / pixel_size;
         pixels_min = FFMAX(pixels_min, min);
         pixels_max = FFMIN(pixels_max, max);
+        uop->bytes = pixel_size; /* size for 1 pixel first */
+        if (limits.type)
+            uop->type = limits.type;
     }
 
     /* Use the largest number of pixels supported by all sized uops */
@@ -731,11 +736,9 @@ int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
     if (pixels < pixels_min || pixels > pixels_max)
         return AVERROR(ENOTSUP);
 
-    for (int i = 0; i < uops->num_ops; i++) {
-        SwsUOp *uop = &uops->ops[i];
-        uop->bytes = pixels * ff_sws_uop_pixel_size_max(uop);
-    }
-
     uops->pixels = pixels;
+    for (int i = 0; i < uops->num_ops; i++)
+        uops->ops[i].bytes *= pixels;
+
     return 0;
 }
