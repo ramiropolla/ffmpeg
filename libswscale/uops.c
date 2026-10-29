@@ -695,11 +695,22 @@ int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
         return AVERROR(EINVAL); /* already resolved */
 
     for (int i = 0; i < uops->num_ops; i++) {
-        const SwsUOp *uop = &uops->ops[i];
+        SwsUOp *uop = &uops->ops[i];
         SwsUOpLimits limits = {0};
         int ret = test_uop(uop, cpu_flags, &limits);
         if (ret < 0)
             return ret;
+
+        if (uop->uop == SWS_UOP_RW_SHUFFLE) {
+            /* The number of pixels is fixed by the shuffle pattern */
+            const SwsShuffleUOp *par = &uop->par.shuffle;
+            const int group_size = FFMAX(par->read_size, par->write_size);
+            uop->bytes = limits.max_bytes;
+            uops->pixels = uop->bytes / group_size * uop->data.shuffle.pixels;
+            av_assert0(uops->num_ops == 1);
+            return 0;
+        }
+
         if (!limits.max_bytes)
             continue; /* unsized */
 
