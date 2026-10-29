@@ -28,6 +28,7 @@
 
 #include "libavutil/cpu.h"
 #include "libavutil/error.h"
+#include "libavutil/macros.h"
 
 #include "../uops.h"
 
@@ -55,10 +56,47 @@ static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags,
         break;
     case SWS_UOP_LUT_3D:
         return AVERROR(ENOTSUP);
+    case SWS_UOP_READ_PLANAR:
+    case SWS_UOP_WRITE_PLANAR:
+    case SWS_UOP_CLEAR:
+        /* Only implemented for U8, other types are executed as U8 */
+        limits->type = SWS_PIXEL_U8;
+        break;
+    case SWS_UOP_RW_SHUFFLE: {
+        /* We can't shuffle across lanes, so restrict the vector size to XMM
+         * whenever the read/write size would be a subset of the full vector,
+         * unless we have access to AVX-512 ICL vpermb */
+        const SwsShuffleUOp *par = &uop->par.shuffle;
+        const bool lane_aligned = par->read_size == par->write_size &&
+                                  16 % par->read_size == 0;
+        int bytes = get_mmsize(cpu_flags);
+        if (bytes < 0)
+            return bytes;
+        if (!lane_aligned && !(cpu_flags & AV_CPU_FLAG_AVX512ICL))
+            bytes = FFMIN(bytes, 16);
+        limits->min_bytes = limits->max_bytes = bytes;
+        return 0;
+    }
     default:
         break;
     }
 
+    int pixel_size = ff_sws_uop_pixel_size_max(uop);
+    if (limits->type)
+        pixel_size = ff_sws_pixel_type_size(limits->type);
+
+    const int mmsize = get_mmsize(cpu_flags);
+    if (mmsize < 0)
+        return mmsize;
+    else if (mmsize == 16 && pixel_size > 1)
+        return AVERROR(ENOTSUP); /* Only 8-bit kernels are implemented for SSE4 */
+
+    /**
+     * Use at most two full YMM registers per component for the largest pixel
+     * type. All kernels process at least 16 pixels at a time.
+     */
+    limits->min_bytes = 16 * pixel_size;
+    limits->max_bytes = 2 * FFMIN(mmsize, 32);
     return 0;
 }
 

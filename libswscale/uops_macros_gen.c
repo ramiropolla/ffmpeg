@@ -231,9 +231,13 @@ typedef struct BackendConfig {
 typedef struct Backend {
     const char *name;
     const char *guard; /* include guard for the generated C header */
-    BackendConfig configs[2]; /* all flag combinations used by the backend */
+    BackendConfig configs[3]; /* all flag combinations used by the backend */
     SwsUOpTestFunc test_uop;
 } Backend;
+
+#define SSE4 AV_CPU_FLAG_SSE4
+#define AVX2 AV_CPU_FLAG_AVX2
+#define FMA3 AV_CPU_FLAG_FMA3
 
 static const Backend backends[] = {
     {
@@ -245,8 +249,9 @@ static const Backend backends[] = {
         .name  = "x86",
         .guard = "SWSCALE_X86_UOPS_MACROS_H",
         .configs = {
-            { COMMON_FLAGS },
-            { COMMON_FLAGS | SWS_UOP_FLAG_FMA, AV_CPU_FLAG_FMA3 },
+            { COMMON_FLAGS,                    SSE4 },
+            { COMMON_FLAGS,                    SSE4 | AVX2 },
+            { COMMON_FLAGS | SWS_UOP_FLAG_FMA, SSE4 | AVX2 | FMA3 },
         },
         .test_uop = test_uop_x86,
     },
