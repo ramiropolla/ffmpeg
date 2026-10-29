@@ -289,17 +289,15 @@ static void check_compiled(const Test *test,
     bench(comp_new->func, &exec, comp_new->priv, 0, 0, PIXELS / comp_new->block_size, LINES);
 }
 
-static void run_test(const Test *test)
+static int resolve_uops(const Test *test, SwsUOpList *uops)
 {
-    SwsContext *ctx = sws_alloc_context();
-    if (!ctx)
-        return;
-    ctx->flags = SWS_BITEXACT;
+    SwsUOp *ops = uops->ops;
+    av_assert0(test->num_uops <= MAX_UOPS);
+    memcpy(ops, test->uops, test->num_uops * sizeof(*ops));
 
-    /* Generate dummy uop list on-stack */
-    SwsUOpList oplist = {
-        .ops        = (SwsUOp *) test->uops,
-        .num_ops    = test->num_uops,
+    *uops = (SwsUOpList) {
+        .ops = ops,
+        .num_ops = test->num_uops,
 
         /* Less efficient, but works universally */
         .planes_in  = SWS_COMP_ALL,
@@ -308,9 +306,23 @@ static void run_test(const Test *test)
 
     for (int i = 0; i < test->num_uops; i++) {
         const int pixel_size = ff_sws_pixel_type_size(test->uops[i].type);
-        if (pixel_size > oplist.pixel_size_max)
-            oplist.pixel_size_max = pixel_size;
+        if (pixel_size > uops->pixel_size_max)
+            uops->pixel_size_max = pixel_size;
     }
+
+    return 0;
+}
+
+static void run_test(const Test *test)
+{
+    SwsContext *ctx = sws_alloc_context();
+    if (!ctx)
+        return;
+    ctx->flags = SWS_BITEXACT;
+
+    /* Generate dummy uop list on-stack */
+    SwsUOp uops[MAX_UOPS] = {0};
+    SwsUOpList oplist = { .ops = uops };
 
     static const SwsOpBackend *backend_ref;
     if (!backend_ref) {
@@ -325,7 +337,9 @@ static void run_test(const Test *test)
 
     /* Always compile `ops` using the C backend as a reference */
     SwsCompiledOp comp_ref = {0};
-    int ret = backend_ref->compile_uops(ctx, &oplist, &comp_ref);
+    int ret = resolve_uops(test, &oplist);
+    if (ret >= 0)
+        ret = backend_ref->compile_uops(ctx, &oplist, &comp_ref);
     if (ret < 0) {
         av_assert0(ret != AVERROR(ENOTSUP));
         fail();
