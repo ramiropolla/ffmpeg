@@ -382,6 +382,7 @@ typedef struct SwsUOpList {
     SwsCompMask planes_in;  /* mask of planes read from */
     SwsCompMask planes_out; /* mask of planes written to */
     int pixel_size_max;     /* size of largest pixel type seen in any uop */
+    int pixels;             /* pixels per block, or 0 if unsized */
 } SwsUOpList;
 
 SwsUOpList *ff_sws_uop_list_alloc(void);
@@ -436,10 +437,10 @@ int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpTestFunc test_uop,
 void ff_sws_uop_list_print(void *log_ctx, int log_level, const SwsUOpList *uops);
 
 /**
- * Test all uops in a list for support by the backend. Called internally by
- * ff_sws_ops_translate().
+ * Test all uops in a list for support by the backend, and resolve their
+ * sizes. Called internally by ff_sws_ops_translate().
  *
- * Returns 0 or a negative error code.
+ * Returns 0 or a negative error code
  */
 int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
                             unsigned cpu_flags);
