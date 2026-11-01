@@ -35,11 +35,10 @@ static av_always_inline int get_cabac_inline_aarch64(CABACContext *c,
 
     __asm__ volatile(
         "ldrb       %w[bit]       , [%[state]]                      \n\t"
-        "add        %[r_b]        , %[tables]   , %[lps_off]        \n\t"
         "mov        %w[tmp]       , %w[range]                       \n\t"
         "and        %w[range]     , %w[range]   , #0xC0             \n\t"
         "lsl        %w[r_c]       , %w[range]   , #1                \n\t"
-        "add        %[r_b]        , %[r_b]      , %w[bit], UXTW     \n\t"
+        "add        %[r_b]        , %[lps_tab]  , %w[bit], UXTW     \n\t"
         "ldrb       %w[range]     , [%[r_b], %w[r_c], SXTW]         \n\t"
         "sub        %w[r_c]       , %w[tmp]     , %w[range]         \n\t"
         "lsl        %w[tmp]       , %w[r_c]     , #17               \n\t"
@@ -48,9 +47,8 @@ static av_always_inline int get_cabac_inline_aarch64(CABACContext *c,
         "csel       %w[range]     , %w[range]   , %w[r_c]  , hi     \n\t"
         "cinv       %w[bit]       , %w[bit]     , hi                \n\t"
         "clz        %w[tmp]       , %w[range]                       \n\t"
-        "add        %[r_a]        , %[tables]   , %[mlps_off]       \n\t"
         "sub        %w[tmp]       , %w[tmp]     , #23               \n\t"
-        "ldrb       %w[r_a]       , [%[r_a], %w[bit], SXTW]         \n\t"
+        "ldrb       %w[r_a]       , [%[mlps_tab], %w[bit], SXTW]    \n\t"
         "lsl        %w[low]       , %w[low]     , %w[tmp]           \n\t"
         "lsl        %w[range]     , %w[range]   , %w[tmp]           \n\t"
         "uxth       %w[r_c]       , %w[low]                         \n\t"
@@ -82,11 +80,10 @@ static av_always_inline int get_cabac_inline_aarch64(CABACContext *c,
              [tmp]"=&r"(tmp)
         :        [c]"r"(c),
              [state]"r"(state),
-            [tables]"r"(ff_h264_cabac_tables),
+           [lps_tab]"r"(ff_h264_cabac_tables + H264_LPS_RANGE_OFFSET),
+          [mlps_tab]"r"(ff_h264_cabac_tables + H264_MLPS_STATE_OFFSET + 128),
               [byte]"i"(offsetof(CABACContext, bytestream)),
-               [end]"i"(offsetof(CABACContext, bytestream_end)),
-           [lps_off]"I"(H264_LPS_RANGE_OFFSET),
-          [mlps_off]"I"(H264_MLPS_STATE_OFFSET + 128)
+               [end]"i"(offsetof(CABACContext, bytestream_end))
         : "memory", "cc"
         );
 
