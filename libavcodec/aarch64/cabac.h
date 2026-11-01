@@ -31,50 +31,53 @@ static av_always_inline int get_cabac_inline_aarch64(CABACContext *c,
                                                      uint8_t *const state)
 {
     int bit;
-    void *reg_a, *reg_b, *reg_c, *tmp;
+    uint64_t lps;
+    uint64_t tmp;
+    uint64_t shift;
+    void *ptr;
 
     __asm__ volatile(
         "ldrb       %w[bit]       , [%[state]]                      \n\t"
         "and        %w[tmp]       , %w[range]   , #0xC0             \n\t"
         "add        %w[tmp]       , %w[bit]     , %w[tmp], lsl #1   \n\t"
-        "ldrb       %w[r_a]       , [%[lps_tab], %w[tmp], UXTW]     \n\t"
-        "sub        %w[range]     , %w[range]   , %w[r_a]           \n\t"
+        "ldrb       %w[lps]       , [%[lps_tab], %w[tmp], UXTW]     \n\t"
+        "sub        %w[range]     , %w[range]   , %w[lps]           \n\t"
         "lsl        %w[tmp]       , %w[range]   , #17               \n\t"
         "subs       %w[tmp]       , %w[low]     , %w[tmp]           \n\t"
         "csel       %w[low]       , %w[tmp]     , %w[low]  , hi     \n\t"
-        "csel       %w[range]     , %w[r_a]     , %w[range], hi     \n\t"
+        "csel       %w[range]     , %w[lps]     , %w[range], hi     \n\t"
         "cinv       %w[bit]       , %w[bit]     , hi                \n\t"
-        "clz        %w[r_c]       , %w[range]                       \n\t"
+        "clz        %w[shift]     , %w[range]                       \n\t"
         "ldrb       %w[tmp]       , [%[mlps_tab], %w[bit], SXTW]    \n\t"
-        "sub        %w[r_c]       , %w[r_c]     , #23               \n\t"
-        "lsl        %w[low]       , %w[low]     , %w[r_c]           \n\t"
-        "lsl        %w[range]     , %w[range]   , %w[r_c]           \n\t"
-        "uxth       %w[r_c]       , %w[low]                         \n\t"
+        "sub        %w[shift]     , %w[shift]   , #23               \n\t"
+        "lsl        %w[low]       , %w[low]     , %w[shift]         \n\t"
+        "lsl        %w[range]     , %w[range]   , %w[shift]         \n\t"
+        "uxth       %w[shift]     , %w[low]                         \n\t"
         "strb       %w[tmp]       , [%[state]]                      \n\t"
-        "cbnz       %w[r_c]       , 2f                              \n\t"
-        "ldr        %[r_b]        , [%[c], %[byte]]                 \n\t"
-        "ldr        %[r_a]        , [%[c], %[end]]                  \n\t"
-        "ldrh       %w[tmp]       , [%[r_b]]                        \n\t"
-        "cmp        %[r_b]        , %[r_a]                          \n\t"
+        "cbnz       %w[shift]     , 2f                              \n\t"
+        "ldr        %[ptr]        , [%[c], %[byte]]                 \n\t"
+        "ldr        %[lps]        , [%[c], %[end]]                  \n\t"
+        "ldrh       %w[tmp]       , [%[ptr]]                        \n\t"
+        "cmp        %[ptr]        , %[lps]                          \n\t"
         "b.ge       1f                                              \n\t"
-        "add        %[r_a]        , %[r_b]      , #2                \n\t"
-        "str        %[r_a]        , [%[c], %[byte]]                 \n\t"
+        "add        %[lps]        , %[ptr]      , #2                \n\t"
+        "str        %[lps]        , [%[c], %[byte]]                 \n\t"
         "1:                                                         \n\t"
-        "rbit       %w[r_c]       , %w[low]                         \n\t"
+        "rbit       %w[shift]     , %w[low]                         \n\t"
         "rev        %w[tmp]       , %w[tmp]                         \n\t"
-        "clz        %w[r_c]       , %w[r_c]                         \n\t"
-        "mov        %w[r_a]       , #-0xFFFF                        \n\t"
-        "sub        %w[r_c]       , %w[r_c]     , #16               \n\t"
-        "add        %w[tmp]       , %w[r_a]     , %w[tmp], lsr #15  \n\t"
-        "lsl        %w[tmp]       , %w[tmp]     , %w[r_c]           \n\t"
+        "clz        %w[shift]     , %w[shift]                       \n\t"
+        "mov        %w[lps]       , #-0xFFFF                        \n\t"
+        "sub        %w[shift]     , %w[shift]   , #16               \n\t"
+        "add        %w[tmp]       , %w[lps]     , %w[tmp], lsr #15  \n\t"
+        "lsl        %w[tmp]       , %w[tmp]     , %w[shift]         \n\t"
         "add        %w[low]       , %w[low]     , %w[tmp]           \n\t"
         "2:                                                         \n\t"
         :    [bit]"=&r"(bit),
              [low]"+&r"(c->low),
            [range]"+&r"(c->range),
-             [r_a]"=&r"(reg_a),
-             [r_b]"=&r"(reg_b),
-             [r_c]"=&r"(reg_c),
+             [lps]"=&r"(lps),
+             [ptr]"=&r"(ptr),
+           [shift]"=&r"(shift),
              [tmp]"=&r"(tmp)
         :        [c]"r"(c),
              [state]"r"(state),
