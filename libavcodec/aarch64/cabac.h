@@ -39,8 +39,8 @@ static av_always_inline int get_cabac_inline_aarch64(CABACContext *c,
     __asm__ volatile(
         "ldrb       %w[bit]       , [%[state]]                      \n\t"
         "and        %w[tmp]       , %w[range]   , #0xC0             \n\t"
-        "add        %w[tmp]       , %w[bit]     , %w[tmp], lsl #1   \n\t"
-        "ldrb       %w[lps]       , [%[lps_tab], %w[tmp], UXTW]     \n\t"
+        "add        %[tmp]        , %[lps_tab]  , %[tmp], lsl #1    \n\t"
+        "ldrb       %w[lps]       , [%[tmp], %w[bit], UXTW]         \n\t"
         "sub        %w[range]     , %w[range]   , %w[lps]           \n\t"
         "clz        %w[shift]     , %w[lps]                         \n\t"
         "lsl        %w[tmp]       , %w[range]   , #17               \n\t"
