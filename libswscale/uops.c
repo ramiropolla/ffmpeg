@@ -655,7 +655,7 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         }
         break;
     case SWS_OP_SCALE:
-        uop.uop = SWS_UOP_SCALE;
+        uop.uop = SWS_UOP_MUL;
         uop.data.scalar = ff_sws_pixel_from_q64(uop.type, op->scale.factor);
         break;
     case SWS_OP_MIN:

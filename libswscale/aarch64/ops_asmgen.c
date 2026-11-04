@@ -849,10 +849,10 @@ static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 }
 
 /*********************************************************************/
-/* SWS_UOP_SCALE: multiply masked components by scalar */
+/* SWS_UOP_MUL: multiply masked components by scalar */
 
-static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                            SwsAArch64OpRegs *regs)
+static void asmgen_op_mul(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                          SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
     RasmOp *sl       = regs->sl;

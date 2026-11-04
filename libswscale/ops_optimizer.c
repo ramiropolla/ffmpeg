@@ -1047,7 +1047,7 @@ static int solve_shuffle(const SwsUOpList *const uops, SwsUOp *out)
 /* Only checks exact integer scale ops */
 static bool is_scale(const SwsUOp *op, int64_t val)
 {
-    if (op->uop != SWS_UOP_SCALE)
+    if (op->uop != SWS_UOP_MUL)
         return false;
 
     switch (op->type) {
@@ -1084,7 +1084,7 @@ retry:
             }
             break;
 
-        case SWS_UOP_SCALE:
+        case SWS_UOP_MUL:
             if (flags & SWS_UOP_FLAG_EXPAND_BIT) {
                 const int bits = 8 * ff_sws_pixel_type_size(op->type);
                 if (is_scale(op, UINT64_MAX >> (64 - bits))) {

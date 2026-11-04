@@ -307,8 +307,8 @@ static void asmgen_setup_max(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     asmgen_setup_vec4(s, p, regs, "max");
 }
 
-static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                               SwsAArch64OpRegs *regs)
+static void asmgen_setup_mul(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                             SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
     RasmOp scale_vec = regs->vk[0];
@@ -616,7 +616,7 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     case SWS_UOP_ADD:          asmgen_setup_add(s, p, &s->regs);          break;
     case SWS_UOP_MIN:          asmgen_setup_min(s, p, &s->regs);          break;
     case SWS_UOP_MAX:          asmgen_setup_max(s, p, &s->regs);          break;
-    case SWS_UOP_SCALE:        asmgen_setup_scale(s, p, &s->regs);        break;
+    case SWS_UOP_MUL:          asmgen_setup_mul(s, p, &s->regs);          break;
     case SWS_UOP_LINEAR:       asmgen_setup_linear(s, p, &s->regs);       break;
     case SWS_UOP_LINEAR_FMA:   asmgen_setup_linear(s, p, &s->regs);       break;
     case SWS_UOP_DITHER:       asmgen_setup_dither(s, p, &s->regs);       break;
@@ -651,7 +651,7 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     case SWS_UOP_ADD:          asmgen_op_add(s, p, &s->regs);          break;
     case SWS_UOP_MIN:          asmgen_op_min(s, p, &s->regs);          break;
     case SWS_UOP_MAX:          asmgen_op_max(s, p, &s->regs);          break;
-    case SWS_UOP_SCALE:        asmgen_op_scale(s, p, &s->regs);        break;
+    case SWS_UOP_MUL:          asmgen_op_mul(s, p, &s->regs);          break;
     case SWS_UOP_LINEAR:       asmgen_op_linear(s, p, &s->regs);       break;
     case SWS_UOP_LINEAR_FMA:   asmgen_op_linear(s, p, &s->regs);       break;
     case SWS_UOP_DITHER:       asmgen_op_dither(s, p, &s->regs);       break;

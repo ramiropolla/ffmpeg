@@ -202,7 +202,7 @@ typedef enum SwsUOpType {
     SWS_UOP_TO_F32,          /* cast pixel values to SWS_PIXEL_F32 */
 
     /* Arithmetic uops */
-    SWS_UOP_SCALE,           /* multiply masked components by scalar */
+    SWS_UOP_MUL,             /* multiply masked components by scalar */
     SWS_UOP_ADD,             /* add vec4 to masked components */
     SWS_UOP_MIN,             /* min(x, vec4) on masked components */
     SWS_UOP_MAX,             /* max(x, vec4) on masked components */

@@ -154,7 +154,7 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
         return aarch64_setup_vec4(p, uop, out);
-    case SWS_UOP_SCALE:
+    case SWS_UOP_MUL:
         return ff_sws_setup_scalar(&(const SwsImplParams) { .uop = uop }, out);
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:

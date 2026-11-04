@@ -735,7 +735,7 @@ IF Z,   packuswb %3, m10
 IF W,   packuswb %4, m11
 %endmacro
 
-%macro SCALE 0
+%macro MUL_OP 0
 %if BITS == 8
     %assign PRIV_SIZE 4 ; packed as dword
 %else
@@ -906,7 +906,7 @@ IF2 V2, linear_pass 2
     DECL_%1_COPY            MOVE
     DECL_%1_SWAP_BYTES      SWAP_BYTES
     DECL_%1_EXPAND_BIT      EXPAND_BIT
-    DECL_%1_SCALE           SCALE
+    DECL_%1_MUL             MUL_OP
     DECL_%1_ADD             ADD
     DECL_%1_MIN             MIN
     DECL_%1_MAX             MAX

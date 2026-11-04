@@ -499,7 +499,7 @@ IF W,   mulps mw2, m10
 %undef MW
 %endmacro
 
-%macro SCALE 0
+%macro MUL_OP 0
 %assign PRIV_SIZE BYTES
         vbroadcastss m8, [implq + SwsOpImpl.priv]
         LOAD_CONT tmp0q
@@ -736,7 +736,7 @@ IF W,   addps mw2, m11
 %endmacro
 
 %macro decl_float_ops 1 ; type
-    DECL_%1_SCALE           SCALE
+    DECL_%1_MUL             MUL_OP
     DECL_%1_ADD             ADD
     DECL_%1_MIN             MIN
     DECL_%1_MAX             MAX
