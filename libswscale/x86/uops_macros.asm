@@ -188,7 +188,10 @@
 %endmacro
 
 %macro DECL_U8_MUL 1
+    DECL_OP %1, u8_mul_y_a                              , SWS_PIXEL_U8 , SWS_UOP_MUL             , 0x2, 0, 0, 0, 0, 0x0
     DECL_OP %1, u8_mul_xyz_aaa                          , SWS_PIXEL_U8 , SWS_UOP_MUL             , 0x7, 0, 0, 0, 0, 0x0
+    DECL_OP %1, u8_mul_xyz_aab                          , SWS_PIXEL_U8 , SWS_UOP_MUL             , 0x7, 0, 0, 1, 0, 0x0
+    DECL_OP %1, u8_mul_xyz_aba                          , SWS_PIXEL_U8 , SWS_UOP_MUL             , 0x7, 0, 1, 0, 0, 0x0
 %endmacro
 
 %macro DECL_U8_ADD 1
@@ -237,9 +240,7 @@
 
 %macro DECL_U8_LINEAR 1
     DECL_OP %1, u8_linear_x_x000x                       , SWS_PIXEL_U8 , SWS_UOP_LINEAR          , 0x1, 0x41040, 0xbefae
-    DECL_OP %1, u8_linear_y_0x000                       , SWS_PIXEL_U8 , SWS_UOP_LINEAR          , 0x2, 0x41001, 0xbefbe
     DECL_OP %1, u8_linear_xyz_x000x_0x00x_00x0x         , SWS_PIXEL_U8 , SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbadae
-    DECL_OP %1, u8_linear_xyz_x0000_0x000_00x00         , SWS_PIXEL_U8 , SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbefbe
 %endmacro
 
 %macro DECL_U8_LINEAR_FMA 1
@@ -389,6 +390,9 @@
 %macro DECL_U16_MUL 1
     DECL_OP %1, u16_mul_x_a                             , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x1, 0, 0, 0, 0, 0x0
     DECL_OP %1, u16_mul_xyz_aaa                         , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x7, 0, 0, 0, 0, 0x0
+    DECL_OP %1, u16_mul_xyz_aab                         , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x7, 0, 0, 1, 0, 0x0
+    DECL_OP %1, u16_mul_xyz_aba                         , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x7, 0, 1, 0, 0, 0x0
+    DECL_OP %1, u16_mul_xyzw_aaab                       , SWS_PIXEL_U16, SWS_UOP_MUL             , 0xf, 0, 0, 0, 1, 0x0
 %endmacro
 
 %macro DECL_U16_ADD 1
@@ -456,8 +460,6 @@
 %macro DECL_U16_LINEAR 1
     DECL_OP %1, u16_linear_x_x000x                      , SWS_PIXEL_U16, SWS_UOP_LINEAR          , 0x1, 0x41040, 0xbefae
     DECL_OP %1, u16_linear_xyz_x000x_0x00x_00x0x        , SWS_PIXEL_U16, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbadae
-    DECL_OP %1, u16_linear_xyz_x0000_0x000_00x00        , SWS_PIXEL_U16, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbefbe
-    DECL_OP %1, u16_linear_xyzw_x0000_0x000_00x00_000x0 , SWS_PIXEL_U16, SWS_UOP_LINEAR          , 0xf, 0x00000, 0xbefbe
 %endmacro
 
 %macro DECL_U16_LINEAR_FMA 1
@@ -600,6 +602,7 @@
 %macro DECL_U32_MUL 1
     DECL_OP %1, u32_mul_x_a                             , SWS_PIXEL_U32, SWS_UOP_MUL             , 0x1, 0, 0, 0, 0, 0x0
     DECL_OP %1, u32_mul_xyz_aaa                         , SWS_PIXEL_U32, SWS_UOP_MUL             , 0x7, 0, 0, 0, 0, 0x0
+    DECL_OP %1, u32_mul_xyz_aba                         , SWS_PIXEL_U32, SWS_UOP_MUL             , 0x7, 0, 1, 0, 0, 0x0
 %endmacro
 
 %macro DECL_U32_ADD 1
@@ -643,7 +646,6 @@
 %macro DECL_U32_LINEAR 1
     DECL_OP %1, u32_linear_x_x000x                      , SWS_PIXEL_U32, SWS_UOP_LINEAR          , 0x1, 0x41040, 0xbefae
     DECL_OP %1, u32_linear_xyz_x000x_0x00x_00x0x        , SWS_PIXEL_U32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbadae
-    DECL_OP %1, u32_linear_xyz_x0000_0x000_00x00        , SWS_PIXEL_U32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbefbe
 %endmacro
 
 %macro DECL_U32_LINEAR_FMA 1
@@ -755,10 +757,16 @@
 
 %macro DECL_F32_MUL 1
     DECL_OP %1, f32_mul_x_a                             , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x1, 0, 0, 0, 0, 0x0
+    DECL_OP %1, f32_mul_y_a                             , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x2, 0, 0, 0, 0, 0x0
     DECL_OP %1, f32_mul_xy_aa                           , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x3, 0, 0, 0, 0, 0x0
     DECL_OP %1, f32_mul_xyz_aaa                         , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x7, 0, 0, 0, 0, 0x0
+    DECL_OP %1, f32_mul_xyz_aab                         , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x7, 0, 0, 1, 0, 0x0
+    DECL_OP %1, f32_mul_xyz_aba                         , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x7, 0, 1, 0, 0, 0x0
+    DECL_OP %1, f32_mul_xyz_abc                         , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x7, 0, 1, 2, 0, 0x0
+    DECL_OP %1, f32_mul_w_a                             , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x8, 0, 0, 0, 0, 0x0
     DECL_OP %1, f32_mul_yzw_aaa                         , SWS_PIXEL_F32, SWS_UOP_MUL             , 0xe, 0, 0, 0, 0, 0x0
     DECL_OP %1, f32_mul_xyzw_aaaa                       , SWS_PIXEL_F32, SWS_UOP_MUL             , 0xf, 0, 0, 0, 0, 0x0
+    DECL_OP %1, f32_mul_xyzw_aaab                       , SWS_PIXEL_F32, SWS_UOP_MUL             , 0xf, 0, 0, 0, 1, 0x0
 %endmacro
 
 %macro DECL_F32_ADD 1
@@ -816,19 +824,15 @@
     DECL_OP %1, f32_linear_x_xxx0x                      , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x1, 0x41040, 0xbefa8
     DECL_OP %1, f32_linear_x_x000x                      , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x1, 0x41040, 0xbefae
     DECL_OP %1, f32_linear_x_xxx00                      , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x1, 0x41040, 0xbefb8
-    DECL_OP %1, f32_linear_y_0x000                      , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x2, 0x41001, 0xbefbe
     DECL_OP %1, f32_linear_xyz_xxx0x_xxx0x_xxx0x        , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xba108
     DECL_OP %1, f32_linear_xyz_x0x0x_xxx0x_xx00x        , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbb10a
     DECL_OP %1, f32_linear_xyz_xxx00_xxx0x_xxx0x        , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xba118
     DECL_OP %1, f32_linear_xyz_x000x_0x00x_00x0x        , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbadae
-    DECL_OP %1, f32_linear_xyz_x0000_0x000_00x00        , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbefbe
     DECL_OP %1, f32_linear_xyz_10x0x_1xx0x_1x00x        , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x7, 0x40421, 0xbb10a
-    DECL_OP %1, f32_linear_w_000x0                      , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x8, 0x01041, 0xbefbe
     DECL_OP %1, f32_linear_xw_x000x_000x0               , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x9, 0x01040, 0xbefae
     DECL_OP %1, f32_linear_xw_xxx00_000x0               , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0x9, 0x01040, 0xbefb8
     DECL_OP %1, f32_linear_xyzw_xxx0x_xxx0x_xxx0x_000x0 , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0xf, 0x00000, 0xba108
     DECL_OP %1, f32_linear_xyzw_x0x0x_xxx0x_xx00x_000x0 , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0xf, 0x00000, 0xbb10a
-    DECL_OP %1, f32_linear_xyzw_x0000_0x000_00x00_000x0 , SWS_PIXEL_F32, SWS_UOP_LINEAR          , 0xf, 0x00000, 0xbefbe
 %endmacro
 
 %macro DECL_F32_LINEAR_FMA 1
@@ -841,7 +845,6 @@
     DECL_OP %1, f32_linear_fma_x_xXx00                  , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x1, 0x41040, 0xbefb8, 0xffffa
     DECL_OP %1, f32_linear_fma_x_xxX00                  , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x1, 0x41040, 0xbefb8, 0xffffc
     DECL_OP %1, f32_linear_fma_x_xXX00                  , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x1, 0x41040, 0xbefb8, 0xffffe
-    DECL_OP %1, f32_linear_fma_y_0x000                  , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x2, 0x41001, 0xbefbe, 0xfffbf
     DECL_OP %1, f32_linear_fma_xyz_xxx0x_xxx0x_xxx0x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40000, 0xba108, 0xfa108
     DECL_OP %1, f32_linear_fma_xyz_xxx0x_xxx0x_Xxx0x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40000, 0xba108, 0xfa508
     DECL_OP %1, f32_linear_fma_xyz_xxx0x_xxx0x_XXx0x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40000, 0xba108, 0xfad08
@@ -859,10 +862,8 @@
     DECL_OP %1, f32_linear_fma_xyz_x000x_0x00x_00x0x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40000, 0xbadae, 0xfadae
     DECL_OP %1, f32_linear_fma_xyz_X000x_0x00x_00X0x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40000, 0xbadae, 0xfbdaf
     DECL_OP %1, f32_linear_fma_xyz_X000x_0X00x_00X0x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40000, 0xbadae, 0xfbdef
-    DECL_OP %1, f32_linear_fma_xyz_x0000_0x000_00x00    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40000, 0xbefbe, 0xfefbe
     DECL_OP %1, f32_linear_fma_xyz_10x0x_1xx0x_1x00x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40421, 0xbb10a, 0xfb52b
     DECL_OP %1, f32_linear_fma_xyz_10X0x_1XX0x_1X00x    , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x7, 0x40421, 0xbb10a, 0xfbdef
-    DECL_OP %1, f32_linear_fma_w_000x0                  , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x8, 0x01041, 0xbefbe, 0xbffff
     DECL_OP %1, f32_linear_fma_xw_x000x_000x0           , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x9, 0x01040, 0xbefae, 0xbffee
     DECL_OP %1, f32_linear_fma_xw_X000x_000x0           , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x9, 0x01040, 0xbefae, 0xbffef
     DECL_OP %1, f32_linear_fma_xw_xxx00_000x0           , SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0x9, 0x01040, 0xbefb8, 0xbfff8
@@ -871,7 +872,6 @@
     DECL_OP %1, f32_linear_fma_xyzw_XXX0x_XXX0x_XXX0x_000x0, SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0xf, 0x00000, 0xba108, 0xbbdef
     DECL_OP %1, f32_linear_fma_xyzw_x0x0x_xxx0x_xx00x_000x0, SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0xf, 0x00000, 0xbb10a, 0xbb10a
     DECL_OP %1, f32_linear_fma_xyzw_X0X0x_XXX0x_XX00x_000x0, SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0xf, 0x00000, 0xbb10a, 0xbbdef
-    DECL_OP %1, f32_linear_fma_xyzw_x0000_0x000_00x00_000x0, SWS_PIXEL_F32, SWS_UOP_LINEAR_FMA      , 0xf, 0x00000, 0xbefbe, 0xbefbe
 %endmacro
 
 %macro DECL_F32_DITHER 1
