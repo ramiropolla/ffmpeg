@@ -278,10 +278,10 @@
     MACRO(__VA_ARGS__, u8_to_f32_zw                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_TO_F32          , .mask = 0xc) \
     MACRO(__VA_ARGS__, u8_to_f32_yzw                           , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_TO_F32          , .mask = 0xe) \
     MACRO(__VA_ARGS__, u8_to_f32_xyzw                          , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_TO_F32          , .mask = 0xf)
-#define SWS_FOR_U8_SCALE(MACRO, ...) \
-    MACRO(__VA_ARGS__, u8_scale_xyz                            , SWS_PIXEL_U8 , SWS_UOP_SCALE           , 0x7)
-#define SWS_FOR_STRUCT_U8_SCALE(MACRO, ...) \
-    MACRO(__VA_ARGS__, u8_scale_xyz                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_SCALE           , .mask = 0x7)
+#define SWS_FOR_U8_MUL(MACRO, ...) \
+    MACRO(__VA_ARGS__, u8_mul_xyz                              , SWS_PIXEL_U8 , SWS_UOP_MUL             , 0x7)
+#define SWS_FOR_STRUCT_U8_MUL(MACRO, ...) \
+    MACRO(__VA_ARGS__, u8_mul_xyz                              , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_MUL             , .mask = 0x7)
 #define SWS_FOR_U8_ADD(MACRO, ...)
 #define SWS_FOR_STRUCT_U8_ADD(MACRO, ...)
 #define SWS_FOR_U8_MIN(MACRO, ...)
@@ -532,12 +532,12 @@
     MACRO(__VA_ARGS__, u16_to_f32_xyz                          , .type = SWS_PIXEL_U16, .uop = SWS_UOP_TO_F32          , .mask = 0x7) \
     MACRO(__VA_ARGS__, u16_to_f32_yzw                          , .type = SWS_PIXEL_U16, .uop = SWS_UOP_TO_F32          , .mask = 0xe) \
     MACRO(__VA_ARGS__, u16_to_f32_xyzw                         , .type = SWS_PIXEL_U16, .uop = SWS_UOP_TO_F32          , .mask = 0xf)
-#define SWS_FOR_U16_SCALE(MACRO, ...) \
-    MACRO(__VA_ARGS__, u16_scale_x                             , SWS_PIXEL_U16, SWS_UOP_SCALE           , 0x1) \
-    MACRO(__VA_ARGS__, u16_scale_xyz                           , SWS_PIXEL_U16, SWS_UOP_SCALE           , 0x7)
-#define SWS_FOR_STRUCT_U16_SCALE(MACRO, ...) \
-    MACRO(__VA_ARGS__, u16_scale_x                             , .type = SWS_PIXEL_U16, .uop = SWS_UOP_SCALE           , .mask = 0x1) \
-    MACRO(__VA_ARGS__, u16_scale_xyz                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_SCALE           , .mask = 0x7)
+#define SWS_FOR_U16_MUL(MACRO, ...) \
+    MACRO(__VA_ARGS__, u16_mul_x                               , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x1) \
+    MACRO(__VA_ARGS__, u16_mul_xyz                             , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x7)
+#define SWS_FOR_STRUCT_U16_MUL(MACRO, ...) \
+    MACRO(__VA_ARGS__, u16_mul_x                               , .type = SWS_PIXEL_U16, .uop = SWS_UOP_MUL             , .mask = 0x1) \
+    MACRO(__VA_ARGS__, u16_mul_xyz                             , .type = SWS_PIXEL_U16, .uop = SWS_UOP_MUL             , .mask = 0x7)
 #define SWS_FOR_U16_ADD(MACRO, ...)
 #define SWS_FOR_STRUCT_U16_ADD(MACRO, ...)
 #define SWS_FOR_U16_MIN(MACRO, ...)
@@ -810,12 +810,12 @@
     MACRO(__VA_ARGS__, u32_to_f32_z                            , .type = SWS_PIXEL_U32, .uop = SWS_UOP_TO_F32          , .mask = 0x4) \
     MACRO(__VA_ARGS__, u32_to_f32_xyz                          , .type = SWS_PIXEL_U32, .uop = SWS_UOP_TO_F32          , .mask = 0x7) \
     MACRO(__VA_ARGS__, u32_to_f32_yzw                          , .type = SWS_PIXEL_U32, .uop = SWS_UOP_TO_F32          , .mask = 0xe)
-#define SWS_FOR_U32_SCALE(MACRO, ...) \
-    MACRO(__VA_ARGS__, u32_scale_x                             , SWS_PIXEL_U32, SWS_UOP_SCALE           , 0x1) \
-    MACRO(__VA_ARGS__, u32_scale_xyz                           , SWS_PIXEL_U32, SWS_UOP_SCALE           , 0x7)
-#define SWS_FOR_STRUCT_U32_SCALE(MACRO, ...) \
-    MACRO(__VA_ARGS__, u32_scale_x                             , .type = SWS_PIXEL_U32, .uop = SWS_UOP_SCALE           , .mask = 0x1) \
-    MACRO(__VA_ARGS__, u32_scale_xyz                           , .type = SWS_PIXEL_U32, .uop = SWS_UOP_SCALE           , .mask = 0x7)
+#define SWS_FOR_U32_MUL(MACRO, ...) \
+    MACRO(__VA_ARGS__, u32_mul_x                               , SWS_PIXEL_U32, SWS_UOP_MUL             , 0x1) \
+    MACRO(__VA_ARGS__, u32_mul_xyz                             , SWS_PIXEL_U32, SWS_UOP_MUL             , 0x7)
+#define SWS_FOR_STRUCT_U32_MUL(MACRO, ...) \
+    MACRO(__VA_ARGS__, u32_mul_x                               , .type = SWS_PIXEL_U32, .uop = SWS_UOP_MUL             , .mask = 0x1) \
+    MACRO(__VA_ARGS__, u32_mul_xyz                             , .type = SWS_PIXEL_U32, .uop = SWS_UOP_MUL             , .mask = 0x7)
 #define SWS_FOR_U32_ADD(MACRO, ...)
 #define SWS_FOR_STRUCT_U32_ADD(MACRO, ...)
 #define SWS_FOR_U32_MIN(MACRO, ...)
@@ -978,18 +978,18 @@
     MACRO(__VA_ARGS__, f32_to_u32_xyzw                         , .type = SWS_PIXEL_F32, .uop = SWS_UOP_TO_U32          , .mask = 0xf)
 #define SWS_FOR_F32_TO_F32(MACRO, ...)
 #define SWS_FOR_STRUCT_F32_TO_F32(MACRO, ...)
-#define SWS_FOR_F32_SCALE(MACRO, ...) \
-    MACRO(__VA_ARGS__, f32_scale_x                             , SWS_PIXEL_F32, SWS_UOP_SCALE           , 0x1) \
-    MACRO(__VA_ARGS__, f32_scale_xy                            , SWS_PIXEL_F32, SWS_UOP_SCALE           , 0x3) \
-    MACRO(__VA_ARGS__, f32_scale_xyz                           , SWS_PIXEL_F32, SWS_UOP_SCALE           , 0x7) \
-    MACRO(__VA_ARGS__, f32_scale_yzw                           , SWS_PIXEL_F32, SWS_UOP_SCALE           , 0xe) \
-    MACRO(__VA_ARGS__, f32_scale_xyzw                          , SWS_PIXEL_F32, SWS_UOP_SCALE           , 0xf)
-#define SWS_FOR_STRUCT_F32_SCALE(MACRO, ...) \
-    MACRO(__VA_ARGS__, f32_scale_x                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_SCALE           , .mask = 0x1) \
-    MACRO(__VA_ARGS__, f32_scale_xy                            , .type = SWS_PIXEL_F32, .uop = SWS_UOP_SCALE           , .mask = 0x3) \
-    MACRO(__VA_ARGS__, f32_scale_xyz                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_SCALE           , .mask = 0x7) \
-    MACRO(__VA_ARGS__, f32_scale_yzw                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_SCALE           , .mask = 0xe) \
-    MACRO(__VA_ARGS__, f32_scale_xyzw                          , .type = SWS_PIXEL_F32, .uop = SWS_UOP_SCALE           , .mask = 0xf)
+#define SWS_FOR_F32_MUL(MACRO, ...) \
+    MACRO(__VA_ARGS__, f32_mul_x                               , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x1) \
+    MACRO(__VA_ARGS__, f32_mul_xy                              , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x3) \
+    MACRO(__VA_ARGS__, f32_mul_xyz                             , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x7) \
+    MACRO(__VA_ARGS__, f32_mul_yzw                             , SWS_PIXEL_F32, SWS_UOP_MUL             , 0xe) \
+    MACRO(__VA_ARGS__, f32_mul_xyzw                            , SWS_PIXEL_F32, SWS_UOP_MUL             , 0xf)
+#define SWS_FOR_STRUCT_F32_MUL(MACRO, ...) \
+    MACRO(__VA_ARGS__, f32_mul_x                               , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MUL             , .mask = 0x1) \
+    MACRO(__VA_ARGS__, f32_mul_xy                              , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MUL             , .mask = 0x3) \
+    MACRO(__VA_ARGS__, f32_mul_xyz                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MUL             , .mask = 0x7) \
+    MACRO(__VA_ARGS__, f32_mul_yzw                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MUL             , .mask = 0xe) \
+    MACRO(__VA_ARGS__, f32_mul_xyzw                            , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MUL             , .mask = 0xf)
 #define SWS_FOR_F32_ADD(MACRO, ...) \
     MACRO(__VA_ARGS__, f32_add_x_a                             , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x1, 0, 0, 0, 0, 0x0) \
     MACRO(__VA_ARGS__, f32_add_xy_aa                           , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x3, 0, 0, 0, 0, 0x0) \

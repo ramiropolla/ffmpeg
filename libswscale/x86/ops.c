@@ -273,7 +273,7 @@ static int setup_filter_h_4x4(const SwsImplParams *params, SwsImplResult *out)
     return 0;
 }
 
-static int setup_scale(const SwsImplParams *params, SwsImplResult *out)
+static int setup_mul(const SwsImplParams *params, SwsImplResult *out)
 {
     const SwsPixel scalar = params->uop->data.scalar;
     switch (params->uop->type) {
@@ -389,7 +389,7 @@ SWS_FOR_STRUCT(TYPE, SWAP_BYTES,      DECL_ENTRY, EXT, NULL, NULL)              
 SWS_FOR_STRUCT(TYPE, EXPAND_BIT,      DECL_ENTRY, EXT, NULL, NULL)              \
 SWS_FOR_STRUCT(TYPE, PERMUTE,         DECL_ENTRY, EXT, NULL, NULL)              \
 SWS_FOR_STRUCT(TYPE, COPY,            DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, SCALE,           DECL_ENTRY, EXT, NULL, setup_scale)       \
+SWS_FOR_STRUCT(TYPE, MUL,             DECL_ENTRY, EXT, NULL, setup_mul)         \
 SWS_FOR_STRUCT(TYPE, ADD,             DECL_ENTRY, EXT, NULL, ff_sws_setup_vec4) \
 SWS_FOR_STRUCT(TYPE, MIN,             DECL_ENTRY, EXT, NULL, ff_sws_setup_vec4) \
 SWS_FOR_STRUCT(TYPE, MAX,             DECL_ENTRY, EXT, NULL, ff_sws_setup_vec4) \
@@ -414,7 +414,7 @@ SWS_FOR_STRUCT(TYPE, DITHER,          DECL_ENTRY, EXT, NULL, setup_dither)      
     SWS_FOR(TYPE, EXPAND_BIT,     REF_ENTRY, EXT)                               \
     SWS_FOR(TYPE, PERMUTE,        REF_ENTRY, EXT)                               \
     SWS_FOR(TYPE, COPY,           REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, SCALE,          REF_ENTRY, EXT)                               \
+    SWS_FOR(TYPE, MUL,            REF_ENTRY, EXT)                               \
     SWS_FOR(TYPE, ADD,            REF_ENTRY, EXT)                               \
     SWS_FOR(TYPE, MIN,            REF_ENTRY, EXT)                               \
     SWS_FOR(TYPE, MAX,            REF_ENTRY, EXT)                               \

@@ -1183,7 +1183,7 @@ static int emit_shader(SwsContext *sws, VulkanPriv *p, FFVulkanOpsCtx *s,
                 data = spi_OpShiftRightLogical(spi, type_v, data, shift_v);
             break;
         }
-        case SWS_UOP_SCALE:
+        case SWS_UOP_MUL:
             data = emit_mul(spi, uop->type, type_v, data,
                             const_splat(spi, id, uop->type, uop->data.scalar));
             break;

@@ -710,7 +710,7 @@ void checkasm_check_sw_ops(void)
     CHECK_FOR(TO_U16,           check_cast);
     CHECK_FOR(TO_U32,           check_cast);
     CHECK_FOR(TO_F32,           check_cast);
-    CHECK_FOR(SCALE,            check_scale);
+    CHECK_FOR(MUL,              check_scale);
     CHECK_FOR(ADD,              check_vec4);
     CHECK_FOR(MIN,              check_vec4);
     CHECK_FOR(MAX,              check_vec4);

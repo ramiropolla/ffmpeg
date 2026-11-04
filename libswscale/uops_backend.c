@@ -81,7 +81,7 @@
     SWS_FOR(TYPE, TO_U16,         REF_ENTRY)                \
     SWS_FOR(TYPE, TO_U32,         REF_ENTRY)                \
     SWS_FOR(TYPE, TO_F32,         REF_ENTRY)                \
-    SWS_FOR(TYPE, SCALE,          REF_ENTRY)                \
+    SWS_FOR(TYPE, MUL,            REF_ENTRY)                \
     SWS_FOR(TYPE, ADD,            REF_ENTRY)                \
     SWS_FOR(TYPE, MIN,            REF_ENTRY)                \
     SWS_FOR(TYPE, MAX,            REF_ENTRY)                \

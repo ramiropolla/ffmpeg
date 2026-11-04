@@ -45,7 +45,7 @@
     ENTRY(SWS_UOP_TO_U16,               "to_u16")                    \
     ENTRY(SWS_UOP_TO_U32,               "to_u32")                    \
     ENTRY(SWS_UOP_TO_F32,               "to_f32")                    \
-    ENTRY(SWS_UOP_SCALE,                "scale")                     \
+    ENTRY(SWS_UOP_MUL,                  "mul")                       \
     ENTRY(SWS_UOP_LINEAR,               "linear")                    \
     ENTRY(SWS_UOP_LINEAR_FMA,           "linear_fma")                \
     ENTRY(SWS_UOP_ADD,                  "add")                       \
