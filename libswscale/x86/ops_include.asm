@@ -149,6 +149,42 @@ endstruc
 %define LIN_COL(J) (LIN_MASK(0, J) | LIN_MASK(1, J) | LIN_MASK(2, J) | LIN_MASK(3, J))
 
 ;---------------------------------------------------------
+; Helpers for SwsVec4UOp constants
+
+; Define %1 as a register holding packed constant %2 for component %3,
+; loading each distinct constant only once. Expects ZERO_MASK, VEC4_M (first
+; free register) and a VEC4_LOAD dst, idx macro.
+%macro LOAD_VEC4 3 ; name, comp, idx
+    %if SWS_COMP_TEST(ZERO_MASK, %3)
+        %ifndef VEC4_ZERO
+            %xdefine VEC4_ZERO m%+VEC4_M
+            xorps VEC4_ZERO, VEC4_ZERO
+            %assign VEC4_M VEC4_M + 1
+        %endif
+        %xdefine %1 VEC4_ZERO
+    %else
+        %ifndef VEC4_DATA%2
+            %xdefine VEC4_DATA%2 m%+VEC4_M
+            VEC4_LOAD VEC4_DATA%2, %2
+            %assign VEC4_M VEC4_M + 1
+        %endif
+        %xdefine %1 VEC4_DATA%2
+    %endif
+%endmacro
+
+%macro UNDEF_VEC4 0
+%undef VEC4_ZERO
+%undef VEC4_DATA0
+%undef VEC4_DATA1
+%undef VEC4_DATA2
+%undef VEC4_DATA3
+%undef MX
+%undef MY
+%undef MZ
+%undef MW
+%endmacro
+
+;---------------------------------------------------------
 ; Common macros for declaring operations
 
 ; Declare an operation kernel, calling a provided macro to generate the body.

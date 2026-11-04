@@ -100,6 +100,7 @@ static void print_params(AVBPrint *bp, const SwsUOp *uop, bool designated)
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
+    case SWS_UOP_MUL:
         FMT_SUB("par.vec4.indices", "%d, %d, %d, %d",
                 par->vec4.indices[0], par->vec4.indices[1],
                 par->vec4.indices[2], par->vec4.indices[3]);

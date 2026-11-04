@@ -469,49 +469,29 @@ IF W,   mulps mw2, m10
 ;---------------------------------------------------------
 ; Arithmetic operations
 
-%macro LOAD_VEC4 3 ; name, comp, idx
-    %if SWS_COMP_TEST(ZERO_MASK, %3)
-        %ifndef VEC4_ZERO
-            %xdefine VEC4_ZERO m%+VEC4_M
-            xorps VEC4_ZERO, VEC4_ZERO
-            %assign VEC4_M VEC4_M + 1
-        %endif
-        %xdefine %1 VEC4_ZERO
-    %else
-        %ifndef VEC4_DATA%2
-            %xdefine VEC4_DATA%2 m%+VEC4_M
-            vbroadcastss VEC4_DATA%2, [implq + SwsOpImpl.priv + %2 * BYTES]
-            %assign VEC4_M VEC4_M + 1
-        %endif
-        %xdefine %1 VEC4_DATA%2
-    %endif
+%macro VEC4_LOAD 2 ; dst, idx
+        vbroadcastss %1, [implq + SwsOpImpl.priv + %2 * BYTES]
 %endmacro
 
-%macro UNDEF_VEC4 0
-%undef VEC4_ZERO
-%undef VEC4_DATA0
-%undef VEC4_DATA1
-%undef VEC4_DATA2
-%undef VEC4_DATA3
-%undef MX
-%undef MY
-%undef MZ
-%undef MW
-%endmacro
-
-%macro MUL_OP 0
-%assign PRIV_SIZE BYTES
-        vbroadcastss m8, [implq + SwsOpImpl.priv]
+%macro MUL_OP 5
+%assign PRIV_SIZE 4 * BYTES
+%assign ZERO_MASK %5
+%assign VEC4_M 8
+IF X,   LOAD_VEC4 MX, %1, 0
+IF Y,   LOAD_VEC4 MY, %2, 1
+IF Z,   LOAD_VEC4 MZ, %3, 2
+IF W,   LOAD_VEC4 MW, %4, 3
         LOAD_CONT tmp0q
-IF X,   mulps mx, m8
-IF Y,   mulps my, m8
-IF Z,   mulps mz, m8
-IF W,   mulps mw, m8
-IF X,   mulps mx2, m8
-IF Y,   mulps my2, m8
-IF Z,   mulps mz2, m8
-IF W,   mulps mw2, m8
+IF X,   mulps mx, MX
+IF Y,   mulps my, MY
+IF Z,   mulps mz, MZ
+IF W,   mulps mw, MW
+IF X,   mulps mx2, MX
+IF Y,   mulps my2, MY
+IF Z,   mulps mz2, MZ
+IF W,   mulps mw2, MW
         CONTINUE tmp0q
+        UNDEF_VEC4
 %endmacro
 
 %macro ADD 5

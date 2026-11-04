@@ -574,21 +574,29 @@ static void check_cast(const char *name, const SwsUOp *uop)
     check_uop(name, uop, uop->mask, uop->mask, MK_RANGES(range));
 }
 
-static void check_scale(const char *name, SwsUOp *uop)
+static void check_mul(const char *name, SwsUOp *uop)
 {
     const int bits = ff_sws_pixel_type_size(uop->type) * 8;
     const unsigned max = UINT32_MAX >> (32 - bits);
-    SwsPixel scale = uop->data.scalar = rndpx(uop->type);
-    unsigned range = 0;
+    unsigned ranges[NB_PLANES] = {0};
 
-    /* Ensure the result won't exceed the value range */
-    switch (uop->type) {
-    case SWS_PIXEL_U8:  range = max / (scale.u8  ? scale.u8  : 1); break;
-    case SWS_PIXEL_U16: range = max / (scale.u16 ? scale.u16 : 1); break;
-    case SWS_PIXEL_U32: range = max / (scale.u32 ? scale.u32 : 1); break;
+    for (int i = 0; i < 4; i++)
+        uop->data.vec4[i] = rndpx(uop->type);
+
+    for (int i = 0; i < 4; i++) {
+        const SwsVec4UOp *vec4 = &uop->par.vec4;
+        const SwsPixel k = SWS_COMP_TEST(vec4->zero, i) ? (SwsPixel) {0}
+                                                        : uop->data.vec4[vec4->indices[i]];
+
+        /* Ensure the result won't exceed the value range */
+        switch (uop->type) {
+        case SWS_PIXEL_U8:  ranges[i] = max / (k.u8  ? k.u8  : 1); break;
+        case SWS_PIXEL_U16: ranges[i] = max / (k.u16 ? k.u16 : 1); break;
+        case SWS_PIXEL_U32: ranges[i] = max / (k.u32 ? k.u32 : 1); break;
+        }
     }
 
-    check_range(name, uop, MK_RANGES(range));
+    check_range(name, uop, ranges);
 }
 
 static void check_unpack(const char *name, const SwsUOp *uop)
@@ -710,7 +718,7 @@ void checkasm_check_sw_ops(void)
     CHECK_FOR(TO_U16,           check_cast);
     CHECK_FOR(TO_U32,           check_cast);
     CHECK_FOR(TO_F32,           check_cast);
-    CHECK_FOR(MUL,              check_scale);
+    CHECK_FOR(MUL,              check_mul);
     CHECK_FOR(ADD,              check_vec4);
     CHECK_FOR(MIN,              check_vec4);
     CHECK_FOR(MAX,              check_vec4);

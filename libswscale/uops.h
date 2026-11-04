@@ -162,7 +162,7 @@ typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_PSHUFB       = (1 << 1), /* platform supports pshufb equivalent */
     SWS_UOP_FLAG_EXPAND_BIT   = (1 << 2), /* backend implements SWS_UOP_EXPAND_BIT */
     SWS_UOP_FLAG_READ_PALETTE = (1 << 3), /* backend implements SWS_UOP_READ_PALETTE */
-    SWS_UOP_FLAG_VEC4         = (1 << 4), /* backend uses vec4 SWS_UOP_ADD/SWS_UOP_MIN/SWS_UOP_MAX */
+    SWS_UOP_FLAG_VEC4         = (1 << 4), /* backend uses vec4 SWS_UOP_ADD/MIN/MAX/MUL */
     SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
 } SwsUOpFlagBits;
 
@@ -202,7 +202,7 @@ typedef enum SwsUOpType {
     SWS_UOP_TO_F32,          /* cast pixel values to SWS_PIXEL_F32 */
 
     /* Arithmetic uops */
-    SWS_UOP_MUL,             /* multiply masked components by scalar */
+    SWS_UOP_MUL,             /* multiply masked components by vec4 */
     SWS_UOP_ADD,             /* add vec4 to masked components */
     SWS_UOP_MIN,             /* min(x, vec4) on masked components */
     SWS_UOP_MAX,             /* max(x, vec4) on masked components */

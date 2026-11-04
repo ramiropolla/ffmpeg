@@ -1183,10 +1183,20 @@ static int emit_shader(SwsContext *sws, VulkanPriv *p, FFVulkanOpsCtx *s,
                 data = spi_OpShiftRightLogical(spi, type_v, data, shift_v);
             break;
         }
-        case SWS_UOP_MUL:
-            data = emit_mul(spi, uop->type, type_v, data,
-                            const_splat(spi, id, uop->type, uop->data.scalar));
+        case SWS_UOP_MUL: {
+            const int one = const_pixel(spi, id, uop->type,
+                                        ff_sws_pixel_from_q64(uop->type, (AVRational64) { 1, 1 }));
+            int arg[4] = { one, one, one, one };
+            for (int i = 0; i < 4; i++) {
+                if (!SWS_COMP_TEST(uop->mask, i))
+                    continue;
+                arg[i] = const_pixel(spi, id, uop->type, uop->data.vec4[i]);
+            }
+
+            int arg_v = spi_OpConstantComposite(spi, type_v, arg[0], arg[1], arg[2], arg[3]);
+            data = emit_mul(spi, uop->type, type_v, data, arg_v);
             break;
+        }
         case SWS_UOP_ADD: {
             const int zero = const_zero(id, uop->type);
             int arg[4] = { zero, zero, zero, zero };

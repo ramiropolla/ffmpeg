@@ -310,13 +310,7 @@ static void asmgen_setup_max(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 static void asmgen_setup_mul(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp scale_vec = regs->vk[0];
-
-    RasmOp priv_ptr = s->tmp0;
-    i_add (r, priv_ptr, s->impl, IMM(AARCH64_IMPL_DATA_OFFSET));    CMT("v128 *scale_vec_ptr = &impl->priv;");
-    asmgen_set_load_cont_node(s);
-    i_ld1r(r, vv_1(scale_vec), a64op_base(priv_ptr));               CMT("v128 scale_vec = broadcast(*scale_vec_ptr);");
+    asmgen_setup_vec4(s, p, regs, "mul");
 }
 
 static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,

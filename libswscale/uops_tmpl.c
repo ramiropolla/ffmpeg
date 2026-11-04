@@ -663,20 +663,26 @@ SWS_FOR_STRUCT(PX, CLEAR, DECL_ENTRY, .setup = ff_sws_setup_vec4)
  * Arithmetic operations *
  *************************/
 
-DECL_FUNC(mul, const SwsCompMask mask)
+DECL_FUNC(mul, const SwsCompMask mask,
+               const uint8_t idx0, const uint8_t idx1,
+               const uint8_t idx2, const uint8_t idx3,
+               const SwsCompMask zero)
 {
     const SwsOpPriv *priv = SWS_OP_PRIV(impl);
-    const pixel_t scale = priv->px[0];
+    const pixel_t cx = ZERO(0) ? 0 : priv->px[idx0];
+    const pixel_t cy = ZERO(1) ? 0 : priv->px[idx1];
+    const pixel_t cz = ZERO(2) ? 0 : priv->px[idx2];
+    const pixel_t cw = ZERO(3) ? 0 : priv->px[idx3];
 
     SWS_LOOP
     for (int i = 0; i < SWS_BLOCK_SIZE; i++) {
-        if (X) x[i] *= scale;
-        if (Y) y[i] *= scale;
-        if (Z) z[i] *= scale;
-        if (W) w[i] *= scale;
+        if (X) x[i] *= cx;
+        if (Y) y[i] *= cy;
+        if (Z) z[i] *= cz;
+        if (W) w[i] *= cw;
     }
 
-    CONTINUE(sizeof(pixel_t), x, y, z, w);
+    CONTINUE(sizeof(pixel_t[4]), x, y, z, w);
 }
 
 DECL_FUNC(add, const SwsCompMask mask,
@@ -749,7 +755,7 @@ SWS_FOR(PX, MUL,   DECL_IMPL, mul)
 SWS_FOR(PX, ADD,   DECL_IMPL, add)
 SWS_FOR(PX, MIN,   DECL_IMPL, min)
 SWS_FOR(PX, MAX,   DECL_IMPL, max)
-SWS_FOR_STRUCT(PX, MUL,   DECL_ENTRY, .setup = ff_sws_setup_scalar )
+SWS_FOR_STRUCT(PX, MUL,   DECL_ENTRY, .setup = ff_sws_setup_vec4 )
 SWS_FOR_STRUCT(PX, ADD,   DECL_ENTRY, .setup = ff_sws_setup_vec4 )
 SWS_FOR_STRUCT(PX, MIN,   DECL_ENTRY, .setup = ff_sws_setup_vec4 )
 SWS_FOR_STRUCT(PX, MAX,   DECL_ENTRY, .setup = ff_sws_setup_vec4 )

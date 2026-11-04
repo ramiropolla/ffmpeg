@@ -96,6 +96,7 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
+    case SWS_UOP_MUL:
         av_bprint_chars(&bp, '_', 1);
         for (int i = 0; i < 4; i++) {
             if (!SWS_COMP_TEST(op->mask, i))
@@ -654,10 +655,15 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
                 uop.par.clear.one |= SWS_COMP(i);
         }
         break;
-    case SWS_OP_SCALE:
+    case SWS_OP_SCALE: {
         uop.uop = SWS_UOP_MUL;
-        uop.data.scalar = ff_sws_pixel_from_q64(uop.type, op->scale.factor);
+        int packed_i = 0;
+        for (int i = 0; i < 4; i++) {
+            if (SWS_COMP_TEST(uop.mask, i))
+                set_vec4_val(&uop, flags, op->scale.factor, i, &packed_i);
+        }
         break;
+    }
     case SWS_OP_MIN:
     case SWS_OP_MAX: {
         uop.uop = op->op == SWS_OP_MIN ? SWS_UOP_MIN : SWS_UOP_MAX;
