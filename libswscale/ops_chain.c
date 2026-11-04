@@ -142,21 +142,6 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
     return 0;
 }
 
-int ff_sws_setup_scalar(const SwsImplParams *params, SwsImplResult *out)
-{
-    const SwsUOp *uop = params->uop;
-    const SwsPixel scalar = uop->data.scalar;
-    switch (uop->type) {
-    case SWS_PIXEL_U8:  SWS_OP_PRIV_PACK(out, scalar.u8);  break;
-    case SWS_PIXEL_U16: SWS_OP_PRIV_PACK(out, scalar.u16); break;
-    case SWS_PIXEL_U32: SWS_OP_PRIV_PACK(out, scalar.u32); break;
-    case SWS_PIXEL_F32: SWS_OP_PRIV_PACK(out, scalar.f32); break;
-    default: return AVERROR(EINVAL);
-    }
-
-    return 0;
-}
-
 int ff_sws_setup_vec4(const SwsImplParams *params, SwsImplResult *out)
 {
     const SwsUOp *uop = params->uop;
