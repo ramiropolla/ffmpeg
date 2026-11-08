@@ -36,7 +36,7 @@ static bool uop_supports_x4(const SwsUOp *uop)
 {
     switch (uop->uop) {
     case SWS_UOP_TO_F32:
-        return uop->type == SWS_PIXEL_U8 || uop->type == SWS_PIXEL_U16;
+        return uop->type != SWS_PIXEL_F32;
     case SWS_UOP_LINEAR_FMA: {
         /* Up to 3 inputs can be saved with 4 banks (12 temps). */
         if (uop->type != SWS_PIXEL_F32)
@@ -53,12 +53,19 @@ static bool uop_supports_x4(const SwsUOp *uop)
     case SWS_UOP_READ_PLANAR:
     case SWS_UOP_WRITE_PLANAR:
     case SWS_UOP_SWAP_BYTES:
+    case SWS_UOP_CLEAR:
+    case SWS_UOP_UNPACK:
+    case SWS_UOP_PACK:
         return true;
+    case SWS_UOP_TO_U32:
+        return uop->type != SWS_PIXEL_U32;
+    case SWS_UOP_TO_U8:
+    case SWS_UOP_TO_U16:
+        /* from f32 or u32 */
+        return ff_sws_pixel_type_size(uop->type) == 4;
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
     case SWS_UOP_SCALE:
-    case SWS_UOP_TO_U8:
-    case SWS_UOP_TO_U16:
     case SWS_UOP_SAT_U8:
     case SWS_UOP_SAT_U16:
         return uop->type == SWS_PIXEL_F32;

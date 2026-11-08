@@ -243,6 +243,9 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
         if (s->use_vh) {
             i_ldr(r, v_q(regs->dh[i]), src);                        CMTF("vh[%u] = impl->priv.v128[%d];", i, k - 1);
         }
+        for (int b = 2; b < s->nbanks; b++) {
+            i_ldr(r, v_q(bank_dst(regs, b)[i]), src);               CMTF("v%d[%u] = impl->priv.v128[%d];", b, i, k - 1);
+        }
     }
     if (k)
         asmgen_set_load_cont_node(s);
