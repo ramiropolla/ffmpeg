@@ -179,13 +179,14 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
     case SWS_UOP_TO_U32:
     case SWS_UOP_TO_F32:
         if (convert_u8_tbl(p)) {
-            /* Indices placing bytes 0-3 and 4-7 into the low byte of each
-             * 32-bit element; out-of-range indices produce zeros. */
-            uint8_t idx[32];
+            /* Indices placing each byte into the low byte of a 32-bit
+             * element, 4 bytes per vector; out-of-range indices produce
+             * zeros. */
+            uint8_t idx[64];
             memset(idx, 0xff, sizeof(idx));
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < p->block_size; i++)
                 idx[i * 4] = i;
-            ff_sws_op_priv_pack(out, idx, sizeof(idx));
+            ff_sws_op_priv_pack(out, idx, 4 * p->block_size);
         }
         return 0;
     case SWS_UOP_DITHER:
@@ -204,8 +205,7 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
-    /* Use at most two full vregs during the widest precision section */
-    int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
+    const int block_size = aarch64_block_size(uops);
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)
