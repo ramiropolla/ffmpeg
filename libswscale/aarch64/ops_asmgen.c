@@ -691,8 +691,10 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     const RasmOp fbits = IMM(satfx ? 32 - 8 * dst_el_size : 0);
 
     /**
-     * Zero-extension is done by interleaving with a zero vector (zip1/zip2),
-     * since uxtl/uxtl2 (ushll) only execute on one pipeline on some cores.
+     * Zero-extension of the high halves is done by interleaving with a zero
+     * vector (zip2) instead of uxtl2, since uxtl/uxtl2 (ushll) only execute
+     * on one pipeline on some cores. The low halves still use uxtl, which
+     * spreads the work over both pipelines.
      */
     AArch64VecViews vzero = a64op_vec_views(regs->vt[11]);
     bool have_zero = false;
@@ -789,7 +791,7 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
                     if (b & 1) {
                         LOOP_MASK(p, i) i_zip2(r, d[i].h8, src[i].h8, vzero.h8);
                     } else {
-                        LOOP_MASK(p, i) i_zip1(r, d[i].h8, src[i].h8, vzero.h8);
+                        LOOP_MASK(p, i) i_uxtl(r, d[i].s4, src[i].h4);
                     }
                 }
             }
@@ -813,8 +815,7 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     } else if (p->block_size == 8) {
         if (src_el_size == 1 && dst_el_size > src_el_size) {
             rasm_add_comment(r, "u8 -> u16");
-            NEED_ZERO();
-            LOOP_MASK(p, i) i_zip1 (r, dl[i].b16,   sl[i].b16,   vzero.b16);
+            LOOP_MASK(p, i) i_uxtl (r, dl[i].h8,    sl[i].b8);
             memcpy(sl, dl, sizeof(sl));
             src_el_size = 2;
         } else if (src_el_size == 4 && dst_el_size < src_el_size) {
@@ -836,7 +837,7 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             rasm_add_comment(r, "u16 -> u32");
             NEED_ZERO();
             LOOP_MASK(p, i) i_zip2 (r, dh[i].h8,    sl[i].h8,    vzero.h8);
-            LOOP_MASK(p, i) i_zip1 (r, dl[i].h8,    sl[i].h8,    vzero.h8);
+            LOOP_MASK(p, i) i_uxtl (r, dl[i].s4,    sl[i].h4);
             memcpy(sl, dl, sizeof(sl));
             memcpy(sh, dh, sizeof(sh));
             src_el_size = 4;
@@ -858,7 +859,7 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             rasm_add_comment(r, "u8 -> u16");
             NEED_ZERO();
             LOOP_MASK(p, i) i_zip2 (r, dh[i].b16,   sl[i].b16,   vzero.b16);
-            LOOP_MASK(p, i) i_zip1 (r, dl[i].b16,   sl[i].b16,   vzero.b16);
+            LOOP_MASK(p, i) i_uxtl (r, dl[i].h8,    sl[i].b8);
             memcpy(sl, dl, sizeof(sl));
             memcpy(sh, dh, sizeof(sh));
         } else if (src_el_size == 2 && dst_el_size == 1) {
