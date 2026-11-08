@@ -115,6 +115,34 @@ static inline bool linear_interleaved(const SwsAArch64OpImplParams *params)
 }
 
 /**
+ * Inputs of an interleaved SWS_UOP_LINEAR that must be saved, since they are
+ * read after their register has been overwritten. The first term of every
+ * row (which writes the output register) is emitted before all other terms.
+ */
+static inline SwsCompMask linear_interleaved_save_mask(const SwsAArch64OpImplParams *params)
+{
+    SwsCompMask save_mask = 0;
+    bool overwritten[4] = { false, false, false, false };
+    for (int t = 0; t < 5; t++) {
+        LOOP_MASK(params, i) {
+            int n = 0;
+            for (int j = 0; j < 5; j++) {
+                int src_j = (j == 0) ? 4 : (j - 1);
+                if (params->par.lin.zero & SWS_MASK(i, src_j))
+                    continue;
+                if (n++ != t)
+                    continue;
+                if (src_j != 4 && overwritten[src_j])
+                    save_mask |= SWS_COMP(src_j);
+            }
+            if (t == 0)
+                overwritten[i] = true;
+        }
+    }
+    return save_mask;
+}
+
+/**
  * Number of rows with a non-zero offset. These offsets are additionally stored
  * pre-broadcast after the coefficient vectors, one vector per row.
  */
