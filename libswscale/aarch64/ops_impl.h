@@ -83,6 +83,26 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
 }
 
 /**
+ * Components of SWS_UOP_CLEAR/MIN/MAX whose constant is stored in impl->priv,
+ * as one pre-broadcast vector per component (in component order).
+ */
+static inline SwsCompMask const_vec_mask(const SwsAArch64OpImplParams *params)
+{
+    SwsCompMask mask = params->mask;
+    if (params->uop == SWS_UOP_CLEAR)
+        mask &= ~(params->par.clear.zero | params->par.clear.one);
+    return mask;
+}
+
+static inline int const_vec_count(const SwsAArch64OpImplParams *params)
+{
+    int count = 0;
+    LOOP(const_vec_mask(params), i)
+        count++;
+    return count;
+}
+
+/**
  * Number of bytes of private data consumed by each kernel; must match what
  * aarch64_setup() packs.
  */
@@ -91,10 +111,11 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
     switch (params->uop) {
     case SWS_UOP_READ_BIT:
     case SWS_UOP_WRITE_BIT:
+        return 16; /* one full vector register */
     case SWS_UOP_CLEAR:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
-        return 16; /* one full vector register */
+        return 16 * const_vec_count(params); /* pre-broadcast constants */
     case SWS_UOP_SCALE:
         return ff_sws_pixel_type_size(params->type);
     case SWS_UOP_LINEAR:
