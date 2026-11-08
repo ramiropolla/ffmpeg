@@ -291,6 +291,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_REV16,
     AARCH64_INSN_REV32,
     AARCH64_INSN_SHL,
+    AARCH64_INSN_SLI,
     AARCH64_INSN_ST1,
     AARCH64_INSN_ST2,
     AARCH64_INSN_ST3,
@@ -594,6 +595,7 @@ static inline RasmOp a64cond_nv(void) { return a64op_cond(AARCH64_COND_NV); }
 #define i_rev16(rctx,  op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_REV16,  op0, op1, OPN, OPN)
 #define i_rev32(rctx,  op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_REV32,  op0, op1, OPN, OPN)
 #define i_shl(rctx,    op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_SHL,    op0, op1, op2, OPN)
+#define i_sli(rctx,    op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_SLI,    op0, op1, op2, OPN)
 #define i_st1(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_ST1,    op0, op1, OPN, OPN)
 #define i_st2(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_ST2,    op0, op1, OPN, OPN)
 #define i_st3(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_ST3,    op0, op1, OPN, OPN)

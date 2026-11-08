@@ -293,6 +293,7 @@ static const char insn_names[AARCH64_INSN_NB][8] = {
     [AARCH64_INSN_REV16 ] = "rev16",
     [AARCH64_INSN_REV32 ] = "rev32",
     [AARCH64_INSN_SHL   ] = "shl",
+    [AARCH64_INSN_SLI   ] = "sli",
     [AARCH64_INSN_ST1   ] = "st1",
     [AARCH64_INSN_ST2   ] = "st2",
     [AARCH64_INSN_ST3   ] = "st3",
