@@ -665,7 +665,9 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
         RasmNode *node = rasm_set_current_node(r, s->load_cont_node);
         RasmOp impl_pre = a64op_pre(s->impl, offsetof_impl_priv + priv_size);
         i_ldr(r, s->cont, impl_pre);                    CMT("SwsFuncPtr cont = (++impl)->func;");
-        rasm_set_current_node(r, node);
+        /* If nothing follows load_cont_node, keep appending after the load. */
+        if (node != s->load_cont_node)
+            rasm_set_current_node(r, node);
         /* Common end for remaining CPS functions. */
         i_br (r, s->cont);                              CMT("jump to cont");
     }
