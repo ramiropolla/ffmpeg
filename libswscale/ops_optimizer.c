@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <math.h>
+
 #include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
 #include "libavutil/bswap.h"
@@ -1058,6 +1060,93 @@ static bool is_scale(const SwsUOp *op, int64_t val)
     }
 }
 
+/* Check whether the clamp value of `op` for component `c` equals `val` */
+static bool is_clamp_value(const SwsUOp *op, int c, uint32_t val)
+{
+    switch (op->type) {
+    case SWS_PIXEL_U8:  return op->data.vec4[c].u8  == val;
+    case SWS_PIXEL_U16: return op->data.vec4[c].u16 == val;
+    case SWS_PIXEL_U32: return op->data.vec4[c].u32 == val;
+    case SWS_PIXEL_F32: return op->data.vec4[c].f32 == (float) val;
+    default: return false;
+    }
+}
+
+/**
+ * Try merging the MIN/MAX clamps preceding the narrowing conversion at
+ * index `i` into a saturating conversion. Returns true if the list changed.
+ */
+static bool merge_saturate(SwsUOpList *uops, int i)
+{
+    SwsUOp *conv = &uops->ops[i];
+    const bool is_float = conv->type == SWS_PIXEL_F32;
+    SwsUOpType sat_uop;
+    uint32_t max;
+    switch (conv->uop) {
+    case SWS_UOP_TO_U8:  sat_uop = SWS_UOP_SAT_U8;  max = UINT8_MAX;  break;
+    case SWS_UOP_TO_U16: sat_uop = SWS_UOP_SAT_U16; max = UINT16_MAX; break;
+    default: return false;
+    }
+    if (!is_float && ff_sws_pixel_type_size(conv->type) <=
+                     ff_sws_pixel_type_size(conv->uop == SWS_UOP_TO_U8 ? SWS_PIXEL_U8 : SWS_PIXEL_U16))
+        return false; /* not narrowing */
+
+    /* Components of the MIN directly before the conversion that clamp to the
+     * maximum of the target type are made redundant by saturation. */
+    SwsUOp *min = i > 0 && uops->ops[i - 1].uop == SWS_UOP_MIN &&
+                  uops->ops[i - 1].type == conv->type ? &uops->ops[i - 1] : NULL;
+    SwsCompMask min_redundant = 0;
+    for (int c = 0; min && c < 4; c++) {
+        if (SWS_COMP_TEST(min->mask, c) && SWS_COMP_TEST(conv->mask, c) &&
+            is_clamp_value(min, c, max))
+            min_redundant |= SWS_COMP(c);
+    }
+
+    /* For floating point input, MAX {0} before the conversion (or before
+     * that MIN) is also redundant, since clamping commutes with MIN when
+     * all MIN limits are non-negative, which is always the case here. */
+    const int max_idx = min ? i - 2 : i - 1;
+    SwsUOp *max_op = is_float && max_idx >= 0 && uops->ops[max_idx].uop == SWS_UOP_MAX &&
+                     uops->ops[max_idx].type == conv->type ? &uops->ops[max_idx] : NULL;
+    SwsCompMask max_redundant = 0;
+    for (int c = 0; max_op && c < 4; c++) {
+        if (SWS_COMP_TEST(max_op->mask, c) && SWS_COMP_TEST(conv->mask, c) &&
+            is_clamp_value(max_op, c, 0) && !signbit(max_op->data.vec4[c].f32))
+            max_redundant |= SWS_COMP(c);
+    }
+    if (min) {
+        for (int c = 0; c < 4; c++) {
+            if (SWS_COMP_TEST(min->mask, c) && min->data.vec4[c].f32 < 0.0f)
+                max_redundant = 0; /* MIN limit is negative, don't reorder */
+        }
+    }
+
+    /**
+     * Integer narrowing may rely on truncation, so only saturate if every
+     * converted component was explicitly clamped to the type maximum.
+     * Out-of-range float to integer conversions are never intended, so
+     * these can always saturate; only bother if a clamp is removed.
+     */
+    if (!is_float && min_redundant != conv->mask)
+        return false;
+    if (!min_redundant && !max_redundant)
+        return false;
+
+    conv->uop = sat_uop;
+    /* Remove the MIN first, since it comes after the MAX */
+    if (min) {
+        min->mask &= ~min_redundant;
+        if (!min->mask)
+            ff_sws_uop_list_remove_at(uops, i - 1, 1);
+    }
+    if (max_op) {
+        max_op->mask &= ~max_redundant;
+        if (!max_op->mask)
+            ff_sws_uop_list_remove_at(uops, max_idx, 1);
+    }
+    return true;
+}
+
 int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpFlags flags, SwsUOpList *uops)
 {
     static const SwsUOp dummy = {0};
@@ -1066,6 +1155,9 @@ retry:
     for (int i = 0; i < uops->num_ops; i++) {
         const SwsUOp *next = i < uops->num_ops - 1 ? &uops->ops[i + 1] : &dummy;
         SwsUOp *op = &uops->ops[i];
+
+        if ((flags & SWS_UOP_FLAG_SAT_CONVERT) && merge_saturate(uops, i))
+            goto retry;
 
         switch (op->uop) {
         case SWS_UOP_TO_U16:
