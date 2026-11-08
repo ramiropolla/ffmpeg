@@ -488,10 +488,6 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
                              SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
-    RasmOp *sl    = regs->sl;
-    RasmOp *sh    = regs->sh;
-    RasmOp *dl    = regs->dl;
-    RasmOp *dh    = regs->dh;
     RasmOp *vmask = regs->vk;
 
     const int offsets[4] = {
@@ -507,30 +503,27 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
      * doesn't need masking if it extends up to the most significant bit.
      */
     SwsCompMask and_mask = 0;
-    LOOP_MASK_BWD      (p, i) {
-        if (offsets[i]) {
-            i_ushr  (r, dl[i], sl[0], IMM(offsets[i])); CMTF("vl[%u] >>= %u;", i, offsets[i]);
-            if (unpack_needs_mask(p, i))
-                and_mask |= SWS_COMP(i);
-        } else if (unpack_needs_mask(p, i)) {
-            i_and16b(r, dl[i], sl[0], vmask[i]);        CMTF("vl[%u] = vl[0] & 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1);
-        } else if (i) {
-            i_mov16b(r, dl[i], sl[0]);                  CMTF("vl[%u] = vl[0];", i);
-        }
-    }
-    LOOP_MASK_BWD_VH(s, p, i) {
-        if (offsets[i]) {
-            i_ushr  (r, dh[i], sh[0], IMM(offsets[i])); CMTF("vh[%u] >>= %u;", i, offsets[i]);
-        } else if (unpack_needs_mask(p, i)) {
-            i_and16b(r, dh[i], sh[0], vmask[i]);        CMTF("vh[%u] = vh[0] & 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1);
-        } else if (i) {
-            i_mov16b(r, dh[i], sh[0]);                  CMTF("vh[%u] = vh[0];", i);
+    for (int b = 0; b < s->nbanks; b++) {
+        RasmOp *sx = bank_src(regs, b);
+        RasmOp *dx = bank_dst(regs, b);
+        LOOP_MASK_BWD(p, i) {
+            if (offsets[i]) {
+                i_ushr  (r, dx[i], sx[0], IMM(offsets[i])); CMTF("v%c[%u] >>= %u;", "lh23"[b], i, offsets[i]);
+                if (unpack_needs_mask(p, i))
+                    and_mask |= SWS_COMP(i);
+            } else if (unpack_needs_mask(p, i)) {
+                i_and16b(r, dx[i], sx[0], vmask[i]);        CMTF("v%c[%u] = v%c[0] & 0x%x;", "lh23"[b], i, "lh23"[b], (1u << p->par.pack.pattern[i]) - 1);
+            } else if (i) {
+                i_mov16b(r, dx[i], sx[0]);                  CMTF("v%c[%u] = v%c[0];", "lh23"[b], i, "lh23"[b]);
+            }
         }
     }
 
     /* Apply remaining masks. */
-    LOOP      (and_mask, i) { i_and16b(r, dl[i], dl[i], vmask[i]); CMTF("vl[%u] &= 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1); }
-    LOOP_VH(s, and_mask, i) { i_and16b(r, dh[i], dh[i], vmask[i]); CMTF("vh[%u] &= 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1); }
+    for (int b = 0; b < s->nbanks; b++) {
+        RasmOp *dx = bank_dst(regs, b);
+        LOOP(and_mask, i) { i_and16b(r, dx[i], dx[i], vmask[i]); CMTF("v%c[%u] &= 0x%x;", "lh23"[b], i, (1u << p->par.pack.pattern[i]) - 1); }
+    }
 }
 
 /*********************************************************************/
@@ -541,10 +534,6 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
                            SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
-    RasmOp *sl = regs->sl;
-    RasmOp *sh = regs->sh;
-    RasmOp *dl = regs->dl;
-    RasmOp *dh = regs->dh;
 
     /**
      * Combine the components from the most significant one downwards, by
@@ -558,25 +547,24 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
     LOOP_MASK(p, i) {
         if (prev >= 0) {
             const int shift = pack_offset(p, prev) - pack_offset(p, i);
-            i_sli    (r, dl[i], sl[prev], IMM(shift)); CMTF("vl[%u] |= vl[%u] << %u;", i, prev, shift);
-            if (s->use_vh) {
-                i_sli(r, dh[i], sh[prev], IMM(shift)); CMTF("vh[%u] |= vh[%u] << %u;", i, prev, shift);
+            for (int b = 0; b < s->nbanks; b++) {
+                RasmOp *sx = bank_src(regs, b);
+                RasmOp *dx = bank_dst(regs, b);
+                i_sli(r, dx[i], sx[prev], IMM(shift)); CMTF("v%c[%u] |= v%c[%u] << %u;", "lh23"[b], i, "lh23"[b], prev, shift);
+                sx[i] = dx[i];
             }
-            sl[i] = dl[i];
-            sh[i] = dh[i];
         }
         prev = i;
     }
     const int last_offset = pack_offset(p, prev);
-    if (last_offset) {
-        i_shl       (r, dl[0], sl[prev], IMM(last_offset)); CMTF("vl[0] = vl[%u] << %u;", prev, last_offset);
-        if (s->use_vh) {
-            i_shl   (r, dh[0], sh[prev], IMM(last_offset)); CMTF("vh[0] = vh[%u] << %u;", prev, last_offset);
-        }
-    } else if (prev > 0) {
-        i_mov16b    (r, dl[0], sl[prev]);              CMTF("vl[0] = vl[%u];", prev);
-        if (s->use_vh) {
-            i_mov16b(r, dh[0], sh[prev]);              CMTF("vh[0] = vh[%u];", prev);
+    for (int b = 0; b < s->nbanks; b++) {
+        RasmOp *sx = bank_src(regs, b);
+        RasmOp *dx = bank_dst(regs, b);
+        const char c = "lh23"[b];
+        if (last_offset) {
+            i_shl   (r, dx[0], sx[prev], IMM(last_offset)); CMTF("v%c[0] = v%c[%u] << %u;", c, c, prev, last_offset);
+        } else if (prev > 0) {
+            i_mov16b(r, dx[0], sx[prev]);                   CMTF("v%c[0] = v%c[%u];", c, c, prev);
         }
     }
 }
@@ -646,6 +634,7 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
 
     LOOP_MASK      (p, i) { emit_clear(s, p, dl, i, "vl"); }
     LOOP_MASK_VH(s, p, i) { emit_clear(s, p, dh, i, "vh"); }
+    LOOP_MASK_B23(s, p, b, i) { emit_clear(s, p, bank_dst(regs, b), i, b == 2 ? "v2" : "v3"); }
 }
 
 /*********************************************************************/
@@ -723,11 +712,26 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     AArch64VecViews d2[4] = A64OP_VEC_VIEWS4(regs->d2);
     AArch64VecViews d3[4] = A64OP_VEC_VIEWS4(regs->d3);
     const bool x4 = p->block_size == 16 && (src_el_size == 4 || dst_el_size == 4);
-    if (x4 && p->type == SWS_PIXEL_F32) {
-        av_assert0(dst_el_size < 4);
-        rasm_add_comment(r, "f32 -> u32 (banks 2-3)");
-        LOOP_MASK(p, i) i_fcvtzu(r, d2[i].s4, d2[i].s4);
-        LOOP_MASK(p, i) i_fcvtzu(r, d3[i].s4, d3[i].s4);
+    if (x4 && src_el_size == 4 && dst_el_size == 4) {
+        /* f32 <-> u32 */
+        if (p->type == SWS_PIXEL_F32) {
+            rasm_add_comment(r, "f32 -> u32 (banks 2-3)");
+            LOOP_MASK(p, i) i_fcvtzu(r, d2[i].s4, d2[i].s4);
+            LOOP_MASK(p, i) i_fcvtzu(r, d3[i].s4, d3[i].s4);
+        } else if (to_type == SWS_PIXEL_F32) {
+            rasm_add_comment(r, "u32 -> f32");
+            LOOP_MASK(p, i) i_ucvtf(r, dl[i].s4, sl[i].s4);
+            LOOP_MASK(p, i) i_ucvtf(r, dh[i].s4, sh[i].s4);
+            LOOP_MASK(p, i) i_ucvtf(r, d2[i].s4, d2[i].s4);
+            LOOP_MASK(p, i) i_ucvtf(r, d3[i].s4, d3[i].s4);
+        }
+        return;
+    } else if (x4 && src_el_size == 4) {
+        if (p->type == SWS_PIXEL_F32) {
+            rasm_add_comment(r, "f32 -> u32 (banks 2-3)");
+            LOOP_MASK(p, i) i_fcvtzu(r, d2[i].s4, d2[i].s4);
+            LOOP_MASK(p, i) i_fcvtzu(r, d3[i].s4, d3[i].s4);
+        }
         rasm_add_comment(r, "u32 -> u16");
         if (sat) {
             LOOP_MASK(p, i) i_uqxtn (r, dl[i].h4, sl[i].s4);
