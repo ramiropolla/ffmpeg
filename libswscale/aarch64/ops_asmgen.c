@@ -1040,7 +1040,7 @@ static void linear_load_offset(SwsAArch64Context *s, const SwsAArch64OpImplParam
 }
 
 static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                        SwsAArch64OpRegs *regs, bool vh_pass, SwsCompMask preloaded)
+                        SwsAArch64OpRegs *regs, int bank, SwsCompMask preloaded)
 {
     RasmContext *r = s->rctx;
     /**
@@ -1049,11 +1049,11 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
      */
     RasmOp *vt = regs->vt;
     RasmOp *vtmp = &vt[8];
-    RasmOp *sx = vh_pass ? regs->sh : regs->sl;
-    RasmOp *dx = vh_pass ? regs->dh : regs->dl;
-    char cvh = vh_pass ? 'h' : 'l';
+    RasmOp *sx = bank_src(regs, bank);
+    RasmOp *dx = bank_dst(regs, bank);
+    char cvh = "lh23"[bank];
 
-    if (vh_pass && !s->use_vh)
+    if (bank == 1 && !s->use_vh)
         return;
 
     /**
@@ -1073,7 +1073,7 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             RasmOp vcoeff = regs->linear_vcoeff[i][j];
             if (first && is_offset) {
                 if (!(preloaded & SWS_COMP(i))) {
-                    linear_load_offset(s, p, regs, vh_pass, i);
+                    linear_load_offset(s, p, regs, bank, i);
                 } else {
                     /* Separates the multiplications inserted at pre_mul from the additions. */
                     rasm_add_commentf(r, (char[64]){0}, 64, "v%c[%u] = offset[%u] (preloaded)", cvh, i, i);
@@ -1175,31 +1175,52 @@ static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     }
 
     /**
-     * Load the offsets of all rows whose output register is not read as an
-     * input by any row up front (both banks), so that in-order cores don't
-     * stall on the load right before the first multiply-accumulate.
+     * With four vector banks, banks 2-3 are processed after banks 0-1,
+     * reusing the temps that hold the saved inputs.
      */
-    SwsCompMask preloaded = 0;
-    LOOP_MASK(p, i) {
-        if (p->par.lin.zero & SWS_MASK_OFF(i))
-            continue;
-        bool read = false;
-        LOOP_MASK(p, k) {
-            for (int j = 0; j < 4; j++) {
-                if (!(p->par.lin.zero & SWS_MASK(k, j)) &&
-                    a64op_vec_n(regs->sl[j]) == a64op_vec_n(regs->dl[i]))
-                    read = true;
+    for (int b0 = 0; b0 < FFMAX(s->nbanks, 2); b0 += 2) {
+        if (b0) {
+            RasmContext *r = s->rctx;
+            for (int b = b0; b < b0 + 2; b++) {
+                RasmOp *src = bank_src(regs, b);
+                RasmOp *t = &regs->vt[4 * (b - b0)];
+                LOOP(regs->linear_save_mask, i) {
+                    i_mov16b(r, t[i], src[i]);  CMTF("vsrc%c[%u] = v%c[%u];", "lh23"[b], i, "lh23"[b], i);
+                    src[i] = t[i];
+                }
             }
         }
-        if (!read)
-            preloaded |= SWS_COMP(i);
-    }
-    LOOP      (preloaded, i) linear_load_offset(s, p, regs, false, i);
-    LOOP_VH(s, preloaded, i) linear_load_offset(s, p, regs, true,  i);
 
-    /* Perform linear passes for low and high vector banks. */
-    linear_pass(s, p, regs, false, preloaded);
-    linear_pass(s, p, regs, true,  preloaded);
+        /**
+         * Load the offsets of all rows whose output register is not read
+         * as an input by any row up front (both banks), so that in-order
+         * cores don't stall on the load right before the first
+         * multiply-accumulate.
+         */
+        RasmOp *sx = bank_src(regs, b0);
+        RasmOp *dx = bank_dst(regs, b0);
+        SwsCompMask preloaded = 0;
+        LOOP_MASK(p, i) {
+            if (p->par.lin.zero & SWS_MASK_OFF(i))
+                continue;
+            bool read = false;
+            LOOP_MASK(p, k) {
+                for (int j = 0; j < 4; j++) {
+                    if (!(p->par.lin.zero & SWS_MASK(k, j)) &&
+                        a64op_vec_n(sx[j]) == a64op_vec_n(dx[i]))
+                        read = true;
+                }
+            }
+            if (!read)
+                preloaded |= SWS_COMP(i);
+        }
+        LOOP      (preloaded, i) linear_load_offset(s, p, regs, b0,     i);
+        LOOP_VH(s, preloaded, i) linear_load_offset(s, p, regs, b0 + 1, i);
+
+        /* Perform linear passes for both vector banks. */
+        linear_pass(s, p, regs, b0,     preloaded);
+        linear_pass(s, p, regs, b0 + 1, preloaded);
+    }
 }
 
 /*********************************************************************/

@@ -387,7 +387,7 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
      * Save rows that need to be used as input after they have been already
      * written to.
      */
-    if (s->nbanks == 4) {
+    if (s->nbanks == 4 && linear_interleaved(p)) {
         /* At most 3 inputs can be saved with 4 banks (12 temps). */
         int nsaved = 0;
         LOOP(save_mask, i)
@@ -404,6 +404,11 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
         }
         return;
     }
+    /**
+     * Without interleaving, banks 2-3 are processed after banks 0-1, and
+     * their inputs are saved into the same temps in asmgen_op_linear().
+     */
+    regs->linear_save_mask = save_mask;
     RasmOp *tl = &vt[0];
     RasmOp *th = &vt[4];
     LOOP      (save_mask, i) { i_mov16b(r, tl[i], sl[i]);  CMTF("vsrcl[%u] = vl[%u];", i, i); }
