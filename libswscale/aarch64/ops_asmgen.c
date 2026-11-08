@@ -855,8 +855,32 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
 /* SWS_UOP_LINEAR */
 /* SWS_UOP_LINEAR_FMA */
 
+/* Position of the pre-broadcast offset of row `row` in impl->priv. */
+static int linear_offset_pos(const SwsAArch64OpImplParams *p, int row)
+{
+    int pos = 16 * linear_num_vregs(p);
+    LOOP_MASK(p, i) {
+        if (i == row)
+            break;
+        if (!(p->par.lin.zero & SWS_MASK_OFF(i)))
+            pos += 16;
+    }
+    return pos;
+}
+
+static void linear_load_offset(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                               SwsAArch64OpRegs *regs, bool vh_pass, int i)
+{
+    RasmContext *r = s->rctx;
+    const bool full = p->block_size * ff_sws_pixel_type_size(p->type) >= 16;
+    RasmOp dst = (vh_pass ? regs->dh : regs->dl)[i];
+    RasmOp src = a64op_off(regs->linear_ptr, linear_offset_pos(p, i));
+    i_ldr(r, full ? v_q(dst) : v_d(dst), src);
+    CMTF("v%c[%u]  = broadcast(offset[%u]);", vh_pass ? 'h' : 'l', i, i);
+}
+
 static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                        SwsAArch64OpRegs *regs, bool vh_pass)
+                        SwsAArch64OpRegs *regs, bool vh_pass, SwsCompMask preloaded)
 {
     RasmContext *r = s->rctx;
     /**
@@ -888,7 +912,12 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             RasmOp vsrc = sx[src_j];
             RasmOp vcoeff = regs->linear_vcoeff[i][j];
             if (first && is_offset) {
-                i_dup (r, dx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(offset[%u]);", cvh, i, i);
+                if (!(preloaded & SWS_COMP(i))) {
+                    linear_load_offset(s, p, regs, vh_pass, i);
+                } else {
+                    /* Separates the multiplications inserted at pre_mul from the additions. */
+                    rasm_add_commentf(r, (char[64]){0}, 64, "v%c[%u] = offset[%u] (preloaded)", cvh, i, i);
+                }
             } else if (first && !is_offset) {
                 if (p->par.lin.one & SWS_MASK(i, src_j)) {
                     i_mov16b(r, dx[i], vsrc);           CMTF("v%c[%u]  = vsrc%c[%u];", cvh, i, cvh, src_j);
@@ -932,9 +961,32 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
+    /**
+     * Load the offsets of all rows whose output register is not read as an
+     * input by any row up front (both banks), so that in-order cores don't
+     * stall on the load right before the first multiply-accumulate.
+     */
+    SwsCompMask preloaded = 0;
+    LOOP_MASK(p, i) {
+        if (p->par.lin.zero & SWS_MASK_OFF(i))
+            continue;
+        bool read = false;
+        LOOP_MASK(p, k) {
+            for (int j = 0; j < 4; j++) {
+                if (!(p->par.lin.zero & SWS_MASK(k, j)) &&
+                    a64op_vec_n(regs->sl[j]) == a64op_vec_n(regs->dl[i]))
+                    read = true;
+            }
+        }
+        if (!read)
+            preloaded |= SWS_COMP(i);
+    }
+    LOOP      (preloaded, i) linear_load_offset(s, p, regs, false, i);
+    LOOP_VH(s, preloaded, i) linear_load_offset(s, p, regs, true,  i);
+
     /* Perform linear passes for low and high vector banks. */
-    linear_pass(s, p, regs, false);
-    linear_pass(s, p, regs, true);
+    linear_pass(s, p, regs, false, preloaded);
+    linear_pass(s, p, regs, true,  preloaded);
 }
 
 /*********************************************************************/
