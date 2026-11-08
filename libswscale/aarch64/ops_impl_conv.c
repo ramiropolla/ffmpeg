@@ -30,16 +30,20 @@
 /**
  * Whether the kernel for `uop` supports 32-bit elements with block_size 16
  * (four vector banks). This is only implemented for the kernels commonly
- * used by floating point conversions, with components xyz.
+ * used by floating point conversions.
  */
 static bool uop_supports_x4(const SwsUOp *uop)
 {
-    if (uop->mask & ~SWS_COMP_ELEMS(3))
-        return false;
     switch (uop->uop) {
     case SWS_UOP_TO_F32:
         return uop->type == SWS_PIXEL_U8 || uop->type == SWS_PIXEL_U16;
     case SWS_UOP_LINEAR_FMA:
+        /* Saving the inputs of 4 components takes more than 12 temps. */
+        return uop->type == SWS_PIXEL_F32 && !(uop->mask & ~SWS_COMP_ELEMS(3));
+    case SWS_UOP_READ_PLANAR:
+    case SWS_UOP_WRITE_PLANAR:
+    case SWS_UOP_SWAP_BYTES:
+        return true;
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
     case SWS_UOP_SCALE:
