@@ -105,6 +105,16 @@ static inline bool unpack_needs_mask(const SwsAArch64OpImplParams *params, int i
 }
 
 /**
+ * Whether the terms of SWS_UOP_LINEAR are emitted interleaved across rows
+ * and vector banks (round-robin by term index), instead of row by row. This
+ * is done for all types except for the f32 fmul+fadd path.
+ */
+static inline bool linear_interleaved(const SwsAArch64OpImplParams *params)
+{
+    return params->type != SWS_PIXEL_F32 || params->uop == SWS_UOP_LINEAR_FMA;
+}
+
+/**
  * Number of rows with a non-zero offset. These offsets are additionally stored
  * pre-broadcast after the coefficient vectors, one vector per row.
  */

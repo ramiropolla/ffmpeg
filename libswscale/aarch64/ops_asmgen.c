@@ -987,9 +987,63 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     }
 }
 
+/* Emit term `t` (the t-th non-zero coefficient) of row `i` for one bank. */
+static void linear_term(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                        SwsAArch64OpRegs *regs, bool vh_pass, int i, int t)
+{
+    RasmContext *r = s->rctx;
+    RasmOp *sx = vh_pass ? regs->sh : regs->sl;
+    RasmOp *dx = vh_pass ? regs->dh : regs->dl;
+    char cvh = vh_pass ? 'h' : 'l';
+
+    int n = 0;
+    for (int j = 0; j < 5; j++) {
+        bool is_offset = (j == 0);
+        int src_j = is_offset ? 4 : (j - 1);
+        if (p->par.lin.zero & SWS_MASK(i, src_j))
+            continue;
+        if (n++ != t)
+            continue;
+        RasmOp vsrc = sx[src_j];
+        RasmOp vcoeff = regs->linear_vcoeff[i][j];
+        if (t == 0 && is_offset) {
+            linear_load_offset(s, p, regs, vh_pass, i);
+        } else if (t == 0) {
+            if (p->par.lin.one & SWS_MASK(i, src_j)) {
+                i_mov16b(r, dx[i], vsrc);               CMTF("v%c[%u]  = vsrc%c[%u];", cvh, i, cvh, src_j);
+            } else if (p->type == SWS_PIXEL_F32) {
+                i_fmul  (r, dx[i], vsrc, vcoeff);       CMTF("v%c[%u]  = vsrc%c[%u] * coeff[%u][%u];", cvh, i, cvh, src_j, i, src_j);
+            } else {
+                i_mul   (r, dx[i], vsrc, vcoeff);       CMTF("v%c[%u]  = vsrc%c[%u] * coeff[%u][%u];", cvh, i, cvh, src_j, i, src_j);
+            }
+        } else if (p->type != SWS_PIXEL_F32) {
+            i_mla (r, dx[i], vsrc, vcoeff);             CMTF("v%c[%u] += vsrc%c[%u] * coeff[%u][%u];", cvh, i, cvh, src_j, i, src_j);
+        } else {
+            i_fmla(r, dx[i], vsrc, vcoeff);             CMTF("v%c[%u] += vsrc%c[%u] * coeff[%u][%u];", cvh, i, cvh, src_j, i, src_j);
+        }
+        return;
+    }
+}
+
 static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
+    if (linear_interleaved(p)) {
+        /**
+         * Emit the terms round-robin across rows and vector banks, so that
+         * consecutive instructions are independent. Each row still
+         * accumulates its terms in the same order.
+         */
+        for (int t = 0; t < 5; t++) {
+            LOOP_MASK(p, i) {
+                linear_term(s, p, regs, false, i, t);
+                if (s->use_vh)
+                    linear_term(s, p, regs, true, i, t);
+            }
+        }
+        return;
+    }
+
     /**
      * Load the offsets of all rows whose output register is not read as an
      * input by any row up front (both banks), so that in-order cores don't
