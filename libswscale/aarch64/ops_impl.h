@@ -83,6 +83,20 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
 }
 
 /**
+ * Number of rows with a non-zero offset. These offsets are additionally stored
+ * pre-broadcast after the coefficient vectors, one vector per row.
+ */
+static inline int linear_num_offsets(const SwsAArch64OpImplParams *params)
+{
+    int count = 0;
+    LOOP_MASK(params, i) {
+        if (!(params->par.lin.zero & SWS_MASK_OFF(i)))
+            count++;
+    }
+    return count;
+}
+
+/**
  * Components of SWS_UOP_CLEAR/MIN/MAX whose constant is stored in impl->priv,
  * as one pre-broadcast vector per component (in component order).
  */
@@ -120,7 +134,8 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
         return 16; /* pre-broadcast scalar */
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
-        return 16 * linear_num_vregs(params); /* packed coefficients */
+        /* packed coefficients, then pre-broadcast offsets */
+        return 16 * (linear_num_vregs(params) + linear_num_offsets(params));
     case SWS_UOP_DITHER:
         return 8; /* pointer */
     default:

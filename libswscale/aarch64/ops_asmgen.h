@@ -35,7 +35,10 @@ typedef struct SwsAArch64OpRegs {
     /* Op-specific registers. */
     union {
         RasmOp dither_ptr;
-        RasmOp linear_vcoeff[4][5];
+        struct {
+            RasmOp linear_vcoeff[4][5];
+            RasmOp linear_ptr; /* points to the packed coefficients */
+        };
     };
 } SwsAArch64OpRegs;
 
