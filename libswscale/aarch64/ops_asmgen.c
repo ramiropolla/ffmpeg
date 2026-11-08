@@ -675,11 +675,20 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     size_t dst_el_size = ff_sws_pixel_type_size(to_type);
 
     /**
-     * Saturating conversions use the saturating narrowing instructions. The
-     * lower bound is handled by fcvtzu for floats, and is implicit for
-     * unsigned integers.
+     * Saturating conversions from unsigned integers use the saturating
+     * narrowing instructions (the lower bound is implicit).
      */
     const bool sat = (p->uop == SWS_UOP_SAT_U8 || p->uop == SWS_UOP_SAT_U16);
+
+    /**
+     * Saturating conversions from f32 convert to fixed-point, with the
+     * integer part in the top bits of each u32 lane: fcvtzu saturates at 0
+     * and exactly at the upper bound of the destination type, and narrowing
+     * just keeps the top halves (uzp2), which executes on more pipelines
+     * than uqxtn on some cores.
+     */
+    const bool satfx = sat && p->type == SWS_PIXEL_F32;
+    const RasmOp fbits = IMM(satfx ? 32 - 8 * dst_el_size : 0);
 
     /**
      * Zero-extension is done by interleaving with a zero vector (zip1/zip2),
@@ -702,8 +711,13 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
      */
     if (p->type == SWS_PIXEL_F32) {
         rasm_add_comment(r, "f32 -> u32");
-        LOOP_MASK(p, i) i_fcvtzu(r, dl[i].s4, sl[i].s4);
-        LOOP_MASK(p, i) i_fcvtzu(r, dh[i].s4, sh[i].s4);
+        if (satfx) {
+            LOOP_MASK(p, i) i_fcvtzu_fx(r, dl[i].s4, sl[i].s4, fbits);
+            LOOP_MASK(p, i) i_fcvtzu_fx(r, dh[i].s4, sh[i].s4, fbits);
+        } else {
+            LOOP_MASK(p, i) i_fcvtzu(r, dl[i].s4, sl[i].s4);
+            LOOP_MASK(p, i) i_fcvtzu(r, dh[i].s4, sh[i].s4);
+        }
         memcpy(sl, dl, sizeof(sl));
         memcpy(sh, dh, sizeof(sh));
     }
@@ -727,13 +741,20 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
         }
         return;
     } else if (x4 && src_el_size == 4) {
-        if (p->type == SWS_PIXEL_F32) {
+        if (satfx) {
+            rasm_add_comment(r, "f32 -> u32 (banks 2-3)");
+            LOOP_MASK(p, i) i_fcvtzu_fx(r, d2[i].s4, d2[i].s4, fbits);
+            LOOP_MASK(p, i) i_fcvtzu_fx(r, d3[i].s4, d3[i].s4, fbits);
+        } else if (p->type == SWS_PIXEL_F32) {
             rasm_add_comment(r, "f32 -> u32 (banks 2-3)");
             LOOP_MASK(p, i) i_fcvtzu(r, d2[i].s4, d2[i].s4);
             LOOP_MASK(p, i) i_fcvtzu(r, d3[i].s4, d3[i].s4);
         }
         rasm_add_comment(r, "u32 -> u16");
-        if (sat) {
+        if (satfx) {
+            LOOP_MASK(p, i) i_uzp2  (r, dl[i].h8, sl[i].h8, sh[i].h8);
+            LOOP_MASK(p, i) i_uzp2  (r, dh[i].h8, d2[i].h8, d3[i].h8);
+        } else if (sat) {
             LOOP_MASK(p, i) i_uqxtn (r, dl[i].h4, sl[i].s4);
             LOOP_MASK(p, i) i_uqxtn2(r, dl[i].h8, sh[i].s4);
             LOOP_MASK(p, i) i_uqxtn (r, dh[i].h4, d2[i].s4);
@@ -798,7 +819,9 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             src_el_size = 2;
         } else if (src_el_size == 4 && dst_el_size < src_el_size) {
             rasm_add_comment(r, "u32 -> u16");
-            if (sat) {
+            if (satfx) {
+                LOOP_MASK(p, i) i_uzp2  (r, dl[i].h8, sl[i].h8, sh[i].h8);
+            } else if (sat) {
                 LOOP_MASK(p, i) i_uqxtn (r, dl[i].h4, sl[i].s4);
                 LOOP_MASK(p, i) i_uqxtn2(r, dl[i].h8, sh[i].s4);
             } else {
@@ -819,7 +842,10 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             src_el_size = 4;
         } else if (src_el_size == 2 && dst_el_size == 1) {
             rasm_add_comment(r, "u16 -> u8");
-            if (sat) {
+            if (satfx) {
+                /* Only the low half of the result is used. */
+                LOOP_MASK(p, i) i_uzp2 (r, dl[i].b16, sl[i].b16, sl[i].b16);
+            } else if (sat) {
                 LOOP_MASK(p, i) i_uqxtn(r, dl[i].b8, sl[i].h8);
             } else {
                 LOOP_MASK(p, i) i_xtn  (r, dl[i].b8, sl[i].h8);
@@ -837,7 +863,9 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             memcpy(sh, dh, sizeof(sh));
         } else if (src_el_size == 2 && dst_el_size == 1) {
             rasm_add_comment(r, "u16 -> u8");
-            if (sat) {
+            if (satfx) {
+                LOOP_MASK(p, i) i_uzp2  (r, dl[i].b16, sl[i].b16, sh[i].b16);
+            } else if (sat) {
                 LOOP_MASK(p, i) i_uqxtn (r, dl[i].b8,  sl[i].h8);
                 LOOP_MASK(p, i) i_uqxtn2(r, dl[i].b16, sh[i].h8);
             } else {
