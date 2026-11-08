@@ -481,10 +481,19 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         0
     };
 
-    /* Loop backwards to avoid clobbering component 0. */
+    /**
+     * Loop backwards to avoid clobbering component 0. The component at
+     * offset 0 is masked directly from component 0, and the topmost field
+     * doesn't need masking if it extends up to the most significant bit.
+     */
+    SwsCompMask and_mask = 0;
     LOOP_MASK_BWD      (p, i) {
         if (offsets[i]) {
             i_ushr  (r, dl[i], sl[0], IMM(offsets[i])); CMTF("vl[%u] >>= %u;", i, offsets[i]);
+            if (unpack_needs_mask(p, i))
+                and_mask |= SWS_COMP(i);
+        } else if (unpack_needs_mask(p, i)) {
+            i_and16b(r, dl[i], sl[0], vmask[i]);        CMTF("vl[%u] = vl[0] & 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1);
         } else if (i) {
             i_mov16b(r, dl[i], sl[0]);                  CMTF("vl[%u] = vl[0];", i);
         }
@@ -492,14 +501,16 @@ static void asmgen_op_unpack(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     LOOP_MASK_BWD_VH(s, p, i) {
         if (offsets[i]) {
             i_ushr  (r, dh[i], sh[0], IMM(offsets[i])); CMTF("vh[%u] >>= %u;", i, offsets[i]);
+        } else if (unpack_needs_mask(p, i)) {
+            i_and16b(r, dh[i], sh[0], vmask[i]);        CMTF("vh[%u] = vh[0] & 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1);
         } else if (i) {
             i_mov16b(r, dh[i], sh[0]);                  CMTF("vh[%u] = vh[0];", i);
         }
     }
 
-    /* Apply masks. */
-    LOOP_MASK_BWD      (p, i) { i_and16b(r, dl[i], dl[i], vmask[i]); CMTF("vl[%u] &= 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1); }
-    LOOP_MASK_BWD_VH(s, p, i) { i_and16b(r, dh[i], dh[i], vmask[i]); CMTF("vh[%u] &= 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1); }
+    /* Apply remaining masks. */
+    LOOP      (and_mask, i) { i_and16b(r, dl[i], dl[i], vmask[i]); CMTF("vl[%u] &= 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1); }
+    LOOP_VH(s, and_mask, i) { i_and16b(r, dh[i], dh[i], vmask[i]); CMTF("vh[%u] &= 0x%x;", i, (1u << p->par.pack.pattern[i]) - 1); }
 }
 
 /*********************************************************************/
