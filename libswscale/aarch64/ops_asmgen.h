@@ -46,6 +46,8 @@ typedef struct SwsAArch64OpRegs {
         struct {
             RasmOp linear_vcoeff[4][5];
             RasmOp linear_ptr; /* points to the packed coefficients */
+            /* inputs of banks 2-3 to save (non-interleaved, 4 banks) */
+            SwsCompMask linear_save_mask;
         };
     };
 } SwsAArch64OpRegs;
