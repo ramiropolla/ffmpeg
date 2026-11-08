@@ -316,6 +316,7 @@ static const char insn_names[AARCH64_INSN_NB][8] = {
     [AARCH64_INSN_UXTL  ] = "uxtl",
     [AARCH64_INSN_UXTL2 ] = "uxtl2",
     [AARCH64_INSN_UZP1  ] = "uzp1",
+    [AARCH64_INSN_UZP2  ] = "uzp2",
     [AARCH64_INSN_XTN   ] = "xtn",
     [AARCH64_INSN_ZIP1  ] = "zip1",
     [AARCH64_INSN_ZIP2  ] = "zip2",
