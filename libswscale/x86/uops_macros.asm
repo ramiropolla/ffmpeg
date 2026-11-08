@@ -246,6 +246,12 @@
 %macro DECL_U8_LUT_3D 1
 %endmacro
 
+%macro DECL_U8_SAT_U8 1
+%endmacro
+
+%macro DECL_U8_SAT_U16 1
+%endmacro
+
 %macro DECL_U16_READ_PLANAR 1
     DECL_OP %1, u16_read_planar_x                       , SWS_PIXEL_U16, SWS_UOP_READ_PLANAR     , 0x1
     DECL_OP %1, u16_read_planar_xy                      , SWS_PIXEL_U16, SWS_UOP_READ_PLANAR     , 0x3
@@ -464,6 +470,12 @@
 %macro DECL_U16_LUT_3D 1
 %endmacro
 
+%macro DECL_U16_SAT_U8 1
+%endmacro
+
+%macro DECL_U16_SAT_U16 1
+%endmacro
+
 %macro DECL_U32_READ_PLANAR 1
     DECL_OP %1, u32_read_planar_x                       , SWS_PIXEL_U32, SWS_UOP_READ_PLANAR     , 0x1
     DECL_OP %1, u32_read_planar_xyz                     , SWS_PIXEL_U32, SWS_UOP_READ_PLANAR     , 0x7
@@ -648,6 +660,12 @@
 %endmacro
 
 %macro DECL_U32_LUT_3D 1
+%endmacro
+
+%macro DECL_U32_SAT_U8 1
+%endmacro
+
+%macro DECL_U32_SAT_U16 1
 %endmacro
 
 %macro DECL_F32_READ_PLANAR 1
@@ -898,4 +916,10 @@
     DECL_OP %1, f32_lut_3d_xyz_dynamic                  , SWS_PIXEL_F32, SWS_UOP_LUT_3D          , 0x7, 1
     DECL_OP %1, f32_lut_3d_xyzw_static                  , SWS_PIXEL_F32, SWS_UOP_LUT_3D          , 0xf, 0
     DECL_OP %1, f32_lut_3d_xyzw_dynamic                 , SWS_PIXEL_F32, SWS_UOP_LUT_3D          , 0xf, 1
+%endmacro
+
+%macro DECL_F32_SAT_U8 1
+%endmacro
+
+%macro DECL_F32_SAT_U16 1
 %endmacro

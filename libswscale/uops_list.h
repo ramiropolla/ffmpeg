@@ -58,5 +58,7 @@
     ENTRY(SWS_UOP_CLEAR,                "clear")                     \
     ENTRY(SWS_UOP_DITHER,               "dither")                    \
     ENTRY(SWS_UOP_LUT_3D,               "lut_3d")                    \
+    ENTRY(SWS_UOP_SAT_U8,               "sat_u8")                    \
+    ENTRY(SWS_UOP_SAT_U16,              "sat_u16")                   \
 
 #endif /* SWSCALE_UOPS_LIST_H */
