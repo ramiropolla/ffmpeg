@@ -698,7 +698,16 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
         memcpy(sh, dh, sizeof(sh));
     }
 
-    if (p->block_size == 8) {
+    if (convert_u8_tbl(p)) {
+        rasm_add_comment(r, "u8 -> u32");
+        RasmOp idx_lo = v_16b(regs->vk[0]);
+        RasmOp idx_hi = v_16b(regs->vk[1]);
+        LOOP_MASK(p, i) i_tbl(r, dh[i].b16, vv_1(sl[i].b16), idx_hi);
+        LOOP_MASK(p, i) i_tbl(r, dl[i].b16, vv_1(sl[i].b16), idx_lo);
+        memcpy(sl, dl, sizeof(sl));
+        memcpy(sh, dh, sizeof(sh));
+        src_el_size = 4;
+    } else if (p->block_size == 8) {
         if (src_el_size == 1 && dst_el_size > src_el_size) {
             rasm_add_comment(r, "u8 -> u16");
             NEED_ZERO();
