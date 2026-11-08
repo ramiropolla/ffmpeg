@@ -191,20 +191,14 @@ error:
     return ret;
 }
 
-static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
-                               SwsCompiledOp *out)
+static int collect_uops(SwsContext *ctx, const SwsOpList *ops,
+                        SwsUOpFlags flags, struct AVTreeNode **root)
 {
-    struct AVTreeNode **root = (struct AVTreeNode **) ctx->opaque;
-    int ret;
-
     SwsUOpList *uops = ff_sws_uop_list_alloc();
     if (!uops)
         return AVERROR(ENOMEM);
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING | SWS_UOP_FLAG_SAT_CONVERT;
-    if (!(ctx->flags & SWS_BITEXACT))
-        flags |= SWS_UOP_FLAG_FMA;
-    ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
     if (ret == AVERROR(ENOTSUP)) {
         ret = 0;
         goto end;
@@ -212,8 +206,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto end;
 
-    /* Use at most two full vregs during the widest precision section */
-    int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
+    const int block_size = aarch64_block_size(uops);
 
     for (int i = 0; i < uops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
@@ -221,24 +214,31 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
         ret = aarch64_collect_op(&params, root);
         if (ret < 0)
             goto end;
-        if (params.uop == SWS_UOP_LINEAR_FMA && params.type == SWS_PIXEL_F32) {
-            /**
-             * Generate both sets of linear op functions that do use
-             * and do not use fmla (selected by SWS_BITEXACT).
-             */
-            params.uop = SWS_UOP_LINEAR;
-            ret = aarch64_collect_op(&params, root);
-            if (ret < 0)
-                goto end;
-        }
     }
-
-    *out = (SwsCompiledOp) { 0 };
-    ret = 0;
 
 end:
     ff_sws_uop_list_free(&uops);
     return ret;
+}
+
+static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
+                               SwsCompiledOp *out)
+{
+    struct AVTreeNode **root = (struct AVTreeNode **) ctx->opaque;
+    const SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING | SWS_UOP_FLAG_SAT_CONVERT;
+
+    /**
+     * Generate the functions used both with and without fmla (selected by
+     * SWS_BITEXACT). The uop lists, and therefore the block size, may differ.
+     */
+    int ret = collect_uops(ctx, ops, flags, root);
+    if (ret >= 0 && !(ctx->flags & SWS_BITEXACT))
+        ret = collect_uops(ctx, ops, flags | SWS_UOP_FLAG_FMA, root);
+    if (ret < 0)
+        return ret;
+
+    *out = (SwsCompiledOp) { 0 };
+    return 0;
 }
 
 static const SwsOpBackend backend_collect = {

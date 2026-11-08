@@ -28,6 +28,57 @@
 #include "ops_impl.h"
 
 /**
+ * Whether the kernel for `uop` supports 32-bit elements with block_size 16
+ * (four vector banks). This is only implemented for the kernels commonly
+ * used by floating point conversions, with components xyz.
+ */
+static bool uop_supports_x4(const SwsUOp *uop)
+{
+    if (uop->mask & ~SWS_COMP_ELEMS(3))
+        return false;
+    switch (uop->uop) {
+    case SWS_UOP_TO_F32:
+        return uop->type == SWS_PIXEL_U8 || uop->type == SWS_PIXEL_U16;
+    case SWS_UOP_LINEAR_FMA:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX:
+    case SWS_UOP_SCALE:
+    case SWS_UOP_TO_U8:
+    case SWS_UOP_TO_U16:
+    case SWS_UOP_SAT_U8:
+    case SWS_UOP_SAT_U16:
+        return uop->type == SWS_PIXEL_F32;
+    case SWS_UOP_DITHER:
+        /* The dither matrix must be at least as wide as the block. */
+        return uop->type == SWS_PIXEL_F32 && uop->par.dither.size_log2 >= 4;
+    case SWS_UOP_PERMUTE:
+    case SWS_UOP_COPY:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
+ * Block size for a list of uops. Lists with 32-bit elements use block_size
+ * 8 (two full vector registers per component), unless all kernels that
+ * handle 32-bit elements support block_size 16.
+ */
+static int aarch64_block_size(const SwsUOpList *uops)
+{
+    if (uops->pixel_size_max != 4)
+        return 16;
+    for (int i = 0; i < uops->num_ops; i++) {
+        const SwsUOp *uop = &uops->ops[i];
+        const bool wide = ff_sws_pixel_type_size(uop->type) == 4 ||
+                          uop->uop == SWS_UOP_TO_F32 || uop->uop == SWS_UOP_TO_U32;
+        if (wide && !uop_supports_x4(uop))
+            return 8;
+    }
+    return 16;
+}
+
+/**
  * Convert SwsUOp to a SwsAArch64OpImplParams. Read the comments regarding
  * SwsAArch64OpImplParams in ops_impl.h for more information.
  */
