@@ -311,6 +311,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_USHR,
     AARCH64_INSN_UXTL,
     AARCH64_INSN_UXTL2,
+    AARCH64_INSN_UZP1,
     AARCH64_INSN_XTN,
     AARCH64_INSN_ZIP1,
     AARCH64_INSN_ZIP2,
@@ -612,6 +613,7 @@ static inline RasmOp a64cond_nv(void) { return a64op_cond(AARCH64_COND_NV); }
 #define i_ushr(rctx,   op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_USHR,   op0, op1, op2, OPN)
 #define i_uxtl(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_UXTL,   op0, op1, OPN, OPN)
 #define i_uxtl2(rctx,  op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_UXTL2,  op0, op1, OPN, OPN)
+#define i_uzp1(rctx,   op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_UZP1,   op0, op1, op2, OPN)
 #define i_xtn(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_XTN,    op0, op1, OPN, OPN)
 #define i_zip1(rctx,   op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_ZIP1,   op0, op1, op2, OPN)
 #define i_zip2(rctx,   op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_ZIP2,   op0, op1, op2, OPN)
