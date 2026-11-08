@@ -135,6 +135,8 @@ typedef struct RasmNodeFunc {
     char *name;
     bool export;
     bool jumpable;
+    unsigned slot_size;     /* 0 for default placement */
+    unsigned slot_offset;
 } RasmNodeFunc;
 
 typedef struct RasmNodeDirective {
@@ -213,6 +215,14 @@ RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node);
 /* Top-level IR entries */
 int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
                     bool jumpable);
+
+/**
+ * Place the most recently begun function at slot_offset bytes into a
+ * slot_size-aligned block. slot_size must be a power of two, and
+ * slot_offset a multiple of 4 smaller than slot_size.
+ */
+void rasm_func_set_slot(RasmContext *rctx, unsigned slot_size,
+                        unsigned slot_offset);
 
 /**
  * Allocate a new label ID with the given name.
