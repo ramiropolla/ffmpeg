@@ -304,6 +304,11 @@ static void asmgen_op_read_planar(SwsAArch64Context *s, const SwsAArch64OpImplPa
     AArch64VecViews dh[4] = A64OP_VEC_VIEWS4(regs->dh);
 
     LOOP_MASK(p, i) {
+        if (s->nbanks == 4) {
+            i_ldp(r, dl[i].q, dh[i].q, a64op_post(s->in[i], 32));
+            i_ldp(r, v_q(regs->d2[i]), v_q(regs->d3[i]), a64op_post(s->in[i], 32));
+            continue;
+        }
         switch ((s->use_vh ? 0x100 : 0) | s->vec_size) {
         case 0x008: i_ldr(r, dl[i].d,          a64op_post(s->in[i], s->vec_size * 1)); break;
         case 0x010: i_ldr(r, dl[i].q,          a64op_post(s->in[i], s->vec_size * 1)); break;
@@ -395,6 +400,11 @@ static void asmgen_op_write_planar(SwsAArch64Context *s, const SwsAArch64OpImplP
     AArch64VecViews sh[4] = A64OP_VEC_VIEWS4(regs->sh);
 
     LOOP_MASK(p, i) {
+        if (s->nbanks == 4) {
+            i_stp(r, sl[i].q, sh[i].q, a64op_post(s->out[i], 32));
+            i_stp(r, v_q(regs->s2[i]), v_q(regs->s3[i]), a64op_post(s->out[i], 32));
+            continue;
+        }
         switch ((s->use_vh ? 0x100 : 0) | s->vec_size) {
         case 0x008: i_str(r, sl[i].d,          a64op_post(s->out[i], s->vec_size * 1)); break;
         case 0x010: i_str(r, sl[i].q,          a64op_post(s->out[i], s->vec_size * 1)); break;
@@ -425,6 +435,7 @@ static void asmgen_op_swap_bytes(SwsAArch64Context *s, const SwsAArch64OpImplPar
     case sizeof(uint32_t):
         LOOP_MASK      (p, i) i_rev32(r, dl[i].b16, sl[i].b16);
         LOOP_MASK_VH(s, p, i) i_rev32(r, dh[i].b16, sh[i].b16);
+        LOOP_MASK_B23(s, p, b, i) i_rev32(r, v_16b(bank_dst(regs, b)[i]), v_16b(bank_src(regs, b)[i]));
         break;
     }
 }
@@ -1266,51 +1277,59 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 
     const int row_size = (1 << dither_size_log2) * sizeof(float);
     av_assert0(dither_size_log2 >= block_size_log2);
-    RasmOp vd[4][4]; /* [load][bank] */
+
+    /* Distinct y offsets, in increasing order. */
     int n_loads = 0;
-    int last_y_off = -1;
+    int load_off[4], load_of[4];
     for (int sorted_i = 0; sorted_i < n_comps; sorted_i++) {
         int i = sorted[sorted_i];
-        uint8_t y_off = p->par.dither.y_offset[i];
-        if (y_off != last_y_off) {
-            /**
-             * The matrix is over-allocated by the largest y offset, so
-             * we don't risk overreading.
-             */
-            int delta = (y_off - first_y_off) * row_size;
-            av_assert0(delta + 16 * (s->nbanks - 2) <= 1008); /* ldp q immediate range */
-            av_assert0(s->nbanks * (n_loads + 1) <= FF_ARRAY_ELEMS(regs->vt));
-            for (int b = 0; b < s->nbanks; b++)
-                vd[n_loads][b] = regs->vt[s->nbanks * n_loads + b];
-            if (s->nbanks == 1) {
-                RasmOp src = delta ? a64op_off(ptr, delta) : a64op_base(ptr);
-                i_ldr(r, v_q(vd[n_loads][0]), src);
-                CMTF("ditherl[%d] = ptr[y_off[%u] - y_off[%u]];", n_loads, i, sorted[0]);
-            } else {
-                for (int b = 0; b < s->nbanks; b += 2) {
-                    int off = delta + 16 * b;
-                    RasmOp src = off ? a64op_off(ptr, off) : a64op_base(ptr);
-                    i_ldp(r, v_q(vd[n_loads][b]), v_q(vd[n_loads][b + 1]), src);
-                    CMTF("{ dither%d[%d], dither%d[%d] } = ptr[y_off[%u] - y_off[%u]] + %d;",
-                         b, n_loads, b + 1, n_loads, i, sorted[0], 4 * b);
-                }
-            }
-            n_loads++;
-            last_y_off = y_off;
+        int y_off = p->par.dither.y_offset[i];
+        if (!n_loads || load_off[n_loads - 1] != y_off) {
+            load_of[n_loads] = i;
+            load_off[n_loads++] = y_off;
         }
     }
 
-    int k = -1;
-    last_y_off = -1;
-    for (int sorted_i = 0; sorted_i < n_comps; sorted_i++) {
-        int i = sorted[sorted_i];
-        uint8_t y_off = p->par.dither.y_offset[i];
-        if (y_off != last_y_off)
-            k++;
-        last_y_off = y_off;
-        for (int b = 0; b < s->nbanks; b++) {
-            i_fadd(r, bank_dst(regs, b)[i], bank_src(regs, b)[i], vd[k][b]);
-            CMTF("v%d[%u] += vdither%d[%d];", b, i, b, k);
+    /**
+     * Load the rows for all components (in up to two phases of vector
+     * banks, if there are not enough temp registers), then add them.
+     */
+    const int nphases = (s->nbanks * n_loads > FF_ARRAY_ELEMS(regs->vt)) ? 2 : 1;
+    const int phase_banks = s->nbanks / nphases;
+    for (int phase = 0; phase < nphases; phase++) {
+        const int b0 = phase * phase_banks;
+        RasmOp vd[4][4]; /* [load][bank] */
+        for (int k = 0; k < n_loads; k++) {
+            int delta = (load_off[k] - first_y_off) * row_size;
+            for (int b = 0; b < phase_banks; b++)
+                vd[k][b0 + b] = regs->vt[phase_banks * k + b];
+            if (phase_banks == 1) {
+                RasmOp src = delta ? a64op_off(ptr, delta) : a64op_base(ptr);
+                i_ldr(r, v_q(vd[k][b0]), src);
+                CMTF("dither%d[%d] = ptr[y_off[%u] - y_off[%u]];", b0, k, load_of[k], sorted[0]);
+                continue;
+            }
+            for (int b = b0; b < b0 + phase_banks; b += 2) {
+                int off = delta + 16 * b;
+                av_assert0(off <= 1008); /* ldp q immediate range */
+                RasmOp src = off ? a64op_off(ptr, off) : a64op_base(ptr);
+                i_ldp(r, v_q(vd[k][b]), v_q(vd[k][b + 1]), src);
+                CMTF("{ dither%d[%d], dither%d[%d] } = ptr[y_off[%u] - y_off[%u]] + %d;",
+                     b, k, b + 1, k, load_of[k], sorted[0], 4 * b);
+            }
+        }
+        int k = -1;
+        int last_y_off = -1;
+        for (int sorted_i = 0; sorted_i < n_comps; sorted_i++) {
+            int i = sorted[sorted_i];
+            int y_off = p->par.dither.y_offset[i];
+            if (y_off != last_y_off)
+                k++;
+            last_y_off = y_off;
+            for (int b = b0; b < b0 + phase_banks; b++) {
+                i_fadd(r, bank_dst(regs, b)[i], bank_src(regs, b)[i], vd[k][b]);
+                CMTF("v%d[%u] += vdither%d[%d];", b, i, b, k);
+            }
         }
     }
 }
