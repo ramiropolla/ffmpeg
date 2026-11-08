@@ -129,6 +129,16 @@ static inline int linear_num_offsets(const SwsAArch64OpImplParams *params)
 }
 
 /**
+ * Whether a conversion widens u8 to 32-bit elements with tbl, using two
+ * index vectors stored in impl->priv.
+ */
+static inline bool convert_u8_tbl(const SwsAArch64OpImplParams *params)
+{
+    return (params->uop == SWS_UOP_TO_U32 || params->uop == SWS_UOP_TO_F32) &&
+           params->type == SWS_PIXEL_U8 && params->block_size == 8;
+}
+
+/**
  * Components of SWS_UOP_CLEAR/MIN/MAX whose constant is stored in impl->priv,
  * as one pre-broadcast vector per component (in component order).
  */
@@ -170,6 +180,9 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
         return 16 * (linear_num_vregs(params) + linear_num_offsets(params));
     case SWS_UOP_DITHER:
         return 8; /* pointer */
+    case SWS_UOP_TO_U32:
+    case SWS_UOP_TO_F32:
+        return convert_u8_tbl(params) ? 32 : 0; /* tbl indices */
     default:
         return 0;
     }
