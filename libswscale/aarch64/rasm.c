@@ -239,6 +239,22 @@ int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
     return id;
 }
 
+void rasm_func_set_slot(RasmContext *rctx, unsigned slot_size,
+                        unsigned slot_offset)
+{
+    if (rctx->error)
+        return;
+
+    av_assert0(rctx->num_entries > 0);
+    av_assert0(slot_size && !(slot_size & (slot_size - 1)));
+    av_assert0(slot_offset < slot_size && !(slot_offset & 3));
+
+    RasmNode *node = rctx->entries[rctx->num_entries - 1].start;
+    av_assert0(node->type == RASM_NODE_FUNCTION);
+    node->func.slot_size   = slot_size;
+    node->func.slot_offset = slot_offset;
+}
+
 /*********************************************************************/
 void rasm_annotate(RasmContext *rctx, const char *comment)
 {

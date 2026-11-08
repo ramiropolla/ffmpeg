@@ -395,6 +395,16 @@ static void print_node_function(const RasmContext *rctx,
                                 AVBPrint *bp, unsigned line_start,
                                 const RasmNode *node)
 {
+    if (node->func.slot_size) {
+        /* Pad with nops rather than zeros so the padding disassembles cleanly. */
+        av_bprintf(bp, "%*s.text\n",       INSTR_INDENT, "");
+        av_bprintf(bp, "%*s.balign %u\n",  INSTR_INDENT, "", node->func.slot_size);
+        if (node->func.slot_offset) {
+            av_bprintf(bp, "%*s.rept %u\n", INSTR_INDENT, "", node->func.slot_offset / 4);
+            av_bprintf(bp, "%*snop\n",      INSTR_INDENT, "");
+            av_bprintf(bp, "%*s.endr\n",    INSTR_INDENT, "");
+        }
+    }
     av_bprintf(bp, "function %s, export=%d, jumpable=%d",
                node->func.name, node->func.export, node->func.jumpable);
 }
