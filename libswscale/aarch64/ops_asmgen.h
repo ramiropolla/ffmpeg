@@ -29,6 +29,14 @@ typedef struct SwsAArch64OpRegs {
     RasmOp sh[ 4]; /* input vector registers (high bank) */
     RasmOp dl[ 4]; /* output vector registers (low bank) */
     RasmOp dh[ 4]; /* output vector registers (high bank) */
+    /**
+     * Input/output vector registers of the third and fourth banks, only
+     * used by 32-bit kernels with block_size 16.
+     */
+    RasmOp s2[ 4];
+    RasmOp s3[ 4];
+    RasmOp d2[ 4];
+    RasmOp d3[ 4];
     RasmOp vt[12]; /* temp vector registers */
     RasmOp vk[ 4]; /* constant data (may be gprs) */
 
@@ -84,6 +92,20 @@ typedef struct SwsAArch64Context {
     size_t el_count;
     size_t vec_size;
     bool use_vh;
+    int nbanks; /* number of vector banks in use (1, 2 or 4) */
 } SwsAArch64Context;
+
+/* Vector register bank `b` of the input or output registers. */
+static inline RasmOp *bank_src(SwsAArch64OpRegs *regs, int b)
+{
+    RasmOp *banks[4] = { regs->sl, regs->sh, regs->s2, regs->s3 };
+    return banks[b];
+}
+
+static inline RasmOp *bank_dst(SwsAArch64OpRegs *regs, int b)
+{
+    RasmOp *banks[4] = { regs->dl, regs->dh, regs->d2, regs->d3 };
+    return banks[b];
+}
 
 #endif /* SWSCALE_AARCH64_OPS_ASMGEN_H */

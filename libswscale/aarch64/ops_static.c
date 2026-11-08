@@ -407,6 +407,19 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
      * Save rows that need to be used as input after they have been already
      * written to.
      */
+    if (s->nbanks == 4) {
+        /* Only components xyz are supported with 4 banks (12 temps). */
+        av_assert0(!(save_mask & ~SWS_COMP_ELEMS(3)));
+        for (int b = 0; b < 4; b++) {
+            RasmOp *src = bank_src(regs, b);
+            LOOP(save_mask, i) {
+                RasmOp t = vt[3 * b + i];
+                i_mov16b(r, t, src[i]);                      CMTF("vsrc%d[%u] = v%d[%u];", b, i, b, i);
+                src[i] = t;
+            }
+        }
+        return;
+    }
     RasmOp *tl = &vt[0];
     RasmOp *th = &vt[4];
     LOOP      (save_mask, i) { i_mov16b(r, tl[i], sl[i]);  CMTF("vsrcl[%u] = vl[%u];", i, i); }
@@ -421,8 +434,10 @@ static void asmgen_setup_convert(SwsAArch64Context *s, const SwsAArch64OpImplPar
     RasmContext *r = s->rctx;
     if (!convert_u8_tbl(p))
         return;
-    i_ldr(r, v_q(regs->vk[0]), IMPL_PRIV(s));                   CMT("v128 idx_lo = impl->priv.v128[0];");
-    i_ldr(r, v_q(regs->vk[1]), a64op_off(s->impl, offsetof_impl_priv + 16)); CMT("v128 idx_hi = impl->priv.v128[1];");
+    for (int b = 0; b < p->block_size / 4; b++) {
+        i_ldr(r, v_q(regs->vk[b]), a64op_off(s->impl, offsetof_impl_priv + 16 * b));
+        CMTF("v128 idx%d = impl->priv.v128[%d];", b, b);
+    }
     asmgen_set_load_cont_node(s);
 }
 
@@ -545,6 +560,10 @@ static void init_vectors_cps(SwsAArch64Context *s, SwsAArch64OpRegs *regs)
     regs->dh[ 1] = a64op_vec( 5);
     regs->dh[ 2] = a64op_vec( 6);
     regs->dh[ 3] = a64op_vec( 7);
+    for (int i = 0; i < 4; i++) {
+        regs->s2[i] = regs->d2[i] = a64op_vec( 8 + i);
+        regs->s3[i] = regs->d3[i] = a64op_vec(12 + i);
+    }
     regs->vt[ 0] = a64op_vec(16);
     regs->vt[ 1] = a64op_vec(17);
     regs->vt[ 2] = a64op_vec(18);
@@ -648,6 +667,8 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 
     s->vec_size = FFMIN(total_size, 16);
     s->use_vh = (s->vec_size != total_size);
+    s->nbanks = total_size / s->vec_size;
+    av_assert0(s->nbanks == 1 || s->nbanks == 2 || s->nbanks == 4);
 
     s->el_size = el_size;
     s->el_count = s->vec_size / el_size;

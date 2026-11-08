@@ -129,13 +129,13 @@ static inline int linear_num_offsets(const SwsAArch64OpImplParams *params)
 }
 
 /**
- * Whether a conversion widens u8 to 32-bit elements with tbl, using two
- * index vectors stored in impl->priv.
+ * Whether a conversion widens u8 to 32-bit elements with tbl, using one
+ * index vector per 4 pixels stored in impl->priv.
  */
 static inline bool convert_u8_tbl(const SwsAArch64OpImplParams *params)
 {
     return (params->uop == SWS_UOP_TO_U32 || params->uop == SWS_UOP_TO_F32) &&
-           params->type == SWS_PIXEL_U8 && params->block_size == 8;
+           params->type == SWS_PIXEL_U8;
 }
 
 /**
@@ -182,7 +182,8 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
         return 8; /* pointer */
     case SWS_UOP_TO_U32:
     case SWS_UOP_TO_F32:
-        return convert_u8_tbl(params) ? 32 : 0; /* tbl indices */
+        /* tbl indices, one vector per 4 pixels */
+        return convert_u8_tbl(params) ? 4 * params->block_size : 0;
     default:
         return 0;
     }
