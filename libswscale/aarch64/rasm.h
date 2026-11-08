@@ -305,6 +305,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_UMAX,
     AARCH64_INSN_UMIN,
     AARCH64_INSN_UQXTN,
+    AARCH64_INSN_UQXTN2,
     AARCH64_INSN_USHL,
     AARCH64_INSN_USHLL,
     AARCH64_INSN_USHLL2,
@@ -607,6 +608,7 @@ static inline RasmOp a64cond_nv(void) { return a64op_cond(AARCH64_COND_NV); }
 #define i_umax(rctx,   op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_UMAX,   op0, op1, op2, OPN)
 #define i_umin(rctx,   op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_UMIN,   op0, op1, op2, OPN)
 #define i_uqxtn(rctx,  op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_UQXTN,  op0, op1, OPN, OPN)
+#define i_uqxtn2(rctx, op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_UQXTN2, op0, op1, OPN, OPN)
 #define i_ushl(rctx,   op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_USHL,   op0, op1, op2, OPN)
 #define i_ushll(rctx,  op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_USHLL,  op0, op1, op2, OPN)
 #define i_ushll2(rctx, op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_USHLL2, op0, op1, op2, OPN)
