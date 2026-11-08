@@ -675,10 +675,9 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             memcpy(sl, dl, sizeof(sl));
             src_el_size = 2;
         } else if (src_el_size == 4 && dst_el_size < src_el_size) {
+            /* uzp1 narrows both halves at once (even elements = low halves). */
             rasm_add_comment(r, "u32 -> u16");
-            LOOP_MASK(p, i) i_xtn  (r, dl[i].h4,    sl[i].s4);
-            LOOP_MASK(p, i) i_xtn  (r, dh[i].h4,    sh[i].s4);
-            LOOP_MASK(p, i) i_ins  (r, dl[i].de[1], sh[i].de[0]);
+            LOOP_MASK(p, i) i_uzp1 (r, dl[i].h8,    sl[i].h8,    sh[i].h8);
             memcpy(sl, dl, sizeof(sl));
             memcpy(sh, dh, sizeof(sh));
             src_el_size = 2;
@@ -705,9 +704,7 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             memcpy(sh, dh, sizeof(sh));
         } else if (src_el_size == 2 && dst_el_size == 1) {
             rasm_add_comment(r, "u16 -> u8");
-            LOOP_MASK(p, i) i_xtn  (r, dl[i].b8,    sl[i].h8);
-            LOOP_MASK(p, i) i_xtn  (r, dh[i].b8,    sh[i].h8);
-            LOOP_MASK(p, i) i_ins  (r, dl[i].de[1], sh[i].de[0]);
+            LOOP_MASK(p, i) i_uzp1 (r, dl[i].b16,   sl[i].b16,   sh[i].b16);
             memcpy(sl, dl, sizeof(sl));
         }
     }
