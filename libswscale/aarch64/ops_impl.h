@@ -117,7 +117,7 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
     case SWS_UOP_MAX:
         return 16 * const_vec_count(params); /* pre-broadcast constants */
     case SWS_UOP_SCALE:
-        return ff_sws_pixel_type_size(params->type);
+        return 16; /* pre-broadcast scalar */
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
         return 16 * linear_num_vregs(params); /* packed coefficients */
