@@ -982,8 +982,6 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     RasmOp ptr = s->tmp0;
     RasmOp tmp1 = s->tmp1;
     RasmOp wtmp1 = a64op_w(tmp1);
-    RasmOp dither_vl = regs->vt[0];
-    RasmOp dither_vh = regs->vt[1];
     RasmOp bx64 = a64op_x(s->bx);
     RasmOp y64 = a64op_x(s->y);
 
@@ -1060,52 +1058,70 @@ static void asmgen_op_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams 
         src_ptr = ptr;
     }
 
+    /**
+     * Compute the pointer to the first (smallest) y offset, then load the
+     * rows of all components up front into separate registers, using
+     * immediate offsets from that pointer, and only then add them. This
+     * avoids pointer increments and gives in-order cores time to complete
+     * the loads before they are used.
+     */
+    const int first_y_off = p->par.dither.y_offset[sorted[0]];
+    {
+        RasmOp lsb   = IMM(dither_size_log2 + sizeof_float_log2);
+        RasmOp width = IMM(dither_size_log2);
+        /**
+         * The ubfiz instruction for the y offset performs masking
+         * by the dither matrix size and shifts by the stride.
+         */
+        if (first_y_off == 0) {
+            i_ubfiz(r, tmp1,  y64,  lsb, width);        CMT("tmp1 = (y & (dither_size - 1)) * dither_size * sizeof(float);");
+        } else {
+            i_add  (r, wtmp1, s->y, IMM(first_y_off));  CMTF("tmp1 = y + y_off[%u];", sorted[0]);
+            i_ubfiz(r, tmp1,  tmp1, lsb, width);        CMT("tmp1 = (tmp1 & (dither_size - 1)) * dither_size * sizeof(float);");
+        }
+        i_add(r, ptr, src_ptr, tmp1);                   CMT("ptr += tmp1;");
+    }
+
+    const int row_size = (1 << dither_size_log2) * sizeof(float);
+    RasmOp vd_l[4], vd_h[4];
+    int n_loads = 0;
     int last_y_off = -1;
-    int prev_i = 0;
     for (int sorted_i = 0; sorted_i < n_comps; sorted_i++) {
         int i = sorted[sorted_i];
         uint8_t y_off = p->par.dither.y_offset[i];
-        bool do_load = (y_off != last_y_off);
-
-        if (last_y_off < 0) {
-            /* On the first run, calculate pointer inside dither_matrix. */
-            RasmOp lsb   = IMM(dither_size_log2 + sizeof_float_log2);
-            RasmOp width = IMM(dither_size_log2);
+        if (y_off != last_y_off) {
             /**
-             * The ubfiz instruction for the y offset performs masking
-             * by the dither matrix size and shifts by the stride.
+             * The matrix is over-allocated by the largest y offset, so
+             * we don't risk overreading.
              */
-            if (y_off == 0) {
-                i_ubfiz(r, tmp1,  y64,  lsb, width);        CMT("tmp1 = (y & (dither_size - 1)) * dither_size * sizeof(float);");
+            int delta = (y_off - first_y_off) * row_size;
+            av_assert0(delta <= 1008); /* ldp q immediate range */
+            vd_l[n_loads] = regs->vt[2 * n_loads + 0];
+            vd_h[n_loads] = regs->vt[2 * n_loads + 1];
+            RasmOp src = delta ? a64op_off(ptr, delta) : a64op_base(ptr);
+            if (s->use_vh) {
+                i_ldp(r, v_q(vd_l[n_loads]), v_q(vd_h[n_loads]), src);
+                CMTF("{ ditherl[%d], ditherh[%d] } = ptr[y_off[%u] - y_off[%u]];", n_loads, n_loads, i, sorted[0]);
             } else {
-                i_add  (r, wtmp1, s->y, IMM(y_off));        CMTF("tmp1 = y + y_off[%u];", i);
-                i_ubfiz(r, tmp1,  tmp1, lsb, width);        CMT("tmp1 = (tmp1 & (dither_size - 1)) * dither_size * sizeof(float);");
+                i_ldr(r, v_q(vd_l[n_loads]), src);
+                CMTF("ditherl[%d] = ptr[y_off[%u] - y_off[%u]];", n_loads, i, sorted[0]);
             }
-            i_add(r, ptr, src_ptr, tmp1);                   CMT("ptr += tmp1;");
-        } else if (do_load) {
-            /**
-             * On subsequent runs, just increment the pointer.
-             * The matrix is over-allocated, so we don't risk
-             * overreading.
-             */
-            int delta = (y_off - last_y_off) * (1 << dither_size_log2) * sizeof(float);
-            i_add(r, ptr, ptr, IMM(delta));                 CMTF("ptr += (y_off[%u] - y_off[%u]) * dither_size * sizeof(float);", i, prev_i);
+            n_loads++;
+            last_y_off = y_off;
         }
+    }
 
-        if (do_load) {
-            RasmOp dither_vlq = v_q(dither_vl);
-            RasmOp dither_vhq = v_q(dither_vh);
-            i_ldp (r, dither_vlq, dither_vhq, a64op_base(ptr)); CMT("{ ditherl, ditherh } = *ptr;");
-        }
-
-        i_fadd    (r, dl[i], sl[i], dither_vl);             CMTF("vl[%u] += vditherl;", i);
-        if (s->use_vh) {
-            i_fadd(r, dh[i], sh[i], dither_vh);             CMTF("vh[%u] += vditherh;", i);
-        }
-        sl = dl;
-        sh = dh;
-
+    int k = -1;
+    last_y_off = -1;
+    for (int sorted_i = 0; sorted_i < n_comps; sorted_i++) {
+        int i = sorted[sorted_i];
+        uint8_t y_off = p->par.dither.y_offset[i];
+        if (y_off != last_y_off)
+            k++;
         last_y_off = y_off;
-        prev_i = i;
+        i_fadd    (r, dl[i], sl[i], vd_l[k]);               CMTF("vl[%u] += vditherl[%d];", i, k);
+        if (s->use_vh) {
+            i_fadd(r, dh[i], sh[i], vd_h[k]);               CMTF("vh[%u] += vditherh[%d];", i, k);
+        }
     }
 }
