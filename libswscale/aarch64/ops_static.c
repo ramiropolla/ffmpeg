@@ -377,43 +377,24 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
         }
     }
 
-    if (linear_interleaved(p)) {
-        /**
-         * When interleaved, the first term of every row (which writes the
-         * output register) is emitted before all other terms. Simulate that
-         * order to find the inputs that are read after being overwritten.
-         */
-        save_mask = 0;
-        memset(overwritten, 0, sizeof(overwritten));
-        for (int t = 0; t < 5; t++) {
-            LOOP_MASK(p, i) {
-                int n = 0;
-                for (int j = 0; j < 5; j++) {
-                    int src_j = (j == 0) ? 4 : (j - 1);
-                    if (p->par.lin.zero & SWS_MASK(i, src_j))
-                        continue;
-                    if (n++ != t)
-                        continue;
-                    if (src_j != 4 && overwritten[src_j])
-                        save_mask |= SWS_COMP(src_j);
-                }
-                if (t == 0)
-                    overwritten[i] = true;
-            }
-        }
-    }
+    if (linear_interleaved(p))
+        save_mask = linear_interleaved_save_mask(p);
 
     /**
      * Save rows that need to be used as input after they have been already
      * written to.
      */
     if (s->nbanks == 4) {
-        /* Only components xyz are supported with 4 banks (12 temps). */
-        av_assert0(!(save_mask & ~SWS_COMP_ELEMS(3)));
+        /* At most 3 inputs can be saved with 4 banks (12 temps). */
+        int nsaved = 0;
+        LOOP(save_mask, i)
+            nsaved++;
+        av_assert0(nsaved <= 3);
         for (int b = 0; b < 4; b++) {
             RasmOp *src = bank_src(regs, b);
+            int k = 0;
             LOOP(save_mask, i) {
-                RasmOp t = vt[3 * b + i];
+                RasmOp t = vt[nsaved * b + k++];
                 i_mov16b(r, t, src[i]);                      CMTF("vsrc%d[%u] = v%d[%u];", b, i, b, i);
                 src[i] = t;
             }

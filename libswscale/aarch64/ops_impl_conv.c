@@ -37,9 +37,19 @@ static bool uop_supports_x4(const SwsUOp *uop)
     switch (uop->uop) {
     case SWS_UOP_TO_F32:
         return uop->type == SWS_PIXEL_U8 || uop->type == SWS_PIXEL_U16;
-    case SWS_UOP_LINEAR_FMA:
-        /* Saving the inputs of 4 components takes more than 12 temps. */
-        return uop->type == SWS_PIXEL_F32 && !(uop->mask & ~SWS_COMP_ELEMS(3));
+    case SWS_UOP_LINEAR_FMA: {
+        /* Up to 3 inputs can be saved with 4 banks (12 temps). */
+        if (uop->type != SWS_PIXEL_F32)
+            return false;
+        const SwsAArch64OpImplParams params = {
+            .uop = uop->uop, .mask = uop->mask, .type = uop->type, .par = uop->par,
+        };
+        const SwsCompMask save_mask = linear_interleaved_save_mask(&params);
+        int nsaved = 0;
+        for (int i = 0; i < 4; i++)
+            nsaved += !!(save_mask & SWS_COMP(i));
+        return nsaved <= 3;
+    }
     case SWS_UOP_READ_PLANAR:
     case SWS_UOP_WRITE_PLANAR:
     case SWS_UOP_SWAP_BYTES:
