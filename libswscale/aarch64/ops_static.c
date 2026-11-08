@@ -198,6 +198,8 @@ static void asmgen_setup_unpack(SwsAArch64Context *s, const SwsAArch64OpImplPara
     /* Generate masks. */
     rasm_add_comment(r, "generate masks");
     LOOP_MASK(p, i) {
+        if (!unpack_needs_mask(p, i))
+            continue;
         uint32_t val = (1u << p->par.pack.pattern[i]) - 1;
         for (int j = 0; j < 4; j++) {
             if (mask_val[j] == val) {
