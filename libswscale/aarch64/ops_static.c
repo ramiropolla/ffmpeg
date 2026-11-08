@@ -415,6 +415,17 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     LOOP_VH(s, save_mask, i) { sh[i] = th[i]; }
 }
 
+static void asmgen_setup_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                 SwsAArch64OpRegs *regs)
+{
+    RasmContext *r = s->rctx;
+    if (!convert_u8_tbl(p))
+        return;
+    i_ldr(r, v_q(regs->vk[0]), IMPL_PRIV(s));                   CMT("v128 idx_lo = impl->priv.v128[0];");
+    i_ldr(r, v_q(regs->vk[1]), a64op_off(s->impl, offsetof_impl_priv + 16)); CMT("v128 idx_hi = impl->priv.v128[1];");
+    asmgen_set_load_cont_node(s);
+}
+
 static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                 SwsAArch64OpRegs *regs)
 {
@@ -661,6 +672,8 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     case SWS_UOP_LINEAR:       asmgen_setup_linear(s, p, &s->regs);       break;
     case SWS_UOP_LINEAR_FMA:   asmgen_setup_linear(s, p, &s->regs);       break;
     case SWS_UOP_DITHER:       asmgen_setup_dither(s, p, &s->regs);       break;
+    case SWS_UOP_TO_U32:       asmgen_setup_convert(s, p, &s->regs);      break;
+    case SWS_UOP_TO_F32:       asmgen_setup_convert(s, p, &s->regs);      break;
     default:
         break;
     }

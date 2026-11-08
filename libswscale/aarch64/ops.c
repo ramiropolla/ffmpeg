@@ -176,6 +176,18 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
         return aarch64_setup_linear(p, uop, out);
+    case SWS_UOP_TO_U32:
+    case SWS_UOP_TO_F32:
+        if (convert_u8_tbl(p)) {
+            /* Indices placing bytes 0-3 and 4-7 into the low byte of each
+             * 32-bit element; out-of-range indices produce zeros. */
+            uint8_t idx[32];
+            memset(idx, 0xff, sizeof(idx));
+            for (int i = 0; i < 8; i++)
+                idx[i * 4] = i;
+            ff_sws_op_priv_pack(out, idx, sizeof(idx));
+        }
+        return 0;
     case SWS_UOP_DITHER:
         return aarch64_setup_dither(uop, out);
     }
