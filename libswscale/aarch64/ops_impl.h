@@ -22,6 +22,7 @@
 #define SWSCALE_AARCH64_OPS_IMPL_H
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -80,6 +81,27 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
     }
     const int nelems = linear_vreg_nelems(params->type);
     return (count + nelems - 1) / nelems;
+}
+
+/**
+ * Bit offset of component `i` in the pack pattern of SWS_UOP_PACK/UNPACK.
+ */
+static inline int pack_offset(const SwsAArch64OpImplParams *params, int i)
+{
+    int offset = 0;
+    for (int j = i + 1; j < 4; j++)
+        offset += params->par.pack.pattern[j];
+    return offset;
+}
+
+/**
+ * Whether component `i` of SWS_UOP_UNPACK needs to be masked after shifting.
+ * The topmost field doesn't, if it extends up to the most significant bit.
+ */
+static inline bool unpack_needs_mask(const SwsAArch64OpImplParams *params, int i)
+{
+    const int bits = 8 * ff_sws_pixel_type_size(params->type);
+    return pack_offset(params, i) + params->par.pack.pattern[i] != bits;
 }
 
 /**
