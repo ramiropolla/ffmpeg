@@ -50,6 +50,9 @@ static bool uop_supports_x4(const SwsUOp *uop)
             nsaved += !!(save_mask & SWS_COMP(i));
         return nsaved <= 3;
     }
+    case SWS_UOP_LINEAR:
+        /* Banks 2-3 are processed after banks 0-1 (see asmgen_op_linear). */
+        return uop->type == SWS_PIXEL_F32;
     case SWS_UOP_READ_PLANAR:
     case SWS_UOP_WRITE_PLANAR:
     case SWS_UOP_SWAP_BYTES:
