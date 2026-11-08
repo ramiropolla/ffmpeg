@@ -748,26 +748,34 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
         /* u16 -> u8 is handled below. */
     } else if (x4) {
         av_assert0(dst_el_size == 4 && src_el_size < 4);
-        if (convert_u8_tbl(p)) {
-            rasm_add_comment(r, "u8 -> u32");
-            LOOP_MASK(p, i) i_tbl(r, d3[i].b16, vv_1(sl[i].b16), v_16b(regs->vk[3]));
-            LOOP_MASK(p, i) i_tbl(r, d2[i].b16, vv_1(sl[i].b16), v_16b(regs->vk[2]));
-            LOOP_MASK(p, i) i_tbl(r, dh[i].b16, vv_1(sl[i].b16), v_16b(regs->vk[1]));
-            LOOP_MASK(p, i) i_tbl(r, dl[i].b16, vv_1(sl[i].b16), v_16b(regs->vk[0]));
-        } else {
-            rasm_add_comment(r, "u16 -> u32");
+        /**
+         * Widen banks 3 to 0 (bank 0 last, since it shares the registers of
+         * the input), and convert each bank to f32 after widening the next
+         * one, so that both can execute in parallel.
+         */
+        const bool tbl = convert_u8_tbl(p);
+        AArch64VecViews *db[4] = { dl, dh, d2, d3 };
+        rasm_add_comment(r, tbl ? "u8 -> u32 -> f32" : "u16 -> u32 -> f32");
+        if (!tbl)
             NEED_ZERO();
-            LOOP_MASK(p, i) i_zip2(r, d3[i].h8, sh[i].h8, vzero.h8);
-            LOOP_MASK(p, i) i_zip1(r, d2[i].h8, sh[i].h8, vzero.h8);
-            LOOP_MASK(p, i) i_zip2(r, dh[i].h8, sl[i].h8, vzero.h8);
-            LOOP_MASK(p, i) i_zip1(r, dl[i].h8, sl[i].h8, vzero.h8);
-        }
-        if (to_type == SWS_PIXEL_F32) {
-            rasm_add_comment(r, "u32 -> f32");
-            LOOP_MASK(p, i) i_ucvtf(r, dl[i].s4, dl[i].s4);
-            LOOP_MASK(p, i) i_ucvtf(r, dh[i].s4, dh[i].s4);
-            LOOP_MASK(p, i) i_ucvtf(r, d2[i].s4, d2[i].s4);
-            LOOP_MASK(p, i) i_ucvtf(r, d3[i].s4, d3[i].s4);
+        for (int b = 3; b >= -1; b--) {
+            if (b >= 0) {
+                AArch64VecViews *d = db[b];
+                if (tbl) {
+                    LOOP_MASK(p, i) i_tbl(r, d[i].b16, vv_1(sl[i].b16), v_16b(regs->vk[b]));
+                } else {
+                    AArch64VecViews *src = (b >= 2) ? sh : sl;
+                    if (b & 1) {
+                        LOOP_MASK(p, i) i_zip2(r, d[i].h8, src[i].h8, vzero.h8);
+                    } else {
+                        LOOP_MASK(p, i) i_zip1(r, d[i].h8, src[i].h8, vzero.h8);
+                    }
+                }
+            }
+            if (to_type == SWS_PIXEL_F32 && b < 3) {
+                AArch64VecViews *d = db[b + 1];
+                LOOP_MASK(p, i) i_ucvtf(r, d[i].s4, d[i].s4);
+            }
         }
         return;
     }
