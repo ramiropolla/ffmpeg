@@ -507,13 +507,37 @@ static void init_vectors_cps(SwsAArch64Context *s, SwsAArch64OpRegs *regs)
 }
 
 /*********************************************************************/
+/**
+ * Every function is placed at a fixed offset within a 128-byte slot.
+ *
+ * The kernels are tiny and each one ends in an indirect branch, so their
+ * speed depends on how the branch predictor indexes their addresses. On
+ * Cortex-A76, shifting the whole kernel file by a few bytes (as unrelated
+ * changes to the surrounding code do) made some checkasm kernel timings
+ * vary by up to 80%, caused by branch mispredictions. Fixing the low 7
+ * address bits of every function makes performance independent of where
+ * the linker places this file.
+ *
+ * Offsets of 32, 64 and 96 measured equally well on Cortex-A76 (0 and 80
+ * were the worst; Cortex-A55 is insensitive). 64 is used because it also
+ * keeps kernels of up to 64 bytes within a single cache line.
+ */
+#define FUNC_SLOT_SIZE   128
+#define FUNC_SLOT_OFFSET  64
+
+static void asmgen_func_begin(RasmContext *r, const char *name, bool jumpable)
+{
+    rasm_func_begin(r, name, true, jumpable);
+    rasm_func_set_slot(r, FUNC_SLOT_SIZE, FUNC_SLOT_OFFSET);
+}
+
 static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
 {
     RasmContext *r = s->rctx;
     char func_name[128];
 
     snprintf(func_name, sizeof(func_name), "ff_sws_process_%04x_neon", nibble_mask(mask));
-    rasm_func_begin(r, func_name, true, false);
+    asmgen_func_begin(r, func_name, false);
     asmgen_process_frame(s, mask, mask);
 
     asmgen_process(s, mask, mask);
@@ -555,7 +579,7 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
         break;
     }
 
-    rasm_func_begin(r, entry->name, true, !is_read);
+    asmgen_func_begin(r, entry->name, !is_read);
     asmgen_op_frame(s, is_read ? p->mask : 0, is_write ? p->mask : 0);
 
     /**
