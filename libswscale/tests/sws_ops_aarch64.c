@@ -201,7 +201,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     if (!uops)
         return AVERROR(ENOMEM);
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING;
+    SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING | SWS_UOP_FLAG_SAT_CONVERT;
     if (!(ctx->flags & SWS_BITEXACT))
         flags |= SWS_UOP_FLAG_FMA;
     ret = ff_sws_ops_translate(ctx, ops, flags, uops);
@@ -296,6 +296,8 @@ static const char op_type_names[SWS_UOP_TYPE_NB][16] = {
     [SWS_UOP_TO_U16        ] = "to_u16",
     [SWS_UOP_TO_U32        ] = "to_u32",
     [SWS_UOP_TO_F32        ] = "to_f32",
+    [SWS_UOP_SAT_U8        ] = "sat_u8",
+    [SWS_UOP_SAT_U16       ] = "sat_u16",
     [SWS_UOP_EXPAND_PAIR   ] = "expand_pair",
     [SWS_UOP_EXPAND_QUAD   ] = "expand_quad",
     [SWS_UOP_MIN           ] = "min",
@@ -334,6 +336,8 @@ static const char uop_types[SWS_UOP_TYPE_NB][32] = {
     [SWS_UOP_TO_U16        ] = "SWS_UOP_TO_U16",
     [SWS_UOP_TO_U32        ] = "SWS_UOP_TO_U32",
     [SWS_UOP_TO_F32        ] = "SWS_UOP_TO_F32",
+    [SWS_UOP_SAT_U8        ] = "SWS_UOP_SAT_U8",
+    [SWS_UOP_SAT_U16       ] = "SWS_UOP_SAT_U16",
     [SWS_UOP_EXPAND_PAIR   ] = "SWS_UOP_EXPAND_PAIR",
     [SWS_UOP_EXPAND_QUAD   ] = "SWS_UOP_EXPAND_QUAD",
     [SWS_UOP_MIN           ] = "SWS_UOP_MIN",
