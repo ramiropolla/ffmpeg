@@ -526,37 +526,37 @@ static void asmgen_op_pack(SwsAArch64Context *s, const SwsAArch64OpImplParams *p
     RasmOp *dl = regs->dl;
     RasmOp *dh = regs->dh;
 
-    const int offsets[4] = {
-        p->par.pack.pattern[3] + p->par.pack.pattern[2] + p->par.pack.pattern[1],
-        p->par.pack.pattern[3] + p->par.pack.pattern[2],
-        p->par.pack.pattern[3],
-        0
-    };
-    SwsCompMask offset_mask = 0;
+    /**
+     * Combine the components from the most significant one downwards, by
+     * inserting the accumulated value above the next component with sli
+     * (Horner's scheme): acc = (acc << (offset[prev] - offset[i])) | x[i].
+     * This assumes that each component fits inside its field. The result
+     * ends up in the register of the last component, so move it (or shift
+     * it, if the last component is not at offset 0) to component 0.
+     */
+    int prev = -1;
     LOOP_MASK(p, i) {
-        if (offsets[i])
-            offset_mask |= SWS_COMP(i);
-    }
-
-    /* Perform left shift. */
-    LOOP      (offset_mask, i) { i_shl(r, dl[i], sl[i], IMM(offsets[i])); CMTF("vl[%u] <<= %u;", i, offsets[i]); }
-    LOOP_VH(s, offset_mask, i) { i_shl(r, dh[i], sh[i], IMM(offsets[i])); CMTF("vh[%u] <<= %u;", i, offsets[i]); }
-    LOOP      (offset_mask, i) { sl[i] = dl[i]; }
-    LOOP_VH(s, offset_mask, i) { sh[i] = dh[i]; }
-
-    /* Combine components. */
-    for (int i = 0; i < 4; i++) {
-        sl[i] = v_16b(sl[i]);
-        sh[i] = v_16b(sh[i]);
-        dl[i] = v_16b(dl[i]);
-        dh[i] = v_16b(dh[i]);
-    }
-    LOOP_MASK      (p, i) {
-        if (i != 0) {
-            i_orr16b    (r, dl[0], sl[0], sl[i]); CMTF("vl[0] |= vl[%u];", i);
+        if (prev >= 0) {
+            const int shift = pack_offset(p, prev) - pack_offset(p, i);
+            i_sli    (r, dl[i], sl[prev], IMM(shift)); CMTF("vl[%u] |= vl[%u] << %u;", i, prev, shift);
             if (s->use_vh) {
-                i_orr16b(r, dh[0], sh[0], sh[i]); CMTF("vh[0] |= vh[%u];", i);
+                i_sli(r, dh[i], sh[prev], IMM(shift)); CMTF("vh[%u] |= vh[%u] << %u;", i, prev, shift);
             }
+            sl[i] = dl[i];
+            sh[i] = dh[i];
+        }
+        prev = i;
+    }
+    const int last_offset = pack_offset(p, prev);
+    if (last_offset) {
+        i_shl       (r, dl[0], sl[prev], IMM(last_offset)); CMTF("vl[0] = vl[%u] << %u;", prev, last_offset);
+        if (s->use_vh) {
+            i_shl   (r, dh[0], sh[prev], IMM(last_offset)); CMTF("vh[0] = vh[%u] << %u;", prev, last_offset);
+        }
+    } else if (prev > 0) {
+        i_mov16b    (r, dl[0], sl[prev]);              CMTF("vl[0] = vl[%u];", prev);
+        if (s->use_vh) {
+            i_mov16b(r, dh[0], sh[prev]);              CMTF("vh[0] = vh[%u];", prev);
         }
     }
 }
