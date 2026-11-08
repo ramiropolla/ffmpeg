@@ -649,11 +649,20 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     case SWS_UOP_TO_U16: to_type = SWS_PIXEL_U16; break;
     case SWS_UOP_TO_U32: to_type = SWS_PIXEL_U32; break;
     case SWS_UOP_TO_F32: to_type = SWS_PIXEL_F32; break;
+    case SWS_UOP_SAT_U8:  to_type = SWS_PIXEL_U8;  break;
+    case SWS_UOP_SAT_U16: to_type = SWS_PIXEL_U16; break;
     default:
         av_assert0(!"Invalid uop!");
         break;
     }
     size_t dst_el_size = ff_sws_pixel_type_size(to_type);
+
+    /**
+     * Saturating conversions use the saturating narrowing instructions. The
+     * lower bound is handled by fcvtzu for floats, and is implicit for
+     * unsigned integers.
+     */
+    const bool sat = (p->uop == SWS_UOP_SAT_U8 || p->uop == SWS_UOP_SAT_U16);
 
     /**
      * This function assumes block_size is either 8 or 16, and that
@@ -675,9 +684,14 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             memcpy(sl, dl, sizeof(sl));
             src_el_size = 2;
         } else if (src_el_size == 4 && dst_el_size < src_el_size) {
-            /* uzp1 narrows both halves at once (even elements = low halves). */
             rasm_add_comment(r, "u32 -> u16");
-            LOOP_MASK(p, i) i_uzp1 (r, dl[i].h8,    sl[i].h8,    sh[i].h8);
+            if (sat) {
+                LOOP_MASK(p, i) i_uqxtn (r, dl[i].h4, sl[i].s4);
+                LOOP_MASK(p, i) i_uqxtn2(r, dl[i].h8, sh[i].s4);
+            } else {
+                /* uzp1 narrows both halves at once (even elements = low halves). */
+                LOOP_MASK(p, i) i_uzp1  (r, dl[i].h8, sl[i].h8, sh[i].h8);
+            }
             memcpy(sl, dl, sizeof(sl));
             memcpy(sh, dh, sizeof(sh));
             src_el_size = 2;
@@ -691,7 +705,11 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             src_el_size = 4;
         } else if (src_el_size == 2 && dst_el_size == 1) {
             rasm_add_comment(r, "u16 -> u8");
-            LOOP_MASK(p, i) i_xtn  (r, dl[i].b8,    sl[i].h8);
+            if (sat) {
+                LOOP_MASK(p, i) i_uqxtn(r, dl[i].b8, sl[i].h8);
+            } else {
+                LOOP_MASK(p, i) i_xtn  (r, dl[i].b8, sl[i].h8);
+            }
             memcpy(sl, dl, sizeof(sl));
             src_el_size = 1;
         }
@@ -704,7 +722,12 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             memcpy(sh, dh, sizeof(sh));
         } else if (src_el_size == 2 && dst_el_size == 1) {
             rasm_add_comment(r, "u16 -> u8");
-            LOOP_MASK(p, i) i_uzp1 (r, dl[i].b16,   sl[i].b16,   sh[i].b16);
+            if (sat) {
+                LOOP_MASK(p, i) i_uqxtn (r, dl[i].b8,  sl[i].h8);
+                LOOP_MASK(p, i) i_uqxtn2(r, dl[i].b16, sh[i].h8);
+            } else {
+                LOOP_MASK(p, i) i_uzp1  (r, dl[i].b16, sl[i].b16, sh[i].b16);
+            }
             memcpy(sl, dl, sizeof(sl));
         }
     }

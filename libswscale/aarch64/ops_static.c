@@ -641,6 +641,8 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     case SWS_UOP_TO_U16:       asmgen_op_convert(s, p, &s->regs);      break;
     case SWS_UOP_TO_U32:       asmgen_op_convert(s, p, &s->regs);      break;
     case SWS_UOP_TO_F32:       asmgen_op_convert(s, p, &s->regs);      break;
+    case SWS_UOP_SAT_U8:       asmgen_op_convert(s, p, &s->regs);      break;
+    case SWS_UOP_SAT_U16:      asmgen_op_convert(s, p, &s->regs);      break;
     case SWS_UOP_EXPAND_PAIR:  asmgen_op_expand(s, p, &s->regs);       break;
     case SWS_UOP_EXPAND_QUAD:  asmgen_op_expand(s, p, &s->regs);       break;
     case SWS_UOP_MIN:          asmgen_op_min(s, p, &s->regs);          break;
