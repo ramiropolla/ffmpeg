@@ -103,6 +103,17 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     }
 
     ff_sws_op_priv_pack(res, &coeffs, num_vregs * 16);
+
+    /* Pre-broadcast offsets, loaded directly into the output registers. */
+    const int size = ff_sws_pixel_type_size(p->type);
+    LOOP_MASK(p, i) {
+        if (p->par.lin.zero & SWS_MASK_OFF(i))
+            continue;
+        uint8_t vec[16];
+        for (int j = 0; j < sizeof(vec); j += size)
+            memcpy(&vec[j], &uop->data.mat4x5[i][4], size);
+        ff_sws_op_priv_pack(res, vec, sizeof(vec));
+    }
     return 0;
 }
 
