@@ -673,6 +673,19 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     const bool sat = (p->uop == SWS_UOP_SAT_U8 || p->uop == SWS_UOP_SAT_U16);
 
     /**
+     * Zero-extension is done by interleaving with a zero vector (zip1/zip2),
+     * since uxtl/uxtl2 (ushll) only execute on one pipeline on some cores.
+     */
+    AArch64VecViews vzero = a64op_vec_views(regs->vt[11]);
+    bool have_zero = false;
+#define NEED_ZERO() do {                                                    \
+        if (!have_zero) {                                                   \
+            i_movi(r, vzero.d2, IMM(0));                                    \
+            have_zero = true;                                               \
+        }                                                                   \
+    } while (0)
+
+    /**
      * This function assumes block_size is either 8 or 16, and that
      * we're always using the most amount of vector registers possible.
      * Therefore, u32 always uses the high vector bank.
@@ -688,7 +701,8 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     if (p->block_size == 8) {
         if (src_el_size == 1 && dst_el_size > src_el_size) {
             rasm_add_comment(r, "u8 -> u16");
-            LOOP_MASK(p, i) i_uxtl (r, dl[i].h8,    sl[i].b8);
+            NEED_ZERO();
+            LOOP_MASK(p, i) i_zip1 (r, dl[i].b16,   sl[i].b16,   vzero.b16);
             memcpy(sl, dl, sizeof(sl));
             src_el_size = 2;
         } else if (src_el_size == 4 && dst_el_size < src_el_size) {
@@ -706,8 +720,9 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
         }
         if (src_el_size == 2 && dst_el_size == 4) {
             rasm_add_comment(r, "u16 -> u32");
-            LOOP_MASK(p, i) i_uxtl2(r, dh[i].s4,    sl[i].h8);
-            LOOP_MASK(p, i) i_uxtl (r, dl[i].s4,    sl[i].h4);
+            NEED_ZERO();
+            LOOP_MASK(p, i) i_zip2 (r, dh[i].h8,    sl[i].h8,    vzero.h8);
+            LOOP_MASK(p, i) i_zip1 (r, dl[i].h8,    sl[i].h8,    vzero.h8);
             memcpy(sl, dl, sizeof(sl));
             memcpy(sh, dh, sizeof(sh));
             src_el_size = 4;
@@ -724,8 +739,9 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     } else /* if (p->block_size == 16) */ {
         if (src_el_size == 1 && dst_el_size == 2) {
             rasm_add_comment(r, "u8 -> u16");
-            LOOP_MASK(p, i) i_uxtl2(r, dh[i].h8,    sl[i].b16);
-            LOOP_MASK(p, i) i_uxtl (r, dl[i].h8,    sl[i].b8);
+            NEED_ZERO();
+            LOOP_MASK(p, i) i_zip2 (r, dh[i].b16,   sl[i].b16,   vzero.b16);
+            LOOP_MASK(p, i) i_zip1 (r, dl[i].b16,   sl[i].b16,   vzero.b16);
             memcpy(sl, dl, sizeof(sl));
             memcpy(sh, dh, sizeof(sh));
         } else if (src_el_size == 2 && dst_el_size == 1) {
@@ -739,6 +755,8 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
             memcpy(sl, dl, sizeof(sl));
         }
     }
+
+#undef NEED_ZERO
 
     /* See comment above for high vector bank usage for u32. */
     if (to_type == SWS_PIXEL_F32) {
