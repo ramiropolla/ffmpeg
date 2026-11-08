@@ -296,10 +296,8 @@ static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParam
     RasmContext *r = s->rctx;
     RasmOp scale_vec = regs->vk[0];
 
-    RasmOp priv_ptr = s->tmp0;
-    i_add (r, priv_ptr, s->impl, IMM(offsetof_impl_priv));          CMT("v128 *scale_vec_ptr = &impl->priv;");
+    i_ldr(r, v_q(scale_vec), IMPL_PRIV(s));                         CMT("v128 scale_vec = impl->priv.v128;");
     asmgen_set_load_cont_node(s);
-    i_ld1r(r, vv_1(scale_vec), a64op_base(priv_ptr));               CMT("v128 scale_vec = broadcast(*scale_vec_ptr);");
 }
 
 static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,

@@ -153,8 +153,15 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
         }
         return 0;
     }
-    case SWS_UOP_SCALE:
-        return ff_sws_setup_scalar(&(const SwsImplParams) { .uop = uop }, out);
+    case SWS_UOP_SCALE: {
+        /* Store the scalar pre-broadcast to a full vector register. */
+        const int size = ff_sws_pixel_type_size(uop->type);
+        uint8_t vec[16];
+        for (int j = 0; j < sizeof(vec); j += size)
+            memcpy(&vec[j], &uop->data.scalar, size);
+        ff_sws_op_priv_pack(out, vec, sizeof(vec));
+        return 0;
+    }
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
         return aarch64_setup_linear(p, uop, out);
