@@ -24,7 +24,9 @@
 #include "libavutil/avstring.h"
 #include "libavutil/tree.h"
 
+#include "../uops_entries.h"
 #include "ops_impl_conv.c"
+#include "uops_entries.h"
 
 /**
  * Check that there is no mismatch for the SwsOpExec/SwsOpImpl offset
@@ -43,16 +45,17 @@ static_assert(alignof_impl           == alignof(SwsOpImpl),            "SwsOpImp
 
 /*********************************************************************/
 /* Forward-declare exported functions. */
-#define ENTRY(fname, ...) extern void fname(void);
-#include "ops_entries.c"
-#undef ENTRY
+#define DECL_ENTRY(DUMMY, NAME, ...) extern void NAME(void);
+SWS_ENTRIES_AARCH64(DECL_ENTRY, 0)
+#undef DECL_ENTRY
 
 static const struct {
     void (*func)(void);
     SwsAArch64OpImplParams params;
 } ops_entries[] = {
-#define ENTRY(fname, ...) { .func = fname, .params = __VA_ARGS__ },
-#include "ops_entries.c"
+#define ENTRY(DUMMY, NAME, TYPE, UOP, BLOCK_SIZE, ARGS, INIT) \
+    { .func = NAME, .params = { SWS_UNPAREN INIT } },
+SWS_ENTRIES_AARCH64(ENTRY, 0)
 #undef ENTRY
 };
 
