@@ -40,6 +40,8 @@ int ff_sws_uop_cmp(const SwsUOp *a, const SwsUOp *b)
         return (int) a->uop - b->uop;
     if (a->mask != b->mask)
         return (int) a->mask - b->mask;
+    if (a->block_size != b->block_size)
+        return a->block_size - b->block_size;
     return memcmp(&a->par, &b->par, sizeof(a->par));
 }
 

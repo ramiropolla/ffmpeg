@@ -161,7 +161,6 @@ struct SwsUOpTable {
  * Returns 0 or a negative error code.
  */
 int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
-                      int num_tables, const SwsUOp *uop, const int block_size,
-                      SwsOpChain *chain);
+                      int num_tables, const SwsUOp *uop, SwsOpChain *chain);
 
 #endif
