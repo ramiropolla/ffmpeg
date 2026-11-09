@@ -463,7 +463,7 @@ DECL_CAST(F32, f32)
 #define SAT(v, max) ((v) >= 0.0f ? ((v) < (max) ? (v) : (max)) : 0.0f)
 
 #define DECL_CAST_SAT(DST, dst, MAX)                                            \
-    DECL_FUNC(to_##dst##_sat, const SwsCompMask mask)                           \
+    DECL_FUNC(to_##dst##_sat, const SwsCompMask mask, const bool bounded)       \
     {                                                                           \
         block_t xx, yy, zz, ww;                                                 \
                                                                                 \

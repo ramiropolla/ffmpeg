@@ -564,8 +564,10 @@ static void check_cast(const char *name, const SwsUOp *uop)
     case SWS_UOP_TO_F32: dst = SWS_PIXEL_F32; break;
     case SWS_UOP_TO_U8_SAT:
     case SWS_UOP_TO_U16_SAT:
-        /* any normal float, to exercise the saturation in both directions */
-        check_uop(name, uop, uop->mask, uop->mask, MK_RANGES(0));
+        /* any normal float, to exercise the saturation in both directions,
+         * or values well above the output range if known to be bounded */
+        check_uop(name, uop, uop->mask, uop->mask,
+                  MK_RANGES(uop->par.sat.bounded ? 1 << 20 : 0));
         return;
     case SWS_UOP_EXPAND_PAIR: dst = SWS_PIXEL_U16; break;
     case SWS_UOP_EXPAND_QUAD: dst = SWS_PIXEL_U32; break;

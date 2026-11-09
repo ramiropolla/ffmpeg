@@ -504,8 +504,10 @@ IF V2,  pmovzxbw %2, %4
         pmovzxbd %2, %4
 %endmacro
 
+; packssdw (not packusdw), so that packuswb sees values above 32767 as such,
+; and the result saturates correctly for any int32 input
 %macro cast32to8 4 ; reg, reg2, xreg, xreg2
-        packusdw %1, %2
+        packssdw %1, %2
         vextracti128 %4, %1, 1
         packuswb %3, %4
         vpshufd %3, %3, q3120
@@ -515,8 +517,8 @@ IF V2,  pmovzxbw %2, %4
 ; the dwords are { a0 a2 b0 b2 | a1 a3 b1 b3 }, which vpermd sorts into
 ; { a0 a1 a2 a3 | b0 b1 b2 b3 }.
 %macro cast32to8_pair 6 ; a, a2, b, b2, xa, xb
-        packusdw %1, %2
-        packusdw %3, %4
+        packssdw %1, %2
+        packssdw %3, %4
         packuswb %1, %3
         vpermd %1, m15, %1
         vextracti128 %6, %1, 1
@@ -547,8 +549,12 @@ IF V2,  pmovzxbw %2, %4
         vpermq %1, %1, q3120
 %endmacro
 
-%macro CAST_TO 0
+%macro CAST_TO 0-1 ; bounded (for SWS_UOP_TO_U*_SAT)
 %assign SAT 0
+%assign BOUNDED 0
+%if %0 > 0
+    %assign BOUNDED %1
+%endif
 %ifidn UOP, SWS_UOP_TO_U8
     %assign BITS_TO 8
 %elifidn UOP, SWS_UOP_TO_U16
@@ -564,10 +570,12 @@ IF V2,  pmovzxbw %2, %4
 %endif
 
         LOAD_CONT tmp0q
-%if SAT
+%if SAT && !BOUNDED
         ; Clamp from above only; the integer packs below saturate negative
         ; values (including -inf, and NaN through cvttps2dq) to 0. The
         ; constant comes first so that NaN inputs are passed through.
+        ; Inputs known to fit in int32 need no clamp at all, since the packs
+        ; also saturate large values.
         vbroadcastss m15, [sat_u %+ BITS_TO]
 IF X,   minps mx,  m15, mx
 IF Y,   minps my,  m15, my

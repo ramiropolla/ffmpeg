@@ -78,6 +78,11 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
     case SWS_UOP_RSHIFT:
         av_bprintf(&bp, "_%u", par->shift.amount);
         break;
+    case SWS_UOP_TO_U8_SAT:
+    case SWS_UOP_TO_U16_SAT:
+        if (par->sat.bounded)
+            av_bprintf(&bp, "_bounded");
+        break;
     case SWS_UOP_PERMUTE:
     case SWS_UOP_COPY:
         av_bprint_chars(&bp, '_', 1);
@@ -543,6 +548,20 @@ static int translate_linear_op(SwsContext *ctx, SwsUOpList *ops,
     return ff_sws_uop_list_append(ops, &uop);
 }
 
+/**
+ * Whether the value range of a component is known to fit in int32_t. Leave
+ * a large margin, since integer inputs may contain values above their
+ * nominal bit depth (e.g. 10-bit data stored in 16-bit words).
+ */
+static bool fits_int32(const SwsOpPad *pad)
+{
+    const AVRational64 lim = { 1 << 24, 1 };
+    const AVRational64 neg = { -(1 << 24), 1 };
+    if (!pad->min.den || !pad->max.den)
+        return false; /* unknown range */
+    return ff_cmp_q64(pad->min, neg) >= 0 && ff_cmp_q64(pad->max, lim) <= 0;
+}
+
 static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
                         const SwsOp *op, const SwsOpPad inputs[4])
 {
@@ -622,6 +641,8 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         for (int i = 0; i < 4; i++) {
             if (SWS_COMP_TEST(uop.mask, i))
                 uop.data.vec4[i] = ff_sws_pixel_from_q64(uop.type, op->clamp.limit[i]);
+            if (uop.type == SWS_PIXEL_F32 && fits_int32(&inputs[i]))
+                uop.bounded |= SWS_COMP(i);
         }
         break;
     case SWS_OP_SWAP_BYTES:

@@ -291,6 +291,10 @@ typedef struct SwsLut3DUOp {
     int dynamic;
 } SwsLut3DUOp;
 
+typedef struct SwsSatUOp {
+    bool bounded; /* input values are known to fit in int32_t (no NaN/inf) */
+} SwsSatUOp;
+
 /**
  * Computes (1 << size_log2) + MAX(y_offset). The dither matrix attached to
  * the SwsUOp is always pre-padded to this number of lines.
@@ -307,6 +311,7 @@ typedef union SwsUOpParams {
     SwsLinearUOp    lin;
     SwsDitherUOp    dither;
     SwsLut3DUOp     lut3d;
+    SwsSatUOp       sat;     /* for SWS_UOP_TO_U*_SAT */
 } SwsUOpParams;
 
 typedef struct SwsUOp {
@@ -317,6 +322,11 @@ typedef struct SwsUOp {
     SwsUOpParams par;
 
     /* Constant data for this uop; not part of the unique identifier */
+
+    /* Components whose input values are known to fit in int32_t; only set
+     * for SWS_PIXEL_F32 SWS_UOP_MIN/MAX, as a hint for the optimizer */
+    SwsCompMask bounded;
+
     union {
         SwsFilterWeights *kernel;   /* refstruct */
         SwsPixel *ptr;              /* refstruct */

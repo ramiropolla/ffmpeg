@@ -1065,7 +1065,8 @@ static bool is_scale(const SwsUOp *op, int64_t val)
  * saturating cast. Returns the number of clamps to remove, or 0 if the
  * replacement is not possible.
  */
-static int count_sat_clamps(const SwsUOpList *uops, int idx, float max)
+static int count_sat_clamps(const SwsUOpList *uops, int idx, float max,
+                            bool *bounded)
 {
     const SwsUOp *cast = &uops->ops[idx];
     if (cast->type != SWS_PIXEL_F32)
@@ -1100,7 +1101,13 @@ static int count_sat_clamps(const SwsUOpList *uops, int idx, float max)
 
     /* The upper limit is mandatory; values above the range of the output type
      * would otherwise have undefined results */
-    return have_min ? count : 0;
+    if (!have_min)
+        return 0;
+
+    /* The input of the first clamp is the input of the saturating cast */
+    const SwsUOp *first = &uops->ops[idx - count];
+    *bounded = (first->bounded & cast->mask) == cast->mask;
+    return count;
 }
 
 int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpFlags flags, SwsUOpList *uops)
@@ -1111,13 +1118,15 @@ retry:
     for (int i = 0; i < uops->num_ops; i++) {
         const SwsUOp *next = i < uops->num_ops - 1 ? &uops->ops[i + 1] : &dummy;
         SwsUOp *op = &uops->ops[i];
+        bool bounded;
         int clamps;
 
         switch (op->uop) {
         case SWS_UOP_TO_U8:
             if ((flags & SWS_UOP_FLAG_SAT_CAST) &&
-                (clamps = count_sat_clamps(uops, i, UINT8_MAX))) {
+                (clamps = count_sat_clamps(uops, i, UINT8_MAX, &bounded))) {
                 op->uop = SWS_UOP_TO_U8_SAT;
+                op->par.sat.bounded = bounded;
                 ff_sws_uop_list_remove_at(uops, i - clamps, clamps);
                 goto retry;
             }
@@ -1125,8 +1134,9 @@ retry:
 
         case SWS_UOP_TO_U16:
             if ((flags & SWS_UOP_FLAG_SAT_CAST) &&
-                (clamps = count_sat_clamps(uops, i, UINT16_MAX))) {
+                (clamps = count_sat_clamps(uops, i, UINT16_MAX, &bounded))) {
                 op->uop = SWS_UOP_TO_U16_SAT;
+                op->par.sat.bounded = bounded;
                 ff_sws_uop_list_remove_at(uops, i - clamps, clamps);
                 goto retry;
             }

@@ -117,6 +117,10 @@ static void print_params(AVBPrint *bp, const SwsUOp *uop, bool designated)
     case SWS_UOP_LUT_3D:
         FMT("par.lut3d.dynamic", "%d", par->lut3d.dynamic);
         break;
+    case SWS_UOP_TO_U8_SAT:
+    case SWS_UOP_TO_U16_SAT:
+        FMT("par.sat.bounded", "%d", par->sat.bounded);
+        break;
     }
 
 #undef FMT
