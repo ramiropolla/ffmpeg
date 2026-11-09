@@ -19,8 +19,7 @@
  */
 
 /**
- * NOTE: This file is #include'd directly by both the NEON backend and
- *       the sws_ops_aarch64 tool.
+ * NOTE: This file is #include'd directly by the NEON backend.
  */
 
 #include "libavutil/error.h"
