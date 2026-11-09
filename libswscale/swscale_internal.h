@@ -664,11 +664,11 @@ struct SwsInternal {
 
     /**
      * Color range conversion functions if needed.
-     * If SwsInternal->dstBpc is > 14:
+     * If SwsInternal->dstBpc is <= 14:
      * - int16_t *dst (data is 15 bpc)
      * - uint16_t coeff
      * - int32_t offset
-     * Otherwise (SwsInternal->dstBpc is <= 14):
+     * Otherwise (SwsInternal->dstBpc is > 14):
      * - int32_t *dst (data is 19 bpc)
      * - uint32_t coeff
      * - int64_t offset
