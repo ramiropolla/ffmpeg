@@ -892,76 +892,57 @@ IF2 V2, linear_pass 2
 ;---------------------------------------------------------
 ; Instantiate above macros to generate all uop kernels
 
-%macro decl_ops 1 ; type
-    DECL_%1_READ_PACKED     READ_PACKED
-    DECL_%1_READ_NIBBLE     READ_NIBBLE
-    DECL_%1_READ_BIT        READ_BIT
-    DECL_%1_READ_PALETTE    READ_PALETTE
-    DECL_%1_WRITE_PACKED    WRITE_PACKED
-    DECL_%1_WRITE_NIBBLE    WRITE_NIBBLE
-    DECL_%1_WRITE_BIT       WRITE_BIT
-    DECL_%1_PERMUTE         MOVE
-    DECL_%1_COPY            MOVE
-    DECL_%1_SWAP_BYTES      SWAP_BYTES
-    DECL_%1_EXPAND_BIT      EXPAND_BIT
-    DECL_%1_SCALE           SCALE
-    DECL_%1_ADD             ADD
-    DECL_%1_MIN             MIN
-    DECL_%1_MAX             MAX
-    DECL_%1_UNPACK          UNPACK
-    DECL_%1_PACK            PACK
-    DECL_%1_LSHIFT          LSHIFT
-    DECL_%1_RSHIFT          RSHIFT
-    DECL_%1_LINEAR_FMA      LINEAR_FMA
-    DECL_%1_DITHER          DITHER
-    DECL_%1_LINEAR          LINEAR
+%macro decl_ops 2 ; list, type
+    decl_group %1, %2, READ_PACKED,     READ_PACKED
+    decl_group %1, %2, READ_NIBBLE,     READ_NIBBLE
+    decl_group %1, %2, READ_BIT,        READ_BIT
+    decl_group %1, %2, READ_PALETTE,    READ_PALETTE
+    decl_group %1, %2, WRITE_PACKED,    WRITE_PACKED
+    decl_group %1, %2, WRITE_NIBBLE,    WRITE_NIBBLE
+    decl_group %1, %2, WRITE_BIT,       WRITE_BIT
+    decl_group %1, %2, PERMUTE,         MOVE
+    decl_group %1, %2, COPY,            MOVE
+    decl_group %1, %2, SWAP_BYTES,      SWAP_BYTES
+    decl_group %1, %2, EXPAND_BIT,      EXPAND_BIT
+    decl_group %1, %2, SCALE,           SCALE
+    decl_group %1, %2, ADD,             ADD
+    decl_group %1, %2, MIN,             MIN
+    decl_group %1, %2, MAX,             MAX
+    decl_group %1, %2, UNPACK,          UNPACK
+    decl_group %1, %2, PACK,            PACK
+    decl_group %1, %2, LSHIFT,          LSHIFT
+    decl_group %1, %2, RSHIFT,          RSHIFT
+    decl_group %1, %2, LINEAR_FMA,      LINEAR_FMA
+    decl_group %1, %2, DITHER,          DITHER
+    decl_group %1, %2, LINEAR,          LINEAR
 %endmacro
 
-%macro decl_type_invariant 0
-    DECL_U8_READ_PLANAR     READ_PLANAR
-    DECL_U8_WRITE_PLANAR    WRITE_PLANAR
-    DECL_U8_CLEAR           CLEAR
+%macro decl_casts 2 ; list, type
+    decl_group %1, %2, TO_U8,           CAST_TO
+    decl_group %1, %2, TO_U16,          CAST_TO
+    decl_group %1, %2, TO_U32,          CAST_TO
+    decl_group %1, %2, TO_F32,          CAST_TO
 %endmacro
 
-%macro decl_cast_u16 0
-    DECL_U8_TO_U16          CAST_TO
-    DECL_U16_TO_U8          CAST_TO
-    DECL_U8_EXPAND_PAIR     EXPAND_BYTE
-%endmacro
+%macro decl_list 1 ; list
+    decl_ops   %1, U8
+    decl_ops   %1, U16
+    decl_ops   %1, U32
+    decl_casts %1, U8
+    decl_casts %1, U16
+    decl_casts %1, U32
+    decl_casts %1, F32
 
-%macro decl_cast_u32 0
-    DECL_U8_TO_U32          CAST_TO
-    DECL_U32_TO_U8          CAST_TO
-    DECL_U16_TO_U32         CAST_TO
-    DECL_U32_TO_U16         CAST_TO
-    DECL_U8_EXPAND_QUAD     EXPAND_BYTE
-%endmacro
-
-%macro decl_cast_f32 0
-    DECL_U8_TO_F32          CAST_TO
-    DECL_F32_TO_U8          CAST_TO
-    DECL_U16_TO_F32         CAST_TO
-    DECL_F32_TO_U16         CAST_TO
-    DECL_U32_TO_F32         CAST_TO
-    DECL_F32_TO_U32         CAST_TO
+    ; only U8 versions of these uops exist
+    decl_group %1, U8, READ_PLANAR,     READ_PLANAR
+    decl_group %1, U8, WRITE_PLANAR,    WRITE_PLANAR
+    decl_group %1, U8, CLEAR,           CLEAR
+    decl_group %1, U8, EXPAND_PAIR,     EXPAND_BYTE
+    decl_group %1, U8, EXPAND_QUAD,     EXPAND_BYTE
 %endmacro
 
 INIT_XMM sse4
-decl_v2 0, decl_ops U8
-decl_v2 1, decl_ops U8
-decl_v2 0, decl_type_invariant
-decl_v2 1, decl_type_invariant
+decl_list X86_SSE4
 
 INIT_YMM avx2
-decl_v2 0, decl_ops U8
-decl_v2 1, decl_ops U8
-decl_v2 0, decl_ops U16
-decl_v2 1, decl_ops U16
-decl_v2 0, decl_type_invariant
-decl_v2 1, decl_type_invariant
-decl_v2 0, decl_cast_u16
-decl_v2 1, decl_cast_u16
-
-decl_v2 1, decl_ops U32
-decl_v2 1, decl_cast_u32
-decl_v2 1, decl_cast_f32
+decl_list X86_AVX2

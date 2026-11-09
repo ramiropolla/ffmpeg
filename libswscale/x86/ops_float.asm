@@ -686,28 +686,26 @@ IF W,   addps mw2, m11
 ;---------------------------------------------------------
 ; Instantiate above macros to generate all uop kernels
 
-%macro decl_filter_ops 1 ; type
-    decl_suffix _4x4,   DECL_%1_READ_PLANAR_FH READ_PLANAR_FH_4X4
+%macro decl_filter_ops 2 ; list, type
+    decl_suffix _4x4,   decl_group %1, %2, READ_PLANAR_FH, READ_PLANAR_FH_4X4
 
-    DECL_%1_READ_PLANAR_FH      READ_PLANAR_FH
-    DECL_%1_READ_PLANAR_FV      READ_PLANAR_FV
-    DECL_%1_READ_PLANAR_FV_FMA  READ_PLANAR_FV_FMA
+    decl_group %1, %2, READ_PLANAR_FH,      READ_PLANAR_FH
+    decl_group %1, %2, READ_PLANAR_FV,      READ_PLANAR_FV
+    decl_group %1, %2, READ_PLANAR_FV_FMA,  READ_PLANAR_FV_FMA
 %endmacro
 
-%macro decl_float_ops 1 ; type
-    DECL_%1_SCALE           SCALE
-    DECL_%1_ADD             ADD
-    DECL_%1_MIN             MIN
-    DECL_%1_MAX             MAX
-    DECL_%1_LINEAR          LINEAR
-    DECL_%1_LINEAR_FMA      LINEAR_FMA
-    DECL_%1_DITHER          DITHER
+%macro decl_float_ops 2 ; list, type
+    decl_group %1, %2, SCALE,           SCALE
+    decl_group %1, %2, ADD,             ADD
+    decl_group %1, %2, MIN,             MIN
+    decl_group %1, %2, MAX,             MAX
+    decl_group %1, %2, LINEAR,          LINEAR
+    decl_group %1, %2, LINEAR_FMA,      LINEAR_FMA
+    decl_group %1, %2, DITHER,          DITHER
 %endmacro
 
 INIT_YMM avx2
-%assign V2 1
-
-decl_filter_ops U8
-decl_filter_ops U16
-decl_filter_ops F32
-decl_float_ops  F32
+decl_filter_ops X86_AVX2, U8
+decl_filter_ops X86_AVX2, U16
+decl_filter_ops X86_AVX2, F32
+decl_float_ops  X86_AVX2, F32

@@ -19,7 +19,7 @@
 ;******************************************************************************
 
 %include "libavutil/x86/x86util.asm"
-%include "libswscale/x86/uops_macros.asm"
+%include "libswscale/x86/uops_entries.asm"
 
 ; High-level explanation of how the x86 backend works:
 ;
@@ -60,10 +60,10 @@
 ; (As well as sized variants for xmx, ymx, etc.)
 ;
 ; The "high half" registers are only sometimes used; in order to enable
-; processing more pixels at the same time. See `decl_v2` below, which allows
-; assembling the same operation twice, once with only the lower half (V2=0),
-; and once with both halves (V2=1). The remaining vectors (m8-m15) are free for
-; use inside operation kernels.
+; processing more pixels at the same time. See `DECL_ENTRY` below, which
+; assembles each kernel with only the lower half (V2=0) or with both halves
+; (V2=1), as given by the generated kernel lists. The remaining vectors
+; (m8-m15) are free for use inside operation kernels.
 ;
 ; The basic rule is that we always use the full set of both vector registers
 ; when processing the largest element size within a pixel chain. For example,
@@ -71,7 +71,7 @@
 ; we would have an operation chain which combines an SSE4 V2=0 u8 kernel (128
 ; bits = 16 pixels) with an AVX2 V2=1 f32 kernel (512 bits = 16 pixels). This
 ; keeps the number of pixels being processed (BLOCK_WIDTH) constant. The V2
-; setting is suffixed to the operation name (_m1 or _m2), along with any other
+; setting is part of the kernel name (_m1 or _m2), which is followed by any
 ; custom NAME_SUFFIX (e.g. for operation variants).
 ;
 ; This design leaves us with the following set of possibilities:
@@ -92,7 +92,9 @@
 ; - 16-bit kernels: m1_avx2, m2_avx2
 ; - 32-bit kernels: m2_avx2
 ;
-; See the bottom of ops_int.asm for an example.
+; The generated lists in uops_entries.asm contain exactly the kernels needed
+; for each ISA (see ff_sws_uop_simplify_x86()). See the bottom of ops_int.asm
+; for an example of how they are instantiated.
 
 struc SwsOpExec
     .in0 resq 1
@@ -152,7 +154,7 @@ endstruc
 ; Common macros for declaring operations
 
 ; Declare an operation kernel, calling a provided macro to generate the body.
-; Note: This is automatically called by the DECL_* macros
+; Note: This is automatically called by DECL_ENTRY
 %macro DECL_OP 5-6+ ; macro, name, type, uop, mask
     ; Declare named variables for common macro parameters
     %ifdef NAME_SUFFIX
@@ -193,18 +195,7 @@ endstruc
     %endif
     %assign BLOCK_WIDTH (BLOCK_SIZE / BYTES)
 
-    ; Add the correct name mangling / suffix for decl_v2
-    %ifdef V2
-        %if V2
-            %define ADD_MUL(name) name %+ _m2
-        %else
-            %define ADD_MUL(name) name %+ _m1
-        %endif
-    %else
-        %define ADD_MUL(name) name
-    %endif
-
-    cglobal ADD_MUL(NAME), 0, 0, 0 ; already allocated by entry point
+    cglobal NAME, 0, 0, 0 ; already allocated by entry point
     %1 %6 ; call the provided macro to generate the kernel body
 
     %undef NAME
@@ -221,7 +212,33 @@ endstruc
     %undef PRIV_SIZE
     %undef BLOCK_SIZE
     %undef BLOCK_WIDTH
-    %undef ADD_MUL
+%endmacro
+
+; Declare an operation kernel from a generated list, with the given number of
+; vector registers per component (or 0 if not applicable).
+; Note: This is automatically called by the DECL_ENTRIES_* macros
+%macro DECL_ENTRY 6 ; macro, vectors, name, type, uop, mask
+    %if %2
+        %assign V2 (%2 - 1)
+    %endif
+    DECL_OP %1, %3, %4, %5, %6
+    %undef V2
+%endmacro
+
+%macro DECL_ENTRY 7+ ; macro, vectors, name, type, uop, mask, params
+    %if %2
+        %assign V2 (%2 - 1)
+    %endif
+    DECL_OP %1, %3, %4, %5, %6, %7
+    %undef V2
+%endmacro
+
+; Declare all kernels of a generated list with the given pixel type and uop
+; type, using a provided macro to generate the bodies
+%macro decl_group 4 ; list, type, uop, macro
+    %ifmacro DECL_ENTRIES_%1_%2_%3 1
+        DECL_ENTRIES_%1_%2_%3 %4
+    %endif
 %endmacro
 
 ; Declare a set of operations with a custom name suffix
@@ -231,12 +248,6 @@ endstruc
     %undef NAME_SUFFIX
 %endmacro
 
-; Declare a set of operations with the high half enabled / disabled
-%macro decl_v2 2+ ; v2, func
-    %assign V2 %1
-    %2
-    %undef V2
-%endmacro
 
 ;---------------------------------------------------------
 ; Common names for the internal calling convention
