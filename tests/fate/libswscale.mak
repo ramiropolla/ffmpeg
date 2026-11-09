@@ -168,6 +168,33 @@ fate-sws-uops-macros-x86-nasm: CMD = cat tests/data/fate/sws-uops-macros-x86.asm
 
 fate-sws-uops-macros: $(FATE_SWS_UOPS_MACROS)
 
+FATE_SWS_UOPS_ENTRIES = fate-sws-uops-entries-c                        \
+                        fate-sws-uops-entries-x86                      \
+                        fate-sws-uops-entries-x86-nasm                 \
+
+ifeq ($(HAVE_INT128),yes)
+# Disable by default without int128 because it is too slow (several minutes)
+FATE_LIBSWSCALE += $(FATE_SWS_UOPS_ENTRIES)
+endif
+
+# Disable on bigendian because it would result in a different iteration order
+# (and thus output) due to sorting by memcmp() on the parameters struct.
+fate-sws-uops-entries-c: libswscale/uops_entries_gen$(EXESUF)
+fate-sws-uops-entries-c: REF = $(SRC_PATH)/libswscale/uops_entries_c.h
+fate-sws-uops-entries-c: CMD = run libswscale/uops_entries_gen$(EXESUF) c
+
+fate-sws-uops-entries-x86: libswscale/uops_entries_gen$(EXESUF)
+fate-sws-uops-entries-x86: REF = $(SRC_PATH)/libswscale/x86/uops_entries.h
+fate-sws-uops-entries-x86: CMD = run libswscale/uops_entries_gen$(EXESUF) x86 \
+                                 -nasm $(TARGET_PATH)/tests/data/fate/sws-uops-entries-x86.asm
+
+# Generated together with fate-sws-uops-entries-x86, since enumeration is slow
+fate-sws-uops-entries-x86-nasm: fate-sws-uops-entries-x86
+fate-sws-uops-entries-x86-nasm: REF = $(SRC_PATH)/libswscale/x86/uops_entries.asm
+fate-sws-uops-entries-x86-nasm: CMD = cat tests/data/fate/sws-uops-entries-x86.asm
+
+fate-sws-uops-entries: $(FATE_SWS_UOPS_ENTRIES)
+
 endif
 
 FATE_LIBSWSCALE += fate-sws-rational64

@@ -20,7 +20,10 @@ libswresample/reverse.c
 libswscale/aarch64/ops_entries.c
 libswscale/log2_tab.c
 libswscale/riscv/cpu_common.c
+libswscale/uops_entries_c.h
 libswscale/uops_macros.h
+libswscale/x86/uops_entries.asm
+libswscale/x86/uops_entries.h
 libswscale/x86/uops_macros.asm
 libswscale/x86/uops_macros.h
 tools/uncoded_frame.c

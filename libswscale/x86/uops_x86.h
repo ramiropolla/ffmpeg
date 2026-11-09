@@ -134,6 +134,13 @@ static inline int ff_sws_uop_simplify_x86(SwsX86ISA level, SwsUOp *uop)
     return AVERROR(ENOTSUP);
 }
 
+/* Number of vector registers per component used by a simplified uop */
+static inline int ff_sws_uop_vectors_x86(SwsX86ISA isa, const SwsUOp *uop)
+{
+    return uop->block_size * ff_sws_uop_pixel_size_x86(uop) /
+           ff_sws_mmsize_x86(isa);
+}
+
 /**
  * ISA of the kernel implementing a standalone SWS_UOP_RW_SHUFFLE on CPUs
  * supporting `level`. Shuffles which are not lane aligned need vpermb to
