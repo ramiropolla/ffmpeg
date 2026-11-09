@@ -311,6 +311,7 @@ typedef struct SwsUOp {
     SwsUOpType uop;
     SwsCompMask mask;
     SwsUOpParams par;
+    int block_size; /* pixels per kernel call; set by the backend */
 
     /* Constant data for this uop; not part of the unique identifier */
     union {

@@ -75,8 +75,7 @@ void ff_sws_op_chain_attach(const SwsOpChain *chain, SwsCompiledOp *out)
 }
 
 int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
-                      int num_tables, const SwsUOp *uop, const int block_size,
-                      SwsOpChain *chain)
+                      int num_tables, const SwsUOp *uop, SwsOpChain *chain)
 {
     const unsigned cpu_flags = av_get_cpu_flags();
     const SwsUOpEntry *match = NULL;
@@ -89,7 +88,7 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
 
     for (int n = 0; !match && n < num_tables; n++) {
         const SwsUOpTable *table = params.table = tables[n];
-        if (table->block_size && table->block_size != block_size ||
+        if (table->block_size && table->block_size != uop->block_size ||
             table->cpu_flags & ~cpu_flags)
             continue;
 
@@ -100,6 +99,7 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
                 .type = entry->type,
                 .mask = entry->mask,
                 .par  = entry->par,
+                .block_size = uop->block_size, /* checked against the table */
             };
 
             if (ff_sws_uop_cmp(uop, &entry_uop) != 0)

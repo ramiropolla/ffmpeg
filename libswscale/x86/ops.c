@@ -97,7 +97,7 @@ static int setup_filter_h(const SwsImplParams *params, SwsImplResult *out)
     const int pixel_size = ff_sws_pixel_type_size(uop->type);
     const int taps_align = sizeof(int32_t) / pixel_size;
     const int filter_size = filter->filter_size;
-    const int block_size = params->table->block_size;
+    const int block_size = uop->block_size;
     const size_t aligned_size = FFALIGN(filter_size, taps_align);
     const size_t line_size = FFALIGN(filter->dst_size, block_size);
     av_assert1(FFALIGN(line_size, taps_align) == line_size);
@@ -206,7 +206,7 @@ static int setup_filter_h_4x4(const SwsImplParams *params, SwsImplResult *out)
     const SwsFilterWeights *filter = uop->data.kernel;
     const int pixel_size = ff_sws_pixel_type_size(uop->type);
     const int sizeof_weights = hscale_sizeof_weight(uop);
-    const int block_size = params->table->block_size;
+    const int block_size = uop->block_size;
     const int taps_align = 16 / sizeof_weights; /* taps per iteration (XMM) */
     const int pixels_align = 4; /* pixels per iteration */
     const int filter_size = filter->filter_size;
@@ -674,15 +674,14 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
 
     for (int i = 0; i < uops->num_ops; i++) {
         SwsUOp *uop = &uops->ops[i];
-        int op_block_size = out->block_size;
+        uop->block_size = out->block_size;
 
         if (uop_is_type_invariant(uop->uop)) {
-            op_block_size *= ff_sws_pixel_type_size(uop->type);
+            uop->block_size *= ff_sws_pixel_type_size(uop->type);
             uop->type = SWS_PIXEL_U8;
         }
 
-        ret = ff_sws_uop_lookup(ctx, tables, FF_ARRAY_ELEMS(tables), uop,
-                                op_block_size, chain);
+        ret = ff_sws_uop_lookup(ctx, tables, FF_ARRAY_ELEMS(tables), uop, chain);
         if (ret < 0)
             goto fail;
     }
