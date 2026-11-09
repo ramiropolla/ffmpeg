@@ -739,10 +739,8 @@
 
 %macro DECL_F32_TO_U8 1
     DECL_OP %1, f32_to_u8_x                             , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x1
-    DECL_OP %1, f32_to_u8_xy                            , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x3
     DECL_OP %1, f32_to_u8_xyz                           , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x7
     DECL_OP %1, f32_to_u8_xw                            , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0x9
-    DECL_OP %1, f32_to_u8_yzw                           , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0xe
     DECL_OP %1, f32_to_u8_xyzw                          , SWS_PIXEL_F32, SWS_UOP_TO_U8           , 0xf
 %endmacro
 
@@ -919,7 +917,19 @@
 %endmacro
 
 %macro DECL_F32_TO_U8_SAT 1
+    DECL_OP %1, f32_to_u8_sat_x                         , SWS_PIXEL_F32, SWS_UOP_TO_U8_SAT       , 0x1
+    DECL_OP %1, f32_to_u8_sat_xy                        , SWS_PIXEL_F32, SWS_UOP_TO_U8_SAT       , 0x3
+    DECL_OP %1, f32_to_u8_sat_xyz                       , SWS_PIXEL_F32, SWS_UOP_TO_U8_SAT       , 0x7
+    DECL_OP %1, f32_to_u8_sat_xw                        , SWS_PIXEL_F32, SWS_UOP_TO_U8_SAT       , 0x9
+    DECL_OP %1, f32_to_u8_sat_yzw                       , SWS_PIXEL_F32, SWS_UOP_TO_U8_SAT       , 0xe
+    DECL_OP %1, f32_to_u8_sat_xyzw                      , SWS_PIXEL_F32, SWS_UOP_TO_U8_SAT       , 0xf
 %endmacro
 
 %macro DECL_F32_TO_U16_SAT 1
+    DECL_OP %1, f32_to_u16_sat_x                        , SWS_PIXEL_F32, SWS_UOP_TO_U16_SAT      , 0x1
+    DECL_OP %1, f32_to_u16_sat_xy                       , SWS_PIXEL_F32, SWS_UOP_TO_U16_SAT      , 0x3
+    DECL_OP %1, f32_to_u16_sat_xyz                      , SWS_PIXEL_F32, SWS_UOP_TO_U16_SAT      , 0x7
+    DECL_OP %1, f32_to_u16_sat_xw                       , SWS_PIXEL_F32, SWS_UOP_TO_U16_SAT      , 0x9
+    DECL_OP %1, f32_to_u16_sat_yzw                      , SWS_PIXEL_F32, SWS_UOP_TO_U16_SAT      , 0xe
+    DECL_OP %1, f32_to_u16_sat_xyzw                     , SWS_PIXEL_F32, SWS_UOP_TO_U16_SAT      , 0xf
 %endmacro

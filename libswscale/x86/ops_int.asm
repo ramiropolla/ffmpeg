@@ -59,6 +59,9 @@ mask4: times 32 db 0x0F
 const1b  equ mask1
 const1w: times 16 dw 0x1
 
+sat_u8:  dd 255.0
+sat_u16: dd 65535.0
+
 SECTION .text
 
 ;---------------------------------------------------------
@@ -517,15 +520,36 @@ IF V2,  pmovzxbw %2, %4
 %endmacro
 
 %macro CAST_TO 0
+%assign SAT 0
 %ifidn UOP, SWS_UOP_TO_U8
     %assign BITS_TO 8
 %elifidn UOP, SWS_UOP_TO_U16
     %assign BITS_TO 16
+%elifidn UOP, SWS_UOP_TO_U8_SAT
+    %assign BITS_TO 8
+    %assign SAT 1
+%elifidn UOP, SWS_UOP_TO_U16_SAT
+    %assign BITS_TO 16
+    %assign SAT 1
 %else
     %assign BITS_TO 32
 %endif
 
         LOAD_CONT tmp0q
+%if SAT
+        ; Clamp from above only; the integer packs below saturate negative
+        ; values (including -inf, and NaN through cvttps2dq) to 0. The
+        ; constant comes first so that NaN inputs are passed through.
+        vbroadcastss m15, [sat_u %+ BITS_TO]
+IF X,   minps mx,  m15, mx
+IF Y,   minps my,  m15, my
+IF Z,   minps mz,  m15, mz
+IF W,   minps mw,  m15, mw
+IF X,   minps mx2, m15, mx2
+IF Y,   minps my2, m15, my2
+IF Z,   minps mz2, m15, mz2
+IF W,   minps mw2, m15, mw2
+%endif
 %ifidn TYPE, SWS_PIXEL_F32
 IF X,   cvttps2dq mx, mx
 IF Y,   cvttps2dq my, my
@@ -940,6 +964,8 @@ IF2 V2, linear_pass 2
 %macro decl_cast_f32 0
     DECL_U8_TO_F32          CAST_TO
     DECL_F32_TO_U8          CAST_TO
+    DECL_F32_TO_U8_SAT      CAST_TO
+    DECL_F32_TO_U16_SAT     CAST_TO
     DECL_U16_TO_F32         CAST_TO
     DECL_F32_TO_U16         CAST_TO
     DECL_U32_TO_F32         CAST_TO
