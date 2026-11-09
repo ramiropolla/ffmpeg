@@ -99,7 +99,8 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
                 .type = entry->type,
                 .mask = entry->mask,
                 .par  = entry->par,
-                .block_size = uop->block_size, /* checked against the table */
+                .block_size = entry->block_size ? entry->block_size
+                                                : uop->block_size,
             };
 
             if (ff_sws_uop_cmp(uop, &entry_uop) != 0)

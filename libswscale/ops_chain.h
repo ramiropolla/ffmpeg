@@ -122,6 +122,7 @@ typedef struct SwsUOpEntry {
     SwsPixelType type;
     SwsCompMask mask;
     SwsUOpParams par;
+    int block_size; /* 0 matches the block size of the table */
 
     /* Kernel implementation */
     SwsFuncPtr func;
