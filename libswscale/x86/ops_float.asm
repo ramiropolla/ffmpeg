@@ -582,6 +582,99 @@ IF NEED(3), linear_muladdps %1, mw%4, LOAD(3), m15, FMA(3)
             assert INIT, SWS_UOP_LINEAR should not contain empty rows
 %endmacro
 
+; Same as linear_muladdps, but for both halves at the same time
+%macro linear_muladdps2 7 ; lo, hi, src_lo, src_hi, use_coef, coef, use_fma
+    %if INIT ; dst is already initialized
+        %if %5 && %7
+            fmaddps %1, %6, %3, %1
+            fmaddps %2, %6, %4, %2
+        %elif %5
+            mulps m15, %6, %3
+            addps %1, m15
+            mulps m15, %6, %4
+            addps %2, m15
+        %else
+            addps %1, %3
+            addps %2, %4
+        %endif
+    %else
+        %assign INIT 1
+        %if %5
+            mulps %1, %6, %3
+            mulps %2, %6, %4
+        %else
+            mova %1, %3
+            mova %2, %4
+        %endif
+    %endif
+%endmacro
+
+; Computes one output row for both halves, loading each coefficient only
+; once. The order of operations is the same as in linear_row.
+%macro linear_row2 4 ; dst_lo, dst_hi, src, row
+%xdefine NEED(J) (!(ZERO_MASK & LIN_MASK(%4, J)))
+%xdefine LOAD(J) (NEED(J) && !(ONE_MASK & LIN_MASK(%4, J)))
+%xdefine FMA(J)  (EXACT_MASK & LIN_MASK(%4, J))
+%assign INIT 0 ; track whether `dst` already contains data
+
+    %if !(ZERO_MASK & LIN_MASK(%4, 4)) ; nonzero output offset
+            %assign INIT 1
+            vbroadcastss %1, [%3 + 4 * BYTES]
+            mova %2, %1
+    %endif
+IF LOAD(0), vbroadcastss m14, [%3 + 0 * BYTES]
+IF NEED(0), linear_muladdps2 %1, %2, mx, mx2, LOAD(0), m14, FMA(0)
+IF LOAD(1), vbroadcastss m14, [%3 + 1 * BYTES]
+IF NEED(1), linear_muladdps2 %1, %2, my, my2, LOAD(1), m14, FMA(1)
+IF LOAD(2), vbroadcastss m14, [%3 + 2 * BYTES]
+IF NEED(2), linear_muladdps2 %1, %2, mz, mz2, LOAD(2), m14, FMA(2)
+IF LOAD(3), vbroadcastss m14, [%3 + 3 * BYTES]
+IF NEED(3), linear_muladdps2 %1, %2, mw, mw2, LOAD(3), m14, FMA(3)
+            assert INIT, SWS_UOP_LINEAR should not contain empty rows
+%endmacro
+
+; Up to three output rows: compute both halves of each row at the same time,
+; into m8-m13 (m14 and m15 hold the coefficient and product)
+%macro linear_3rows 0
+    %assign T 8
+    %if X
+        linear_row2 m %+ T, m %+ %eval(T + 1), MATRIX +  0 * BYTES, 0
+        %assign TX T
+        %assign T T + 2
+    %endif
+    %if Y
+        linear_row2 m %+ T, m %+ %eval(T + 1), MATRIX +  5 * BYTES, 1
+        %assign TY T
+        %assign T T + 2
+    %endif
+    %if Z
+        linear_row2 m %+ T, m %+ %eval(T + 1), MATRIX + 10 * BYTES, 2
+        %assign TZ T
+        %assign T T + 2
+    %endif
+    %if W
+        linear_row2 m %+ T, m %+ %eval(T + 1), MATRIX + 15 * BYTES, 3
+        %assign TW T
+        %assign T T + 2
+    %endif
+    %if X
+        mova mx,  m %+ TX
+        mova mx2, m %+ %eval(TX + 1)
+    %endif
+    %if Y
+        mova my,  m %+ TY
+        mova my2, m %+ %eval(TY + 1)
+    %endif
+    %if Z
+        mova mz,  m %+ TZ
+        mova mz2, m %+ %eval(TZ + 1)
+    %endif
+    %if W
+        mova mw,  m %+ TW
+        mova mw2, m %+ %eval(TW + 1)
+    %endif
+%endmacro
+
 %macro LINEAR_FMA 3
 %assign PRIV_SIZE  4 * 5 * BYTES
 %assign ONE_MASK   %1
@@ -590,6 +683,9 @@ IF NEED(3), linear_muladdps %1, mw%4, LOAD(3), m15, FMA(3)
 
         LOAD_CONT tmp1q
 %define MATRIX implq + SwsOpImpl.priv
+%if COMPS <= 3
+        linear_3rows
+%else
 IF1 X,  linear_row m8,  MATRIX +  0 * BYTES, 0
 IF1 Y,  linear_row m9,  MATRIX +  5 * BYTES, 1
 IF1 Z,  linear_row m10, MATRIX + 10 * BYTES, 2
@@ -606,6 +702,7 @@ IF X,   mova mx2, m8
 IF Y,   mova my2, m9
 IF Z,   mova mz2, m10
 IF W,   mova mw2, m11
+%endif
         CONTINUE tmp1q
 %undef MATRIX
 %endmacro
