@@ -180,11 +180,6 @@ fate-sws-rational64: libswscale/tests/rational64$(EXESUF)
 fate-sws-rational64: CMD = run libswscale/tests/rational64$(EXESUF)
 fate-sws-rational64: CMP = null
 
-FATE_LIBSWSCALE += fate-sws-ops-entries-aarch64
-fate-sws-ops-entries-aarch64: libswscale/tests/sws_ops_aarch64$(EXESUF)
-fate-sws-ops-entries-aarch64: REF = $(SRC_PATH)/libswscale/aarch64/ops_entries.c
-fate-sws-ops-entries-aarch64: CMD = run libswscale/tests/sws_ops_aarch64$(EXESUF)
-
 FATE_LIBSWSCALE += $(FATE_LIBSWSCALE-yes)
 FATE_LIBSWSCALE_SAMPLES += $(FATE_LIBSWSCALE_SAMPLES-yes)
 FATE-$(CONFIG_SWSCALE) += $(FATE_LIBSWSCALE)

@@ -17,7 +17,6 @@ libavformat/rangecoder_dec.c
 libavformat/riscv/cpu_common.c
 libswresample/log2_tab.c
 libswresample/reverse.c
-libswscale/aarch64/ops_entries.c
 libswscale/aarch64/uops_entries.h
 libswscale/log2_tab.c
 libswscale/riscv/cpu_common.c
