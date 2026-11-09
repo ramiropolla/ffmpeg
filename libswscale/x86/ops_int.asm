@@ -62,6 +62,9 @@ const1w: times 16 dw 0x1
 sat_u8:  dd 255.0
 sat_u16: dd 65535.0
 
+align 32
+pack32to8_perm: dd 0, 4, 1, 5, 2, 6, 3, 7
+
 SECTION .text
 
 ;---------------------------------------------------------
@@ -508,6 +511,31 @@ IF V2,  pmovzxbw %2, %4
         vpshufd %3, %3, q3120
 %endmacro
 
+; Narrow two components at a time (m15 = pack32to8_perm). After packuswb,
+; the dwords are { a0 a2 b0 b2 | a1 a3 b1 b3 }, which vpermd sorts into
+; { a0 a1 a2 a3 | b0 b1 b2 b3 }.
+%macro cast32to8_pair 6 ; a, a2, b, b2, xa, xb
+        packusdw %1, %2
+        packusdw %3, %4
+        packuswb %1, %3
+        vpermd %1, m15, %1
+        vextracti128 %6, %1, 1
+%endmacro
+
+; Queue a component for narrowing, emitting the pairs as they fill up
+%macro cast32to8_push 4 ; reg, reg2, xreg, xreg2
+    %if PENDING
+        cast32to8_pair PEND_R, PEND_R2, %1, %2, PEND_X, %3
+        %assign PENDING 0
+    %else
+        %xdefine PEND_R  %1
+        %xdefine PEND_R2 %2
+        %xdefine PEND_X  %3
+        %xdefine PEND_X2 %4
+        %assign PENDING 1
+    %endif
+%endmacro
+
 %macro cast16to32 4 ; reg, reg2, xreg, xreg2
         vextracti128 %4, %1, 1
         pmovzxwd %1, %3
@@ -560,7 +588,17 @@ IF Y,   cvttps2dq my2, my2
 IF Z,   cvttps2dq mz2, mz2
 IF W,   cvttps2dq mw2, mw2
 %endif
-%if BITS != BITS_TO
+%if BITS == 32 && BITS_TO == 8 && V2 && COMPS > 1
+        movu m15, [pack32to8_perm]
+    %assign PENDING 0
+IF1 X,  cast32to8_push mx, mx2, xmx, xmx2
+IF1 Y,  cast32to8_push my, my2, xmy, xmy2
+IF1 Z,  cast32to8_push mz, mz2, xmz, xmz2
+IF1 W,  cast32to8_push mw, mw2, xmw, xmw2
+    %if PENDING
+        cast32to8 PEND_R, PEND_R2, PEND_X, PEND_X2
+    %endif
+%elif BITS != BITS_TO
         ; integer size conversion
 IF1 X,  cast %+ BITS %+ to %+ BITS_TO mx, mx2, xmx, xmx2
 IF1 Y,  cast %+ BITS %+ to %+ BITS_TO my, my2, xmy, xmy2
