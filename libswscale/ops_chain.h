@@ -122,7 +122,7 @@ typedef struct SwsUOpEntry {
     SwsPixelType type;
     SwsCompMask mask;
     SwsUOpParams par;
-    int block_size; /* 0 matches the block size of the table */
+    int block_size;
 
     /* Kernel implementation */
     SwsFuncPtr func;
@@ -151,13 +151,12 @@ static inline void ff_sws_op_priv_pack_refptr(SwsImplResult *out, const void *da
 
 struct SwsUOpTable {
     unsigned cpu_flags;   /* required CPU flags for this table */
-    int block_size;       /* fixed block size of this table */
     const SwsUOpEntry *entries[]; /* terminated by NULL */
 };
 
 /**
- * "Compile" a single uop by looking it up in a list of fixed size uop tables,
- * in decreasing order of preference.
+ * "Compile" a single uop by looking it up in a list of uop tables, in
+ * decreasing order of preference.
  *
  * Returns 0 or a negative error code.
  */
