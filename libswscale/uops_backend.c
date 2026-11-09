@@ -20,6 +20,8 @@
 
 #include "libavutil/avassert.h"
 
+#include "uops_entries.h"
+#include "uops_entries_c.h"
 #include "uops_tmpl.h"
 
 /**
@@ -58,50 +60,92 @@
 #  undef BIT_DEPTH
 #undef IS_FLOAT
 
-/* Expanded as new uop types are implemented in the C/template backend */
-#define REF_ALL_UOPS(TYPE)                                  \
-    SWS_FOR(TYPE, READ_PLANAR,    REF_ENTRY)                \
-    SWS_FOR(TYPE, READ_PLANAR_FV, REF_ENTRY)                \
-    SWS_FOR(TYPE, READ_PLANAR_FH, REF_ENTRY)                \
-    SWS_FOR(TYPE, READ_PACKED,    REF_ENTRY)                \
-    SWS_FOR(TYPE, READ_NIBBLE,    REF_ENTRY)                \
-    SWS_FOR(TYPE, READ_BIT,       REF_ENTRY)                \
-    SWS_FOR(TYPE, READ_PALETTE,   REF_ENTRY)                \
-    SWS_FOR(TYPE, PERMUTE,        REF_ENTRY)                \
-    SWS_FOR(TYPE, COPY,           REF_ENTRY)                \
-    SWS_FOR(TYPE, WRITE_PLANAR,   REF_ENTRY)                \
-    SWS_FOR(TYPE, WRITE_PACKED,   REF_ENTRY)                \
-    SWS_FOR(TYPE, WRITE_NIBBLE,   REF_ENTRY)                \
-    SWS_FOR(TYPE, WRITE_BIT,      REF_ENTRY)                \
-    SWS_FOR(TYPE, SWAP_BYTES,     REF_ENTRY)                \
-    SWS_FOR(TYPE, EXPAND_BIT,     REF_ENTRY)                \
-    SWS_FOR(TYPE, EXPAND_PAIR,    REF_ENTRY)                \
-    SWS_FOR(TYPE, EXPAND_QUAD,    REF_ENTRY)                \
-    SWS_FOR(TYPE, TO_U8,          REF_ENTRY)                \
-    SWS_FOR(TYPE, TO_U16,         REF_ENTRY)                \
-    SWS_FOR(TYPE, TO_U32,         REF_ENTRY)                \
-    SWS_FOR(TYPE, TO_F32,         REF_ENTRY)                \
-    SWS_FOR(TYPE, SCALE,          REF_ENTRY)                \
-    SWS_FOR(TYPE, ADD,            REF_ENTRY)                \
-    SWS_FOR(TYPE, MIN,            REF_ENTRY)                \
-    SWS_FOR(TYPE, MAX,            REF_ENTRY)                \
-    SWS_FOR(TYPE, UNPACK,         REF_ENTRY)                \
-    SWS_FOR(TYPE, PACK,           REF_ENTRY)                \
-    SWS_FOR(TYPE, LSHIFT,         REF_ENTRY)                \
-    SWS_FOR(TYPE, RSHIFT,         REF_ENTRY)                \
-    SWS_FOR(TYPE, CLEAR,          REF_ENTRY)                \
-    SWS_FOR(TYPE, LINEAR,         REF_ENTRY)                \
-    SWS_FOR(TYPE, DITHER,         REF_ENTRY)                \
-    SWS_FOR(TYPE, LUT_3D,         REF_ENTRY)                \
-    /* end of macro */
+#define C_PIXEL_U8  uint8_t
+#define C_PIXEL_U16 uint16_t
+#define C_PIXEL_U32 uint32_t
+#define C_PIXEL_F32 float
+
+/* Plane pointer arguments of read and write kernels */
+#define C_ARGS_PLAIN(TYPE)
+#define C_ARGS_READ(TYPE)                                                       \
+    , (const C_PIXEL_##TYPE *) iter->in[0], (const C_PIXEL_##TYPE *) iter->in[1], \
+      (const C_PIXEL_##TYPE *) iter->in[2], (const C_PIXEL_##TYPE *) iter->in[3]
+#define C_ARGS_WRITE(TYPE)                                                      \
+    , (C_PIXEL_##TYPE *) iter->out[0], (C_PIXEL_##TYPE *) iter->out[1],         \
+      (C_PIXEL_##TYPE *) iter->out[2], (C_PIXEL_##TYPE *) iter->out[3]
+
+#define C_SETUP_NONE(TYPE)      NULL
+#define C_SETUP_SCALAR(TYPE)    ff_sws_setup_scalar
+#define C_SETUP_VEC4(TYPE)      ff_sws_setup_vec4
+#define C_SETUP_FILTER_V(TYPE)  bitfn(setup_filter_v, TYPE)
+#define C_SETUP_FILTER_H(TYPE)  bitfn(setup_filter_h, TYPE)
+#define C_SETUP_DITHER(TYPE)    bitfn(setup_dither, TYPE)
+#define C_SETUP_LINEAR(TYPE)    bitfn(setup_linear, TYPE)
+#define C_SETUP_LUT3D(TYPE)     bitfn(setup_lut3d, TYPE)
+
+/* Template function, plane arguments and setup function of each uop type */
+#define C_READ_PLANAR       read_planar,    C_ARGS_READ,  C_SETUP_NONE
+#define C_READ_PLANAR_FH    read_planar_fh, C_ARGS_READ,  C_SETUP_FILTER_H
+#define C_READ_PLANAR_FV    read_planar_fv, C_ARGS_READ,  C_SETUP_FILTER_V
+#define C_READ_PACKED       read_packed,    C_ARGS_READ,  C_SETUP_NONE
+#define C_READ_NIBBLE       read_nibble,    C_ARGS_READ,  C_SETUP_NONE
+#define C_READ_BIT          read_bit,       C_ARGS_READ,  C_SETUP_NONE
+#define C_READ_PALETTE      read_palette,   C_ARGS_READ,  C_SETUP_NONE
+#define C_WRITE_PLANAR      write_planar,   C_ARGS_WRITE, C_SETUP_NONE
+#define C_WRITE_PACKED      write_packed,   C_ARGS_WRITE, C_SETUP_NONE
+#define C_WRITE_NIBBLE      write_nibble,   C_ARGS_WRITE, C_SETUP_NONE
+#define C_WRITE_BIT         write_bit,      C_ARGS_WRITE, C_SETUP_NONE
+#define C_PERMUTE           permute,        C_ARGS_PLAIN, C_SETUP_NONE
+#define C_COPY              copy,           C_ARGS_PLAIN, C_SETUP_NONE
+#define C_SWAP_BYTES        swap_bytes,     C_ARGS_PLAIN, C_SETUP_NONE
+#define C_EXPAND_BIT        expand_bit,     C_ARGS_PLAIN, C_SETUP_NONE
+#define C_EXPAND_PAIR       expand_pair,    C_ARGS_PLAIN, C_SETUP_NONE
+#define C_EXPAND_QUAD       expand_quad,    C_ARGS_PLAIN, C_SETUP_NONE
+#define C_TO_U8             to_u8,          C_ARGS_PLAIN, C_SETUP_NONE
+#define C_TO_U16            to_u16,         C_ARGS_PLAIN, C_SETUP_NONE
+#define C_TO_U32            to_u32,         C_ARGS_PLAIN, C_SETUP_NONE
+#define C_TO_F32            to_f32,         C_ARGS_PLAIN, C_SETUP_NONE
+#define C_SCALE             scale,          C_ARGS_PLAIN, C_SETUP_SCALAR
+#define C_ADD               add,            C_ARGS_PLAIN, C_SETUP_VEC4
+#define C_MIN               min,            C_ARGS_PLAIN, C_SETUP_VEC4
+#define C_MAX               max,            C_ARGS_PLAIN, C_SETUP_VEC4
+#define C_UNPACK            unpack,         C_ARGS_PLAIN, C_SETUP_NONE
+#define C_PACK              pack,           C_ARGS_PLAIN, C_SETUP_NONE
+#define C_LSHIFT            lshift,         C_ARGS_PLAIN, C_SETUP_NONE
+#define C_RSHIFT            rshift,         C_ARGS_PLAIN, C_SETUP_NONE
+#define C_CLEAR             clear,          C_ARGS_PLAIN, C_SETUP_VEC4
+#define C_LINEAR            linear,         C_ARGS_PLAIN, C_SETUP_LINEAR
+#define C_DITHER            dither,         C_ARGS_PLAIN, C_SETUP_DITHER
+#define C_LUT_3D            lut3d,          C_ARGS_PLAIN, C_SETUP_LUT3D
+
+#define C_DECL_IMPL(FUNC, PLANE_ARGS, SETUP, NAME, TYPE, ARGS, INIT)            \
+    av_flatten static void NAME##_c(SwsOpIter *restrict iter,                   \
+                                    const SwsOpImpl *restrict impl,             \
+                                    void *restrict x, void *restrict y,         \
+                                    void *restrict z, void *restrict w)         \
+    {                                                                           \
+        bitfn(FUNC, TYPE)(iter, impl, x, y, z, w,                               \
+                          SWS_UNPAREN ARGS PLANE_ARGS(TYPE));                   \
+    }                                                                           \
+                                                                                \
+    static const SwsUOpEntry uop_##NAME = {                                     \
+        SWS_UNPAREN INIT,                                                       \
+        .func  = (SwsFuncPtr) NAME##_c,                                         \
+        .setup = SETUP(TYPE),                                                   \
+    };
+
+/* Expands C_<UOP> into the first arguments of C_DECL_IMPL() */
+#define C_DECL(...) C_DECL_IMPL(__VA_ARGS__)
+#define C_ENTRY(DUMMY, NAME, TYPE, UOP, BLOCK_SIZE, ARGS, INIT)                 \
+    C_DECL(C_##UOP, NAME, TYPE, ARGS, INIT)
+#define C_REF(DUMMY, NAME, ...) &uop_##NAME,
+
+SWS_ENTRIES_C(C_ENTRY, 0)
 
 static const SwsUOpTable uop_table = {
     .block_size = SWS_BLOCK_SIZE,
     .entries = {
-        REF_ALL_UOPS(U8)
-        REF_ALL_UOPS(U16)
-        REF_ALL_UOPS(U32)
-        REF_ALL_UOPS(F32)
+        SWS_ENTRIES_C(C_REF, 0)
         NULL
     },
 };
