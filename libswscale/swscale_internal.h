@@ -678,12 +678,23 @@ struct SwsInternal {
                             uint32_t coeff, int64_t offset);
     void (*chrConvertRange)(int16_t *dst1, int16_t *dst2, int width,
                             uint32_t coeff, int64_t offset);
+    /**
+     * Rescales a horizontally scaled alpha line from the full-scale value
+     * of the source alpha depth to that of the destination alpha depth,
+     * both left-aligned in the 15 or 19 bpc intermediate. Data layout is
+     * the same as for lumConvertRange; coeff has 16 (15 bpc) or 24
+     * (19 bpc) fractional bits.
+     */
+    void (*alpConvertRange)(int16_t *dst, int width,
+                            uint32_t coeff, int64_t offset);
     /** @} */
 
     uint32_t lumConvertRange_coeff;
     uint32_t chrConvertRange_coeff;
+    uint32_t alpConvertRange_coeff;
     int64_t  lumConvertRange_offset;
     int64_t  chrConvertRange_offset;
+    int64_t  alpConvertRange_offset;
 
     int needs_hcscale; ///< Set if there are chroma planes to be converted.
 

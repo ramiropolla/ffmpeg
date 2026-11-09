@@ -79,6 +79,10 @@ static int lum_h_scale(SwsInternal *c, SwsFilterDescriptor *desc, int sliceY, in
                 c->hyScale(c, (int16_t*)dst[dst_pos], dstW, (const uint8_t *)src[src_pos], instance->filter,
                             instance->filter_pos, instance->filter_size);
             }
+
+            if (c->alpConvertRange)
+                c->alpConvertRange((int16_t *) dst[dst_pos], dstW,
+                                   c->alpConvertRange_coeff, c->alpConvertRange_offset);
         }
     }
 

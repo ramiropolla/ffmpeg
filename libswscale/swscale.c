@@ -649,6 +649,83 @@ static void init_range_convert_constants(SwsInternal *c)
                         &c->chrConvertRange_coeff, &c->chrConvertRange_offset);
 }
 
+#define ALP_RESCALE_SHIFT15 16
+#define ALP_RESCALE_SHIFT19 24
+
+static void alpRescale_c(int16_t *dst, int width, uint32_t coeff, int64_t offset)
+{
+    for (int i = 0; i < width; i++) {
+        int64_t val = ((int64_t) dst[i] * coeff + offset) >> ALP_RESCALE_SHIFT15;
+        dst[i] = av_clip64(val, INT16_MIN, (1 << 15) - 1);
+    }
+}
+
+static void alpRescale16_c(int16_t *_dst, int width, uint32_t coeff, int64_t offset)
+{
+    int32_t *dst = (int32_t *) _dst;
+    for (int i = 0; i < width; i++) {
+        int64_t val = ((int64_t) dst[i] * coeff + offset) >> ALP_RESCALE_SHIFT19;
+        dst[i] = av_clip64(val, INT32_MIN, (1 << 19) - 1);
+    }
+}
+
+/* Depth of the alpha values that the input stage writes for fmt, before
+ * they are left-aligned by horizontal scaling. */
+static int alpha_input_depth(enum AVPixelFormat fmt)
+{
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
+
+    switch (fmt) {
+    case AV_PIX_FMT_RGBA:
+    case AV_PIX_FMT_BGRA:
+    case AV_PIX_FMT_ARGB:
+    case AV_PIX_FMT_ABGR:
+    case AV_PIX_FMT_PAL8:
+        /* The alpha input for these formats replicates 8 bits to 14 */
+        return 14;
+    }
+    if (desc->flags & AV_PIX_FMT_FLAG_FLOAT)
+        return 16;
+    return desc->comp[desc->nb_components - 1].depth;
+}
+
+static int alpha_output_depth(enum AVPixelFormat fmt)
+{
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
+
+    if (desc->flags & AV_PIX_FMT_FLAG_FLOAT)
+        return 16;
+    return desc->comp[desc->nb_components - 1].depth;
+}
+
+/* Full-scale value of a depth-bit component left-aligned to bits */
+static int64_t alpha_full_scale(int depth, int bits)
+{
+    const int64_t max = (1 << depth) - 1;
+    return depth <= bits ? max << (bits - depth) : max >> (depth - bits);
+}
+
+static av_cold void init_alpha_rescale(SwsInternal *c)
+{
+    const int bits  = c->dstBpc > 14 ? 19 : 15;
+    const int shift = c->dstBpc > 14 ? ALP_RESCALE_SHIFT19 : ALP_RESCALE_SHIFT15;
+    int64_t src_max;
+    int64_t dst_max;
+
+    c->alpConvertRange = NULL;
+    if (!isALPHA(c->opts.src_format) || !isALPHA(c->opts.dst_format))
+        return;
+
+    src_max = alpha_full_scale(alpha_input_depth(c->opts.src_format), bits);
+    dst_max = alpha_full_scale(alpha_output_depth(c->opts.dst_format), bits);
+    if (src_max == dst_max)
+        return;
+
+    c->alpConvertRange_coeff  = ((dst_max << shift) + src_max / 2) / src_max;
+    c->alpConvertRange_offset = 1LL << (shift - 1);
+    c->alpConvertRange        = c->dstBpc > 14 ? alpRescale16_c : alpRescale_c;
+}
+
 av_cold void ff_sws_init_range_convert(SwsInternal *c)
 {
     c->lumConvertRange = NULL;
@@ -714,6 +791,7 @@ static av_cold void sws_init_swscale(SwsInternal *c)
     }
 
     ff_sws_init_range_convert(c);
+    init_alpha_rescale(c);
 
     if (!(isGray(srcFormat) || isGray(c->opts.dst_format) ||
           srcFormat == AV_PIX_FMT_MONOBLACK || srcFormat == AV_PIX_FMT_MONOWHITE))
