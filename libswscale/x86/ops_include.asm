@@ -21,6 +21,11 @@
 %include "libavutil/x86/x86util.asm"
 %include "libswscale/x86/uops_macros.asm"
 
+; Align every kernel to a 64-byte boundary. The chains execute one taken
+; indirect jump per kernel, and are mostly front-end bound; kernels that
+; straddle 64-byte boundaries cost extra fetch cycles on every block.
+%assign function_align 64
+
 ; High-level explanation of how the x86 backend works:
 ;
 ; sws_processN is the shared entry point for all operation chains. This
