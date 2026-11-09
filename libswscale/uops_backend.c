@@ -143,7 +143,6 @@
 SWS_ENTRIES_C(C_ENTRY, 0)
 
 static const SwsUOpTable uop_table = {
-    .block_size = SWS_BLOCK_SIZE,
     .entries = {
         SWS_ENTRIES_C(C_REF, 0)
         NULL
