@@ -324,12 +324,13 @@ endstruc
     annotate_function_size
 %endmacro
 
-; Return from the last kernel in the chain back into sws_process
+; Return from the last kernel in the chain back into sws_process. This
+; deliberately skips the vzeroupper that RET would emit for YMM kernels;
+; the AVX2 version of sws_process clears the upper halves once at the end,
+; instead of once per block.
 %macro WRITE_RET 0
-    %if mmsize == 16 && avx_enabled
-        vzeroupper ; earlier kernels in the chain may have used YMM registers
-    %endif
-        RET
+        ret
+        annotate_function_size
 %endmacro
 
 ; Convenience macro to load and continue to the next kernel in one step

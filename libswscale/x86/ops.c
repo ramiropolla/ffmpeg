@@ -556,6 +556,10 @@ SWS_DECL_FUNC(ff_sws_process1_x86);
 SWS_DECL_FUNC(ff_sws_process2_x86);
 SWS_DECL_FUNC(ff_sws_process3_x86);
 SWS_DECL_FUNC(ff_sws_process4_x86);
+SWS_DECL_FUNC(ff_sws_process1_x86_avx2);
+SWS_DECL_FUNC(ff_sws_process2_x86_avx2);
+SWS_DECL_FUNC(ff_sws_process3_x86_avx2);
+SWS_DECL_FUNC(ff_sws_process4_x86_avx2);
 
 /* Declare packed shuffle functions */
 SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _sse4,       NULL, NULL)
@@ -693,11 +697,14 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
             goto fail;
     }
 
+    /* On AVX2 CPUs, all kernels are VEX-encoded and the entry point clears
+     * the upper YMM halves once per call (see WRITE_RET) */
+    const bool avx2 = mmsize >= 32;
     switch (av_popcount(uops->planes_in | uops->planes_out)) {
-    case 1: out->func = ff_sws_process1_x86; break;
-    case 2: out->func = ff_sws_process2_x86; break;
-    case 3: out->func = ff_sws_process3_x86; break;
-    case 4: out->func = ff_sws_process4_x86; break;
+    case 1: out->func = avx2 ? ff_sws_process1_x86_avx2 : ff_sws_process1_x86; break;
+    case 2: out->func = avx2 ? ff_sws_process2_x86_avx2 : ff_sws_process2_x86; break;
+    case 3: out->func = avx2 ? ff_sws_process3_x86_avx2 : ff_sws_process3_x86; break;
+    case 4: out->func = avx2 ? ff_sws_process4_x86_avx2 : ff_sws_process4_x86; break;
     }
 
     ff_sws_uop_list_print(ctx, AV_LOG_DEBUG, uops);

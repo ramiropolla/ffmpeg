@@ -25,8 +25,8 @@ SECTION .text
 ;---------------------------------------------------------
 ; Global entry point. See `ops_include.asm` for info.
 
-%macro process_fn 1 ; number of planes
-cglobal sws_process%1_x86, 6, 7 + 2 * %1, 16, 20
+%macro process_fn 1-2 ; number of planes, suffix (_avx2 to clear upper YMM)
+cglobal sws_process%1_x86%2, 6, 7 + 2 * %1, 16, 20
             ; Args:
             ;   execq, implq, bxd, yd as defined in ops_include.asm
             ;   bx_end and y_end are initially in tmp0d / tmp1d
@@ -91,6 +91,9 @@ IF %1 > 3,  add out3q, [execq + SwsOpExec.out_bump3]
             add in0q, tmp0q
             jmp .loop
 .end:
+%ifidn %2, _avx2
+            vzeroupper
+%endif
             RET
 %endmacro
 
@@ -98,6 +101,13 @@ process_fn 1
 process_fn 2
 process_fn 3
 process_fn 4
+
+; Same as above, but also clears the upper YMM halves left dirty by the
+; kernels (which don't do this themselves; see WRITE_RET)
+process_fn 1, _avx2
+process_fn 2, _avx2
+process_fn 3, _avx2
+process_fn 4, _avx2
 
 ;---------------------------------------------------------
 ; Packed shuffle fast-path
