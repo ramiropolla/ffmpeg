@@ -57,4 +57,3 @@ TESTPROGS = colorspace                                                  \
             unscaled_threaded                                           \
 
 DEVPROGS = uops_entries_gen                                             \
-           uops_macros_gen                                              \
