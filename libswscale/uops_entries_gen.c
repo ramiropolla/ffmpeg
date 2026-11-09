@@ -47,6 +47,7 @@
 #include "uops.h"
 #include "uops_backend.h"
 #include "uops_list.h"
+#include "aarch64/uops_aarch64.h"
 #include "x86/uops_x86.h"
 
 static const char uop_names[SWS_UOP_TYPE_NB][32] = {
@@ -286,6 +287,53 @@ static void name_x86(const Entry *entry, char buf[SWS_UOP_NAME_MAX])
 }
 
 /*********************************************************************/
+/* aarch64 backend */
+
+static int collect_aarch64(SwsContext *ctx, const SwsOpList *ops)
+{
+    SwsUOpList *uops = ff_sws_uop_list_alloc();
+    if (!uops)
+        return AVERROR(ENOMEM);
+
+    Entry *entries = NULL;
+    const SwsUOpFlags flags = ff_sws_uop_flags_aarch64(ctx->flags & SWS_BITEXACT);
+    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    if (ret < 0)
+        goto done;
+
+    /* The whole chain fails if any of its uops is unsupported */
+    entries = av_calloc(uops->num_ops, sizeof(*entries));
+    if (!entries) {
+        ret = AVERROR(ENOMEM);
+        goto done;
+    }
+
+    for (int i = 0; i < uops->num_ops; i++) {
+        entries[i].uop = uops->ops[i];
+        entries[i].uop.block_size = ff_sws_uop_block_size_aarch64(uops);
+        ret = ff_sws_uop_simplify_aarch64(&entries[i].uop);
+        if (ret < 0)
+            goto done;
+    }
+
+    for (int i = 0; i < uops->num_ops; i++) {
+        ret = register_entry(ctx, &entries[i]);
+        if (ret < 0)
+            goto done;
+    }
+
+done:
+    av_free(entries);
+    ff_sws_uop_list_free(&uops);
+    return ret == AVERROR(ENOTSUP) ? 0 : ret;
+}
+
+static void name_aarch64(const Entry *entry, char buf[SWS_UOP_NAME_MAX])
+{
+    ff_sws_uop_name_aarch64(&entry->uop, buf);
+}
+
+/*********************************************************************/
 
 static const Target targets[] = {
     {
@@ -306,6 +354,12 @@ static const Target targets[] = {
         .nasm       = true,
         .collect    = collect_x86,
         .name_entry = name_x86,
+    }, {
+        .name       = "aarch64",
+        .guard      = "SWSCALE_AARCH64_UOPS_ENTRIES_H",
+        .lists      = { "AARCH64" },
+        .collect    = collect_aarch64,
+        .name_entry = name_aarch64,
     },
 };
 
@@ -591,7 +645,7 @@ static int usage(void)
     fprintf(stderr, "Usage: uops_entries_gen TARGET [-nasm FILE]\n"
                     "Writes the C kernel lists of TARGET to stdout, and the NASM\n"
                     "kernel lists to FILE for targets which have them.\n"
-                    "TARGET is one of: c, x86\n");
+                    "TARGET is one of: c, x86, aarch64\n");
     return 1;
 }
 
