@@ -27,7 +27,8 @@
 #include "libswscale/filters.h"
 #include "libswscale/ops_dispatch.h"
 #include "libswscale/uops.h"
-#include "libswscale/uops_macros.h"
+#include "libswscale/uops_entries.h"
+#include "libswscale/uops_entries_c.h"
 
 #include "checkasm.h"
 
@@ -677,49 +678,56 @@ static void check_lut_3d(const char *name, SwsUOp *uop)
     av_refstruct_unref(&lut3d);
 }
 
-#define CHECK_FUNCTION(CHECK, NAME, ...) \
-    CHECK(#NAME, &(SwsUOp) { __VA_ARGS__ });
+/* Test function for each uop type */
+#define CHECK_READ_PLANAR       check_read
+#define CHECK_READ_PLANAR_FH    check_filter
+#define CHECK_READ_PLANAR_FV    check_filter
+#define CHECK_READ_PACKED       check_read
+#define CHECK_READ_NIBBLE       check_read
+#define CHECK_READ_BIT          check_read
+#define CHECK_READ_PALETTE      check_read
+#define CHECK_WRITE_PLANAR      check_write
+#define CHECK_WRITE_PACKED      check_write
+#define CHECK_WRITE_NIBBLE      check_write
+#define CHECK_WRITE_BIT         check_write
+#define CHECK_PERMUTE           check_swizzle
+#define CHECK_COPY              check_swizzle
+#define CHECK_SWAP_BYTES        check_simple
+#define CHECK_EXPAND_BIT        check_expand_bit
+#define CHECK_EXPAND_PAIR       check_cast
+#define CHECK_EXPAND_QUAD       check_cast
+#define CHECK_TO_U8             check_cast
+#define CHECK_TO_U16            check_cast
+#define CHECK_TO_U32            check_cast
+#define CHECK_TO_F32            check_cast
+#define CHECK_SCALE             check_scale
+#define CHECK_ADD               check_vec4
+#define CHECK_MIN               check_vec4
+#define CHECK_MAX               check_vec4
+#define CHECK_UNPACK            check_unpack
+#define CHECK_PACK              check_pack
+#define CHECK_LSHIFT            check_simple
+#define CHECK_RSHIFT            check_simple
+#define CHECK_CLEAR             check_clear
+#define CHECK_LINEAR            check_linear
+#define CHECK_DITHER            check_dither
+#define CHECK_LUT_3D            check_lut_3d
 
-#define CHECK_FOR(UOP, CHECK) \
-    SWS_FOR_STRUCT(U8,  UOP, CHECK_FUNCTION, CHECK) \
-    SWS_FOR_STRUCT(U16, UOP, CHECK_FUNCTION, CHECK) \
-    SWS_FOR_STRUCT(U32, UOP, CHECK_FUNCTION, CHECK) \
-    SWS_FOR_STRUCT(F32, UOP, CHECK_FUNCTION, CHECK) \
-    report(#UOP)
+/* The list is grouped by uop type; report each group once it is done */
+static void report_group(const char **group, const char *next)
+{
+    if (*group && (!next || strcmp(*group, next)))
+        report("%s", *group);
+    *group = next;
+}
+
+#define CHECK_ENTRY(GROUP, NAME, TYPE, UOP, BLOCK_SIZE, ARGS, INIT)            \
+    report_group(GROUP, #UOP);                                                  \
+    CHECK_##UOP(#NAME, &(SwsUOp) { SWS_UNPAREN INIT });
 
 void checkasm_check_sw_ops(void)
 {
-    CHECK_FOR(READ_PLANAR,      check_read);
-    CHECK_FOR(READ_PLANAR_FH,   check_filter);
-    CHECK_FOR(READ_PLANAR_FV,   check_filter);
-    CHECK_FOR(READ_PACKED,      check_read);
-    CHECK_FOR(READ_NIBBLE,      check_read);
-    CHECK_FOR(READ_BIT,         check_read);
-    CHECK_FOR(READ_PALETTE,     check_read);
-    CHECK_FOR(WRITE_PLANAR,     check_write);
-    CHECK_FOR(WRITE_PACKED,     check_write);
-    CHECK_FOR(WRITE_NIBBLE,     check_write);
-    CHECK_FOR(WRITE_BIT,        check_write);
-    CHECK_FOR(PERMUTE,          check_swizzle);
-    CHECK_FOR(COPY,             check_swizzle);
-    CHECK_FOR(SWAP_BYTES,       check_simple);
-    CHECK_FOR(EXPAND_BIT,       check_expand_bit);
-    CHECK_FOR(EXPAND_PAIR,      check_cast);
-    CHECK_FOR(EXPAND_QUAD,      check_cast);
-    CHECK_FOR(TO_U8,            check_cast);
-    CHECK_FOR(TO_U16,           check_cast);
-    CHECK_FOR(TO_U32,           check_cast);
-    CHECK_FOR(TO_F32,           check_cast);
-    CHECK_FOR(SCALE,            check_scale);
-    CHECK_FOR(ADD,              check_vec4);
-    CHECK_FOR(MIN,              check_vec4);
-    CHECK_FOR(MAX,              check_vec4);
-    CHECK_FOR(UNPACK,           check_unpack);
-    CHECK_FOR(PACK,             check_pack);
-    CHECK_FOR(LSHIFT,           check_simple);
-    CHECK_FOR(RSHIFT,           check_simple);
-    CHECK_FOR(CLEAR,            check_clear);
-    CHECK_FOR(LINEAR,           check_linear);
-    CHECK_FOR(DITHER,           check_dither);
-    CHECK_FOR(LUT_3D,           check_lut_3d);
+    const char *group = NULL;
+    SWS_ENTRIES_C(CHECK_ENTRY, &group)
+    report_group(&group, NULL);
 }
