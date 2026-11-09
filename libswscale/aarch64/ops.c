@@ -168,8 +168,7 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
-    /* Use at most two full vregs during the widest precision section */
-    int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
+    const int block_size = ff_sws_uop_block_size_aarch64(uops);
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)
@@ -183,15 +182,21 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
 
     /* Look up kernel functions. */
     for (int i = 0; i < uops->num_ops; i++) {
+        SwsUOp uop = uops->ops[i];
+        uop.block_size = block_size;
+        ret = ff_sws_uop_simplify_aarch64(&uop);
+        if (ret < 0)
+            goto error;
+
         SwsAArch64OpImplParams params = { 0 };
-        convert_to_aarch64_impl(&uops->ops[i], block_size, &params);
+        convert_to_aarch64_impl(&uop, &params);
         SwsFuncPtr func = aarch64_lookup(&params);
         if (!func) {
             ret = AVERROR(ENOTSUP);
             goto error;
         }
         SwsImplResult res = { 0 };
-        ret = aarch64_setup(&uops->ops[i], &params, &res);
+        ret = aarch64_setup(&uop, &params, &res);
         if (ret < 0)
             goto error;
         av_assert1(res.priv_size == aarch64_priv_size(&params));
@@ -233,9 +238,7 @@ static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,
     if (!uops)
         return AVERROR(ENOMEM);
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING;
-    if (!(ctx->flags & SWS_BITEXACT))
-        flags |= SWS_UOP_FLAG_FMA;
+    const SwsUOpFlags flags = ff_sws_uop_flags_aarch64(ctx->flags & SWS_BITEXACT);
     int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
     if (ret < 0)
         goto error;

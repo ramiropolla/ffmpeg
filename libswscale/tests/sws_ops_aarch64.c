@@ -201,9 +201,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     if (!uops)
         return AVERROR(ENOMEM);
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING;
-    if (!(ctx->flags & SWS_BITEXACT))
-        flags |= SWS_UOP_FLAG_FMA;
+    const SwsUOpFlags flags = ff_sws_uop_flags_aarch64(ctx->flags & SWS_BITEXACT);
     ret = ff_sws_ops_translate(ctx, ops, flags, uops);
     if (ret == AVERROR(ENOTSUP)) {
         ret = 0;
@@ -212,12 +210,19 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto end;
 
-    /* Use at most two full vregs during the widest precision section */
-    int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
+    const int block_size = ff_sws_uop_block_size_aarch64(uops);
 
     for (int i = 0; i < uops->num_ops; i++) {
+        SwsUOp uop = uops->ops[i];
+        uop.block_size = block_size;
+        ret = ff_sws_uop_simplify_aarch64(&uop);
+        if (ret == AVERROR(ENOTSUP))
+            ret = 0;
+        if (ret < 0)
+            goto end;
+
         SwsAArch64OpImplParams params = { 0 };
-        convert_to_aarch64_impl(&uops->ops[i], block_size, &params);
+        convert_to_aarch64_impl(&uop, &params);
         ret = aarch64_collect_op(&params, root);
         if (ret < 0)
             goto end;
