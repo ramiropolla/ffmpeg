@@ -144,7 +144,7 @@ IF V2,  movu [out0q + (mmsize >> 1)], xmx2
 IF V2,  movq [out0q + (mmsize >> 1)], mx2
 %endif
         add out0q, BLOCK_WIDTH >> 1
-        RET
+        WRITE_RET
 %endmacro
 
 %macro READ_BIT 0
@@ -189,7 +189,7 @@ IF V2,  mov [out0q + (mmsize >> 3)], tmp1d
 IF V2,  mov [out0q + (mmsize >> 3)], tmp1w
 %endif
         add out0q, BLOCK_WIDTH >> 3
-        RET
+        WRITE_RET
 %endmacro
 
 %macro WRITE_PLANAR 0
@@ -207,7 +207,7 @@ IF X,   add out0q, BLOCK_SIZE
 IF Y,   add out1q, BLOCK_SIZE
 IF Z,   add out2q, BLOCK_SIZE
 IF W,   add out3q, BLOCK_SIZE
-        RET
+        WRITE_RET
 %endmacro
 
 ;---------------------------------------------------------
@@ -416,7 +416,7 @@ IF V2,  movu [out0q + 3 * mmsize], m11
 IF1 V2, write_packed34 mx2, my2, mz2, mw2, out0q + mmsize * COMPS
     %endif
         add out0q, BLOCK_SIZE * COMPS
-        RET
+        WRITE_RET
 %endmacro
 
 %macro PACK 4 ; x, y, z, w
@@ -566,10 +566,6 @@ IF1 X,  cast %+ BITS %+ to %+ BITS_TO mx, mx2, xmx, xmx2
 IF1 Y,  cast %+ BITS %+ to %+ BITS_TO my, my2, xmy, xmy2
 IF1 Z,  cast %+ BITS %+ to %+ BITS_TO mz, mz2, xmz, xmz2
 IF1 W,  cast %+ BITS %+ to %+ BITS_TO mw, mw2, xmw, xmw2
-    %if cpuflag(avx2) && (BITS > BITS_TO && !V2 || BITS >= BITS_TO * 4)
-        ; clear upper bits after reducing the register size
-        vzeroupper ; TMP
-    %endif
 %endif
 %ifidn UOP, SWS_UOP_TO_F32
 IF X,   vcvtdq2ps mx, mx
@@ -977,6 +973,11 @@ decl_v2 0, decl_ops U8
 decl_v2 1, decl_ops U8
 decl_v2 0, decl_type_invariant
 decl_v2 1, decl_type_invariant
+
+; VEX-encoded XMM versions, for the 8-bit sections of AVX2 chains
+INIT_XMM avx
+decl_v2 0, decl_ops U8
+decl_v2 0, decl_type_invariant
 
 INIT_YMM avx2
 decl_v2 0, decl_ops U8

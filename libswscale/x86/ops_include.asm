@@ -324,6 +324,14 @@ endstruc
     annotate_function_size
 %endmacro
 
+; Return from the last kernel in the chain back into sws_process
+%macro WRITE_RET 0
+    %if mmsize == 16 && avx_enabled
+        vzeroupper ; earlier kernels in the chain may have used YMM registers
+    %endif
+        RET
+%endmacro
+
 ; Convenience macro to load and continue to the next kernel in one step
 %macro CONTINUE 0
     LOAD_CONT tmp0q
