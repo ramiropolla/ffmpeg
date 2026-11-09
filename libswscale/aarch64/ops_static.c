@@ -106,13 +106,14 @@ static void *av_dynarray2_add(void **tab_ptr, int *nb_ptr, size_t elem_size,
 #include "rasm.c"
 #include "rasm_print.c"
 #include "ops_impl.h"
+#include "../uops_entries.h"
+#include "uops_entries.h"
 
 /**
  * Implementation parameters for all exported functions. This list is
- * compiled by performing a dummy run of all conversions in sws_ops and
- * collecting all functions that need to be generated. This is achieved
- * by running:
- *   make fate-sws-ops-entries-aarch64 GEN=1
+ * compiled by performing a dummy run of all conversions and collecting
+ * all functions that need to be generated. This is achieved by running:
+ *   make fate-sws-uops-entries-aarch64 GEN=1
  */
 typedef struct SwsAArch64OpEntry {
     const char *name;
@@ -120,8 +121,9 @@ typedef struct SwsAArch64OpEntry {
 } SwsAArch64OpEntry;
 
 static const SwsAArch64OpEntry ops_entries[] = {
-#define ENTRY(fname, ...) { .name = #fname, .params = __VA_ARGS__ },
-#include "ops_entries.c"
+#define ENTRY(DUMMY, NAME, TYPE, UOP, BLOCK_SIZE, ARGS, INIT) \
+    { .name = #NAME, .params = { SWS_UNPAREN INIT } },
+SWS_ENTRIES_AARCH64(ENTRY, 0)
 #undef ENTRY
     { NULL }
 };
@@ -647,7 +649,7 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 
 /*********************************************************************/
 
-/* Generate all functions described by ops_entries.c */
+/* Generate all functions described by uops_entries.h */
 static int asmgen(void)
 {
     RasmContext *rctx = rasm_alloc();
@@ -666,7 +668,7 @@ static int asmgen(void)
     asmgen_process_cps(&s, SWS_COMP_ELEMS(3));
     asmgen_process_cps(&s, SWS_COMP_ELEMS(4));
 
-    /* Generate all functions from ops_entries.c using rasm. */
+    /* Generate all functions from uops_entries.h using rasm. */
     const SwsAArch64OpEntry *entries = ops_entries;
     while (entries->name) {
         asmgen_op_cps(&s, entries++);
