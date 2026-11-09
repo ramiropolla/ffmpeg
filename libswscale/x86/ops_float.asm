@@ -207,6 +207,163 @@ IF X,   add in0q, FILTER_SIZE
     %endif
 %endmacro
 
+;---------------------------------------------------------
+; Horizontal filtering from 16-byte windows (8-bit only, see ops.c)
+
+%macro filter_h_win 4 ; acc, acc2, src, first
+        movu xm8, [%3 + off0q]
+        vinserti128 m8, m8, [%3 + off1q], 1 ; { ABCD | EFGH } windows
+        movu xm9, [%3 + off2q]
+        vinserti128 m9, m9, [%3 + off3q], 1 ; { IJKL | MNOP }
+%ifidn TYPE, SWS_PIXEL_U16
+        ; same as FILTER_H_SWS_PIXEL_U16 after the gathers (m14/m15 = bias)
+        pshufb m8, m10 ; { A01 B01 C01 D01 | E01 F01 G01 H01 }
+        pshufb m9, m11
+        psubw m8, m14
+        psubw m9, m14
+    %if %4
+        pmaddwd %1, m8, [weights]
+        pmaddwd %2, m9, [weights + mmsize]
+    %else
+        pmaddwd m8, [weights]
+        pmaddwd m9, [weights + mmsize]
+        paddd %1, m8
+        paddd %2, m9
+    %endif
+%else
+        pshufb m12, m8, m11 ; { A23 B23 C23 D23 | E23 F23 G23 H23 }
+        pshufb m8,  m8, m10 ; { A01 B01 C01 D01 | E01 F01 G01 H01 }
+        pshufb m13, m9, m15
+        pshufb m9,  m9, m14
+        pmaddwd m8,  [weights]
+        pmaddwd m12, [weights + mmsize]
+        pmaddwd m9,  [weights + mmsize * 2]
+        pmaddwd m13, [weights + mmsize * 3]
+    %if %4
+        paddd %1, m8, m12
+        paddd %2, m9, m13
+    %else
+        paddd m8, m12
+        paddd m9, m13
+        paddd %1, m8
+        paddd %2, m9
+    %endif
+%endif
+%endmacro
+
+%macro READ_PLANAR_FH_WIN 1
+%xdefine FILTER_TYPE %1
+%xdefine off0q   out0q
+%xdefine off1q   out1q
+%xdefine off2q   out2q
+%xdefine off3q   out3q
+%xdefine weights tmp0q
+%xdefine fltsize tmp1q
+
+assert_idn FILTER_TYPE, SWS_PIXEL_F32
+assert FILTER_WIDTH == 16
+%assign PRIV_SIZE 3 * gprsize
+%assign ITER_BYTES 4 ; bytes of taps per pixel and iteration
+%assign ITER_TAPS  (ITER_BYTES / BYTES)
+
+        ; reserve some registers for the window offsets
+        push off0q
+        push off1q
+        push off2q
+        push off3q
+        mov tmp0q, [execq + SwsOpExec.in_offset_x]
+        mov tmp2d, bxd
+        shl tmp2q, 4                    ; x := bx * FILTER_WIDTH
+        movsxd off0q, [tmp0q + 4 * tmp2q +  0]
+        movsxd off1q, [tmp0q + 4 * tmp2q + 16]
+        movsxd off2q, [tmp0q + 4 * tmp2q + 32]
+        movsxd off3q, [tmp0q + 4 * tmp2q + 48]
+        mov tmp1q, [implq + SwsOpImpl.priv + 2 * gprsize] ; uint8_t *masks
+    %ifidn TYPE, SWS_PIXEL_U16
+        lea tmp1q, [tmp1q + 4 * tmp2q]  ; masks += x * 4
+        movu m10, [tmp1q +  0]
+        movu m11, [tmp1q + 32]
+        VBROADCASTI128 m14, [bias16]
+        VBROADCASTI128 m15, [bias32]
+    %else
+        lea tmp1q, [tmp1q + 8 * tmp2q]  ; masks += x * 8
+        movu m10, [tmp1q +  0]
+        movu m11, [tmp1q + 32]
+        movu m14, [tmp1q + 64]
+        movu m15, [tmp1q + 96]
+    %endif
+        mov weights, [implq + SwsOpImpl.priv]           ; int16_t *weights
+        mov fltsize, [implq + SwsOpImpl.priv + gprsize] ; size_t filter_size
+        imul tmp2q, fltsize
+        lea weights, [weights + 2 * tmp2q] ; weights += x * filter_size
+IF X,   filter_h_win mx, mx2, in0q, 1
+IF Y,   filter_h_win my, my2, in1q, 1
+IF Z,   filter_h_win mz, mz2, in2q, 1
+IF W,   filter_h_win mw, mw2, in3q, 1
+        sub fltsize, ITER_TAPS
+        jz .done
+IF X,   push in0q
+IF Y,   push in1q
+IF Z,   push in2q
+IF W,   push in3q
+.loop:
+IF X,   add in0q, ITER_BYTES
+IF Y,   add in1q, ITER_BYTES
+IF Z,   add in2q, ITER_BYTES
+IF W,   add in3q, ITER_BYTES
+        add weights, FILTER_WIDTH * ITER_TAPS * 2
+IF X,   filter_h_win mx, mx2, in0q, 0
+IF Y,   filter_h_win my, my2, in1q, 0
+IF Z,   filter_h_win mz, mz2, in2q, 0
+IF W,   filter_h_win mw, mw2, in3q, 0
+        sub fltsize, ITER_TAPS
+        jnz .loop
+IF W,   pop in3q
+IF Z,   pop in2q
+IF Y,   pop in1q
+IF X,   pop in0q
+.done:
+        pop off3q
+        pop off2q
+        pop off1q
+        pop off0q
+    %ifidn TYPE, SWS_PIXEL_U16
+IF X,   paddd mx, m15
+IF Y,   paddd my, m15
+IF Z,   paddd mz, m15
+IF W,   paddd mw, m15
+IF X,   paddd mx2, m15
+IF Y,   paddd my2, m15
+IF Z,   paddd mz2, m15
+IF W,   paddd mw2, m15
+    %endif
+IF X,   vcvtdq2ps mx, mx
+IF Y,   vcvtdq2ps my, my
+IF Z,   vcvtdq2ps mz, mz
+IF W,   vcvtdq2ps mw, mw
+IF X,   vcvtdq2ps mx2, mx2
+IF Y,   vcvtdq2ps my2, my2
+IF Z,   vcvtdq2ps mz2, mz2
+IF W,   vcvtdq2ps mw2, mw2
+        VBROADCASTI128 m12, [scale_inv]
+        LOAD_CONT tmp0q
+IF X,   mulps mx, m12
+IF Y,   mulps my, m12
+IF Z,   mulps mz, m12
+IF W,   mulps mw, m12
+IF X,   mulps mx2, m12
+IF Y,   mulps my2, m12
+IF Z,   mulps mz2, m12
+IF W,   mulps mw2, m12
+        CONTINUE tmp0q
+%undef off0q
+%undef off1q
+%undef off2q
+%undef off3q
+%undef weights
+%undef fltsize
+%endmacro
+
 %macro READ_PLANAR_FH 1
 %xdefine FILTER_TYPE %1
 %xdefine weights tmp0q
@@ -792,6 +949,9 @@ IF W,   addps mw2, m11
 
 %macro decl_filter_ops 1 ; type
     decl_suffix _4x4,   DECL_%1_READ_PLANAR_FH READ_PLANAR_FH_4X4
+%ifnidn %1, F32
+    decl_suffix _win,   DECL_%1_READ_PLANAR_FH READ_PLANAR_FH_WIN
+%endif
 
     DECL_%1_READ_PLANAR_FH      READ_PLANAR_FH
     DECL_%1_READ_PLANAR_FV      READ_PLANAR_FV

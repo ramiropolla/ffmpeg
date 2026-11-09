@@ -84,7 +84,12 @@ static int hscale_sizeof_weight(const SwsUOp *uop)
     }
 }
 
-static int setup_filter_h(const SwsImplParams *params, SwsImplResult *out)
+/**
+ * Sets up the weights for the gather (and window) filter kernels, allocating
+ * `extra_size` bytes after them, which are returned in `extra`.
+ */
+static int setup_filter_h_extra(const SwsImplParams *params, SwsImplResult *out,
+                                size_t extra_size, uint8_t **extra)
 {
     const SwsUOp *uop = params->uop;
     const SwsFilterWeights *filter = uop->data.kernel;
@@ -111,9 +116,12 @@ static int setup_filter_h(const SwsImplParams *params, SwsImplResult *out)
     } weights;
 
     const int sizeof_weight = hscale_sizeof_weight(uop);
-    weights.ptr = ff_refstruct_calloc(line_size, sizeof_weight * aligned_size);
+    const size_t weights_size = line_size * sizeof_weight * aligned_size;
+    weights.ptr = ff_refstruct_calloc(1, weights_size + extra_size);
     if (!weights.ptr)
         return AVERROR(ENOMEM);
+    if (extra)
+        *extra = (uint8_t *) weights.ptr + weights_size;
 
     /**
      * Transpose filter weights to group (aligned) taps by block
@@ -170,6 +178,117 @@ static int setup_filter_h(const SwsImplParams *params, SwsImplResult *out)
     for (int i = 0; i < 4; i++) {
         if (uop->mask & SWS_COMP(i))
             out->over_read[i] = (aligned_size - filter_size) * pixel_size;
+    }
+    return 0;
+}
+
+static int setup_filter_h(const SwsImplParams *params, SwsImplResult *out)
+{
+    return setup_filter_h_extra(params, out, 0, NULL);
+}
+
+/**
+ * The window kernel loads a 16-byte window of the source for every group of 4
+ * adjacent output pixels, starting at the first pixel of the group, and
+ * shuffles the taps of all 4 pixels out of it. This replaces each vpgatherdd
+ * by two plain loads, which is much faster, especially on CPUs with slow
+ * gathers. It only works if the taps of every group fit in the window.
+ */
+#define WIN_PIXELS 4  /* pixels per window */
+#define WIN_BYTES  4  /* bytes of taps per pixel and iteration */
+#define WIN_SIZE   16 /* bytes per window */
+
+/* Byte offset of the first tap of pixel x */
+static int win_offset(const SwsUOp *uop, int x)
+{
+    const SwsFilterWeights *filter = uop->data.kernel;
+    const int pixel_size = ff_sws_pixel_type_size(uop->type);
+    return filter->offsets[FFMIN(x, filter->dst_size - 1)] * pixel_size;
+}
+
+static bool check_filter_h_win(const SwsImplParams *params)
+{
+    const SwsUOp *uop = params->uop;
+    const SwsFilterWeights *filter = uop->data.kernel;
+    if (uop->type != SWS_PIXEL_U8 && uop->type != SWS_PIXEL_U16)
+        return false;
+
+    const int line_size = FFALIGN(filter->dst_size, params->table->block_size);
+    for (int x = 0; x < line_size; x += WIN_PIXELS) {
+        const int base = win_offset(uop, x);
+        for (int i = 1; i < WIN_PIXELS; i++) {
+            const int rel = win_offset(uop, x + i) - base;
+            if (rel < 0 || rel + WIN_BYTES > WIN_SIZE)
+                return false;
+        }
+    }
+
+    return true;
+}
+
+static int setup_filter_h_win(const SwsImplParams *params, SwsImplResult *out)
+{
+    const SwsUOp *uop = params->uop;
+    const SwsFilterWeights *filter = uop->data.kernel;
+    const int block_size = params->table->block_size;
+    const int line_size = FFALIGN(filter->dst_size, block_size);
+    const bool is_u8 = uop->type == SWS_PIXEL_U8;
+    av_assert0(block_size == 16);
+
+    /**
+     * Shuffle masks for each block of 16 pixels, in the same layout as the
+     * weights (see setup_filter_h_extra()), for the windows of pixels 0, 4, 8
+     * and 12 of the block (in this order). For 8-bit, every byte is
+     * zero-extended to a word:
+     *  [a0 a1 b0 b1 c0 c1 d0 d1 | e0 e1 ... h0 h1] pixels 0-7, taps 0-1
+     *  [a2 a3 b2 b3 c2 c3 d2 d3 | e2 e3 ... h2 h3] pixels 0-7, taps 2-3
+     *  [i0 i1 j0 j1 k0 k1 l0 l1 | m0 m1 ... p0 p1] pixels 8-15, taps 0-1
+     *  [i2 i3 j2 j3 k2 k3 l2 l3 | m2 m3 ... p2 p3] pixels 8-15, taps 2-3
+     * For 16-bit, the words are just moved into place (2 taps per iteration):
+     *  [a0 a1 b0 b1 c0 c1 d0 d1 | e0 e1 ... h0 h1] pixels 0-7
+     *  [i0 i1 j0 j1 k0 k1 l0 l1 | m0 m1 ... p0 p1] pixels 8-15
+     */
+    const int block_bytes = is_u8 ? 128 : 64;
+    const size_t masks_size = (size_t) line_size / block_size * block_bytes;
+    uint8_t *masks;
+    int ret = setup_filter_h_extra(params, out, masks_size, &masks);
+    if (ret < 0)
+        return ret;
+
+    for (int x = 0; x < line_size; x += block_size) {
+        uint8_t *mask = &masks[x / block_size * block_bytes];
+        for (int i = 0; i < block_size; i++) {
+            const int win = i / WIN_PIXELS;
+            const int pos = i % WIN_PIXELS;
+            const int rel = win_offset(uop, x + i) -
+                            win_offset(uop, x + win * WIN_PIXELS);
+            for (int b = 0; b < WIN_BYTES; b++) {
+                if (is_u8) {
+                    const int idx = (win >> 1) * 64  /* pixels 0-7 or 8-15 */
+                                  + (b >> 1) * 32    /* taps 0-1 or 2-3 */
+                                  + (win & 1) * 16   /* lane within register */
+                                  + pos * 4 + (b & 1) * 2;
+                    mask[idx + 0] = rel + b;
+                    mask[idx + 1] = 0x80; /* zero high byte */
+                } else {
+                    const int idx = (win >> 1) * 32 + (win & 1) * 16 + pos * 4 + b;
+                    mask[idx] = rel + b;
+                }
+            }
+        }
+    }
+
+    const uint8_t *const masks_ptr = masks;
+    SWS_OP_PRIV_PACK(out, masks_ptr);
+
+    /* The windows are read from the first pixel of each group of 4, and are
+     * advanced by WIN_BYTES for every iteration */
+    const int pixel_size = ff_sws_pixel_type_size(uop->type);
+    const int filter_bytes = filter->filter_size * pixel_size;
+    const int iters = FFALIGN(filter_bytes, WIN_BYTES) / WIN_BYTES;
+    for (int i = 0; i < 4; i++) {
+        if (uop->mask & SWS_COMP(i))
+            out->over_read[i] = (iters - 1) * WIN_BYTES + WIN_SIZE - filter_bytes;
     }
     return 0;
 }
@@ -488,8 +607,12 @@ SWS_FOR_STRUCT(F32, TO_U16_SAT, DECL_ENTRY, EXT, NULL, NULL)                    
 SWS_FOR_STRUCT(U8,  READ_PLANAR_FH, DECL_ENTRY, EXT, NULL, setup_filter_h)      \
 SWS_FOR_STRUCT(U16, READ_PLANAR_FH, DECL_ENTRY, EXT, NULL, setup_filter_h)      \
 SWS_FOR_STRUCT(F32, READ_PLANAR_FH, DECL_ENTRY, EXT, NULL, setup_filter_h)      \
+SWS_FOR_STRUCT(U8,  READ_PLANAR_FH, DECL_ENTRY, _win##EXT,                      \
+               check_filter_h_win, setup_filter_h_win)                          \
 SWS_FOR_STRUCT(U8,  READ_PLANAR_FH, DECL_ENTRY, _4x4##EXT,                      \
                check_filter_h_4x4, setup_filter_h_4x4)                          \
+SWS_FOR_STRUCT(U16, READ_PLANAR_FH, DECL_ENTRY, _win##EXT,                      \
+               check_filter_h_win, setup_filter_h_win)                          \
 SWS_FOR_STRUCT(U16, READ_PLANAR_FH, DECL_ENTRY, _4x4##EXT,                      \
                check_filter_h_4x4, setup_filter_h_4x4)                          \
 SWS_FOR_STRUCT(F32, READ_PLANAR_FH, DECL_ENTRY, _4x4##EXT,                      \
@@ -512,7 +635,9 @@ static const SwsUOpTable uops_f32##EXT = {                                      
         SWS_FOR(F32, TO_U16, REF_ENTRY, EXT)                                    \
         SWS_FOR(F32, TO_U8_SAT,  REF_ENTRY, EXT)                                \
         SWS_FOR(F32, TO_U16_SAT, REF_ENTRY, EXT)                                \
+        SWS_FOR(U8,  READ_PLANAR_FH, REF_ENTRY, _win##EXT)                      \
         SWS_FOR(U8,  READ_PLANAR_FH, REF_ENTRY, _4x4##EXT)                      \
+        SWS_FOR(U16, READ_PLANAR_FH, REF_ENTRY, _win##EXT)                      \
         SWS_FOR(U16, READ_PLANAR_FH, REF_ENTRY, _4x4##EXT)                      \
         SWS_FOR(F32, READ_PLANAR_FH, REF_ENTRY, _4x4##EXT)                      \
         SWS_FOR(U8,  READ_PLANAR_FH, REF_ENTRY, EXT)                            \
