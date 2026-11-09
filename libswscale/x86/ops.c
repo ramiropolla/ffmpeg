@@ -130,24 +130,22 @@ static int setup_filter_h(const SwsImplParams *params, SwsImplResult *out)
                 const int w = filter->weights[(x + i) * filter_size + j];
                 size_t idx = idx_base;
                 if (uop->type == SWS_PIXEL_U8) {
-                    /* Interleave the pixels within each lane, i.e.:
-                     *  [a0 a1 a2 a3 | b0 b1 b2 b3 ] pixels 0-1, taps 0-3 (lane 0)
-                     *  [e0 e1 e2 e3 | f0 f1 f2 f3 ] pixels 4-5, taps 0-3 (lane 1)
-                     *  [c0 c1 c2 c3 | d0 d1 d2 d3 ] pixels 2-3, taps 0-3 (lane 0)
-                     *  [g0 g1 g2 g3 | h0 h1 h2 h3 ] pixels 6-7, taps 0-3 (lane 1)
-                     *  [i0 i1 i2 i3 | j0 j1 j2 j3 ] pixels 8-9, taps 0-3 (lane 0)
-                     *  ...
-                     *  [o0 o1 o2 o3 | p0 p1 p2 p3 ] pixels 14-15, taps 0-3 (lane 1)
+                    /* Split each group of 4 taps into pairs, i.e.:
+                     *  [a0 a1 b0 b1 c0 c1 d0 d1 | e0 e1 ... h0 h1] pixels 0-7, taps 0-1
+                     *  [a2 a3 b2 b3 c2 c3 d2 d3 | e2 e3 ... h2 h3] pixels 0-7, taps 2-3
+                     *  [i0 i1 j0 j1 k0 k1 l0 l1 | m0 m1 ... p0 p1] pixels 8-15, taps 0-1
+                     *  [i2 i3 j2 j3 k2 k3 l2 l3 | m2 m3 ... p2 p3] pixels 8-15, taps 2-3
                      *  (repeat for taps 4-7, etc.)
                      */
                     const int gather_base = i & ~(gather_size - 1);
                     const int gather_pos  = i - gather_base;
                     const int lane_idx    = gather_pos >> 2;
                     const int pos_in_lane = gather_pos & 3;
-                    idx += gather_base * 4 /* which gather (m0 or m1) */
-                         + (pos_in_lane >> 1) * (mmsize / 2) /* lo/hi unpack */
-                         + lane_idx * 8 /* 8 ints per lane */
-                         + (pos_in_lane & 1) * 4; /* 4 taps per pair */
+                    idx = idx_base - ji
+                        + gather_base * 4 /* which gather (m0 or m1) */
+                        + (ji >> 1) * (mmsize / 2) /* taps 0-1 or 2-3 */
+                        + lane_idx * 8 /* 8 words per lane */
+                        + pos_in_lane * 2 + (ji & 1);
                 } else {
                     idx += i * taps_align;
                 }

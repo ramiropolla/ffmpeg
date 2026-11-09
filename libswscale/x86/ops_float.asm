@@ -30,6 +30,9 @@ align 32
 bias16: times 16 dw 0x8000 ; shift unsigned to signed range
 
 align 16
+; zero-extend taps 0,1 resp. 2,3 of each gathered pixel to words
+fh8_taps01: db 0, -1, 1, -1, 4, -1, 5, -1,  8, -1,  9, -1, 12, -1, 13, -1
+fh8_taps23: db 2, -1, 3, -1, 6, -1, 7, -1, 10, -1, 11, -1, 14, -1, 15, -1
 bias32:    times 4 dd 0x8000 * SWS_FILTER_SCALE
 scale_inv: times 4 dd 0x38800000 ; 1.0f / SWS_FILTER_SCALE
 
@@ -147,23 +150,24 @@ IF X,   add in0q, FILTER_SIZE
 %macro FILTER_H_SWS_PIXEL_U8 4 ; acc, acc2, src, first
         pcmpeqb m12, m12
         pcmpeqb m13, m13
-        vpgatherdd m8, [%3 + m14], m12 ; { ABCD | EFGH } 4 pixel per word
+        vpgatherdd m8, [%3 + m14], m12 ; { ABCD | EFGH } 4 taps per dword
         vpgatherdd m9, [%3 + m15], m13 ; { IJKL | MNOP }
-        ; unpack 4 bytes into separate 16-bit integer registers
-        punpckhbw m10, m8, m12 ; { CCDD | GGHH } 2 pixels per word
-        punpcklbw m8,  m8, m12 ; { AABB | EEFF }
-        punpckhbw m11, m9, m12 ; { KKLL | OOPP }
-        punpcklbw m9,  m9, m12 ; { IIJJ | MMNN }
+        ; split taps 0,1 and 2,3 into separate words (m10/m11 = masks), so
+        ; that the products for each pixel end up in the same dword
+        pshufb m12, m8, m11 ; { A23 B23 C23 D23 | E23 F23 G23 H23 }
+        pshufb m8,  m8, m10 ; { A01 B01 C01 D01 | E01 F01 G01 H01 }
+        pshufb m13, m9, m11
+        pshufb m9,  m9, m10
         pmaddwd m8,  [weights]
-        pmaddwd m10, [weights + mmsize]
+        pmaddwd m12, [weights + mmsize]
         pmaddwd m9,  [weights + mmsize * 2]
-        pmaddwd m11, [weights + mmsize * 3]
+        pmaddwd m13, [weights + mmsize * 3]
     %if %4
-        phaddd %1, m8, m10 ; { ABCD | EFGH }
-        phaddd %2, m9, m11 ; { IJKL | MNOP }
+        paddd %1, m8, m12 ; { ABCD | EFGH }
+        paddd %2, m9, m13 ; { IJKL | MNOP }
     %else
-        phaddd m8, m10
-        phaddd m9, m11
+        paddd m8, m12
+        paddd m9, m13
         paddd %1, m8
         paddd %2, m9
     %endif
@@ -227,6 +231,9 @@ assert_idn FILTER_TYPE, SWS_PIXEL_F32
     %ifidn TYPE, SWS_PIXEL_U16
         VBROADCASTI128 m10, [bias16]
         VBROADCASTI128 m11, [bias32]
+    %elifidn TYPE, SWS_PIXEL_U8
+        VBROADCASTI128 m10, [fh8_taps01]
+        VBROADCASTI128 m11, [fh8_taps23]
     %endif
         imul tmp2q, fltsize
         lea weights, [weights + tmp2q * SIZEOF_WEIGHT] ; weights += x * filter_size
