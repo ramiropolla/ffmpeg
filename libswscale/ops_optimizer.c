@@ -1058,6 +1058,51 @@ static bool is_scale(const SwsUOp *op, int64_t val)
     }
 }
 
+/**
+ * Checks whether the clamps directly preceding the float -> integer cast at
+ * `uops->ops[idx]` only limit the components being cast to the range of the
+ * output type, in which case the clamps and the cast can be replaced by a
+ * saturating cast. Returns the number of clamps to remove, or 0 if the
+ * replacement is not possible.
+ */
+static int count_sat_clamps(const SwsUOpList *uops, int idx, float max)
+{
+    const SwsUOp *cast = &uops->ops[idx];
+    if (cast->type != SWS_PIXEL_F32)
+        return 0;
+
+    bool have_min = false, have_max = false;
+    int count = 0;
+    for (int i = idx - 1; i >= 0 && count < 2; i--, count++) {
+        const SwsUOp *op = &uops->ops[i];
+        if (op->type != SWS_PIXEL_F32)
+            break;
+        if (op->uop == SWS_UOP_MIN && !have_min) {
+            /* every cast component must be limited from above */
+            if ((cast->mask & op->mask) != cast->mask)
+                return 0;
+            for (int c = 0; c < 4; c++) {
+                if (SWS_COMP_TEST(cast->mask, c) && !(op->data.vec4[c].f32 >= max))
+                    return 0;
+            }
+            have_min = true;
+        } else if (op->uop == SWS_UOP_MAX && !have_max) {
+            /* components without a lower limit are already known to be >= 0 */
+            for (int c = 0; c < 4; c++) {
+                if (SWS_COMP_TEST(cast->mask & op->mask, c) && !(op->data.vec4[c].f32 <= 0.0f))
+                    return 0;
+            }
+            have_max = true;
+        } else {
+            break;
+        }
+    }
+
+    /* The upper limit is mandatory; values above the range of the output type
+     * would otherwise have undefined results */
+    return have_min ? count : 0;
+}
+
 int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpFlags flags, SwsUOpList *uops)
 {
     static const SwsUOp dummy = {0};
@@ -1066,9 +1111,25 @@ retry:
     for (int i = 0; i < uops->num_ops; i++) {
         const SwsUOp *next = i < uops->num_ops - 1 ? &uops->ops[i + 1] : &dummy;
         SwsUOp *op = &uops->ops[i];
+        int clamps;
 
         switch (op->uop) {
+        case SWS_UOP_TO_U8:
+            if ((flags & SWS_UOP_FLAG_SAT_CAST) &&
+                (clamps = count_sat_clamps(uops, i, UINT8_MAX))) {
+                op->uop = SWS_UOP_TO_U8_SAT;
+                ff_sws_uop_list_remove_at(uops, i - clamps, clamps);
+                goto retry;
+            }
+            break;
+
         case SWS_UOP_TO_U16:
+            if ((flags & SWS_UOP_FLAG_SAT_CAST) &&
+                (clamps = count_sat_clamps(uops, i, UINT16_MAX))) {
+                op->uop = SWS_UOP_TO_U16_SAT;
+                ff_sws_uop_list_remove_at(uops, i - clamps, clamps);
+                goto retry;
+            }
             if (ff_sws_pixel_type_is_int(op->type) && is_scale(next, 0x101)) {
                 op->uop = SWS_UOP_EXPAND_PAIR;
                 ff_sws_uop_list_remove_at(uops, i + 1, 1);

@@ -230,7 +230,7 @@ static const Backend backends[] = {
     {
         .name  = "c",
         .guard = "SWSCALE_UOPS_MACROS_H",
-        .flags = { COMMON_FLAGS },
+        .flags = { COMMON_FLAGS | SWS_UOP_FLAG_SAT_CAST },
     }, {
         .name  = "x86",
         .guard = "SWSCALE_X86_UOPS_MACROS_H",

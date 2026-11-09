@@ -382,6 +382,8 @@ static void check_uop(const char *name, const SwsUOp *uop,
     case SWS_UOP_TO_U16: t.type_out = SWS_PIXEL_U16; break;
     case SWS_UOP_TO_U32: t.type_out = SWS_PIXEL_U32; break;
     case SWS_UOP_TO_F32: t.type_out = SWS_PIXEL_F32; break;
+    case SWS_UOP_TO_U8_SAT:  t.type_out = SWS_PIXEL_U8;  break;
+    case SWS_UOP_TO_U16_SAT: t.type_out = SWS_PIXEL_U16; break;
     case SWS_UOP_EXPAND_PAIR: t.type_out = SWS_PIXEL_U16; break;
     case SWS_UOP_EXPAND_QUAD: t.type_out = SWS_PIXEL_U32; break;
     case SWS_UOP_READ_PLANAR_FH:
@@ -560,6 +562,11 @@ static void check_cast(const char *name, const SwsUOp *uop)
     case SWS_UOP_TO_U16: dst = SWS_PIXEL_U16; break;
     case SWS_UOP_TO_U32: dst = SWS_PIXEL_U32; break;
     case SWS_UOP_TO_F32: dst = SWS_PIXEL_F32; break;
+    case SWS_UOP_TO_U8_SAT:
+    case SWS_UOP_TO_U16_SAT:
+        /* any normal float, to exercise the saturation in both directions */
+        check_uop(name, uop, uop->mask, uop->mask, MK_RANGES(0));
+        return;
     case SWS_UOP_EXPAND_PAIR: dst = SWS_PIXEL_U16; break;
     case SWS_UOP_EXPAND_QUAD: dst = SWS_PIXEL_U32; break;
     default: return;
@@ -710,6 +717,8 @@ void checkasm_check_sw_ops(void)
     CHECK_FOR(TO_U16,           check_cast);
     CHECK_FOR(TO_U32,           check_cast);
     CHECK_FOR(TO_F32,           check_cast);
+    CHECK_FOR(TO_U8_SAT,        check_cast);
+    CHECK_FOR(TO_U16_SAT,       check_cast);
     CHECK_FOR(SCALE,            check_scale);
     CHECK_FOR(ADD,              check_vec4);
     CHECK_FOR(MIN,              check_vec4);

@@ -458,6 +458,34 @@ DECL_CAST(U16, u16)
 DECL_CAST(U32, u32)
 DECL_CAST(F32, f32)
 
+#if IS_FLOAT
+/* Clamp to [0, max] and cast; NaN results in 0 */
+#define SAT(v, max) ((v) >= 0.0f ? ((v) < (max) ? (v) : (max)) : 0.0f)
+
+#define DECL_CAST_SAT(DST, dst, MAX)                                            \
+    DECL_FUNC(to_##dst##_sat, const SwsCompMask mask)                           \
+    {                                                                           \
+        block_t xx, yy, zz, ww;                                                 \
+                                                                                \
+        SWS_LOOP                                                                \
+        for (int i = 0; i < SWS_BLOCK_SIZE; i++) {                              \
+            if (X) xx.dst[i] = SAT(x[i], MAX);                                  \
+            if (Y) yy.dst[i] = SAT(y[i], MAX);                                  \
+            if (Z) zz.dst[i] = SAT(z[i], MAX);                                  \
+            if (W) ww.dst[i] = SAT(w[i], MAX);                                  \
+        }                                                                       \
+                                                                                \
+        CONTINUE(0, &xx, &yy, &zz, &ww);                                        \
+    }                                                                           \
+                                                                                \
+    SWS_FOR(PX, TO_##DST##_SAT, DECL_IMPL, to_##dst##_sat)                      \
+    SWS_FOR_STRUCT(PX, TO_##DST##_SAT, DECL_ENTRY)
+
+DECL_CAST_SAT(U8,  u8,  UINT8_MAX)
+DECL_CAST_SAT(U16, u16, UINT16_MAX)
+#undef SAT
+#endif
+
 /********************
  * Bit manipulation *
  ********************/

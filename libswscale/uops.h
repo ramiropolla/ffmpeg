@@ -164,6 +164,7 @@ typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_READ_PALETTE = (1 << 3), /* backend implements SWS_UOP_READ_PALETTE */
     SWS_UOP_FLAG_ADD          = (1 << 4), /* backend implements SWS_UOP_ADD */
     SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
+    SWS_UOP_FLAG_SAT_CAST     = (1 << 6), /* backend implements SWS_UOP_TO_U*_SAT */
 } SwsUOpFlagBits;
 
 typedef enum SwsUOpType {
@@ -218,7 +219,10 @@ typedef enum SwsUOpType {
     SWS_UOP_DITHER,          /* mask = components to dither */
     SWS_UOP_LUT_3D,          /* mask = needed output components */
 
-    /* Platform-specific uops would go here */
+    /* Platform-specific uops; only generated with the matching SwsUOpFlags */
+    SWS_UOP_TO_U8_SAT,       /* clamp to [0, UINT8_MAX], then cast to SWS_PIXEL_U8 */
+    SWS_UOP_TO_U16_SAT,      /* clamp to [0, UINT16_MAX], then cast to SWS_PIXEL_U16 */
+
     SWS_UOP_TYPE_NB,
 } SwsUOpType;
 
