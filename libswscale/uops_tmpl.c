@@ -221,26 +221,6 @@ DECL_WRITE(write_nibble, const SwsCompMask mask)
 
 #endif /* BIT_DEPTH == 8 */
 
-SWS_FOR(PX, READ_PLANAR,    DECL_IMPL_READ,     read_planar)
-SWS_FOR(PX, READ_PACKED,    DECL_IMPL_READ,     read_packed)
-SWS_FOR(PX, READ_NIBBLE,    DECL_IMPL_READ,     read_nibble)
-SWS_FOR(PX, READ_BIT,       DECL_IMPL_READ,     read_bit)
-SWS_FOR(PX, READ_PALETTE,   DECL_IMPL_READ,     read_palette)
-SWS_FOR(PX, WRITE_PLANAR,   DECL_IMPL_WRITE,    write_planar)
-SWS_FOR(PX, WRITE_PACKED,   DECL_IMPL_WRITE,    write_packed)
-SWS_FOR(PX, WRITE_NIBBLE,   DECL_IMPL_WRITE,    write_nibble)
-SWS_FOR(PX, WRITE_BIT,      DECL_IMPL_WRITE,    write_bit)
-
-SWS_FOR_STRUCT(PX, READ_PLANAR,     DECL_ENTRY)
-SWS_FOR_STRUCT(PX, READ_PACKED,     DECL_ENTRY)
-SWS_FOR_STRUCT(PX, READ_NIBBLE,     DECL_ENTRY)
-SWS_FOR_STRUCT(PX, READ_BIT,        DECL_ENTRY)
-SWS_FOR_STRUCT(PX, READ_PALETTE,    DECL_ENTRY)
-SWS_FOR_STRUCT(PX, WRITE_PLANAR,    DECL_ENTRY)
-SWS_FOR_STRUCT(PX, WRITE_PACKED,    DECL_ENTRY)
-SWS_FOR_STRUCT(PX, WRITE_NIBBLE,    DECL_ENTRY)
-SWS_FOR_STRUCT(PX, WRITE_BIT,       DECL_ENTRY)
-
 /*****************************
  * Scaling / filtering reads *
  *****************************/
@@ -370,11 +350,6 @@ DECL_READ(read_planar_fh, const SwsCompMask mask, const SwsPixelType type)
     CONTINUE(sizeof(SwsFilterPriv), &xs, &ys, &zs, &ws);
 }
 
-SWS_FOR(PX, READ_PLANAR_FV, DECL_IMPL_READ, read_planar_fv)
-SWS_FOR(PX, READ_PLANAR_FH, DECL_IMPL_READ, read_planar_fh)
-SWS_FOR_STRUCT(PX, READ_PLANAR_FV, DECL_ENTRY, .setup = fn(setup_filter_v) )
-SWS_FOR_STRUCT(PX, READ_PLANAR_FH, DECL_ENTRY, .setup = fn(setup_filter_h) )
-
 /***************************
  * Permutation and copying *
  ***************************/
@@ -425,16 +400,11 @@ DECL_FUNC(copy, const SwsCompMask mask, int num_moves,
     CONTINUE(0, x, y, z, w);
 }
 
-SWS_FOR(PX, PERMUTE, DECL_IMPL, permute)
-SWS_FOR(PX, COPY,    DECL_IMPL, copy)
-SWS_FOR_STRUCT(PX, PERMUTE, DECL_ENTRY)
-SWS_FOR_STRUCT(PX, COPY,    DECL_ENTRY)
-
 /*********************
  * Format conversion *
  *********************/
 
-#define DECL_CAST(DST, dst)                                                     \
+#define DECL_CAST(dst)                                                          \
     DECL_FUNC(to_##dst, const SwsCompMask mask)                                 \
     {                                                                           \
         block_t xx, yy, zz, ww;                                                 \
@@ -448,15 +418,12 @@ SWS_FOR_STRUCT(PX, COPY,    DECL_ENTRY)
         }                                                                       \
                                                                                 \
         CONTINUE(0, &xx, &yy, &zz, &ww);                                        \
-    }                                                                           \
-                                                                                \
-    SWS_FOR(PX, TO_##DST, DECL_IMPL, to_##dst)                                  \
-    SWS_FOR_STRUCT(PX, TO_##DST, DECL_ENTRY)
+    }
 
-DECL_CAST(U8,  u8)
-DECL_CAST(U16, u16)
-DECL_CAST(U32, u32)
-DECL_CAST(F32, f32)
+DECL_CAST(u8)
+DECL_CAST(u16)
+DECL_CAST(u32)
+DECL_CAST(f32)
 
 /********************
  * Bit manipulation *
@@ -490,12 +457,6 @@ DECL_FUNC(rshift, const SwsCompMask mask, const uint8_t amount)
 }
 #endif
 
-SWS_FOR(PX, LSHIFT, DECL_IMPL, lshift)
-SWS_FOR(PX, RSHIFT, DECL_IMPL, rshift)
-
-SWS_FOR_STRUCT(PX, LSHIFT, DECL_ENTRY)
-SWS_FOR_STRUCT(PX, RSHIFT, DECL_ENTRY)
-
 #ifdef PIXEL_SWAP
 DECL_FUNC(swap_bytes, const SwsCompMask mask)
 {
@@ -510,9 +471,6 @@ DECL_FUNC(swap_bytes, const SwsCompMask mask)
     CONTINUE(0, x, y, z, w);
 }
 #endif /* PIXEL_SWAP */
-
-SWS_FOR(PX, SWAP_BYTES, DECL_IMPL, swap_bytes)
-SWS_FOR_STRUCT(PX, SWAP_BYTES, DECL_ENTRY)
 
 #ifdef PIXEL_MAX
 DECL_FUNC(expand_bit, const SwsCompMask mask)
@@ -560,13 +518,6 @@ DECL_FUNC(expand_quad, const SwsCompMask mask)
     CONTINUE(0, &x32, &y32, &z32, &w32);
 }
 #endif /* BIT_DEPTH == 8 */
-
-SWS_FOR(PX, EXPAND_BIT,  DECL_IMPL, expand_bit)
-SWS_FOR(PX, EXPAND_PAIR, DECL_IMPL, expand_pair)
-SWS_FOR(PX, EXPAND_QUAD, DECL_IMPL, expand_quad)
-SWS_FOR_STRUCT(PX, EXPAND_BIT,  DECL_ENTRY)
-SWS_FOR_STRUCT(PX, EXPAND_PAIR, DECL_ENTRY)
-SWS_FOR_STRUCT(PX, EXPAND_QUAD, DECL_ENTRY)
 
 /*************************
  * Packing and unpacking *
@@ -622,11 +573,6 @@ DECL_FUNC(pack, const SwsCompMask mask,
 }
 #endif /* !IS_FLOAT */
 
-SWS_FOR(PX, UNPACK, DECL_IMPL, unpack)
-SWS_FOR(PX, PACK,   DECL_IMPL, pack)
-SWS_FOR_STRUCT(PX, UNPACK,  DECL_ENTRY)
-SWS_FOR_STRUCT(PX, PACK,    DECL_ENTRY)
-
 /***********************
  * Pixel data clearing *
  ***********************/
@@ -654,9 +600,6 @@ DECL_FUNC(clear, const SwsCompMask mask, const SwsCompMask one,
     CONTINUE(sizeof(pixel_t[4]), x, y, z, w);
 }
 #endif
-
-SWS_FOR(PX, CLEAR, DECL_IMPL, clear)
-SWS_FOR_STRUCT(PX, CLEAR, DECL_ENTRY, .setup = ff_sws_setup_vec4)
 
 /*************************
  * Arithmetic operations *
@@ -723,15 +666,6 @@ DECL_FUNC(max, const SwsCompMask mask)
     CONTINUE(sizeof(pixel_t[4]), x, y, z, w);
 }
 
-SWS_FOR(PX, SCALE, DECL_IMPL, scale)
-SWS_FOR(PX, ADD,   DECL_IMPL, add)
-SWS_FOR(PX, MIN,   DECL_IMPL, min)
-SWS_FOR(PX, MAX,   DECL_IMPL, max)
-SWS_FOR_STRUCT(PX, SCALE, DECL_ENTRY, .setup = ff_sws_setup_scalar )
-SWS_FOR_STRUCT(PX, ADD,   DECL_ENTRY, .setup = ff_sws_setup_vec4 )
-SWS_FOR_STRUCT(PX, MIN,   DECL_ENTRY, .setup = ff_sws_setup_vec4 )
-SWS_FOR_STRUCT(PX, MAX,   DECL_ENTRY, .setup = ff_sws_setup_vec4 )
-
 /*************
  * Dithering *
  *************/
@@ -797,9 +731,6 @@ DECL_FUNC(dither, const SwsCompMask mask,
     CONTINUE(sizeof(pixel_t *), x, y, z, w);
 }
 
-SWS_FOR(PX, DITHER, DECL_IMPL, dither)
-SWS_FOR_STRUCT(PX, DITHER, DECL_ENTRY, .setup = fn(setup_dither) )
-
 /*********************
  * Linear operations *
  *********************/
@@ -862,9 +793,6 @@ DECL_FUNC(linear, const SwsCompMask mask, const uint32_t one, const uint32_t zer
 
     CONTINUE(sizeof(fn(LinCoeffs)), x, y, z, w);
 }
-
-SWS_FOR(PX, LINEAR, DECL_IMPL, linear)
-SWS_FOR_STRUCT(PX, LINEAR, DECL_ENTRY, .setup = fn(setup_linear) )
 
 /******************
  * Look-up tables *
@@ -1029,9 +957,6 @@ DECL_FUNC(lut3d, const SwsCompMask mask, const int dynamic)
     CONTINUE(sizeof(SwsLut3D *), x, y, z, w);
 }
 #endif /* IS_FLOAT */
-
-SWS_FOR(PX, LUT_3D, DECL_IMPL, lut3d)
-SWS_FOR_STRUCT(PX, LUT_3D, DECL_ENTRY, .setup = fn(setup_lut3d) )
 
 #undef PIXEL_MAX
 #undef PIXEL_SWAP
