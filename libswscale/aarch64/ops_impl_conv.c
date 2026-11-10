@@ -32,15 +32,18 @@
  * (four vector banks). This is only implemented for the kernels commonly
  * used by floating point conversions.
  */
-static bool uop_supports_x4(const SwsUOp *uop)
+static bool uop_supports_x4(const SwsUOp *uop, bool inorder)
 {
     switch (uop->uop) {
     case SWS_UOP_TO_F32:
         return uop->type != SWS_PIXEL_F32;
     case SWS_UOP_LINEAR_FMA: {
-        /* Up to 3 inputs can be saved with 4 banks (12 temps). */
         if (uop->type != SWS_PIXEL_F32)
             return false;
+        /* Row by row, banks 2-3 are processed after banks 0-1. */
+        if (!inorder)
+            return true;
+        /* Up to 3 inputs can be saved with 4 banks (12 temps). */
         const SwsAArch64OpImplParams params = {
             .uop = uop->uop, .mask = uop->mask, .type = uop->type, .par = uop->par,
         };
@@ -88,7 +91,7 @@ static bool uop_supports_x4(const SwsUOp *uop)
  * 8 (two full vector registers per component), unless all kernels that
  * handle 32-bit elements support block_size 16.
  */
-static int aarch64_block_size(const SwsUOpList *uops)
+static int aarch64_block_size(const SwsUOpList *uops, bool inorder)
 {
     if (uops->pixel_size_max != 4)
         return 16;
@@ -96,7 +99,7 @@ static int aarch64_block_size(const SwsUOpList *uops)
         const SwsUOp *uop = &uops->ops[i];
         const bool wide = ff_sws_pixel_type_size(uop->type) == 4 ||
                           uop->uop == SWS_UOP_TO_F32 || uop->uop == SWS_UOP_TO_U32;
-        if (wide && !uop_supports_x4(uop))
+        if (wide && !uop_supports_x4(uop, inorder))
             return 8;
     }
     return 16;

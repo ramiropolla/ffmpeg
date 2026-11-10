@@ -209,7 +209,7 @@ static int collect_uops(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto end;
 
-    const int block_size = aarch64_block_size(uops);
+    const int block_size = aarch64_block_size(uops, inorder);
 
     for (int i = 0; i < uops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
