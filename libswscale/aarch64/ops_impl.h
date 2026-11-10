@@ -195,6 +195,12 @@ static inline int const_vec_count(const SwsAArch64OpImplParams *params)
 static inline bool has_inorder_variant(const SwsAArch64OpImplParams *params)
 {
     switch (params->uop) {
+    case SWS_UOP_TO_U16:
+        /* The high halves are zero-extended with uxtl2 instead of zip2. */
+        return params->type == SWS_PIXEL_U8 && params->block_size == 16;
+    case SWS_UOP_TO_U32:
+    case SWS_UOP_TO_F32:
+        return params->type == SWS_PIXEL_U16;
     default:
         return false;
     }
