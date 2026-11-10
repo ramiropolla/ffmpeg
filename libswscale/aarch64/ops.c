@@ -205,8 +205,8 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
-    const int block_size = aarch64_block_size(uops);
     const bool inorder = cpu_flags & AV_CPU_FLAG_INORDER;
+    const int block_size = aarch64_block_size(uops, inorder);
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)

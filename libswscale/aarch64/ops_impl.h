@@ -108,11 +108,14 @@ static inline bool unpack_needs_mask(const SwsAArch64OpImplParams *params, int i
 /**
  * Whether the terms of SWS_UOP_LINEAR are emitted interleaved across rows
  * and vector banks (round-robin by term index), instead of row by row. This
- * is done for all types except for the f32 fmul+fadd path.
+ * avoids stalls on the multiply-accumulate latency on in-order cores, but is
+ * slightly slower on out-of-order cores. It is done in the in-order variants
+ * for all types except for the f32 fmul+fadd path.
  */
 static inline bool linear_interleaved(const SwsAArch64OpImplParams *params)
 {
-    return params->type != SWS_PIXEL_F32 || params->uop == SWS_UOP_LINEAR_FMA;
+    return params->inorder &&
+           (params->type != SWS_PIXEL_F32 || params->uop == SWS_UOP_LINEAR_FMA);
 }
 
 /**
@@ -195,6 +198,10 @@ static inline int const_vec_count(const SwsAArch64OpImplParams *params)
 static inline bool has_inorder_variant(const SwsAArch64OpImplParams *params)
 {
     switch (params->uop) {
+    case SWS_UOP_LINEAR:
+    case SWS_UOP_LINEAR_FMA:
+        /* The terms are interleaved across rows (see linear_interleaved()). */
+        return params->type != SWS_PIXEL_F32 || params->uop == SWS_UOP_LINEAR_FMA;
     case SWS_UOP_TO_U16:
         /* The high halves are zero-extended with uxtl2 instead of zip2. */
         return params->type == SWS_PIXEL_U8 && params->block_size == 16;
