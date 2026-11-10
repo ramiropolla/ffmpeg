@@ -694,7 +694,8 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
      * Zero-extension of the high halves is done by interleaving with a zero
      * vector (zip2) instead of uxtl2, since uxtl/uxtl2 (ushll) only execute
      * on one pipeline on some cores. The low halves still use uxtl, which
-     * spreads the work over both pipelines.
+     * spreads the work over both pipelines. In-order cores use uxtl2, which
+     * doesn't need the zero vector.
      */
     AArch64VecViews vzero = a64op_vec_views(regs->vt[11]);
     bool have_zero = false;
@@ -779,7 +780,7 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
         const bool tbl = convert_u8_tbl(p);
         AArch64VecViews *db[4] = { dl, dh, d2, d3 };
         rasm_add_comment(r, tbl ? "u8 -> u32 -> f32" : "u16 -> u32 -> f32");
-        if (!tbl)
+        if (!tbl && !p->inorder)
             NEED_ZERO();
         for (int b = 3; b >= -1; b--) {
             if (b >= 0) {
@@ -788,7 +789,9 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
                     LOOP_MASK(p, i) i_tbl(r, d[i].b16, vv_1(sl[i].b16), v_16b(regs->vk[b]));
                 } else {
                     AArch64VecViews *src = (b >= 2) ? sh : sl;
-                    if (b & 1) {
+                    if ((b & 1) && p->inorder) {
+                        LOOP_MASK(p, i) i_uxtl2(r, d[i].s4, src[i].h8);
+                    } else if (b & 1) {
                         LOOP_MASK(p, i) i_zip2(r, d[i].h8, src[i].h8, vzero.h8);
                     } else {
                         LOOP_MASK(p, i) i_uxtl(r, d[i].s4, src[i].h4);
@@ -835,8 +838,12 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
         }
         if (src_el_size == 2 && dst_el_size == 4) {
             rasm_add_comment(r, "u16 -> u32");
-            NEED_ZERO();
-            LOOP_MASK(p, i) i_zip2 (r, dh[i].h8,    sl[i].h8,    vzero.h8);
+            if (p->inorder) {
+                LOOP_MASK(p, i) i_uxtl2(r, dh[i].s4, sl[i].h8);
+            } else {
+                NEED_ZERO();
+                LOOP_MASK(p, i) i_zip2 (r, dh[i].h8, sl[i].h8, vzero.h8);
+            }
             LOOP_MASK(p, i) i_uxtl (r, dl[i].s4,    sl[i].h4);
             memcpy(sl, dl, sizeof(sl));
             memcpy(sh, dh, sizeof(sh));
@@ -857,8 +864,12 @@ static void asmgen_op_convert(SwsAArch64Context *s, const SwsAArch64OpImplParams
     } else /* if (p->block_size == 16) */ {
         if (src_el_size == 1 && dst_el_size == 2) {
             rasm_add_comment(r, "u8 -> u16");
-            NEED_ZERO();
-            LOOP_MASK(p, i) i_zip2 (r, dh[i].b16,   sl[i].b16,   vzero.b16);
+            if (p->inorder) {
+                LOOP_MASK(p, i) i_uxtl2(r, dh[i].h8, sl[i].b16);
+            } else {
+                NEED_ZERO();
+                LOOP_MASK(p, i) i_zip2 (r, dh[i].b16, sl[i].b16, vzero.b16);
+            }
             LOOP_MASK(p, i) i_uxtl (r, dl[i].h8,    sl[i].b8);
             memcpy(sl, dl, sizeof(sl));
             memcpy(sh, dh, sizeof(sh));
