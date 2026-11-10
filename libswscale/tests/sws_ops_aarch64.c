@@ -165,6 +165,8 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
         return (int) pa->type - pb->type;
     if (pa->mask != pb->mask)
         return (int) pa->mask - pb->mask;
+    if (pa->inorder != pb->inorder)
+        return (int) pa->inorder - pb->inorder;
 
     return 0;
 }
@@ -192,7 +194,8 @@ error:
 }
 
 static int collect_uops(SwsContext *ctx, const SwsOpList *ops,
-                        SwsUOpFlags flags, struct AVTreeNode **root)
+                        SwsUOpFlags flags, bool inorder,
+                        struct AVTreeNode **root)
 {
     SwsUOpList *uops = ff_sws_uop_list_alloc();
     if (!uops)
@@ -210,7 +213,7 @@ static int collect_uops(SwsContext *ctx, const SwsOpList *ops,
 
     for (int i = 0; i < uops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        convert_to_aarch64_impl(&uops->ops[i], block_size, &params);
+        convert_to_aarch64_impl(&uops->ops[i], block_size, inorder, &params);
         ret = aarch64_collect_op(&params, root);
         if (ret < 0)
             goto end;
@@ -230,10 +233,14 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     /**
      * Generate the functions used both with and without fmla (selected by
      * SWS_BITEXACT). The uop lists, and therefore the block size, may differ.
+     * Each is generated for both out-of-order and in-order cores.
      */
-    int ret = collect_uops(ctx, ops, flags, root);
-    if (ret >= 0 && !(ctx->flags & SWS_BITEXACT))
-        ret = collect_uops(ctx, ops, flags | SWS_UOP_FLAG_FMA, root);
+    int ret = 0;
+    for (int inorder = 0; inorder < 2 && ret >= 0; inorder++) {
+        ret = collect_uops(ctx, ops, flags, inorder, root);
+        if (ret >= 0 && !(ctx->flags & SWS_BITEXACT))
+            ret = collect_uops(ctx, ops, flags | SWS_UOP_FLAG_FMA, inorder, root);
+    }
     if (ret < 0)
         return ret;
 
@@ -363,7 +370,7 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
 
     const SwsUOpParams *par = &params->par;
 
-    char func_name[FUNC_NAME_WIDTH + 2];
+    char func_name[FUNC_NAME_WIDTH + 16];
     snprintf(func_name, sizeof(func_name), "ff_sws_%s", op_type_names[params->uop]);
     switch (params->uop) {
     case SWS_UOP_PERMUTE:
@@ -389,8 +396,9 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         av_strlcatf(func_name, sizeof(func_name), "_%04x_%u", dither_to_mask(params, &par->dither), par->dither.size_log2);
         break;
     }
-    av_strlcatf(func_name, sizeof(func_name), "_%u_%s_%04x_neon,",
-                params->block_size, pixel_type_names[params->type], nibble_mask(params->mask));
+    av_strlcatf(func_name, sizeof(func_name), "_%u_%s_%04x%s_neon,",
+                params->block_size, pixel_type_names[params->type], nibble_mask(params->mask),
+                params->inorder ? "_inorder" : "");
 
     char uop_name[UOP_NAME_WIDTH + 2];
     snprintf(uop_name, sizeof(uop_name), "%s,", uop_types[params->uop]);
@@ -401,6 +409,8 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
     av_bprintf(bp, "ENTRY(%-*s { .uop = %-*s .block_size = %2u, .type = %-*s .mask = 0x%x",
                FUNC_NAME_WIDTH, func_name, UOP_NAME_WIDTH, uop_name,
                params->block_size, TYPE_NAME_WIDTH, type_name, params->mask);
+    if (params->inorder)
+        av_bprintf(bp, ", .inorder = 1");
     switch (params->uop) {
     case SWS_UOP_PERMUTE:
     case SWS_UOP_COPY:

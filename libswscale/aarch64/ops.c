@@ -206,6 +206,7 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
         return AVERROR(ENOTSUP);
 
     const int block_size = aarch64_block_size(uops);
+    const bool inorder = cpu_flags & AV_CPU_FLAG_INORDER;
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)
@@ -220,12 +221,14 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     /* Look up kernel functions. */
     for (int i = 0; i < uops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        convert_to_aarch64_impl(&uops->ops[i], block_size, &params);
+        convert_to_aarch64_impl(&uops->ops[i], block_size, inorder, &params);
         SwsFuncPtr func = aarch64_lookup(&params);
         if (!func) {
             ret = AVERROR(ENOTSUP);
             goto error;
         }
+        if (params.inorder)
+            chain->cpu_flags |= AV_CPU_FLAG_INORDER;
         SwsImplResult res = { 0 };
         ret = aarch64_setup(&uops->ops[i], &params, &res);
         if (ret < 0)
