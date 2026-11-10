@@ -85,6 +85,7 @@
 #define AV_CPU_FLAG_PMULL        (1 <<17)
 #define AV_CPU_FLAG_EOR3         (1 <<18)
 #define AV_CPU_FLAG_ARM_AES      (1 <<19)
+#define AV_CPU_FLAG_INORDER      (1 <<20) ///< all cores the process can run on are in-order (e.g. Cortex-A55)
 
 #define AV_CPU_FLAG_MMI          (1 << 0)
 #define AV_CPU_FLAG_MSA          (1 << 1)

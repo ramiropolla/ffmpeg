@@ -345,6 +345,7 @@ static const CheckasmCpuInfo cpuflags[] = {
     { "PMULL",    "pmull_eor3", AV_CPU_FLAG_PMULL|AV_CPU_FLAG_EOR3, .mask = AV_CPU_FLAG_ARM_CRC },
     { "PMULL+CRC","pmull_eor3_crc", AV_CPU_FLAG_PMULL|AV_CPU_FLAG_EOR3|AV_CPU_FLAG_ARM_CRC },
     { "AES",      "aes",      AV_CPU_FLAG_ARM_AES },
+    { "INORDER",  "inorder",  AV_CPU_FLAG_INORDER },
 #elif ARCH_ARM
     { "ARMV5TE",  "armv5te",  AV_CPU_FLAG_ARMV5TE },
     { "ARMV6",    "armv6",    AV_CPU_FLAG_ARMV6 },
