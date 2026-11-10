@@ -676,18 +676,30 @@ set_weak(){
     done
 }
 
+# Replace every character that is not valid in a variable name by '_',
+# storing the result in $sanitized.
 sanitize_var_name(){
-    echo $@ | sed 's/[^A-Za-z0-9_]/_/g'
+    sanitize_rest=$1
+    sanitized=
+    while :; do
+        sanitize_pre=${sanitize_rest%%[!A-Za-z0-9_]*}
+        test "$sanitize_pre" = "$sanitize_rest" && break
+        sanitized=$sanitized${sanitize_pre}_
+        sanitize_rest=${sanitize_rest#"$sanitize_pre"?}
+    done
+    sanitized=$sanitized$sanitize_rest
 }
 
 set_sanitized(){
     var=$1
     shift
-    eval $(sanitize_var_name "$var")='$*'
+    sanitize_var_name "$var"
+    eval $sanitized='$*'
 }
 
 get_sanitized(){
-    eval echo \$$(sanitize_var_name "$1")
+    sanitize_var_name "$1"
+    eval echo \$$sanitized
 }
 
 pushvar(){
@@ -748,13 +760,15 @@ disable_weak(){
 
 enable_sanitized(){
     for var; do
-        enable $(sanitize_var_name $var)
+        sanitize_var_name "$var"
+        enable $sanitized
     done
 }
 
 disable_sanitized(){
     for var; do
-        disable $(sanitize_var_name $var)
+        sanitize_var_name "$var"
+        disable $sanitized
     done
 }
 
