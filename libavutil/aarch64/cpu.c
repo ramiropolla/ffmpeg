@@ -16,9 +16,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config.h"
+
+#if HAVE_SCHED_GETAFFINITY && defined(__linux__)
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <inttypes.h>
+#include <sched.h>
+#include <stdio.h>
+#endif
+
 #include "libavutil/cpu.h"
 #include "libavutil/cpu_internal.h"
-#include "config.h"
 
 #if HAVE_GETAUXVAL || HAVE_ELF_AUX_INFO
 #include <stdint.h>
@@ -211,6 +221,80 @@ static int detect_flags(void)
 
 #endif
 
+#if HAVE_SCHED_GETAFFINITY && defined(__linux__)
+/**
+ * Whether a MIDR_EL1 value identifies an in-order core. These are the
+ * "LITTLE" cores of big.LITTLE systems, and the only cores of some
+ * low-end ones.
+ */
+static int midr_is_inorder(uint64_t midr)
+{
+    const unsigned implementer = (midr >> 24) & 0xff;
+    const unsigned part        = (midr >>  4) & 0xfff;
+
+    switch (implementer) {
+    case 0x41: /* Arm */
+        switch (part) {
+        case 0xd03: /* Cortex-A53 */
+        case 0xd04: /* Cortex-A35 */
+        case 0xd05: /* Cortex-A55 */
+        case 0xd46: /* Cortex-A510 */
+        case 0xd80: /* Cortex-A520 */
+            return 1;
+        }
+        break;
+    case 0x51: /* Qualcomm */
+        switch (part) {
+        case 0x801: /* Kryo 2xx Silver (Cortex-A53) */
+        case 0x803: /* Kryo 3xx Silver (Cortex-A55) */
+        case 0x805: /* Kryo 4xx/5xx Silver (Cortex-A55) */
+            return 1;
+        }
+        break;
+    }
+
+    return 0;
+}
+
+static int read_midr(int cpu, uint64_t *midr)
+{
+    char path[80];
+    snprintf(path, sizeof(path),
+             "/sys/devices/system/cpu/cpu%d/regs/identification/midr_el1", cpu);
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return 0;
+    const int ret = fscanf(f, "%" SCNx64, midr) == 1;
+    fclose(f);
+    return ret;
+}
+
+/**
+ * Set AV_CPU_FLAG_INORDER if all cores that the process may run on are
+ * in-order. Mixed systems, and systems where the cores can't be identified,
+ * are treated as out-of-order.
+ */
+static int detect_inorder(void)
+{
+    cpu_set_t set;
+    int count = 0;
+
+    if (sched_getaffinity(0, sizeof(set), &set))
+        return 0;
+
+    for (int cpu = 0; cpu < CPU_SETSIZE; cpu++) {
+        uint64_t midr;
+        if (!CPU_ISSET(cpu, &set))
+            continue;
+        if (!read_midr(cpu, &midr) || !midr_is_inorder(midr))
+            return 0;
+        count++;
+    }
+
+    return count ? AV_CPU_FLAG_INORDER : 0;
+}
+#endif
+
 int ff_get_cpu_flags_aarch64(void)
 {
     int flags = AV_CPU_FLAG_ARMV8 * HAVE_ARMV8 |
@@ -249,6 +333,10 @@ int ff_get_cpu_flags_aarch64(void)
 #endif
 
     flags |= detect_flags();
+
+#if HAVE_SCHED_GETAFFINITY && defined(__linux__)
+    flags |= detect_inorder();
+#endif
 
     return flags;
 }
