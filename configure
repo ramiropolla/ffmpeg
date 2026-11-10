@@ -8163,33 +8163,44 @@ if ! enabled_any memalign posix_memalign aligned_malloc; then
     fi
 fi
 
+# Replace each *_extralibs entry of the list at var $1 by its flat libs, and
+# append the nested *_extralibs names found along the way, level by level.
+# Each entry is only flattened once; this runs in a subshell.
 flatten_extralibs(){
-    nested_entries=
     list_name=$1
-    eval list=\$${1}
-    for entry in $list; do
-        entry_copy=$entry
-        resolve entry_copy
-        flat_entries=
-        for e in $entry_copy; do
-            case $e in
-                *_extralibs) nested_entries="$nested_entries$e ";;
-                          *) flat_entries="$flat_entries$e ";;
-            esac
+    eval flatten_todo=\$$1
+    flatten_all=
+    while test -n "$flatten_todo"; do
+        flatten_all="$flatten_all$flatten_todo "
+        nested_entries=
+        for entry in $flatten_todo; do
+            eval test -n \"\$${entry}_flattened\" && continue
+            eval ${entry}_flattened=1
+            eval entry_copy=\$$entry
+            flat_entries=
+            for e in $entry_copy; do
+                case $e in
+                    *_extralibs) nested_entries="$nested_entries$e ";;
+                              *) flat_entries="$flat_entries$e ";;
+                esac
+            done
+            eval $entry="\$flat_entries"
         done
-        eval $entry="\$flat_entries"
+        flatten_todo=$nested_entries
     done
-    append $list_name "$nested_entries"
-
-    resolve nested_entries
-    if test -n "$(filter '*_extralibs' $nested_entries)"; then
-        flatten_extralibs $list_name
-    fi
+    eval $list_name=\$flatten_all
 }
 
 flatten_extralibs_wrapper(){
     list_name=$1
     flatten_extralibs $list_name
+    # Most entries are empty; dropping them first keeps unique (quadratic) fast.
+    eval flatten_in=\$$list_name
+    flatten_out=
+    for v in $flatten_in; do
+        eval test -n \"\$$v\" && flatten_out="$flatten_out$v "
+    done
+    eval $list_name=\$flatten_out
     unique $list_name
     resolve $list_name
     eval $list_name=\$\(\$ldflags_filter \$$list_name\)
