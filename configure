@@ -999,19 +999,23 @@ add_cppflags(){
 }
 
 add_cflags(){
-    append CFLAGS $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    append CFLAGS $filtered
 }
 
 add_cflags_headers(){
-    append CFLAGS_HEADERS $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    append CFLAGS_HEADERS $filtered
 }
 
 add_cxxflags(){
-    append CXXFLAGS $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    append CXXFLAGS $filtered
 }
 
 add_objcflags(){
-    append OBJCFLAGS $($objcflags_filter "$@")
+    run_filter $objcflags_filter "$@"
+    append OBJCFLAGS $filtered
 }
 
 # This also covers ObjC, it inherits CFLAGS.
@@ -1021,23 +1025,28 @@ add_allcflags(){
 }
 
 add_asflags(){
-    append ASFLAGS $($asflags_filter "$@")
+    run_filter $asflags_filter "$@"
+    append ASFLAGS $filtered
 }
 
 add_ldflags(){
-    append LDFLAGS $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    append LDFLAGS $filtered
 }
 
 add_ldexeflags(){
-    append LDEXEFLAGS $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    append LDEXEFLAGS $filtered
 }
 
 add_ldsoflags(){
-    append LDSOFLAGS $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    append LDSOFLAGS $filtered
 }
 
 add_extralibs(){
-    prepend extralibs $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    prepend extralibs $filtered
 }
 
 add_stripflags(){
@@ -1049,11 +1058,13 @@ add_host_cppflags(){
 }
 
 add_host_cflags(){
-    append host_cflags $($host_cflags_filter "$@")
+    run_filter $host_cflags_filter "$@"
+    append host_cflags $filtered
 }
 
 add_host_ldflags(){
-    append host_ldflags $($host_ldflags_filter "$@")
+    run_filter $host_ldflags_filter "$@"
+    append host_ldflags $filtered
 }
 
 add_compat(){
@@ -1072,80 +1083,81 @@ test_stat(){
     stat "$1" >> $logfile 2>&1
 }
 
-cc_e(){
-    eval printf '%s\\n' $CC_E
+# Expand the output template $2 (such as $CC_O) for the file $3 into the
+# variable $1.
+expand_o(){
+    expand_o_var=$1
+    expand_o_tmpl=$2
+    shift 2
+    eval $expand_o_var=\"$expand_o_tmpl\"
 }
 
-cc_o(){
-    eval printf '%s\\n' $CC_O
+# Run the flags filter $1 on the other arguments and store the result in
+# $filtered. The default filter, echo, only joins its arguments, so do that
+# directly unless echo would interpret them.
+run_filter(){
+    run_filter_cmd=$1
+    shift
+    if test "$run_filter_cmd" = echo && test "$1" != "-n"; then
+        case $* in
+            *\\*) ;;
+            *) filtered=$*; return ;;
+        esac
+    fi
+    filtered=$($run_filter_cmd "$@")
 }
 
-cxx_e(){
-    eval printf '%s\\n' $CXX_E
+# Split the arguments into libraries ($split_libs) and other flags
+# ($split_flags).
+split_link_args(){
+    split_flags=
+    split_libs=
+    for split_v; do
+        case $split_v in
+            -l*|*.so) split_libs="$split_libs$split_v " ;;
+                   *) split_flags="$split_flags$split_v " ;;
+        esac
+    done
 }
 
-cxx_o(){
-    eval printf '%s\\n' $CXX_O
-}
-
-as_o(){
-    eval printf '%s\\n' $AS_O
-}
-
-x86asm_o(){
-    eval printf '%s\\n' $X86ASM_O
-}
-
-ld_o(){
-    eval printf '%s\\n' $LD_O
-}
-
-hostcc_e(){
-    eval printf '%s\\n' $HOSTCC_E
-}
-
-hostcc_o(){
-    eval printf '%s\\n' $HOSTCC_O
-}
-
-hostld_o(){
-    eval printf '%s\\n' $HOSTLD_O
-}
-
-glslc_o(){
-    eval printf '%s\\n' $GLSLC_O
-}
-
-nvcc_o(){
-    eval printf '%s\\n' $NVCC_O
+# Like "cat > $1", without starting a process.
+write_stdin(){
+    while IFS= read -r write_stdin_line; do
+        printf '%s\n' "$write_stdin_line"
+    done > "$1"
+    test -n "$write_stdin_line" && printf '%s' "$write_stdin_line" >> "$1"
 }
 
 test_cc(){
     log test_cc "$@"
-    cat > $TMPC
+    write_stdin $TMPC
     log_file $TMPC
-    test_cmd $cc $CPPFLAGS $CFLAGS "$@" $CC_C $(cc_o $TMPO) $TMPC
+    expand_o cc_out "$CC_O" $TMPO
+    test_cmd $cc $CPPFLAGS $CFLAGS "$@" $CC_C $cc_out $TMPC
 }
 
 test_cxx(){
     log test_cxx "$@"
-    cat > $TMPCPP
+    write_stdin $TMPCPP
     log_file $TMPCPP
-    test_cmd $cxx $CPPFLAGS $CXXFLAGS "$@" $CXX_C $(cxx_o $TMPO) $TMPCPP
+    expand_o cxx_out "$CXX_O" $TMPO
+    test_cmd $cxx $CPPFLAGS $CXXFLAGS "$@" $CXX_C $cxx_out $TMPCPP
 }
 
 test_objcc(){
     log test_objcc "$@"
-    cat > $TMPM
+    write_stdin $TMPM
     log_file $TMPM
-    test_cmd $objcc -Werror=missing-prototypes $CPPFLAGS $CFLAGS $OBJCFLAGS "$@" $OBJCC_C $(cc_o $TMPO) $TMPM
+    expand_o cc_out "$CC_O" $TMPO
+    test_cmd $objcc -Werror=missing-prototypes $CPPFLAGS $CFLAGS $OBJCFLAGS "$@" $OBJCC_C $cc_out $TMPM
 }
 
 test_glslc(){
     log test_glslc "$@"
-    cat > $TMPGLSL
+    write_stdin $TMPGLSL
     log_file $TMPGLSL
-    test_cmd $glslc $GLSLCFLAGS $glslcflags "$@" $(glslc_o $TMPO) $TMPGLSL
+    expand_o glslc_out "$GLSLC_O" $TMPO
+    test_cmd $glslc $GLSLCFLAGS $glslcflags "$@" $glslc_out $TMPGLSL
 }
 
 check_glslc(){
@@ -1163,12 +1175,13 @@ EOF
 
 test_nvcc(){
     log test_nvcc "$@"
-    cat > $TMPCU
+    write_stdin $TMPCU
     log_file $TMPCU
     tmpcu_=$TMPCU
     tmpo_=$TMPO
     [ -x "$(command -v cygpath)" ] && tmpcu_=$(cygpath -m $tmpcu_) && tmpo_=$(cygpath -m $tmpo_)
-    test_cmd $nvcc $nvccflags "$@" $NVCC_C $(nvcc_o $tmpo_) $tmpcu_
+    expand_o nvcc_out "$NVCC_O" $tmpo_
+    test_cmd $nvcc $nvccflags "$@" $NVCC_C $nvcc_out $tmpcu_
 }
 
 check_nvcc() {
@@ -1186,16 +1199,18 @@ EOF
 
 test_cpp(){
     log test_cpp "$@"
-    cat > $TMPC
+    write_stdin $TMPC
     log_file $TMPC
-    test_cmd $cc $CPPFLAGS $CFLAGS "$@" $(cc_e $TMPO) $TMPC
+    expand_o cc_out "$CC_E" $TMPO
+    test_cmd $cc $CPPFLAGS $CFLAGS "$@" $cc_out $TMPC
 }
 
 test_as(){
     log test_as "$@"
-    cat > $TMPS
+    write_stdin $TMPS
     log_file $TMPS
-    test_cmd $as $CPPFLAGS $ASFLAGS "$@" $AS_C $(as_o $TMPO) $TMPS
+    expand_o as_out "$AS_O" $TMPO
+    test_cmd $as $CPPFLAGS $ASFLAGS "$@" $AS_C $as_out $TMPS
 }
 
 test_x86asm(){
@@ -1203,7 +1218,8 @@ test_x86asm(){
     echo "$1" > $TMPASM
     log_file $TMPASM
     shift
-    test_cmd $x86asmexe $X86ASMFLAGS -Werror "$@" $(x86asm_o $TMPO) $TMPASM
+    expand_o x86asm_out "$X86ASM_O" $TMPO
+    test_cmd $x86asmexe $X86ASMFLAGS -Werror "$@" $x86asm_out $TMPASM
 }
 
 check_cmd(){
@@ -1247,11 +1263,12 @@ check_inline_asm_flags(){
       shift
     done;
     disable $name
-    cat > $TMPC <<EOF
+    write_stdin $TMPC <<EOF
 void foo(void){ __asm__ volatile($code); }
 EOF
     log_file $TMPC
-    test_cmd $cc $CPPFLAGS $CFLAGS $flags "$@" $CC_C $(cc_o $TMPO) $TMPC &&
+    expand_o cc_out "$CC_O" $TMPO
+    test_cmd $cc $CPPFLAGS $CFLAGS $flags "$@" $CC_C $cc_out $TMPC &&
     enable $name && add_allcflags $flags && add_asflags $flags && add_ldflags $flags
 }
 
@@ -1320,21 +1337,27 @@ check_x86asm(){
 
 test_ld(){
     log test_ld "$@"
-    type=$1
+    test_ld_type=$1
     shift 1
-    flags=$(filter_out '-l*|*.so' $@)
-    libs=$(filter '-l*|*.so' $@)
-    test_$type $($cflags_filter $flags) || return
-    flags=$($ldflags_filter $flags)
-    libs=$($ldflags_filter $libs)
-    log $ld $LDFLAGS $LDEXEFLAGS $flags $(ld_o $TMPE) $TMPO $libs $extralibs
-    output=$($ld $LDFLAGS $LDEXEFLAGS $flags $(ld_o $TMPE) $TMPO $libs $extralibs 2>&1)
-    ret=$?
-    echo "$output" >> $logfile
+    split_link_args $@
+    run_filter $cflags_filter $split_flags
+    test_$test_ld_type $filtered || return
+    run_filter $ldflags_filter $split_flags
+    test_ld_flags=$filtered
+    run_filter $ldflags_filter $split_libs
+    test_ld_libs=$filtered
+    expand_o ld_out "$LD_O" $TMPE
+    log $ld $LDFLAGS $LDEXEFLAGS $test_ld_flags $ld_out $TMPO $test_ld_libs $extralibs
+    test_ld_output=$($ld $LDFLAGS $LDEXEFLAGS $test_ld_flags $ld_out $TMPO $test_ld_libs $extralibs 2>&1)
+    test_ld_ret=$?
+    echo "$test_ld_output" >> $logfile
     # link.exe and lld-link exit 0 even for unrecognized options, emitting
     # only a warning (LNK4044 / "ignoring unknown argument").  Treat such
     # output as failure so check_ldflags rejects those flags correctly.
-    test $ret -eq 0 && ! echo "$output" | grep -qE 'LNK4044|lld-link: warning: ignoring unknown argument'
+    test $test_ld_ret -eq 0 || return
+    case $test_ld_output in
+        *LNK4044*|*"lld-link: warning: ignoring unknown argument"*) return 1 ;;
+    esac
 }
 
 check_ld(){
@@ -1353,18 +1376,30 @@ print_include(){
         echo "#include <$hdr>"
 }
 
+nl='
+'
+
+# Store the #include lines for the headers $1 in $includes, like
+# print_include does.
+build_includes(){
+    includes=
+    for build_includes_hdr in $1; do
+        test "${build_includes_hdr%.h}" = "${build_includes_hdr}" &&
+            includes="$includes#include $build_includes_hdr$nl" ||
+            includes="$includes#include <$build_includes_hdr>$nl"
+    done
+}
+
 test_code(){
     log test_code "$@"
     check=$1
     headers=$2
     code=$3
     shift 3
-    {
-        for hdr in $headers; do
-            print_include $hdr
-        done
-        echo "int main(void) { $code; return 0; }"
-    } | test_$check "$@"
+    build_includes "$headers"
+    test_$check "$@" <<EOF
+${includes}int main(void) { $code; return 0; }
+EOF
 }
 
 check_cppflags(){
@@ -1376,7 +1411,8 @@ EOF
 
 test_cflags(){
     log test_cflags "$@"
-    set -- $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    set -- $filtered
     test_cc "$@" <<EOF
 int x;
 EOF
@@ -1389,7 +1425,8 @@ check_cflags(){
 
 test_cxxflags(){
     log test_cxxflags "$@"
-    set -- $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    set -- $filtered
     test_cxx "$@" <<EOF
 int x;
 EOF
@@ -1402,7 +1439,8 @@ check_cxxflags(){
 
 test_objcflags(){
     log test_objcflags "$@"
-    set -- $($objcflags_filter "$@")
+    run_filter $objcflags_filter "$@"
+    set -- $filtered
     test_objcc "$@" <<EOF
 int x;
 EOF
@@ -1420,7 +1458,8 @@ check_allcflags(){
 
 test_ldflags(){
     log test_ldflags "$@"
-    set -- $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    set -- $filtered
     test_ld "cc" "$@" <<EOF
 int main(void){ return 0; }
 EOF
@@ -1450,12 +1489,10 @@ check_headers(){
     headers=$1
     shift
     disable_sanitized $headers
-    {
-        for hdr in $headers; do
-            print_include $hdr
-        done
-        echo "int x;"
-    } | test_cpp "$@" && enable_sanitized $headers
+    build_includes "$headers"
+    test_cpp "$@" <<EOF && enable_sanitized $headers
+${includes}int x;
+EOF
 }
 
 check_header_objcc(){
@@ -1464,10 +1501,10 @@ check_header_objcc(){
     header=$1
     shift
     disable_sanitized $header
-    {
-       echo "#include <$header>"
-       echo "int main(void) { return 0; }"
-    } | test_objcc && test_stat "$TMPO" && enable_sanitized $header
+    test_objcc <<EOF && test_stat "$TMPO" && enable_sanitized $header
+#include <$header>
+int main(void) { return 0; }
+EOF
 }
 
 check_apple_framework(){
@@ -1491,19 +1528,15 @@ int main(void){ $func(); }
 EOF
 }
 
-print_func_headers_test(){
-    headers=$1
-    funcs=$2
-    for hdr in $headers; do
-        print_include $hdr
+# Store a test program that references the functions $2 declared in the
+# headers $1 in $func_headers_test.
+build_func_headers_test(){
+    build_includes "$1"
+    func_headers_test="${includes}#include <stdint.h>${nl}static volatile intptr_t ref;${nl}int main(void) {${nl}"
+    for build_func in $2; do
+        func_headers_test="$func_headers_test ref = (intptr_t) $build_func;$nl"
     done
-    echo "#include <stdint.h>"
-    echo "static volatile intptr_t ref;"
-    echo "int main(void) {"
-    for func in $funcs; do
-        echo " ref = (intptr_t) $func;"
-    done
-    echo "return 0; }"
+    func_headers_test="${func_headers_test}return 0; }"
 }
 
 check_func_headers(){
@@ -1511,7 +1544,10 @@ check_func_headers(){
     headers=$1
     funcs=$2
     shift 2
-    print_func_headers_test "$headers" "$funcs" | test_ld "cc" "$@" &&
+    build_func_headers_test "$headers" "$funcs"
+    test_ld "cc" "$@" <<EOF &&
+$func_headers_test
+EOF
         enable $funcs && enable_sanitized $headers
 }
 
@@ -1520,18 +1556,19 @@ check_class_headers_cxx(){
     headers=$1
     classes=$2
     shift 2
-    {
-        for hdr in $headers; do
-            echo "#include <$hdr>"
-        done
-        echo "int main(void) { "
-        i=1
-        for class in $classes; do
-            echo "$class *obj$i;"
-            i=$(expr $i + 1)
-        done
-        echo "return 0; }"
-    } | test_ld "cxx" "$@" && enable_sanitized $headers
+    class_test=
+    for class_hdr in $headers; do
+        class_test="$class_test#include <$class_hdr>$nl"
+    done
+    class_test="${class_test}int main(void) { $nl"
+    class_i=1
+    for class_name in $classes; do
+        class_test="$class_test$class_name *obj$class_i;$nl"
+        class_i=$(($class_i + 1))
+    done
+    test_ld "cxx" "$@" <<EOF && enable_sanitized $headers
+${class_test}return 0; }
+EOF
 }
 
 test_cpp_condition(){
@@ -1561,7 +1598,8 @@ test_cflags_cc(){
     header=$2
     condition=$3
     shift 3
-    set -- $($cflags_filter "$flags")
+    run_filter $cflags_filter "$flags"
+    set -- $filtered
     test_cc "$@" <<EOF
 #include <$header>
 #if !($condition)
@@ -1582,7 +1620,8 @@ test_cxxflags_cc(){
     header=$2
     condition=$3
     shift 3
-    set -- $($cflags_filter "$flags")
+    run_filter $cflags_filter "$flags"
+    set -- $filtered
     test_cxx "$@" <<EOF
 #include <$header>
 #if !($condition)
@@ -1848,26 +1887,31 @@ require_pkg_config_cxx(){
 
 test_host_cc(){
     log test_host_cc "$@"
-    cat > $TMPC
+    write_stdin $TMPC
     log_file $TMPC
-    test_cmd $host_cc $host_cflags "$@" $HOSTCC_C $(hostcc_o $TMPO) $TMPC
+    expand_o hostcc_out "$HOSTCC_O" $TMPO
+    test_cmd $host_cc $host_cflags "$@" $HOSTCC_C $hostcc_out $TMPC
 }
 
 test_host_ld(){
     log test_host_ld "$@"
-    flags=$(filter_out '-l*|*.so' $@)
-    libs=$(filter '-l*|*.so' $@)
-    test_host_cc $($host_cflags_filter $flags) || return
-    flags=$($host_ldflags_filter $flags)
-    libs=$($host_ldflags_filter $libs)
-    test_cmd $host_ld $host_ldflags $flags $(hostld_o $TMPE) $TMPO $libs $host_extralibs
+    split_link_args $@
+    run_filter $host_cflags_filter $split_flags
+    test_host_cc $filtered || return
+    run_filter $host_ldflags_filter $split_flags
+    test_host_ld_flags=$filtered
+    run_filter $host_ldflags_filter $split_libs
+    test_host_ld_libs=$filtered
+    expand_o hostld_out "$HOSTLD_O" $TMPE
+    test_cmd $host_ld $host_ldflags $test_host_ld_flags $hostld_out $TMPO $test_host_ld_libs $host_extralibs
 }
 
 test_host_cpp(){
     log test_host_cpp "$@"
-    cat > $TMPC
+    write_stdin $TMPC
     log_file $TMPC
-    test_cmd $host_cc $host_cppflags $host_cflags "$@" $(hostcc_e $TMPO) $TMPC
+    expand_o hostcc_out "$HOSTCC_E" $TMPO
+    test_cmd $host_cc $host_cppflags $host_cflags "$@" $hostcc_out $TMPC
 }
 
 check_host_cppflags(){
@@ -1879,7 +1923,8 @@ EOF
 
 check_host_cflags(){
     log check_host_cflags "$@"
-    set -- $($host_cflags_filter "$@")
+    run_filter $host_cflags_filter "$@"
+    set -- $filtered
     test_host_cc "$@" <<EOF && append host_cflags "$@"
 int x;
 EOF
@@ -1891,7 +1936,8 @@ test_host_cflags_cc(){
     header=$2
     condition=$3
     shift 3
-    set -- $($host_cflags_filter "$flags")
+    run_filter $host_cflags_filter "$flags"
+    set -- $filtered
     test_host_cc "$@" <<EOF
 #include <$header>
 #if !($condition)
@@ -1932,7 +1978,10 @@ check_host_lib(){
     headers=$1
     funcs=$2
     shift 2
-    print_func_headers_test "$headers" "$funcs" | test_host_ld "$@" &&
+    build_func_headers_test "$headers" "$funcs"
+    test_host_ld "$@" <<EOF &&
+$func_headers_test
+EOF
         append host_extralibs "$@"
 }
 
