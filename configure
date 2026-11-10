@@ -596,7 +596,7 @@ include the log this produces with your report.
 EOF
     else
         cat <<EOF
-Include the log file "$logfile" produced by configure as this will help
+Include the log file "${par_logfile:-$logfile}" produced by configure as this will help
 solve the problem.
 EOF
     fi
@@ -5216,6 +5216,166 @@ unset -f mktemp
 
 chmod +x $TMPE
 
+# Parallel checks
+#
+# "par cmd [args]" runs cmd in a background job, and "par_wait" waits for the
+# jobs started since the previous par_wait.  Each job gets its own temporary
+# files and log; par_wait then applies the variables each job changed, appends
+# its log and prints its output, in the order the jobs were started.  So the
+# result is the same as running the commands one after the other, as long as
+# the commands of one group don't depend on each other (and don't change the
+# flags used by the other checks).  FF_CONFIGURE_JOBS=1 runs them serially.
+par_max=${FF_CONFIGURE_JOBS:-$(nproc 2> /dev/null || echo 1)}
+par_id=0
+par_ids=
+par_running=0
+
+par(){
+    if test "$par_max" -le 1; then
+        "$@"
+        return
+    fi
+    test -z "$par_ids" && set > $FFTMPDIR/par.set
+    if test $par_running -ge $par_max; then
+        wait
+        par_running=0
+    fi
+    par_id=$(($par_id + 1))
+    par_ids="$par_ids $par_id"
+    par_running=$(($par_running + 1))
+    par_dir=$FFTMPDIR/j$par_id
+    par_job "$@" > $par_dir.out 2> $par_dir.err &
+}
+
+par_job(){
+    # same file names as in the serial run, they can end up in config.log
+    mkdir $par_dir || exit 1
+    for par_v in TMPASM TMPC TMPCPP TMPE TMPH TMPM TMPCU TMPGLSL TMPO TMPS TMPSH TMPV TMPRSP; do
+        eval $par_v=\$par_dir/\${$par_v##*/}
+    done
+    par_logfile=$logfile
+    logfile=$par_dir.log
+    : > $logfile
+    "$@"
+    # Multiline scratch values of the test helpers, cleared so that
+    # par_changes can do without the slow path.
+    includes= func_headers_test= class_test= test_ld_output=
+    set > $par_dir.set
+    diff $FFTMPDIR/par.set $par_dir.set > $par_dir.diff
+    par_changes > $par_dir.sh || par_changes_awk > $par_dir.sh
+}
+
+par_skip(){
+    case $1 in
+        TMP*|par_*|logfile|LINENO|_) return 0 ;;
+    esac
+    return 1
+}
+
+# Print the assignments for the variables the job changed, from the diff of
+# the set outputs.  Fail if a changed value does not fit on one line.
+par_changes(){
+    par_old=
+    while IFS= read -r par_l; do
+        case $par_l in
+            "> "*)
+                par_l=${par_l#> }
+                ;;
+            "< "*)
+                par_l=${par_l#< }
+                par_k=${par_l%%=*}
+                case $par_k in
+                    ""|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
+                esac
+                eval "test -n \"\${$par_k+x}\"" || par_old="$par_old $par_k"
+                continue
+                ;;
+            *)
+                continue
+                ;;
+        esac
+        par_k=${par_l%%=*}
+        case $par_k in
+            ""|[0-9]*|*[!A-Za-z0-9_]*) return 1 ;;
+        esac
+        par_skip $par_k && continue
+        # the value must be a complete sequence of '...' and "'" parts
+        par_v=${par_l#*=}
+        while test -n "$par_v"; do
+            case $par_v in
+                \'*\'*) par_v=${par_v#\'*\'} ;;
+                \"\'\"*) par_v=${par_v#\"\'\"} ;;
+                *) return 1 ;;
+            esac
+        done
+        eval "par_v=${par_l#*=}"
+        eval "test \"x\$par_v\" = \"x\$$par_k\"" || return 1
+        printf '%s\n' "$par_l"
+    done < $par_dir.diff
+    for par_k in $par_old; do
+        par_skip $par_k || echo "unset $par_k"
+    done
+}
+
+# Same as par_changes, for any value.
+par_changes_awk(){
+    awk '
+        function flush() {
+            if (name == "") return
+            if (file == 1) {
+                old[name] = rec
+            } else {
+                new[name] = rec
+                order[++n] = name
+            }
+        }
+        FNR == 1 { flush(); name = ""; nfile++ }
+        /^[A-Za-z_][A-Za-z0-9_]*=\047/ {
+            flush()
+            name = substr($0, 1, index($0, "=") - 1)
+            rec = $0
+            file = nfile
+            next
+        }
+        { rec = rec "\n" $0 }
+        END {
+            flush()
+            for (i = 1; i <= n; i++) {
+                k = order[i]
+                if (k ~ /^(TMP|par_)/ || k == "logfile" || k == "LINENO" || k == "_")
+                    continue
+                if (!(k in old) || old[k] != new[k])
+                    print new[k]
+            }
+            for (k in old)
+                if (!(k in new) && k !~ /^(TMP|par_)/ && k != "LINENO" && k != "_")
+                    print "unset " k
+        }' $FFTMPDIR/par.set $par_dir.set
+}
+
+par_wait(){
+    test -z "$par_ids" && return
+    wait
+    par_logs=
+    for par_i in $par_ids; do
+        par_dir=$FFTMPDIR/j$par_i
+        par_logs="$par_logs $par_dir.log"
+        if ! test -f $par_dir.sh; then
+            # the job died: stop here, like the serial run would have
+            cat $par_logs >> $logfile
+            cat $par_dir.out
+            cat $par_dir.err >&2
+            exit 1
+        fi
+        test -s $par_dir.out && cat $par_dir.out
+        test -s $par_dir.err && cat $par_dir.err >&2
+        . $par_dir.sh
+    done
+    cat $par_logs >> $logfile
+    par_ids=
+    par_running=0
+}
+
 # make sure we can execute files in $TMPDIR
 cat > $TMPSH 2>> $logfile <<EOF
 #!/bin/sh
@@ -6604,22 +6764,23 @@ if enabled aarch64; then
         check_arch_level "${as_arch_level}+fp"
     fi
 
-    enabled armv8 && check_insn armv8 'prfm   pldl1strm, [x0]'
+    enabled armv8 && par check_insn armv8 'prfm   pldl1strm, [x0]'
     # internal assembler in clang 3.3 does not support this instruction
-    enabled neon && check_insn neon 'ext   v0.8B, v0.8B, v1.8B, #1'
+    enabled neon && par check_insn neon 'ext   v0.8B, v0.8B, v1.8B, #1'
 
     archext_list="arm_aes arm_crc dotprod i8mm pmull eor3 sve sve2 sme sme_i16i64 sme2"
-    enabled arm_aes && check_archext_name_insn arm_aes aes 'aese  v0.16b, v1.16b'
-    enabled arm_crc && check_archext_name_insn arm_crc crc 'crc32x w0, w0, x0'
-    enabled pmull   && check_archext_name_insn pmull aes 'pmull v0.1q, v0.1d, v0.1d'
-    enabled eor3    && check_archext_name_insn eor3 sha3 'eor3 v0.16b, v1.16b, v2.16b, v3.16b'
-    enabled dotprod && check_archext_insn dotprod 'udot v0.4s, v0.16b, v0.16b'
-    enabled i8mm    && check_archext_insn i8mm    'usdot v0.4s, v0.16b, v0.16b'
-    enabled sve     && check_archext_insn sve     'whilelt p0.s, x0, x1'
-    enabled sve2    && check_archext_insn sve2    'sqrdmulh z0.s, z0.s, z0.s'
-    enabled sme     && check_archext_insn sme     'smstart' 'cntb x0'
-    enabled sme_i16i64 && check_archext_name_insn sme_i16i64 sme-i16i64 'smstart' 'smopa za0.d, p0/m, p0/m, z0.h, z1.h'
-    enabled sme2    && check_archext_insn sme2    'smstart' 'sdot za.s[w10, 0], {z0.b-z3.b}, {z4.b-z7.b}'
+    enabled arm_aes && par check_archext_name_insn arm_aes aes 'aese  v0.16b, v1.16b'
+    enabled arm_crc && par check_archext_name_insn arm_crc crc 'crc32x w0, w0, x0'
+    enabled pmull   && par check_archext_name_insn pmull aes 'pmull v0.1q, v0.1d, v0.1d'
+    enabled eor3    && par check_archext_name_insn eor3 sha3 'eor3 v0.16b, v1.16b, v2.16b, v3.16b'
+    enabled dotprod && par check_archext_insn dotprod 'udot v0.4s, v0.16b, v0.16b'
+    enabled i8mm    && par check_archext_insn i8mm    'usdot v0.4s, v0.16b, v0.16b'
+    enabled sve     && par check_archext_insn sve     'whilelt p0.s, x0, x1'
+    enabled sve2    && par check_archext_insn sve2    'sqrdmulh z0.s, z0.s, z0.s'
+    enabled sme     && par check_archext_insn sme     'smstart' 'cntb x0'
+    enabled sme_i16i64 && par check_archext_name_insn sme_i16i64 sme-i16i64 'smstart' 'smopa za0.d, p0/m, p0/m, z0.h, z1.h'
+    enabled sme2    && par check_archext_insn sme2    'smstart' 'sdot za.s[w10, 0], {z0.b-z3.b}, {z4.b-z7.b}'
+    par_wait
 
     # Disable the main feature (e.g. HAVE_NEON) if neither inline nor external
     # assembly support the feature out of the box. Skip this for the features
@@ -6797,26 +6958,25 @@ elif enabled wasm; then
 
 elif enabled x86; then
 
-    check_builtin rdtsc    intrin.h   "__rdtsc()"
-    check_builtin mm_empty mmintrin.h "_mm_empty()"
+    par check_builtin rdtsc    intrin.h   "__rdtsc()"
+    par check_builtin mm_empty mmintrin.h "_mm_empty()"
 
     # check whether EBX is available on x86
-    check_inline_asm ebx_available '""::"b"(0)' &&
-        check_inline_asm ebx_available '"":::"%ebx"'
+    par eval 'check_inline_asm ebx_available '\''""::"b"(0)'\'' && check_inline_asm ebx_available '\''"":::"%ebx"'\'''
 
     # check whether 6 and 7 registers are available on x86
-    check_inline_asm x86_6regs '"" :: "r"(0), "r"(1), "r"(2), "r"(3), "g"(4) : "%eax", "%edx"'
-    check_inline_asm x86_7regs '"" :: "r"(0), "r"(1), "r"(2), "r"(3), "g"(4), "r"(5) : "%eax", "%edx"'
+    par check_inline_asm x86_6regs '"" :: "r"(0), "r"(1), "r"(2), "r"(3), "g"(4) : "%eax", "%edx"'
+    par check_inline_asm x86_7regs '"" :: "r"(0), "r"(1), "r"(2), "r"(3), "g"(4), "r"(5) : "%eax", "%edx"'
 
     # check whether xmm clobbers are supported
-    check_inline_asm xmm_clobbers '"":::"%xmm0"'
+    par check_inline_asm xmm_clobbers '"":::"%xmm0"'
 
-    check_inline_asm inline_asm_direct_symbol_refs '"movl '$extern_prefix'test, %eax"' ||
-        check_inline_asm inline_asm_direct_symbol_refs '"movl '$extern_prefix'test(%rip), %eax"'
+    par eval 'check_inline_asm inline_asm_direct_symbol_refs '\''"movl '\''$extern_prefix'\''test, %eax"'\'' || check_inline_asm inline_asm_direct_symbol_refs '\''"movl '\''$extern_prefix'\''test(%rip), %eax"'\'''
 
     # check whether binutils is new enough to compile SSSE3/MMXEXT
-    enabled ssse3  && check_inline_asm ssse3_inline  '"pabsw %xmm0, %xmm0"'
-    enabled mmxext && check_inline_asm mmxext_inline '"pmaxub %mm0, %mm1"'
+    enabled ssse3  && par check_inline_asm ssse3_inline  '"pabsw %xmm0, %xmm0"'
+    enabled mmxext && par check_inline_asm mmxext_inline '"pmaxub %mm0, %mm1"'
+    par_wait
 
     probe_x86asm(){
         x86asmexe_probe=$1
@@ -6837,12 +6997,13 @@ elif enabled x86; then
         test -n "$extern_prefix"  && append X86ASMFLAGS "-DPREFIX"
         enabled debug && append X86ASMFLAGS "-g"
 
-        enabled avx512    && check_x86asm avx512_external    "vmovdqa32 [eax]{k1}{z}, zmm0"
-        enabled avx512icl && check_x86asm avx512icl_external "vpdpwssds zmm31{k1}{z}, zmm29, zmm28"
-        enabled avx2      && check_x86asm avx2_external      "vextracti128 xmm0, ymm0, 0"
-        enabled xop       && check_x86asm xop_external       "vpmacsdd xmm0, xmm1, xmm2, xmm3"
-        enabled fma4      && check_x86asm fma4_external      "vfmaddps ymm0, ymm1, ymm2, ymm3"
-        enabled avx       && check_x86asm avx_external       "vpermilpd ymm0, ymm1, 0x72"
+        enabled avx512    && par check_x86asm avx512_external    "vmovdqa32 [eax]{k1}{z}, zmm0"
+        enabled avx512icl && par check_x86asm avx512icl_external "vpdpwssds zmm31{k1}{z}, zmm29, zmm28"
+        enabled avx2      && par check_x86asm avx2_external      "vextracti128 xmm0, ymm0, 0"
+        enabled xop       && par check_x86asm xop_external       "vpmacsdd xmm0, xmm1, xmm2, xmm3"
+        enabled fma4      && par check_x86asm fma4_external      "vfmaddps ymm0, ymm1, ymm2, ymm3"
+        enabled avx       && par check_x86asm avx_external       "vpermilpd ymm0, ymm1, 0x72"
+        par_wait
     fi
 
     case "$cpu" in
@@ -6869,20 +7030,21 @@ if [ $target_os = "darwin" ]; then
 fi
 
 if ! disabled network; then
-    check_func getaddrinfo $network_extralibs
-    check_func inet_aton $network_extralibs
+    par check_func getaddrinfo $network_extralibs
+    par check_func inet_aton $network_extralibs
 
-    check_type netdb.h "struct addrinfo"
-    check_type netinet/in.h "struct group_source_req" -D_BSD_SOURCE
-    check_type netinet/in.h "struct ip_mreq_source" -D_BSD_SOURCE
-    check_type netinet/in.h "struct ipv6_mreq" -D_DARWIN_C_SOURCE
-    check_type poll.h "struct pollfd"
-    check_type netinet/sctp.h "struct sctp_event_subscribe"
-    check_struct "sys/socket.h" "struct msghdr" msg_flags
-    check_struct "sys/types.h sys/socket.h" "struct sockaddr" sa_len
-    check_type netinet/in.h "struct sockaddr_in6"
-    check_type "sys/types.h sys/socket.h" "struct sockaddr_storage"
-    check_type "sys/types.h sys/socket.h" socklen_t
+    par check_type netdb.h "struct addrinfo"
+    par check_type netinet/in.h "struct group_source_req" -D_BSD_SOURCE
+    par check_type netinet/in.h "struct ip_mreq_source" -D_BSD_SOURCE
+    par check_type netinet/in.h "struct ipv6_mreq" -D_DARWIN_C_SOURCE
+    par check_type poll.h "struct pollfd"
+    par check_type netinet/sctp.h "struct sctp_event_subscribe"
+    par check_struct "sys/socket.h" "struct msghdr" msg_flags
+    par check_struct "sys/types.h sys/socket.h" "struct sockaddr" sa_len
+    par check_type netinet/in.h "struct sockaddr_in6"
+    par check_type "sys/types.h sys/socket.h" "struct sockaddr_storage"
+    par check_type "sys/types.h sys/socket.h" socklen_t
+    par_wait
 
     # Prefer arpa/inet.h over winsock2
     if check_headers arpa/inet.h ; then
@@ -6894,23 +7056,25 @@ if ! disabled network; then
             network_extralibs="-lws2_32"; } || disable winsock2_h network
         check_func_headers ws2tcpip.h getaddrinfo $network_extralibs
 
-        check_type ws2tcpip.h socklen_t
-        check_type ws2tcpip.h "struct addrinfo"
-        check_type ws2tcpip.h "struct group_source_req"
-        check_type ws2tcpip.h "struct ip_mreq_source"
-        check_type ws2tcpip.h "struct ipv6_mreq"
-        check_type winsock2.h "struct pollfd"
-        check_struct winsock2.h "struct sockaddr" sa_len
-        check_type ws2tcpip.h "struct sockaddr_in6"
-        check_type ws2tcpip.h "struct sockaddr_storage"
+        par check_type ws2tcpip.h socklen_t
+        par check_type ws2tcpip.h "struct addrinfo"
+        par check_type ws2tcpip.h "struct group_source_req"
+        par check_type ws2tcpip.h "struct ip_mreq_source"
+        par check_type ws2tcpip.h "struct ipv6_mreq"
+        par check_type winsock2.h "struct pollfd"
+        par check_struct winsock2.h "struct sockaddr" sa_len
+        par check_type ws2tcpip.h "struct sockaddr_in6"
+        par check_type ws2tcpip.h "struct sockaddr_storage"
+        par_wait
     else
         disable network
     fi
 fi
 
-check_builtin atomics_win32 intrin.h "long v = 0; _InterlockedOr(&v, 0)"
-check_builtin gmtime_r time.h "time_t *time; struct tm *tm; gmtime_r(time, tm)"
-check_builtin localtime_r time.h "time_t *time; struct tm *tm; localtime_r(time, tm)"
+par check_builtin atomics_win32 intrin.h "long v = 0; _InterlockedOr(&v, 0)"
+par check_builtin gmtime_r time.h "time_t *time; struct tm *tm; gmtime_r(time, tm)"
+par check_builtin localtime_r time.h "time_t *time; struct tm *tm; localtime_r(time, tm)"
+par_wait
 check_int128(){
     check_builtin int128 "" "volatile __int128 i128var = 1; i128var /= 100;" "$@" &&
         int128_extralibs="$*"
@@ -6959,65 +7123,66 @@ if test -n "$custom_allocator"; then
     add_extralibs "$custom_allocator_extralibs"
 fi
 
-check_func_headers malloc.h _aligned_malloc     && enable aligned_malloc
-check_func  ${malloc_prefix}memalign            && enable memalign
-check_func  ${malloc_prefix}posix_memalign      && enable posix_memalign
+par eval 'check_func_headers malloc.h _aligned_malloc     && enable aligned_malloc'
+par eval 'check_func  ${malloc_prefix}memalign            && enable memalign'
+par eval 'check_func  ${malloc_prefix}posix_memalign      && enable posix_memalign'
 
-check_func  access
-check_func_headers stdlib.h arc4random_buf
-check_lib   clock_gettime time.h clock_gettime || check_lib clock_gettime time.h clock_gettime -lrt
-check_func  fcntl
-check_func  fork
-check_func  gethrtime
-check_func  getopt
-check_func  getrusage
-check_func  gettimeofday
-check_func  isatty
-check_func  mkstemp
-check_func  mmap
-check_func  mprotect
+par check_func  access
+par check_func_headers stdlib.h arc4random_buf
+par eval 'check_lib   clock_gettime time.h clock_gettime || check_lib clock_gettime time.h clock_gettime -lrt'
+par check_func  fcntl
+par check_func  fork
+par check_func  gethrtime
+par check_func  getopt
+par check_func  getrusage
+par check_func  gettimeofday
+par check_func  isatty
+par check_func  mkstemp
+par check_func  mmap
+par check_func  mprotect
 # Solaris has nanosleep in -lrt, OpenSolaris no longer needs that
-check_func_headers time.h nanosleep || check_lib nanosleep time.h nanosleep -lrt
-check_func_headers sys/eventfd.h eventfd
-check_func_headers sys/prctl.h prctl
-check_func  sched_getaffinity
-check_func  setrlimit
-check_struct "sys/stat.h" "struct stat" st_mtim.tv_nsec -D_BSD_SOURCE
-check_func  strerror_r
-check_func  sysconf
-check_func  sysctl
-check_func  tempnam
-check_func  usleep
+par eval 'check_func_headers time.h nanosleep || check_lib nanosleep time.h nanosleep -lrt'
+par check_func_headers sys/eventfd.h eventfd
+par check_func_headers sys/prctl.h prctl
+par check_func  sched_getaffinity
+par check_func  setrlimit
+par check_struct "sys/stat.h" "struct stat" st_mtim.tv_nsec -D_BSD_SOURCE
+par check_func  strerror_r
+par check_func  sysconf
+par check_func  sysctl
+par check_func  tempnam
+par check_func  usleep
 
-check_func_headers conio.h kbhit
-check_func_headers io.h setmode
-check_func_headers io.h _open_osfhandle && enable open_osfhandle
-check_func_headers lzo/lzo1x.h lzo1x_999_compress
-check_func_headers mach/mach_time.h mach_absolute_time
-check_func_headers setjmp.h siglongjmp
-check_func_headers signal.h sigaction
-check_func_headers stdlib.h getenv
-check_func_headers stdlib.h realpath
-check_func_headers sys/ioctl.h ioctl
-check_func_headers sys/stat.h lstat
-check_func_headers sys/auxv.h getauxval
-check_func_headers sys/auxv.h elf_aux_info
-check_func_headers sys/sysctl.h sysctlbyname
+par check_func_headers conio.h kbhit
+par check_func_headers io.h setmode
+par eval 'check_func_headers io.h _open_osfhandle && enable open_osfhandle'
+par check_func_headers lzo/lzo1x.h lzo1x_999_compress
+par check_func_headers mach/mach_time.h mach_absolute_time
+par check_func_headers setjmp.h siglongjmp
+par check_func_headers signal.h sigaction
+par check_func_headers stdlib.h getenv
+par check_func_headers stdlib.h realpath
+par check_func_headers sys/ioctl.h ioctl
+par check_func_headers sys/stat.h lstat
+par check_func_headers sys/auxv.h getauxval
+par check_func_headers sys/auxv.h elf_aux_info
+par check_func_headers sys/sysctl.h sysctlbyname
 
-check_func_headers windows.h GetModuleHandle
-check_func_headers windows.h GetProcessAffinityMask
-check_func_headers windows.h GetProcessTimes
-check_func_headers windows.h GetStdHandle
-check_func_headers windows.h GetSystemTimeAsFileTime
-check_func_headers windows.h LoadLibrary
-check_func_headers windows.h MapViewOfFile
-check_func_headers windows.h PeekNamedPipe
-check_func_headers windows.h SetConsoleTextAttribute
-check_func_headers windows.h SetConsoleCtrlHandler
-check_func_headers windows.h SetDllDirectory
-check_func_headers windows.h Sleep
-check_func_headers windows.h VirtualAlloc
-check_func_headers glob.h glob
+par check_func_headers windows.h GetModuleHandle
+par check_func_headers windows.h GetProcessAffinityMask
+par check_func_headers windows.h GetProcessTimes
+par check_func_headers windows.h GetStdHandle
+par check_func_headers windows.h GetSystemTimeAsFileTime
+par check_func_headers windows.h LoadLibrary
+par check_func_headers windows.h MapViewOfFile
+par check_func_headers windows.h PeekNamedPipe
+par check_func_headers windows.h SetConsoleTextAttribute
+par check_func_headers windows.h SetConsoleCtrlHandler
+par check_func_headers windows.h SetDllDirectory
+par check_func_headers windows.h Sleep
+par check_func_headers windows.h VirtualAlloc
+par check_func_headers glob.h glob
+par_wait
 
 if enabled xlib; then
     check_pkg_config xlib_x11 x11 "X11/Xlib.h" XPending ||
@@ -7033,36 +7198,35 @@ if enabled xlib; then
         disable xlib
 fi
 
-check_headers direct.h
-check_headers dirent.h
-check_headers dxgidebug.h
-check_headers dxva.h
-check_headers dxva2api.h
-check_headers io.h
-enabled libdrm &&
-    check_headers linux/dma-buf.h
+par check_headers direct.h
+par check_headers dirent.h
+par check_headers dxgidebug.h
+par check_headers dxva.h
+par check_headers dxva2api.h
+par check_headers io.h
+enabled libdrm && par check_headers linux/dma-buf.h
 
-check_headers linux/perf_event.h
-check_headers malloc.h
-check_headers mftransform.h
-check_headers net/udplite.h
-check_headers poll.h
-check_headers pthread_np.h
-check_headers sys/param.h
-check_headers sys/resource.h
-check_headers sys/select.h
-check_headers sys/time.h
-check_headers sys/un.h
-check_headers termios.h
-check_headers unistd.h
-check_headers valgrind/memcheck.h
-check_headers valgrind/valgrind.h
-check_func_headers VideoToolbox/VTCompressionSession.h VTCompressionSessionPrepareToEncodeFrames -framework VideoToolbox
-check_func_headers VideoToolbox/VideoToolbox.h VTDecompressionSessionDecodeFrame -framework VideoToolbox
-check_func_headers VideoToolbox/VideoToolbox.h VTPixelTransferSessionCreate -framework VideoToolbox
-check_func_headers VideoToolbox/VideoToolbox.h VTPixelRotationSessionCreate -framework VideoToolbox
-check_headers windows.h
-check_headers asm/types.h
+par check_headers linux/perf_event.h
+par check_headers malloc.h
+par check_headers mftransform.h
+par check_headers net/udplite.h
+par check_headers poll.h
+par check_headers pthread_np.h
+par check_headers sys/param.h
+par check_headers sys/resource.h
+par check_headers sys/select.h
+par check_headers sys/time.h
+par check_headers sys/un.h
+par check_headers termios.h
+par check_headers unistd.h
+par check_headers valgrind/memcheck.h
+par check_headers valgrind/valgrind.h
+par check_func_headers VideoToolbox/VTCompressionSession.h VTCompressionSessionPrepareToEncodeFrames -framework VideoToolbox
+par check_func_headers VideoToolbox/VideoToolbox.h VTDecompressionSessionDecodeFrame -framework VideoToolbox
+par check_func_headers VideoToolbox/VideoToolbox.h VTPixelTransferSessionCreate -framework VideoToolbox
+par check_func_headers VideoToolbox/VideoToolbox.h VTPixelRotationSessionCreate -framework VideoToolbox
+par check_headers windows.h
+par check_headers asm/types.h
 
 # it seems there are versions of clang in some distros that try to use the
 # gcc headers, which explodes for stdatomic
@@ -7070,34 +7234,37 @@ check_headers asm/types.h
 #
 # some configurations also require linking to libatomic, so try
 # both with -latomic and without
-for LATOMIC in "-latomic" ""; do
-    check_builtin stdatomic stdatomic.h                                \
-        "atomic_int foo, bar = -1; atomic_store(&foo, 0); foo += bar"  \
-        $LATOMIC && eval stdatomic_extralibs="\$LATOMIC" && break
-done
+check_stdatomic(){
+    for LATOMIC in "-latomic" ""; do
+        check_builtin stdatomic stdatomic.h                                \
+            "atomic_int foo, bar = -1; atomic_store(&foo, 0); foo += bar"  \
+            $LATOMIC && eval stdatomic_extralibs="\$LATOMIC" && break
+    done
+}
+par check_stdatomic
 
-check_lib advapi32 "windows.h"            RegCloseKey          -ladvapi32
-check_lib bcrypt   "windows.h bcrypt.h"   BCryptGenRandom      -lbcrypt &&
-    check_cpp_condition bcrypt bcrypt.h "defined BCRYPT_RNG_ALGORITHM"
-check_lib ole32    "windows.h objbase.h"  CoTaskMemFree        -lole32
-check_lib shell32  "windows.h shellapi.h" CommandLineToArgvW   -lshell32
-check_lib psapi    "windows.h psapi.h"    GetProcessMemoryInfo -lpsapi
+par check_lib advapi32 "windows.h"            RegCloseKey          -ladvapi32
+par eval 'check_lib bcrypt   "windows.h bcrypt.h"   BCryptGenRandom      -lbcrypt && check_cpp_condition bcrypt bcrypt.h "defined BCRYPT_RNG_ALGORITHM"'
+par check_lib ole32    "windows.h objbase.h"  CoTaskMemFree        -lole32
+par check_lib shell32  "windows.h shellapi.h" CommandLineToArgvW   -lshell32
+par check_lib psapi    "windows.h psapi.h"    GetProcessMemoryInfo -lpsapi
 
-check_lib android android/native_window.h ANativeWindow_acquire -landroid
-check_lib mediandk "stdint.h media/NdkMediaFormat.h" AMediaFormat_new -lmediandk
-check_lib camera2ndk "stdbool.h stdint.h camera/NdkCameraManager.h" ACameraManager_create -lcamera2ndk
+par check_lib android android/native_window.h ANativeWindow_acquire -landroid
+par check_lib mediandk "stdint.h media/NdkMediaFormat.h" AMediaFormat_new -lmediandk
+par check_lib camera2ndk "stdbool.h stdint.h camera/NdkCameraManager.h" ACameraManager_create -lcamera2ndk
 
-enabled appkit       && check_apple_framework AppKit
-enabled audiotoolbox && check_apple_framework AudioToolbox
-enabled avfoundation && check_apple_framework AVFoundation
-enabled coreimage    && check_apple_framework CoreImage
-enabled metal        && check_apple_framework Metal
-enabled videotoolbox && check_apple_framework VideoToolbox
+enabled appkit       && par check_apple_framework AppKit
+enabled audiotoolbox && par check_apple_framework AudioToolbox
+enabled avfoundation && par check_apple_framework AVFoundation
+enabled coreimage    && par check_apple_framework CoreImage
+enabled metal        && par check_apple_framework Metal
+enabled videotoolbox && par check_apple_framework VideoToolbox
 
-check_apple_framework CoreFoundation
-check_apple_framework CoreMedia
-check_apple_framework CoreVideo
-check_apple_framework CoreAudio
+par check_apple_framework CoreFoundation
+par check_apple_framework CoreMedia
+par check_apple_framework CoreVideo
+par check_apple_framework CoreAudio
+par_wait
 
 enabled audiotoolbox && {
     check_type AudioToolbox/AudioToolbox.h AudioObjectPropertyAddress
@@ -7136,40 +7303,40 @@ enabled videotoolbox && {
 
 enabled metal && test_cmd $metalcc -v || disable metal
 
-check_struct "sys/time.h sys/resource.h" "struct rusage" ru_maxrss
+par check_struct "sys/time.h sys/resource.h" "struct rusage" ru_maxrss
 
-check_type "windows.h dxva.h" "DXVA_PicParams_AV1" -DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP -D_CRT_BUILD_DESKTOP_APP=0
-check_type "windows.h dxva.h" "DXVA_PicParams_HEVC" -DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP -D_CRT_BUILD_DESKTOP_APP=0
-check_type "windows.h dxva.h" "DXVA_PicParams_VP9" -DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP -D_CRT_BUILD_DESKTOP_APP=0
-check_type "windows.h dxgi1_2.h" "DXGI_OUTDUPL_FRAME_INFO"
-check_type "windows.h dxgi1_2.h" "IDXGIOutput1"
-check_type "windows.h dxgi1_5.h" "IDXGIOutput5"
-check_type "windows.h d3d11.h" "ID3D11VideoDecoder"
-check_type "windows.h d3d11.h" "ID3D11VideoContext"
-check_type "windows.h d3d12.h" "ID3D12Device"
-check_type "windows.h d3d12video.h" "ID3D12VideoDecoder"
-check_type "windows.h d3d12video.h" "ID3D12VideoEncoder"
-check_type "windows.h d3d12video.h" "ID3D12VideoProcessor"
-check_type "windows.h d3d12video.h" "ID3D12VideoMotionEstimator"
-test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_VIDEO feature = D3D12_FEATURE_VIDEO_ENCODER_CODEC" && \
-test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_DATA_VIDEO_ENCODER_RESOURCE_REQUIREMENTS req" && enable d3d12_encoder_feature
-test_code cc "windows.h d3d12video.h" "D3D12_VIDEO_ENCODER_CODEC c = D3D12_VIDEO_ENCODER_CODEC_AV1; (void)c;" && enable d3d12va_av1_headers
-test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_DATA_VIDEO_ENCODER_INTRA_REFRESH_MODE check = { 0 };" && enable d3d12_intra_refresh
-test_code cc "windows.h d3d12video.h" "D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE m = D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_EIGHTH_PIXEL; (void)m;" && enable d3d12va_me_precision_eighth_pixel
-test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_DATA_VIDEO_MOTION_ESTIMATOR check = { 0 };" && enable d3d12_motion_estimator
-test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_DATA_VIDEO_PROCESS_REFERENCE_INFO check = { 0 };" && enable d3d12_video_process_reference_info
-check_type "windows.h" "DPI_AWARENESS_CONTEXT" -D_WIN32_WINNT=0x0A00
-check_type "windows.h security.h schnlsp.h" SecPkgContext_KeyingMaterialInfo -DSECURITY_WIN32
-check_type "d3d9.h dxva2api.h" DXVA2_ConfigPictureDecode -D_WIN32_WINNT=0x0602
-check_func_headers mfapi.h MFCreateAlignedMemoryBuffer -lmfplat
-check_type "windows.h windows.graphics.capture.h" __x_ABI_CWindows_CGraphics_CCapture_CIGraphicsCaptureSession3 -D_WIN32_WINNT=0x0A00 -DWINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION=0x130000 -DCOBJMACROS
-check_type "windows.h windows.graphics.capture.h" __x_ABI_CWindows_CGraphics_CCapture_CIGraphicsCaptureSession5 -D_WIN32_WINNT=0x0A00 -DWINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION=0x130000 -DCOBJMACROS
-check_type "windows.h windows.graphics.capture.interop.h" IGraphicsCaptureItemInterop -D_WIN32_WINNT=0x0A00 -DWINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION=0x130000 -DCOBJMACROS
-check_type "windows.h windows.graphics.directx.direct3d11.interop.h" IDirect3DDxgiInterfaceAccess -D_WIN32_WINNT=0x0A00 -DWINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION=0x130000 -DCOBJMACROS
+par check_type "windows.h dxva.h" "DXVA_PicParams_AV1" -DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP -D_CRT_BUILD_DESKTOP_APP=0
+par check_type "windows.h dxva.h" "DXVA_PicParams_HEVC" -DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP -D_CRT_BUILD_DESKTOP_APP=0
+par check_type "windows.h dxva.h" "DXVA_PicParams_VP9" -DWINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP -D_CRT_BUILD_DESKTOP_APP=0
+par check_type "windows.h dxgi1_2.h" "DXGI_OUTDUPL_FRAME_INFO"
+par check_type "windows.h dxgi1_2.h" "IDXGIOutput1"
+par check_type "windows.h dxgi1_5.h" "IDXGIOutput5"
+par check_type "windows.h d3d11.h" "ID3D11VideoDecoder"
+par check_type "windows.h d3d11.h" "ID3D11VideoContext"
+par check_type "windows.h d3d12.h" "ID3D12Device"
+par check_type "windows.h d3d12video.h" "ID3D12VideoDecoder"
+par check_type "windows.h d3d12video.h" "ID3D12VideoEncoder"
+par check_type "windows.h d3d12video.h" "ID3D12VideoProcessor"
+par check_type "windows.h d3d12video.h" "ID3D12VideoMotionEstimator"
+par eval 'test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_VIDEO feature = D3D12_FEATURE_VIDEO_ENCODER_CODEC" && test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_DATA_VIDEO_ENCODER_RESOURCE_REQUIREMENTS req" && enable d3d12_encoder_feature'
+par eval 'test_code cc "windows.h d3d12video.h" "D3D12_VIDEO_ENCODER_CODEC c = D3D12_VIDEO_ENCODER_CODEC_AV1; (void)c;" && enable d3d12va_av1_headers'
+par eval 'test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_DATA_VIDEO_ENCODER_INTRA_REFRESH_MODE check = { 0 };" && enable d3d12_intra_refresh'
+par eval 'test_code cc "windows.h d3d12video.h" "D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE m = D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_EIGHTH_PIXEL; (void)m;" && enable d3d12va_me_precision_eighth_pixel'
+par eval 'test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_DATA_VIDEO_MOTION_ESTIMATOR check = { 0 };" && enable d3d12_motion_estimator'
+par eval 'test_code cc "windows.h d3d12video.h" "D3D12_FEATURE_DATA_VIDEO_PROCESS_REFERENCE_INFO check = { 0 };" && enable d3d12_video_process_reference_info'
+par check_type "windows.h" "DPI_AWARENESS_CONTEXT" -D_WIN32_WINNT=0x0A00
+par check_type "windows.h security.h schnlsp.h" SecPkgContext_KeyingMaterialInfo -DSECURITY_WIN32
+par check_type "d3d9.h dxva2api.h" DXVA2_ConfigPictureDecode -D_WIN32_WINNT=0x0602
+par check_func_headers mfapi.h MFCreateAlignedMemoryBuffer -lmfplat
+par check_type "windows.h windows.graphics.capture.h" __x_ABI_CWindows_CGraphics_CCapture_CIGraphicsCaptureSession3 -D_WIN32_WINNT=0x0A00 -DWINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION=0x130000 -DCOBJMACROS
+par check_type "windows.h windows.graphics.capture.h" __x_ABI_CWindows_CGraphics_CCapture_CIGraphicsCaptureSession5 -D_WIN32_WINNT=0x0A00 -DWINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION=0x130000 -DCOBJMACROS
+par check_type "windows.h windows.graphics.capture.interop.h" IGraphicsCaptureItemInterop -D_WIN32_WINNT=0x0A00 -DWINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION=0x130000 -DCOBJMACROS
+par check_type "windows.h windows.graphics.directx.direct3d11.interop.h" IDirect3DDxgiInterfaceAccess -D_WIN32_WINNT=0x0A00 -DWINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION=0x130000 -DCOBJMACROS
 
-check_type "vdpau/vdpau.h" "VdpPictureInfoHEVC"
-check_type "vdpau/vdpau.h" "VdpPictureInfoVP9"
-check_type "vdpau/vdpau.h" "VdpPictureInfoAV1"
+par check_type "vdpau/vdpau.h" "VdpPictureInfoHEVC"
+par check_type "vdpau/vdpau.h" "VdpPictureInfoVP9"
+par check_type "vdpau/vdpau.h" "VdpPictureInfoAV1"
+par_wait
 
 if [ -z "$nvccflags" ]; then
     nvccflags=$nvccflags_default
@@ -7239,25 +7406,30 @@ if ! disabled pthreads && ! enabled w32threads && ! enabled os2threads; then
     check_cc pthreads "pthread.h" "static pthread_mutex_t atomic_lock = PTHREAD_MUTEX_INITIALIZER"
 
     if enabled pthreads; then
-        check_builtin sem_timedwait semaphore.h "sem_t *s; sem_init(s,0,0); sem_timedwait(s,0); sem_destroy(s)" $pthreads_extralibs
+        par check_builtin sem_timedwait semaphore.h "sem_t *s; sem_init(s,0,0); sem_timedwait(s,0); sem_destroy(s)" $pthreads_extralibs
         hdrs=pthread.h
         if enabled pthread_np_h; then
             hdrs="$hdrs pthread_np.h"
         fi
-        check_lib pthread_set_name_np "$hdrs" pthread_set_name_np -lpthread
-        check_lib pthread_setname_np "$hdrs" pthread_setname_np -lpthread
+        par check_lib pthread_set_name_np "$hdrs" pthread_set_name_np -lpthread
+        par check_lib pthread_setname_np "$hdrs" pthread_setname_np -lpthread
         # _GNU_SOURCE gets defined locally in checkasm where
         # pthread_setaffinity_np gets used.
-        check_lib pthread_setaffinity_np "$hdrs" pthread_setaffinity_np -lpthread -D_GNU_SOURCE
+        par check_lib pthread_setaffinity_np "$hdrs" pthread_setaffinity_np -lpthread -D_GNU_SOURCE
+        par_wait
     fi
 fi
 
 enabled zlib && msvc_style_linker && probe_msvc_zlib_libname
-enabled  zlib && { check_pkg_config zlib zlib "zlib.h" zlibVersion ||
-                   { zlib_msvc_lib=z.lib;    check_lib zlib zlib.h zlibVersion -lz; } ||
-                   { zlib_msvc_lib=zlib.lib; check_lib zlib zlib.h zlibVersion -lz; }; }
-enabled bzlib && check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
-enabled  lzma && check_lib lzma   lzma.h lzma_version_number -llzma
+check_zlib(){
+    check_pkg_config zlib zlib "zlib.h" zlibVersion ||
+        { zlib_msvc_lib=z.lib;    check_lib zlib zlib.h zlibVersion -lz; } ||
+        { zlib_msvc_lib=zlib.lib; check_lib zlib zlib.h zlibVersion -lz; }
+}
+enabled  zlib && par check_zlib
+enabled bzlib && par check_lib bzlib bzlib.h BZ2_bzlibVersion    -lbz2
+enabled  lzma && par check_lib lzma   lzma.h lzma_version_number -llzma
+par_wait
 
 enabled zlib && test_exec $zlib_extralibs <<EOF && enable zlib_gzip
 #include <zlib.h>
@@ -7627,35 +7799,36 @@ pod2man --help     > /dev/null 2>&1 && enable pod2man   || disable pod2man
 rsync --help 2> /dev/null | grep -q 'contimeout=' && enable rsync_contimeout || disable rsync_contimeout
 xmllint --version  > /dev/null 2>&1 && enable xmllint   || disable xmllint
 
-check_headers linux/fb.h
-check_headers linux/videodev2.h
-test_code cc linux/videodev2.h "struct v4l2_frmsizeenum vfse; vfse.discrete.width = 0;" && enable_sanitized struct_v4l2_frmivalenum_discrete
-test_code cc sys/ioctl.h "int ioctl(int, int, ...)" && enable ioctl_posix
+par check_headers linux/fb.h
+par check_headers linux/videodev2.h
+par eval 'test_code cc linux/videodev2.h "struct v4l2_frmsizeenum vfse; vfse.discrete.width = 0;" && enable_sanitized struct_v4l2_frmivalenum_discrete'
+par eval 'test_code cc sys/ioctl.h "int ioctl(int, int, ...)" && enable ioctl_posix'
 
 # check V4L2 codecs available in the API
 if enabled v4l2_m2m; then
-    check_cc v4l2_m2m linux/videodev2.h "int i = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_VIDEO_M2M | V4L2_BUF_FLAG_LAST;"
-    check_cc vc1_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_VC1_ANNEX_G;"
-    check_cc mpeg1_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG1;"
-    check_cc mpeg2_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG2;"
-    check_cc mpeg4_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG4;"
-    check_cc hevc_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_HEVC;"
-    check_cc h263_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_H263;"
-    check_cc h264_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_H264;"
-    check_cc vp8_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_VP8;"
-    check_cc vp9_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_VP9;"
+    par check_cc v4l2_m2m linux/videodev2.h "int i = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_VIDEO_M2M | V4L2_BUF_FLAG_LAST;"
+    par check_cc vc1_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_VC1_ANNEX_G;"
+    par check_cc mpeg1_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG1;"
+    par check_cc mpeg2_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG2;"
+    par check_cc mpeg4_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_MPEG4;"
+    par check_cc hevc_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_HEVC;"
+    par check_cc h263_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_H263;"
+    par check_cc h264_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_H264;"
+    par check_cc vp8_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_VP8;"
+    par check_cc vp9_v4l2_m2m linux/videodev2.h "int i = V4L2_PIX_FMT_VP9;"
 fi
 
-check_headers sys/videoio.h
-test_code cc sys/videoio.h "struct v4l2_frmsizeenum vfse; vfse.discrete.width = 0;" && enable_sanitized struct_v4l2_frmivalenum_discrete
+par check_headers sys/videoio.h
+par eval 'test_code cc sys/videoio.h "struct v4l2_frmsizeenum vfse; vfse.discrete.width = 0;" && enable_sanitized struct_v4l2_frmivalenum_discrete'
 
-check_lib user32 "windows.h winuser.h" GetShellWindow -luser32
-check_lib vfw32 "windows.h vfw.h" capCreateCaptureWindow -lvfw32
+par check_lib user32 "windows.h winuser.h" GetShellWindow -luser32
+par check_lib vfw32 "windows.h vfw.h" capCreateCaptureWindow -lvfw32
 # check that WM_CAP_DRIVER_CONNECT is defined to the proper value
 # w32api 3.12 had it defined wrong
-check_cpp_condition vfwcap_defines vfw.h "WM_CAP_DRIVER_CONNECT > WM_USER"
+par check_cpp_condition vfwcap_defines vfw.h "WM_CAP_DRIVER_CONNECT > WM_USER"
 
-check_type "dshow.h" IBaseFilter
+par check_type "dshow.h" IBaseFilter
+par_wait
 
 if check_struct sys/soundcard.h audio_buf_info bytes; then
     enable_sanitized sys/soundcard.h
@@ -7739,20 +7912,21 @@ if enabled vaapi; then
         check_pkg_config vaapi_x11 "libva-x11" "va/va_x11.h" vaGetDisplay
     fi
 
-    check_cpp_condition vaapi_1 "va/va.h" "VA_CHECK_VERSION(1, 0, 0)"
+    par check_cpp_condition vaapi_1 "va/va.h" "VA_CHECK_VERSION(1, 0, 0)"
 
-    check_type "va/va.h va/va_dec_hevc.h" "VAPictureParameterBufferHEVC"
-    check_type "va/va.h va/va_dec_vvc.h" "VAPictureParameterBufferVVC"
-    check_struct "va/va.h" "VADecPictureParameterBufferVP9" bit_depth
-    check_struct "va/va.h" "VADecPictureParameterBufferAV1" bit_depth_idx
-    check_type   "va/va.h va/va_vpp.h" "VAProcFilterParameterBufferHDRToneMapping"
-    check_struct "va/va.h va/va_vpp.h" "VAProcPipelineCaps" rotation_flags
-    check_struct "va/va.h va/va_vpp.h" "VAProcPipelineCaps" blend_flags
-    check_type "va/va.h va/va_enc_hevc.h" "VAEncPictureParameterBufferHEVC"
-    check_type "va/va.h va/va_enc_jpeg.h" "VAEncPictureParameterBufferJPEG"
-    check_type "va/va.h va/va_enc_vp8.h"  "VAEncPictureParameterBufferVP8"
-    check_type "va/va.h va/va_enc_vp9.h"  "VAEncPictureParameterBufferVP9"
-    check_type "va/va.h va/va_enc_av1.h"  "VAEncPictureParameterBufferAV1"
+    par check_type "va/va.h va/va_dec_hevc.h" "VAPictureParameterBufferHEVC"
+    par check_type "va/va.h va/va_dec_vvc.h" "VAPictureParameterBufferVVC"
+    par check_struct "va/va.h" "VADecPictureParameterBufferVP9" bit_depth
+    par check_struct "va/va.h" "VADecPictureParameterBufferAV1" bit_depth_idx
+    par check_type   "va/va.h va/va_vpp.h" "VAProcFilterParameterBufferHDRToneMapping"
+    par check_struct "va/va.h va/va_vpp.h" "VAProcPipelineCaps" rotation_flags
+    par check_struct "va/va.h va/va_vpp.h" "VAProcPipelineCaps" blend_flags
+    par check_type "va/va.h va/va_enc_hevc.h" "VAEncPictureParameterBufferHEVC"
+    par check_type "va/va.h va/va_enc_jpeg.h" "VAEncPictureParameterBufferJPEG"
+    par check_type "va/va.h va/va_enc_vp8.h"  "VAEncPictureParameterBufferVP8"
+    par check_type "va/va.h va/va_enc_vp9.h"  "VAEncPictureParameterBufferVP9"
+    par check_type "va/va.h va/va_enc_av1.h"  "VAEncPictureParameterBufferAV1"
+    par_wait
 fi
 
 if enabled_all opencl libdrm ; then
