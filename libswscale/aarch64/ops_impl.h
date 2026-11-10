@@ -50,6 +50,7 @@ typedef struct SwsAArch64OpImplParams {
     SwsCompMask         mask;
     SwsPixelType        type;
     uint8_t block_size;
+    bool inorder; /* variant tuned for in-order cores (AV_CPU_FLAG_INORDER) */
     SwsUOpParams par;
 } SwsAArch64OpImplParams;
 
@@ -184,6 +185,19 @@ static inline int const_vec_count(const SwsAArch64OpImplParams *params)
     LOOP(const_vec_mask(params), i)
         count++;
     return count;
+}
+
+/**
+ * Whether the kernel for these parameters has a separate variant for
+ * in-order cores (AV_CPU_FLAG_INORDER). Other kernels only have one
+ * version, which is used on all cores.
+ */
+static inline bool has_inorder_variant(const SwsAArch64OpImplParams *params)
+{
+    switch (params->uop) {
+    default:
+        return false;
+    }
 }
 
 /**

@@ -107,7 +107,7 @@ static int aarch64_block_size(const SwsUOpList *uops)
  * SwsAArch64OpImplParams in ops_impl.h for more information.
  */
 static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
-                                    SwsAArch64OpImplParams *out)
+                                    bool inorder, SwsAArch64OpImplParams *out)
 {
     out->uop = uop->uop;
     out->mask = uop->mask;
@@ -142,4 +142,6 @@ static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
     default:
         break;
     }
+
+    out->inorder = inorder && has_inorder_variant(out);
 }
