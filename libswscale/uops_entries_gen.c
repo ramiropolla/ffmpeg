@@ -33,6 +33,7 @@
 #endif
 
 #include "libavutil/bprint.h"
+#include "libavutil/cpu.h"
 #include "libavutil/error.h"
 #include "libavutil/macros.h"
 #include "libavutil/mem.h"
@@ -134,7 +135,6 @@ static void print_params(AVBPrint *bp, const SwsUOp *uop, bool designated)
 typedef struct Entry {
     SwsUOp uop;
     int list; /* index into Target.lists */
-    int vectors; /* x86: number of registers per component, 0 if unused */
 } Entry;
 
 /* Group entries by list and uop type, then order them like SwsUOps */
@@ -149,17 +149,17 @@ static int entry_cmp(const void *pa, const void *pb)
     return ff_sws_uop_cmp(&a->uop, &b->uop);
 }
 
-struct EnumPriv;
+#define MAX_LISTS 4
 
 typedef struct Target {
     const char *name;
     const char *guard; /* include guard of the generated C header */
-    const char *lists[SWS_X86_ISA_NB]; /* names of the kernel lists */
-    bool nasm; /* also generate NASM macros */
+    const char *lists[MAX_LISTS]; /* names of the kernel lists */
+    const SwsUOpPolicy *policy;
+    const int *cpu_flags; /* CPU flag sets to enumerate, terminated by -1 */
 
-    /* Register the kernels needed to run `ops` */
-    int (*collect)(SwsContext *ctx, const SwsOpList *ops);
-    void (*name_entry)(const Entry *entry, char buf[SWS_UOP_NAME_MAX]);
+    /* Number of registers per component of a kernel, for the NASM lists */
+    int (*vectors)(SwsX86ISA isa, const SwsUOp *uop);
 } Target;
 
 struct EnumPriv {
@@ -192,61 +192,27 @@ static int register_entry(SwsContext *ctx, const Entry *entry)
     return 0;
 }
 
-static void name_generic(const Entry *entry, char buf[SWS_UOP_NAME_MAX])
+/* Register the kernels needed to run `uops` on `target` */
+static int collect_chain(SwsContext *ctx, const SwsUOpTarget *target,
+                         const SwsUOpList *uops)
 {
-    ff_sws_uop_name(&entry->uop, buf);
-}
-
-/*********************************************************************/
-/* C backend */
-
-static int collect_c(SwsContext *ctx, const SwsOpList *ops)
-{
-    SwsUOpList *uops = ff_sws_uop_list_alloc();
-    if (!uops)
-        return AVERROR(ENOMEM);
-
-    int ret = ff_sws_ops_translate(ctx, ops, ff_sws_uop_flags_c(), uops);
-    for (int i = 0; ret >= 0 && i < uops->num_ops; i++) {
-        Entry entry = { .uop = uops->ops[i] };
-        entry.uop.block_size = SWS_BLOCK_SIZE;
-        ret = register_entry(ctx, &entry);
-    }
-
-    ff_sws_uop_list_free(&uops);
-    return ret;
-}
-
-/*********************************************************************/
-/* x86 backend */
-
-static int collect_x86_level(SwsContext *ctx, const SwsUOpList *uops,
-                             SwsX86ISA level)
-{
-    if (uops->num_ops == 1 && uops->ops[0].uop == SWS_UOP_RW_SHUFFLE) {
-        const Entry entry = {
-            .uop  = uops->ops[0],
-            .list = ff_sws_uop_shuffle_isa_x86(level, &uops->ops[0]),
-        };
-        return register_entry(ctx, &entry);
-    }
+    const SwsUOpPolicy *policy = target->policy;
 
     /* The whole chain fails if any of its uops is unsupported */
     Entry *entries = av_calloc(uops->num_ops, sizeof(*entries));
     if (!entries)
         return AVERROR(ENOMEM);
 
-    const int block_size = ff_sws_uop_block_size_x86(level, uops);
+    const int block_size = policy->block_size(target, uops);
     int ret = 0;
     for (int i = 0; i < uops->num_ops; i++) {
         Entry *entry = &entries[i];
         entry->uop = uops->ops[i];
         entry->uop.block_size = block_size;
-        ret = ff_sws_uop_simplify_x86(level, &entry->uop);
+        ret = policy->simplify(target, &entry->uop);
         if (ret < 0)
             goto done;
         entry->list = ret;
-        entry->vectors = ff_sws_uop_vectors_x86(entry->list, &entry->uop);
     }
 
     for (int i = 0; i < uops->num_ops; i++) {
@@ -257,88 +223,61 @@ static int collect_x86_level(SwsContext *ctx, const SwsUOpList *uops,
 
 done:
     av_free(entries);
-    return ret == AVERROR(ENOTSUP) ? 0 : ret;
+    return ret;
 }
 
-static int collect_x86(SwsContext *ctx, const SwsOpList *ops)
+static int collect_ops(SwsContext *ctx, const SwsOpList *ops)
 {
-    for (int fma = 0; fma <= 1; fma++) {
+    const struct EnumPriv *s = ctx->opaque;
+    const Target *t = s->target;
+
+    for (int i = 0; t->cpu_flags[i] >= 0; i++) {
+        const SwsUOpTarget target = {
+            .policy    = t->policy,
+            .cpu_flags = t->cpu_flags[i],
+            .flags     = ctx->flags,
+        };
+
         SwsUOpList *uops = ff_sws_uop_list_alloc();
         if (!uops)
             return AVERROR(ENOMEM);
 
-        int ret = ff_sws_ops_translate(ctx, ops, ff_sws_uop_flags_x86(fma), uops);
-        for (int level = 0; ret >= 0 && level < SWS_X86_ISA_NB; level++)
-            ret = collect_x86_level(ctx, uops, level);
+        int ret = ff_sws_ops_translate(ctx, ops, t->policy->uop_flags(&target), uops);
+        if (ret >= 0)
+            ret = collect_chain(ctx, &target, uops);
         ff_sws_uop_list_free(&uops);
-        if (ret < 0)
+        if (ret < 0 && ret != AVERROR(ENOTSUP))
             return ret;
     }
 
     return 0;
 }
 
-static void name_x86(const Entry *entry, char buf[SWS_UOP_NAME_MAX])
-{
-    ff_sws_uop_name_x86(&entry->uop, entry->list, buf);
-}
-
 /*********************************************************************/
-/* aarch64 backend */
 
-static int collect_aarch64(SwsContext *ctx, const SwsOpList *ops)
-{
-    SwsUOpList *uops = ff_sws_uop_list_alloc();
-    if (!uops)
-        return AVERROR(ENOMEM);
+static const int cpu_flags_none[] = { 0, -1 };
 
-    Entry *entries = NULL;
-    const SwsUOpFlags flags = ff_sws_uop_flags_aarch64(ctx->flags & SWS_BITEXACT);
-    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
-    if (ret < 0)
-        goto done;
+#define X86_SSE4      AV_CPU_FLAG_SSE4
+#define X86_AVX2      (X86_SSE4   | AV_CPU_FLAG_AVX2)
+#define X86_AVX512    (X86_AVX2   | AV_CPU_FLAG_AVX512)
+#define X86_AVX512ICL (X86_AVX512 | AV_CPU_FLAG_AVX512ICL)
+static const int cpu_flags_x86[] = {
+    X86_SSE4,
+    X86_AVX2,      X86_AVX2      | AV_CPU_FLAG_FMA3,
+    X86_AVX512,    X86_AVX512    | AV_CPU_FLAG_FMA3,
+    X86_AVX512ICL, X86_AVX512ICL | AV_CPU_FLAG_FMA3,
+    -1
+};
 
-    /* The whole chain fails if any of its uops is unsupported */
-    entries = av_calloc(uops->num_ops, sizeof(*entries));
-    if (!entries) {
-        ret = AVERROR(ENOMEM);
-        goto done;
-    }
-
-    for (int i = 0; i < uops->num_ops; i++) {
-        entries[i].uop = uops->ops[i];
-        entries[i].uop.block_size = ff_sws_uop_block_size_aarch64(uops);
-        ret = ff_sws_uop_simplify_aarch64(&entries[i].uop);
-        if (ret < 0)
-            goto done;
-    }
-
-    for (int i = 0; i < uops->num_ops; i++) {
-        ret = register_entry(ctx, &entries[i]);
-        if (ret < 0)
-            goto done;
-    }
-
-done:
-    av_free(entries);
-    ff_sws_uop_list_free(&uops);
-    return ret == AVERROR(ENOTSUP) ? 0 : ret;
-}
-
-static void name_aarch64(const Entry *entry, char buf[SWS_UOP_NAME_MAX])
-{
-    ff_sws_uop_name_aarch64(&entry->uop, buf);
-}
-
-/*********************************************************************/
+static const int cpu_flags_aarch64[] = { AV_CPU_FLAG_NEON, -1 };
 
 static const Target targets[] = {
     {
         .name       = "c",
         .guard      = "SWSCALE_UOPS_ENTRIES_C_H",
         .lists      = { "C" },
-        .collect    = collect_c,
-        .name_entry = name_generic,
+        .policy     = &ff_sws_uop_policy_c,
+        .cpu_flags  = cpu_flags_none,
     }, {
         .name       = "x86",
         .guard      = "SWSCALE_X86_UOPS_ENTRIES_H",
@@ -348,15 +287,15 @@ static const Target targets[] = {
             [SWS_X86_AVX512]    = "X86_AVX512",
             [SWS_X86_AVX512ICL] = "X86_AVX512ICL",
         },
-        .nasm       = true,
-        .collect    = collect_x86,
-        .name_entry = name_x86,
+        .policy     = &ff_sws_uop_policy_x86,
+        .cpu_flags  = cpu_flags_x86,
+        .vectors    = ff_sws_uop_vectors_x86,
     }, {
         .name       = "aarch64",
         .guard      = "SWSCALE_AARCH64_UOPS_ENTRIES_H",
         .lists      = { "AARCH64" },
-        .collect    = collect_aarch64,
-        .name_entry = name_aarch64,
+        .policy     = &ff_sws_uop_policy_aarch64,
+        .cpu_flags  = cpu_flags_aarch64,
     },
 };
 
@@ -372,8 +311,7 @@ static const Target *find_target(const char *name)
 static int collect_uops(SwsContext *ctx, const SwsOpList *ops,
                         SwsCompiledOp *out)
 {
-    const struct EnumPriv *s = ctx->opaque;
-    int ret = s->target->collect(ctx, ops);
+    int ret = collect_ops(ctx, ops);
     if (ret < 0)
         return ret;
 
@@ -507,7 +445,7 @@ static int print_entry_c(void *opaque, void *key)
         return 0;
 
     char name[SWS_UOP_NAME_MAX];
-    p->target->name_entry(entry, name);
+    p->target->policy->name(uop, entry->list, name);
     av_bprintf(bp, " \\\n    MACRO(__VA_ARGS__, %s, %s, %s, %d, (0x%x",
                name, TYPE_SUFFIX(uop->type), UOP_SUFFIX(uop->uop),
                uop->block_size, uop->mask);
@@ -577,8 +515,9 @@ static int print_entry_nasm(void *opaque, void *key)
     p->prev = entry;
 
     char name[SWS_UOP_NAME_MAX];
-    p->target->name_entry(entry, name);
-    av_bprintf(bp, "\n    DECL_ENTRY %%1, %d, %s, %s, %s, 0x%x", entry->vectors,
+    p->target->policy->name(uop, entry->list, name);
+    const int vectors = p->target->vectors(entry->list, uop);
+    av_bprintf(bp, "\n    DECL_ENTRY %%1, %d, %s, %s, %s, 0x%x", vectors,
                name, pixel_types[uop->type], uop_names[uop->uop], uop->mask);
     print_params(bp, uop, false);
     return 0;
@@ -661,7 +600,7 @@ int main(int argc, char **argv)
 
     const char *nasm_path = NULL;
     if (argc == 4) {
-        if (strcmp(argv[2], "-nasm") || !target->nasm)
+        if (strcmp(argv[2], "-nasm") || !target->vectors)
             return usage();
         nasm_path = argv[3];
     }
