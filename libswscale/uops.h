@@ -369,6 +369,13 @@ struct SwsUOpPolicy {
     SwsUOpFlags (*uop_flags)(const SwsUOpTarget *target);
 
     /**
+     * Whether the backend implements `uop` on `target`. Translation asks
+     * this before emitting a uop which has an alternative, and only sets
+     * the fields of `uop` which the decision may depend on.
+     */
+    bool (*supported)(const SwsUOpTarget *target, const SwsUOp *uop);
+
+    /**
      * Block size of a chain of uops. NULL for backends without kernel
      * lists.
      */
