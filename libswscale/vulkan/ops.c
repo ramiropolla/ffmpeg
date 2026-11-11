@@ -1269,7 +1269,7 @@ fail:
 
 static SwsUOpFlags vulkan_uop_flags(const SwsUOpTarget *target)
 {
-    return SWS_UOP_FLAG_ADD;
+    return 0;
 }
 
 static const SwsUOpPolicy policy_vulkan = {

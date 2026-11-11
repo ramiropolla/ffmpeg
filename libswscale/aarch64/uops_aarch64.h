@@ -37,8 +37,7 @@
 
 static inline SwsUOpFlags ff_sws_uop_flags_aarch64(bool bitexact)
 {
-    return SWS_UOP_FLAG_PUNNING | SWS_UOP_FLAG_ADD |
-           (bitexact ? 0 : SWS_UOP_FLAG_FMA);
+    return SWS_UOP_FLAG_PUNNING | (bitexact ? 0 : SWS_UOP_FLAG_FMA);
 }
 
 /* Use at most two full vregs during the widest precision section */

@@ -450,7 +450,7 @@ static int translate_swizzle(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *op
     return ff_sws_uop_list_append(ops, &uop);
 }
 
-static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *op)
+static int translate_dither_op(SwsUOpList *ops, const SwsOp *op)
 {
     SwsUOp uop = {
         .type = ff_sws_op_input_type(op),
@@ -458,7 +458,7 @@ static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *
         .par.dither.size_log2 = op->dither.size_log2,
     };
 
-    if ((flags & SWS_UOP_FLAG_ADD) && op->dither.size_log2 == 0) {
+    if (op->dither.size_log2 == 0) {
         /* Constant offset */
         const SwsPixel val = ff_sws_pixel_from_q64(uop.type, op->dither.matrix[0]);
         uop.uop = SWS_UOP_ADD;
@@ -558,7 +558,7 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
     case SWS_OP_SWIZZLE:
         return translate_swizzle(uops, flags, op);
     case SWS_OP_DITHER:
-        return translate_dither_op(uops, flags, op);
+        return translate_dither_op(uops, op);
     case SWS_OP_LINEAR:
         return translate_linear_op(ctx, uops, flags, op, inputs);
     default:
