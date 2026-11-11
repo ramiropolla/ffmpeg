@@ -80,6 +80,11 @@ static inline int ff_sws_uop_simplify_aarch64(SwsUOp *uop)
         /* par.lin.exact is currently unused by asmgen_op_linear(). */
         uop->par.lin.exact = 0;
         break;
+    case SWS_UOP_DITHER:
+        /* asmgen_op_dither() reads whole blocks from each matrix row */
+        if ((1 << uop->par.dither.size_log2) < uop->block_size)
+            return AVERROR(ENOTSUP);
+        break;
     default:
         break;
     }
