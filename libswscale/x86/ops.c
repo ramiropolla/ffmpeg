@@ -452,9 +452,13 @@ static int get_cpu_flags(void)
     return flags;
 }
 
-static int get_level(void)
+static SwsUOpTarget x86_target(const SwsContext *ctx)
 {
-    return ff_sws_x86_level(get_cpu_flags());
+    return (SwsUOpTarget) {
+        .policy    = &ff_sws_uop_policy_x86,
+        .cpu_flags = get_cpu_flags(),
+        .flags     = ctx->flags,
+    };
 }
 
 static int movsize(const int bytes, const int mmsize)
@@ -525,7 +529,8 @@ static int translate_shuffle(const SwsUOp *uop, SwsX86ISA level, SwsCompiledOp *
 static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiledOp *out)
 {
     int ret;
-    const int level = get_level();
+    const SwsUOpTarget target = x86_target(ctx);
+    const int level = ff_sws_x86_level(target.cpu_flags);
     if (level < 0)
         return level;
 
@@ -545,14 +550,14 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
         return AVERROR(ENOMEM);
 
     *out = (SwsCompiledOp) {
-        .block_size  = ff_sws_uop_block_size_x86(level, uops),
+        .block_size  = target.policy->block_size(&target, uops),
         .slice_align = 1,
     };
 
     for (int i = 0; i < uops->num_ops; i++) {
         SwsUOp uop = uops->ops[i];
         uop.block_size = out->block_size;
-        ret = ff_sws_uop_simplify_x86(level, &uop);
+        ret = target.policy->simplify(&target, &uop);
         if (ret < 0)
             goto fail;
 
@@ -579,11 +584,7 @@ fail:
 
 static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
 {
-    const SwsUOpTarget target = {
-        .policy    = &ff_sws_uop_policy_x86,
-        .cpu_flags = get_cpu_flags(),
-        .flags     = ctx->flags,
-    };
+    const SwsUOpTarget target = x86_target(ctx);
     if (ff_sws_x86_level(target.cpu_flags) < 0)
         return AVERROR(ENOTSUP);
 
