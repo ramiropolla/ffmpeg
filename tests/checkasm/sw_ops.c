@@ -370,6 +370,9 @@ static void run_test(const Test *test)
                 goto done;
             }
 
+            av_assert0(!block_size || oplist.block_size == block_size);
+            block_size = oplist.block_size >> 1;
+
             SwsCompiledOp comp_new = {0};
             ret = backend->compile_uops(ctx, &oplist, &comp_new);
             if (ret == AVERROR(ENOTSUP)) {
@@ -385,9 +388,6 @@ static void run_test(const Test *test)
                                       backend->name, checkasm_get_cpu_suffix());
             check_compiled(test, &comp_ref, &comp_new);
             ff_sws_compiled_op_unref(&comp_new);
-
-            av_assert0(!block_size || oplist.block_size == block_size);
-            block_size = oplist.block_size >> 1;
         } while (block_size);
     }
 
