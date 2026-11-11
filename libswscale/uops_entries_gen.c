@@ -32,7 +32,6 @@
 #include <fcntl.h>
 #endif
 
-#include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "libavutil/error.h"
 #include "libavutil/macros.h"
@@ -281,9 +280,7 @@ static int collect_x86(SwsContext *ctx, const SwsOpList *ops)
 
 static void name_x86(const Entry *entry, char buf[SWS_UOP_NAME_MAX])
 {
-    ff_sws_uop_name(&entry->uop, buf);
-    if (entry->vectors)
-        av_strlcatf(buf, SWS_UOP_NAME_MAX, "_m%d", entry->vectors);
+    ff_sws_uop_name_x86(&entry->uop, entry->list, buf);
 }
 
 /*********************************************************************/

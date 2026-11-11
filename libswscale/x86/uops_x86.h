@@ -27,6 +27,7 @@
 #include <stdbool.h>
 
 #include "libavutil/attributes.h"
+#include "libavutil/avstring.h"
 #include "libavutil/cpu.h"
 #include "libavutil/error.h"
 #include "libavutil/macros.h"
@@ -156,6 +157,16 @@ static inline int ff_sws_uop_vectors_x86(SwsX86ISA isa, const SwsUOp *uop)
 {
     return uop->block_size * ff_sws_uop_pixel_size_x86(uop) /
            ff_sws_mmsize_x86(isa);
+}
+
+/* Name of the kernel implementing a simplified uop for `isa` */
+static inline void ff_sws_uop_name_x86(const SwsUOp *uop, SwsX86ISA isa,
+                                       char buf[SWS_UOP_NAME_MAX])
+{
+    ff_sws_uop_name(uop, buf);
+    const int vectors = ff_sws_uop_vectors_x86(isa, uop);
+    if (vectors)
+        av_strlcatf(buf, SWS_UOP_NAME_MAX, "_m%d", vectors);
 }
 
 /**
