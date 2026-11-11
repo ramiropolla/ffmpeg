@@ -56,4 +56,5 @@ TESTPROGS = colorspace                                                  \
             sws_ops_aarch64                                             \
             unscaled_threaded                                           \
 
-DEVPROGS = uops_macros_gen                                              \
+DEVPROGS = uops_entries_gen                                             \
+           uops_macros_gen                                              \
