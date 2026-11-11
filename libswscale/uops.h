@@ -445,6 +445,14 @@ int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpTestFunc test_uop,
 void ff_sws_uop_list_print(void *log_ctx, int log_level, const SwsUOpList *uops);
 
 /**
+ * Test all uops in a list for support by the backend.
+ *
+ * Returns 0, or AVERROR(ENOTSUP) if any uop is not supported.
+ */
+int ff_sws_uop_list_check(const SwsUOpList *uops, SwsUOpTestFunc test_uop,
+                          unsigned cpu_flags);
+
+/**
  * Test all uops in a list for support by the backend, and resolve their
  * sizes.
  *

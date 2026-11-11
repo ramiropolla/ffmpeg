@@ -680,6 +680,17 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
     return ff_sws_uop_list_optimize(ctx, test_uop, cpu_flags, uops);
 }
 
+int ff_sws_uop_list_check(const SwsUOpList *uops, SwsUOpTestFunc test_uop,
+                          unsigned cpu_flags)
+{
+    for (int i = 0; i < uops->num_ops; i++) {
+        if (!ff_sws_uop_supported(test_uop, cpu_flags, &uops->ops[i]))
+            return AVERROR(ENOTSUP);
+    }
+
+    return 0;
+}
+
 int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
                             unsigned cpu_flags, int block_size)
 {
