@@ -166,6 +166,13 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
         return 0;
     }
     case SWS_UOP_SCALE:
+        if (p->type == SWS_PIXEL_U8) {
+            /* Pre-broadcast, since there is no mul by element for u8. */
+            uint8_t vec[16];
+            memset(vec, uop->data.scalar.u8, sizeof(vec));
+            SWS_OP_PRIV_PACK(out, vec);
+            return 0;
+        }
         return ff_sws_setup_scalar(&(const SwsImplParams) { .uop = uop }, out);
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:

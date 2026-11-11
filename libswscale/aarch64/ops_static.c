@@ -296,12 +296,30 @@ static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParam
                                SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
-    RasmOp scale_vec = regs->vk[0];
 
-    RasmOp priv_ptr = s->tmp0;
-    i_add (r, priv_ptr, s->impl, IMM(aarch64_priv_offset(p)));      CMT("v128 *scale_vec_ptr = &impl->priv;");
+    if (p->type == SWS_PIXEL_U8) {
+        /**
+         * Integer multiplication by element does not exist for 8-bit
+         * elements, so the scalar is stored pre-broadcast.
+         */
+        i_ldr(r, v_q(regs->vk[0]), IMPL_DATA(s, p, 0));             CMT("v128 scale_vec = impl->priv.v128;");
+        asmgen_set_load_cont_node(s);
+        return;
+    }
+
+    /**
+     * Load only the scalar, and use it as a by-element operand. Integer
+     * multiplication by element requires the element register to be in
+     * v0-v15 for 16-bit elements.
+     */
+    RasmOp scale_vec = (p->type == SWS_PIXEL_U16) ? regs->vsaved : regs->vk[0];
+    if (p->type == SWS_PIXEL_U16) {
+        i_ldr(r, v_h(scale_vec), IMPL_DATA(s, p, 0));               CMT("scale = impl->priv.u16;");
+    } else {
+        i_ldr(r, v_s(scale_vec), IMPL_DATA(s, p, 0));               CMT("scale = impl->priv.u32;");
+    }
     asmgen_set_load_cont_node(s);
-    i_ld1r(r, vv_1(scale_vec), a64op_base(priv_ptr));               CMT("v128 scale_vec = broadcast(*scale_vec_ptr);");
+    regs->vk[0] = a64op_elem(scale_vec, 0);
 }
 
 static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -519,6 +537,7 @@ static void init_vectors_cps(SwsAArch64Context *s, SwsAArch64OpRegs *regs)
     regs->vk[ 1] = a64op_vec(29);
     regs->vk[ 2] = a64op_vec(30);
     regs->vk[ 3] = a64op_vec(31);
+    regs->vsaved = a64op_vec(8);
 }
 
 /*********************************************************************/

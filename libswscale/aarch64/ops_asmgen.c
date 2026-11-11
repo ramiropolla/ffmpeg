@@ -75,6 +75,7 @@ static void reshape_const_vectors(SwsAArch64OpRegs *regs, int el_count, int el_s
 {
     for (int i = 0; i < FF_ARRAY_ELEMS(regs->vk); i++)
         regs->vk[i] = a64op_make_vec(a64op_vec_n(regs->vk[i]), el_count, el_size);
+    regs->vsaved = a64op_make_vec(a64op_vec_n(regs->vsaved), el_count, el_size);
 }
 
 /*********************************************************************/
@@ -878,14 +879,14 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     RasmOp *sh       = regs->sh;
     RasmOp *dl       = regs->dl;
     RasmOp *dh       = regs->dh;
-    RasmOp scale_vec = regs->vk[0];
+    RasmOp scale_vec = regs->vk[0]; /* vector for u8, element otherwise */
 
     if (p->type == SWS_PIXEL_F32) {
-        LOOP_MASK      (p, i) { i_fmul(r, dl[i], sl[i], scale_vec); CMTF("vl[%u] *= scale_vec;", i); }
-        LOOP_MASK_VH(s, p, i) { i_fmul(r, dh[i], sh[i], scale_vec); CMTF("vh[%u] *= scale_vec;", i); }
+        LOOP_MASK      (p, i) { i_fmul(r, dl[i], sl[i], scale_vec); CMTF("vl[%u] *= scale;", i); }
+        LOOP_MASK_VH(s, p, i) { i_fmul(r, dh[i], sh[i], scale_vec); CMTF("vh[%u] *= scale;", i); }
     } else {
-        LOOP_MASK      (p, i) { i_mul (r, dl[i], sl[i], scale_vec); CMTF("vl[%u] *= scale_vec;", i); }
-        LOOP_MASK_VH(s, p, i) { i_mul (r, dh[i], sh[i], scale_vec); CMTF("vh[%u] *= scale_vec;", i); }
+        LOOP_MASK      (p, i) { i_mul (r, dl[i], sl[i], scale_vec); CMTF("vl[%u] *= scale;", i); }
+        LOOP_MASK_VH(s, p, i) { i_mul (r, dh[i], sh[i], scale_vec); CMTF("vh[%u] *= scale;", i); }
     }
 }
 

@@ -157,7 +157,8 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
     case SWS_UOP_MAX:
         return 16 * const_vec_count(params); /* pre-broadcast constants */
     case SWS_UOP_SCALE:
-        return ff_sws_pixel_type_size(params->type);
+        /* pre-broadcast for u8, scalar otherwise */
+        return params->type == SWS_PIXEL_U8 ? 16 : ff_sws_pixel_type_size(params->type);
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
         /* packed coefficients, then pre-broadcast offsets */
@@ -193,7 +194,7 @@ static inline int aarch64_priv_offset(const SwsAArch64OpImplParams *params)
 {
     switch (params->uop) {
     case SWS_UOP_SCALE:
-        return offsetof_impl_priv; /* scalar */
+        return params->type == SWS_PIXEL_U8 ? 16 : offsetof_impl_priv;
     case SWS_UOP_DITHER:
         return offsetof_impl_priv; /* pointer */
     default:

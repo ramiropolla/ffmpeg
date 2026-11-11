@@ -31,6 +31,7 @@ typedef struct SwsAArch64OpRegs {
     RasmOp dh[ 4]; /* output vector registers (high bank) */
     RasmOp vt[12]; /* temp vector registers */
     RasmOp vk[ 4]; /* constant data (may be gprs) */
+    RasmOp vsaved; /* v8, saved by the process functions (see asmgen_process()) */
 
     /* Op-specific registers. */
     union {
