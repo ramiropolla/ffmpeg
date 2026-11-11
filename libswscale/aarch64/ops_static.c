@@ -314,6 +314,7 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     RasmOp *vt = regs->vt;
 
     /* Preload coefficients from impl->priv. */
+    const uint32_t coeff_mask = linear_coeff_mask(p);
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
     int off[4];
@@ -346,28 +347,25 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     bool overwritten[4] = { false, false, false, false };
     int i_coeff = 0;
     LOOP_MASK(p, i) {
-        bool first = true;
         for (int j = 0; j < 5; j++) {
             bool is_offset = (j == 0);
             int src_j = is_offset ? 4 : (j - 1);
             if (p->par.lin.zero & SWS_MASK(i, src_j))
                 continue;
-            uint8_t vc_i = i_coeff / nelems;
-            uint8_t vc_j = i_coeff & (nelems - 1);
-            RasmOp vcoeff = a64op_elem(vc[vc_i], vc_j);
-            /**
-             * The first coefficient of a row is not used as a multiplication
-             * operand if it is either an offset (broadcast) or one (move).
-             */
-            bool is_one = !is_offset && (p->par.lin.one & SWS_MASK(i, src_j));
-            if (dup_coeffs && !(first && (is_offset || is_one))) {
-                av_assert0(i_vint < 4);
-                i_dup(r, vint[i_vint], vcoeff);             CMTF("vcoeff%u = broadcast(coeff[%u][%u]);", i_vint, i, src_j);
-                vcoeff = vint[i_vint++];
+            /* Only multiplication operands are packed (see linear_coeff_mask()). */
+            RasmOp vcoeff = { 0 };
+            if (!is_offset && (coeff_mask & SWS_MASK(i, src_j))) {
+                uint8_t vc_i = i_coeff / nelems;
+                uint8_t vc_j = i_coeff & (nelems - 1);
+                vcoeff = a64op_elem(vc[vc_i], vc_j);
+                if (dup_coeffs) {
+                    av_assert0(i_vint < 4);
+                    i_dup(r, vint[i_vint], vcoeff);         CMTF("vcoeff%u = broadcast(coeff[%u][%u]);", i_vint, i, src_j);
+                    vcoeff = vint[i_vint++];
+                }
+                i_coeff++;
             }
             regs->linear_vcoeff[i][j] = vcoeff;
-            i_coeff++;
-            first = false;
             if (!is_offset && overwritten[src_j])
                 save_mask |= SWS_COMP(src_j);
             overwritten[i] = true;

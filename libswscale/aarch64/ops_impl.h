@@ -69,15 +69,40 @@ static inline int linear_vreg_nelems(SwsPixelType type)
     return 16 / ff_sws_pixel_type_size(type);
 }
 
-/* Compute number of vector registers needed to store all coefficients. */
+/**
+ * Mask of the linear coefficients that are used as multiplication operands,
+ * and therefore packed into the coefficient vectors. This excludes offsets
+ * (stored pre-broadcast), the first coefficient of a row without an offset
+ * if it is one (a move), and coefficients equal to one in the fmul+fadd
+ * path (an addition).
+ */
+static inline uint32_t linear_coeff_mask(const SwsAArch64OpImplParams *params)
+{
+    const SwsLinearUOp *lin = &params->par.lin;
+    const bool split_f32 = params->type == SWS_PIXEL_F32 &&
+                           params->uop  == SWS_UOP_LINEAR;
+    uint32_t mask = 0;
+    LOOP_MASK(params, i) {
+        bool first = !!(lin->zero & SWS_MASK_OFF(i));
+        for (int j = 0; j < 4; j++) {
+            if (lin->zero & SWS_MASK(i, j))
+                continue;
+            const bool is_one = !!(lin->one & SWS_MASK(i, j));
+            if (!(is_one && (first || split_f32)))
+                mask |= SWS_MASK(i, j);
+            first = false;
+        }
+    }
+    return mask;
+}
+
+/* Compute number of vector registers needed to store the packed coefficients. */
 static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
 {
+    const uint32_t mask = linear_coeff_mask(params);
     int count = 0;
-    LOOP_MASK(params, i) {
-        for (int j = 0; j < 5; j++)
-            if (!(params->par.lin.zero & SWS_MASK(i, j)))
-                count++;
-    }
+    for (int i = 0; i < 20; i++)
+        count += !!(mask & (1u << i));
     const int nelems = linear_vreg_nelems(params->type);
     return (count + nelems - 1) / nelems;
 }

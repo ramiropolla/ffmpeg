@@ -70,9 +70,10 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
                                 const SwsUOp *uop, SwsImplResult *res)
 {
     /**
-     * Compute number of full vector registers needed to pack all non-zero
-     * coefficients.
+     * Compute number of full vector registers needed to pack all
+     * coefficients used as multiplication operands.
      */
+    const uint32_t coeff_mask = linear_coeff_mask(p);
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
     union {
@@ -83,21 +84,20 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     } coeffs = { 0 };
 
     /**
-     * Copy non-zero coefficients, packed in sequential order, offset first.
-     * The same order must be followed in asmgen_op_linear().
+     * Copy the coefficients in coeff_mask, packed in sequential order.
+     * The same order must be followed in asmgen_setup_linear().
      */
     int i_coeff = 0;
     LOOP_MASK(p, i) {
-        for (int j = 0; j < 5; j++) {
-            const int jj = (j == 0) ? 4 : (j - 1);
-            if (!(p->par.lin.zero & SWS_MASK(i, jj))) {
-                const SwsPixel px = uop->data.mat4x5[i][jj];
-                switch (p->type) {
-                case SWS_PIXEL_U8:  coeffs.u8[i_coeff++]  = px.u8;  break;
-                case SWS_PIXEL_U16: coeffs.u16[i_coeff++] = px.u16; break;
-                case SWS_PIXEL_U32: coeffs.u32[i_coeff++] = px.u32; break;
-                case SWS_PIXEL_F32: coeffs.f32[i_coeff++] = px.f32; break;
-                }
+        for (int j = 0; j < 4; j++) {
+            if (!(coeff_mask & SWS_MASK(i, j)))
+                continue;
+            const SwsPixel px = uop->data.mat4x5[i][j];
+            switch (p->type) {
+            case SWS_PIXEL_U8:  coeffs.u8[i_coeff++]  = px.u8;  break;
+            case SWS_PIXEL_U16: coeffs.u16[i_coeff++] = px.u16; break;
+            case SWS_PIXEL_U32: coeffs.u32[i_coeff++] = px.u32; break;
+            case SWS_PIXEL_F32: coeffs.f32[i_coeff++] = px.f32; break;
             }
         }
     }
