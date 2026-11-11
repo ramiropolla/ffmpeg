@@ -69,4 +69,20 @@ static inline int ff_sws_uop_block_size_x86(SwsX86ISA level,
     return 2 * FFMIN(ff_sws_mmsize_x86(level), 32) / uops->pixel_size_max;
 }
 
+/**
+ * ISA of the kernel implementing a standalone SWS_UOP_RW_SHUFFLE on CPUs
+ * supporting `level`. Shuffles which are not lane aligned need vpermb to
+ * use vectors wider than XMM.
+ */
+static inline SwsX86ISA ff_sws_uop_shuffle_isa_x86(SwsX86ISA level,
+                                                   const SwsUOp *uop)
+{
+    const SwsShuffleUOp *par = &uop->par.shuffle;
+    const bool lane_aligned = par->read_size == par->write_size &&
+                              16 % par->read_size == 0;
+    if (!lane_aligned)
+        return level == SWS_X86_AVX512ICL ? SWS_X86_AVX512ICL : SWS_X86_SSE4;
+    return FFMIN(level, SWS_X86_AVX512);
+}
+
 #endif /* SWSCALE_X86_UOPS_X86_H */

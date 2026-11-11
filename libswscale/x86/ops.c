@@ -590,9 +590,8 @@ static int translate_shuffle(const SwsUOp *uop, SwsX86ISA level, SwsCompiledOp *
     const SwsShuffleUOp *par = &uop->par.shuffle;
     const int lane_aligned = par->read_size == par->write_size &&
                              16 % par->read_size == 0;
-    int mmsize = ff_sws_mmsize_x86(level);
-    if (!lane_aligned && level != SWS_X86_AVX512ICL)
-        mmsize = 16;
+    const SwsX86ISA isa = ff_sws_uop_shuffle_isa_x86(level, uop);
+    const int mmsize = ff_sws_mmsize_x86(isa);
 
     /* Generate the shuffle mask */
     const int mask_size = lane_aligned ? 16 : mmsize;
@@ -629,16 +628,11 @@ do {                                                                            
     }                                                                           \
 } while (0);
 
-    switch (mmsize) {
-    case 16: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, SSE4, _sse4); break;
-    case 32: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX2, _avx2); break;
-    case 64:
-        if (lane_aligned) {
-            SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX512, _avx512);
-        } else { /* vpermb variant */
-            SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX512ICL, _avx512icl);
-        }
-        break;
+    switch (isa) {
+    case SWS_X86_SSE4:      SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, SSE4, _sse4); break;
+    case SWS_X86_AVX2:      SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX2, _avx2); break;
+    case SWS_X86_AVX512:    SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX512, _avx512); break;
+    case SWS_X86_AVX512ICL: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX512ICL, _avx512icl); break;
     }
 
     if (!out->func) {
