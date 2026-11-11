@@ -26,6 +26,8 @@
  * so it must not depend on any x86-specific code or build configuration.
  */
 
+#include <limits.h>
+
 #include "libavutil/cpu.h"
 #include "libavutil/error.h"
 #include "libavutil/macros.h"
@@ -97,6 +99,89 @@ static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags,
      */
     limits->min_bytes = 16 * pixel_size;
     limits->max_bytes = 2 * FFMIN(mmsize, 32);
+    return 0;
+}
+
+/**
+ * Largest block size of a list. Uses at most two full YMM registers per
+ * component for the largest pixel type of each uop.
+ */
+static inline int ff_sws_uop_block_size_x86(unsigned cpu_flags,
+                                            const SwsUOpList *uops)
+{
+    const int mmsize = get_mmsize(cpu_flags);
+    if (mmsize < 0)
+        return mmsize;
+
+    int block_size = INT_MAX;
+    for (int i = 0; i < uops->num_ops; i++) {
+        const int pixel_size = ff_sws_uop_pixel_size_max(&uops->ops[i]);
+        block_size = FFMIN(block_size, 2 * FFMIN(mmsize, 32) / pixel_size);
+    }
+    return block_size;
+}
+
+/**
+ * Rewrite a uop into the form of the kernel implementing it. uop->block_size
+ * must be set to the block size of the list, and is adjusted to match the
+ * kernel.
+ *
+ * Returns 0, or AVERROR(ENOTSUP) if no kernel has that form.
+ */
+static inline int ff_sws_uop_simplify_x86(unsigned cpu_flags, SwsUOp *uop)
+{
+    switch (uop->uop) {
+    case SWS_UOP_READ_PLANAR:
+    case SWS_UOP_WRITE_PLANAR:
+    case SWS_UOP_CLEAR:
+        /* Only implemented for U8, other types are executed as U8 */
+        uop->block_size *= ff_sws_pixel_type_size(uop->type);
+        uop->type = SWS_PIXEL_U8;
+        break;
+    default:
+        break;
+    }
+
+    /* Only 8-bit kernels are implemented for SSE4 */
+    if (get_mmsize(cpu_flags) == 16 && ff_sws_uop_pixel_size_max(uop) > 1)
+        return AVERROR(ENOTSUP);
+    /* All kernels process at least 16 elements at a time */
+    if (uop->block_size < 16)
+        return AVERROR(ENOTSUP);
+    return 0;
+}
+
+/**
+ * SwsOpBackend.resolve_uops of the x86 backend, for CPUs supporting
+ * `cpu_flags`. A list block size of 0 picks the largest.
+ */
+static inline int ff_sws_uop_list_resolve_x86(SwsUOpList *uops,
+                                              unsigned cpu_flags,
+                                              int block_size)
+{
+    if (uops->num_ops == 1 && uops->ops[0].uop == SWS_UOP_RW_SHUFFLE)
+        return ff_sws_uop_list_resolve(uops, test_uop_x86, cpu_flags,
+                                       block_size);
+
+    const int max = ff_sws_uop_block_size_x86(cpu_flags, uops);
+    if (max < 0)
+        return max;
+    if (!block_size)
+        block_size = max;
+    else if (block_size > max)
+        return AVERROR(ENOTSUP);
+
+    for (int i = 0; i < uops->num_ops; i++) {
+        SwsUOp *uop = &uops->ops[i];
+        if (!ff_sws_uop_supported(test_uop_x86, cpu_flags, uop))
+            return AVERROR(ENOTSUP);
+        uop->block_size = block_size;
+        int ret = ff_sws_uop_simplify_x86(cpu_flags, uop);
+        if (ret < 0)
+            return ret;
+    }
+
+    uops->block_size = block_size;
     return 0;
 }
 

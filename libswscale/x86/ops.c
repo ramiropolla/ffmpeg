@@ -687,8 +687,7 @@ fail:
 
 static int resolve_uops_x86(SwsUOpList *uops, int block_size)
 {
-    return ff_sws_uop_list_resolve(uops, test_uop_x86, get_uop_cpu_flags(),
-                                   block_size);
+    return ff_sws_uop_list_resolve_x86(uops, get_uop_cpu_flags(), block_size);
 }
 
 static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
