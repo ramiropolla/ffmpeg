@@ -48,19 +48,14 @@ static inline int ff_sws_uop_block_size_aarch64(const SwsUOpList *uops)
  * generated code are normalized, to prevent identical CPS functions from
  * being instantiated multiple times under different names.
  *
- * Returns 0, or AVERROR(ENOTSUP) if the uop has no implementation.
+ * The uop type must be accepted by aarch64_policy_supported().
+ *
+ * Returns 0, or AVERROR(ENOTSUP) if the kernel cannot handle the
+ * parameters of the uop.
  */
 static inline int ff_sws_uop_simplify_aarch64(SwsUOp *uop)
 {
     switch (uop->uop) {
-    case SWS_UOP_READ_PLANAR_FH:
-    case SWS_UOP_READ_PLANAR_FV:
-    case SWS_UOP_READ_PLANAR_FV_FMA:
-    case SWS_UOP_READ_PALETTE:
-    case SWS_UOP_RW_SHUFFLE:
-    case SWS_UOP_EXPAND_BIT:
-    case SWS_UOP_LUT_3D:
-        return AVERROR(ENOTSUP);
     case SWS_UOP_PERMUTE:
     case SWS_UOP_COPY:
         /* Recompute mask taking identity swizzle into account */
@@ -238,11 +233,14 @@ static inline bool aarch64_policy_supported(const SwsUOpTarget *target,
                                             const SwsUOp *uop)
 {
     switch (uop->uop) {
-    case SWS_UOP_EXPAND_BIT:
+    case SWS_UOP_READ_PLANAR_FH:
+    case SWS_UOP_READ_PLANAR_FV:
+    case SWS_UOP_READ_PLANAR_FV_FMA:
     case SWS_UOP_READ_PALETTE:
     case SWS_UOP_RW_SHUFFLE:
+    case SWS_UOP_EXPAND_BIT:
+    case SWS_UOP_LUT_3D:
         return false;
-    case SWS_UOP_READ_PLANAR_FV_FMA:
     case SWS_UOP_LINEAR_FMA:
         return !(target->flags & SWS_BITEXACT);
     default:
@@ -259,6 +257,8 @@ static inline int aarch64_policy_block_size(const SwsUOpTarget *target,
 static inline int aarch64_policy_simplify(const SwsUOpTarget *target,
                                           SwsUOp *uop)
 {
+    if (!aarch64_policy_supported(target, uop))
+        return AVERROR(ENOTSUP);
     return ff_sws_uop_simplify_aarch64(uop);
 }
 
