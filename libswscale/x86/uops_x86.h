@@ -61,7 +61,6 @@ static inline int ff_sws_x86_level(int cpu_flags)
 static inline SwsUOpFlags ff_sws_uop_flags_x86(bool fma)
 {
     return SWS_UOP_FLAG_PSHUFB
-         | SWS_UOP_FLAG_EXPAND_BIT
          | SWS_UOP_FLAG_READ_PALETTE
          | SWS_UOP_FLAG_PUNNING
          | (fma ? SWS_UOP_FLAG_FMA : 0);
@@ -189,6 +188,12 @@ static inline SwsUOpFlags x86_policy_uop_flags(const SwsUOpTarget *target)
     return ff_sws_uop_flags_x86(target->cpu_flags & AV_CPU_FLAG_FMA3);
 }
 
+static inline bool x86_policy_supported(const SwsUOpTarget *target,
+                                        const SwsUOp *uop)
+{
+    return true;
+}
+
 static inline int x86_policy_block_size(const SwsUOpTarget *target,
                                         const SwsUOpList *uops)
 {
@@ -219,6 +224,7 @@ static inline void x86_policy_name(const SwsUOp *uop, int list,
 
 av_unused static const SwsUOpPolicy ff_sws_uop_policy_x86 = {
     .uop_flags  = x86_policy_uop_flags,
+    .supported  = x86_policy_supported,
     .block_size = x86_policy_block_size,
     .simplify   = x86_policy_simplify,
     .name       = x86_policy_name,

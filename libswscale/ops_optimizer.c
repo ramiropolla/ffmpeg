@@ -1058,9 +1058,12 @@ static bool is_scale(const SwsUOp *op, int64_t val)
     }
 }
 
-int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpFlags flags, SwsUOpList *uops)
+int ff_sws_uop_list_optimize(SwsContext *ctx, const SwsUOpTarget *target,
+                             SwsUOpList *uops)
 {
     static const SwsUOp dummy = {0};
+    const SwsUOpPolicy *policy = target->policy;
+    const SwsUOpFlags flags = policy->uop_flags(target);
 
 retry:
     for (int i = 0; i < uops->num_ops; i++) {
@@ -1084,8 +1087,13 @@ retry:
             }
             break;
 
-        case SWS_UOP_SCALE:
-            if (flags & SWS_UOP_FLAG_EXPAND_BIT) {
+        case SWS_UOP_SCALE: {
+            const SwsUOp expand = {
+                .uop  = SWS_UOP_EXPAND_BIT,
+                .type = op->type,
+                .mask = op->mask,
+            };
+            if (policy->supported(target, &expand)) {
                 const int bits = 8 * ff_sws_pixel_type_size(op->type);
                 if (is_scale(op, UINT64_MAX >> (64 - bits))) {
                     op->uop = SWS_UOP_EXPAND_BIT;
@@ -1094,6 +1102,7 @@ retry:
                 }
             }
             break;
+        }
         }
     }
 

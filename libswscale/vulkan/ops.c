@@ -1272,8 +1272,19 @@ static SwsUOpFlags vulkan_uop_flags(const SwsUOpTarget *target)
     return 0;
 }
 
+static bool vulkan_supported(const SwsUOpTarget *target, const SwsUOp *uop)
+{
+    switch (uop->uop) {
+    case SWS_UOP_EXPAND_BIT:
+        return false;
+    default:
+        return true;
+    }
+}
+
 static const SwsUOpPolicy policy_vulkan = {
     .uop_flags = vulkan_uop_flags,
+    .supported = vulkan_supported,
 };
 
 static int compile_ops_spirv(SwsContext *sws, const SwsOpList *ops,

@@ -669,5 +669,5 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
         inputs = op->outputs;
     }
 
-    return ff_sws_uop_list_optimize(ctx, target->policy->uop_flags(target), uops);
+    return ff_sws_uop_list_optimize(ctx, target, uops);
 }

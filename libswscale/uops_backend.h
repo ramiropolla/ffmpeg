@@ -31,14 +31,19 @@
 
 static inline SwsUOpFlags ff_sws_uop_flags_c(void)
 {
-    return SWS_UOP_FLAG_EXPAND_BIT
-         | SWS_UOP_FLAG_READ_PALETTE
+    return SWS_UOP_FLAG_READ_PALETTE
          | SWS_UOP_FLAG_PUNNING;
 }
 
 static inline SwsUOpFlags c_policy_uop_flags(const SwsUOpTarget *target)
 {
     return ff_sws_uop_flags_c();
+}
+
+static inline bool c_policy_supported(const SwsUOpTarget *target,
+                                      const SwsUOp *uop)
+{
+    return true;
 }
 
 static inline int c_policy_block_size(const SwsUOpTarget *target,
@@ -60,6 +65,7 @@ static inline void c_policy_name(const SwsUOp *uop, int list,
 
 av_unused static const SwsUOpPolicy ff_sws_uop_policy_c = {
     .uop_flags  = c_policy_uop_flags,
+    .supported  = c_policy_supported,
     .block_size = c_policy_block_size,
     .simplify   = c_policy_simplify,
     .name       = c_policy_name,

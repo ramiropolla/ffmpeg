@@ -244,6 +244,17 @@ static inline SwsUOpFlags aarch64_policy_uop_flags(const SwsUOpTarget *target)
     return ff_sws_uop_flags_aarch64(target->flags & SWS_BITEXACT);
 }
 
+static inline bool aarch64_policy_supported(const SwsUOpTarget *target,
+                                            const SwsUOp *uop)
+{
+    switch (uop->uop) {
+    case SWS_UOP_EXPAND_BIT:
+        return false;
+    default:
+        return true;
+    }
+}
+
 static inline int aarch64_policy_block_size(const SwsUOpTarget *target,
                                             const SwsUOpList *uops)
 {
@@ -264,6 +275,7 @@ static inline void aarch64_policy_name(const SwsUOp *uop, int list,
 
 av_unused static const SwsUOpPolicy ff_sws_uop_policy_aarch64 = {
     .uop_flags  = aarch64_policy_uop_flags,
+    .supported  = aarch64_policy_supported,
     .block_size = aarch64_policy_block_size,
     .simplify   = aarch64_policy_simplify,
     .name       = aarch64_policy_name,
