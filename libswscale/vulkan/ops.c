@@ -1276,6 +1276,7 @@ static bool vulkan_supported(const SwsUOpTarget *target, const SwsUOp *uop)
 {
     switch (uop->uop) {
     case SWS_UOP_EXPAND_BIT:
+    case SWS_UOP_READ_PALETTE:
         return false;
     default:
         return true;

@@ -31,8 +31,7 @@
 
 static inline SwsUOpFlags ff_sws_uop_flags_c(void)
 {
-    return SWS_UOP_FLAG_READ_PALETTE
-         | SWS_UOP_FLAG_PUNNING;
+    return SWS_UOP_FLAG_PUNNING;
 }
 
 static inline SwsUOpFlags c_policy_uop_flags(const SwsUOpTarget *target)

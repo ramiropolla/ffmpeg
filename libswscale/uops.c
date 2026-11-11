@@ -325,10 +325,9 @@ static int translate_rw_op(SwsContext *ctx, SwsUOpList *ops,
             return AVERROR(ENOTSUP);
         uop.uop = is_read ? SWS_UOP_READ_PACKED : SWS_UOP_WRITE_PACKED;
     } else if (op->rw.mode == SWS_RW_PALETTE) {
-        if (!(target->policy->uop_flags(target) & SWS_UOP_FLAG_READ_PALETTE) ||
-            op->rw.frac || !is_read)
-            return AVERROR(ENOTSUP);
         uop.uop = SWS_UOP_READ_PALETTE;
+        if (!target->policy->supported(target, &uop) || op->rw.frac || !is_read)
+            return AVERROR(ENOTSUP);
     } else if (op->rw.frac == 3) {
         uop.uop = is_read ? SWS_UOP_READ_BIT : SWS_UOP_WRITE_BIT;
     } else if (op->rw.frac == 1) {

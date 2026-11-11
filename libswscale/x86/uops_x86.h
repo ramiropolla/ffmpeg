@@ -61,7 +61,6 @@ static inline int ff_sws_x86_level(int cpu_flags)
 static inline SwsUOpFlags ff_sws_uop_flags_x86(bool fma)
 {
     return SWS_UOP_FLAG_PSHUFB
-         | SWS_UOP_FLAG_READ_PALETTE
          | SWS_UOP_FLAG_PUNNING
          | (fma ? SWS_UOP_FLAG_FMA : 0);
 }
