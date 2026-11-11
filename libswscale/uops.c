@@ -694,18 +694,6 @@ int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
         if (ret < 0)
             return ret;
 
-        if (uop->uop == SWS_UOP_RW_SHUFFLE) {
-            /* The number of pixels is fixed by the shuffle pattern */
-            const SwsShuffleUOp *par = &uop->par.shuffle;
-            const int group_size = FFMAX(par->read_size, par->write_size);
-            /* SWS_UOP_RW_SHUFFLE is a u8 uop, so its block size is in bytes */
-            uop->block_size = limits.max_bytes;
-            uops->block_size = limits.max_bytes / group_size *
-                               uop->data.shuffle.pixels;
-            av_assert0(uops->num_ops == 1);
-            return 0;
-        }
-
         if (!limits.max_bytes) {
             av_assert0(!limits.type);
             continue; /* unsized */

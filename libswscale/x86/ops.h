@@ -46,6 +46,27 @@ static inline int get_mmsize(unsigned cpu_flags)
         return AVERROR(ENOTSUP);
 }
 
+/**
+ * Vector size in bytes of the kernel implementing a standalone
+ * SWS_UOP_RW_SHUFFLE, or a negative error code.
+ */
+static inline int ff_sws_uop_shuffle_size_x86(unsigned cpu_flags,
+                                              const SwsUOp *uop)
+{
+    /* We can't shuffle across lanes, so restrict the vector size to XMM
+     * whenever the read/write size would be a subset of the full vector,
+     * unless we have access to AVX-512 ICL vpermb */
+    const SwsShuffleUOp *par = &uop->par.shuffle;
+    const bool lane_aligned = par->read_size == par->write_size &&
+                              16 % par->read_size == 0;
+    int bytes = get_mmsize(cpu_flags);
+    if (bytes < 0)
+        return bytes;
+    if (!lane_aligned && !(cpu_flags & AV_CPU_FLAG_AVX512ICL))
+        bytes = FFMIN(bytes, 16);
+    return bytes;
+}
+
 static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags,
                                SwsUOpLimits *limits)
 {
@@ -65,19 +86,8 @@ static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags,
         limits->type = SWS_PIXEL_U8;
         break;
     case SWS_UOP_RW_SHUFFLE: {
-        /* We can't shuffle across lanes, so restrict the vector size to XMM
-         * whenever the read/write size would be a subset of the full vector,
-         * unless we have access to AVX-512 ICL vpermb */
-        const SwsShuffleUOp *par = &uop->par.shuffle;
-        const bool lane_aligned = par->read_size == par->write_size &&
-                                  16 % par->read_size == 0;
-        int bytes = get_mmsize(cpu_flags);
-        if (bytes < 0)
-            return bytes;
-        if (!lane_aligned && !(cpu_flags & AV_CPU_FLAG_AVX512ICL))
-            bytes = FFMIN(bytes, 16);
-        limits->min_bytes = limits->max_bytes = bytes;
-        return 0;
+        const int bytes = ff_sws_uop_shuffle_size_x86(cpu_flags, uop);
+        return bytes < 0 ? bytes : 0;
     }
     default:
         break;
@@ -159,9 +169,24 @@ static inline int ff_sws_uop_list_resolve_x86(SwsUOpList *uops,
                                               unsigned cpu_flags,
                                               int block_size)
 {
-    if (uops->num_ops == 1 && uops->ops[0].uop == SWS_UOP_RW_SHUFFLE)
-        return ff_sws_uop_list_resolve(uops, test_uop_x86, cpu_flags,
-                                       block_size);
+    if (uops->num_ops == 1 && uops->ops[0].uop == SWS_UOP_RW_SHUFFLE) {
+        /* The number of pixels is fixed by the shuffle pattern */
+        SwsUOp *uop = &uops->ops[0];
+        const SwsShuffleUOp *par = &uop->par.shuffle;
+        const int group_size = FFMAX(par->read_size, par->write_size);
+        const int bytes = ff_sws_uop_shuffle_size_x86(cpu_flags, uop);
+        if (bytes < 0)
+            return bytes;
+
+        const int pixels = bytes / group_size * uop->data.shuffle.pixels;
+        if (block_size && block_size != pixels)
+            return AVERROR(ENOTSUP);
+
+        /* SWS_UOP_RW_SHUFFLE is a u8 uop, so its block size is in bytes */
+        uop->block_size = bytes;
+        uops->block_size = pixels;
+        return 0;
+    }
 
     const int max = ff_sws_uop_block_size_x86(cpu_flags, uops);
     if (max < 0)
