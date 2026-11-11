@@ -28,6 +28,7 @@
 
 #include <limits.h>
 
+#include "libavutil/avstring.h"
 #include "libavutil/cpu.h"
 #include "libavutil/error.h"
 #include "libavutil/macros.h"
@@ -186,6 +187,71 @@ static inline int ff_sws_uop_list_resolve_x86(SwsUOpList *uops,
 
     uops->block_size = block_size;
     return 0;
+}
+
+/* Instruction sets with their own list of kernels */
+typedef enum SwsX86ISA {
+    SWS_X86_SSE4,
+    SWS_X86_AVX2,
+    SWS_X86_AVX512,
+    SWS_X86_AVX512ICL,
+    SWS_X86_ISA_NB,
+} SwsX86ISA;
+
+/**
+ * Instruction set of the kernel implementing a uop resolved by
+ * ff_sws_uop_list_resolve_x86() on CPUs supporting `cpu_flags`, or a
+ * negative error code.
+ */
+static inline int ff_sws_uop_isa_x86(unsigned cpu_flags, const SwsUOp *uop)
+{
+    if (uop->uop == SWS_UOP_RW_SHUFFLE) {
+        const SwsShuffleUOp *par = &uop->par.shuffle;
+        const bool lane_aligned = par->read_size == par->write_size &&
+                                  16 % par->read_size == 0;
+        switch (uop->block_size) {
+        case 16: return SWS_X86_SSE4;
+        case 32: return SWS_X86_AVX2;
+        case 64: return lane_aligned ? SWS_X86_AVX512 : SWS_X86_AVX512ICL;
+        default: return AVERROR(ENOTSUP);
+        }
+    }
+
+    /* Only 8-bit kernels have SSE4 versions, with one or two registers */
+    const int pixel_size = ff_sws_uop_pixel_size_max(uop);
+    const int bytes = uop->block_size * pixel_size;
+    if ((cpu_flags & AV_CPU_FLAG_AVX2) && (bytes == 32 || bytes == 64))
+        return SWS_X86_AVX2;
+    if (pixel_size == 1 && (bytes == 16 || bytes == 32))
+        return SWS_X86_SSE4;
+    return AVERROR(ENOTSUP);
+}
+
+/**
+ * Number of registers per component used by the kernel of instruction set
+ * `isa` (a SwsX86ISA) implementing a resolved uop, or 0 if the kernel is not
+ * written in terms of a number of registers.
+ */
+static inline int ff_sws_uop_vectors_x86(int isa, const SwsUOp *uop)
+{
+    if (uop->uop == SWS_UOP_RW_SHUFFLE)
+        return 0;
+
+    const int mmsize = isa == SWS_X86_SSE4 ? 16 : 32;
+    return uop->block_size * ff_sws_uop_pixel_size_max(uop) / mmsize;
+}
+
+/**
+ * Name of the kernel of instruction set `isa` (a SwsX86ISA) implementing a
+ * resolved uop.
+ */
+static inline void ff_sws_uop_name_x86(const SwsUOp *uop, int isa,
+                                       char buf[SWS_UOP_NAME_MAX])
+{
+    ff_sws_uop_name(uop, buf);
+    const int vectors = ff_sws_uop_vectors_x86(isa, uop);
+    if (vectors)
+        av_strlcatf(buf, SWS_UOP_NAME_MAX, "_m%d", vectors);
 }
 
 #endif /* SWSCALE_X86_OPS_H */
