@@ -23,6 +23,8 @@
  * Translation policy of the C backend, shared with the uop list generator.
  */
 
+#include "libavutil/attributes.h"
+
 #include "uops.h"
 
 #define SWS_BLOCK_SIZE 32
@@ -34,5 +36,27 @@ static inline SwsUOpFlags ff_sws_uop_flags_c(void)
          | SWS_UOP_FLAG_ADD
          | SWS_UOP_FLAG_PUNNING;
 }
+
+static inline SwsUOpFlags c_policy_uop_flags(const SwsUOpTarget *target)
+{
+    return ff_sws_uop_flags_c();
+}
+
+static inline int c_policy_block_size(const SwsUOpTarget *target,
+                                      const SwsUOpList *uops)
+{
+    return SWS_BLOCK_SIZE;
+}
+
+static inline int c_policy_simplify(const SwsUOpTarget *target, SwsUOp *uop)
+{
+    return 0;
+}
+
+av_unused static const SwsUOpPolicy ff_sws_uop_policy_c = {
+    .uop_flags  = c_policy_uop_flags,
+    .block_size = c_policy_block_size,
+    .simplify   = c_policy_simplify,
+};
 
 #endif /* SWSCALE_UOPS_BACKEND_H */
