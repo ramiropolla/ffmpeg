@@ -673,15 +673,15 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
     };
 
     for (int i = 0; i < uops->num_ops; i++) {
-        SwsUOp *uop = &uops->ops[i];
-        uop->block_size = out->block_size;
+        SwsUOp uop = uops->ops[i];
+        uop.block_size = out->block_size;
 
-        if (uop_is_type_invariant(uop->uop)) {
-            uop->block_size *= ff_sws_pixel_type_size(uop->type);
-            uop->type = SWS_PIXEL_U8;
+        if (uop_is_type_invariant(uop.uop)) {
+            uop.block_size *= ff_sws_pixel_type_size(uop.type);
+            uop.type = SWS_PIXEL_U8;
         }
 
-        ret = ff_sws_uop_lookup(ctx, tables, FF_ARRAY_ELEMS(tables), uop, chain);
+        ret = ff_sws_uop_lookup(ctx, tables, FF_ARRAY_ELEMS(tables), &uop, chain);
         if (ret < 0)
             goto fail;
     }
