@@ -27,6 +27,7 @@
 #include "../ops_chain.h"
 #include "../uops.h"
 #include "uops_macros.h"
+#include "uops_x86.h"
 
 static int setup_rw_packed(const SwsImplParams *params, SwsImplResult *out)
 {
@@ -557,15 +558,17 @@ SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx2,       NULL, NULL)
 SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx512,     NULL, NULL)
 SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx512icl,  NULL, NULL)
 
-static int get_mmsize(void)
+static int get_level(void)
 {
     const int cpu_flags = av_get_cpu_flags();
-    if (EXTERNAL_AVX512(cpu_flags))
-        return 64;
+    if (EXTERNAL_AVX512ICL(cpu_flags))
+        return SWS_X86_AVX512ICL;
+    else if (EXTERNAL_AVX512(cpu_flags))
+        return SWS_X86_AVX512;
     else if (EXTERNAL_AVX2(cpu_flags))
-        return 32;
+        return SWS_X86_AVX2;
     else if (EXTERNAL_SSE4(cpu_flags))
-        return 16;
+        return SWS_X86_SSE4;
     else
         return AVERROR(ENOTSUP);
 }
@@ -579,7 +582,7 @@ static int movsize(const int bytes, const int mmsize)
            mmsize;            /* zmm movu */
 }
 
-static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
+static int translate_shuffle(const SwsUOp *uop, SwsX86ISA level, SwsCompiledOp *out)
 {
     /* We can't shuffle across lanes, so restrict the vector size to XMM
      * whenever the read/write size would be a subset of the full vector,
@@ -587,7 +590,8 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
     const SwsShuffleUOp *par = &uop->par.shuffle;
     const int lane_aligned = par->read_size == par->write_size &&
                              16 % par->read_size == 0;
-    if (!lane_aligned && !EXTERNAL_AVX512ICL(av_get_cpu_flags()))
+    int mmsize = ff_sws_mmsize_x86(level);
+    if (!lane_aligned && level != SWS_X86_AVX512ICL)
         mmsize = 16;
 
     /* Generate the shuffle mask */
@@ -647,13 +651,14 @@ do {                                                                            
 
 static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiledOp *out)
 {
-    int ret, mmsize = get_mmsize();
-    if (mmsize < 0)
-        return mmsize;
+    int ret;
+    const int level = get_level();
+    if (level < 0)
+        return level;
 
     if (uops->num_ops == 1 && uops->ops[0].uop == SWS_UOP_RW_SHUFFLE) {
         const SwsUOp *uop = &uops->ops[0];
-        ret = translate_shuffle(uop, mmsize, out);
+        ret = translate_shuffle(uop, level, out);
         if (ret >= 0) {
             char name[SWS_UOP_NAME_MAX];
             ff_sws_uop_name(uop, name);
@@ -668,7 +673,7 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
 
     *out = (SwsCompiledOp) {
         /* Use at most two full YMM regs during the widest precision section */
-        .block_size  = 2 * FFMIN(mmsize, 32) / uops->pixel_size_max,
+        .block_size  = 2 * FFMIN(ff_sws_mmsize_x86(level), 32) / uops->pixel_size_max,
         .slice_align = 1,
     };
 
@@ -705,9 +710,9 @@ fail:
 static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
 {
     const int cpu_flags = av_get_cpu_flags();
-    const int mmsize = get_mmsize();
-    if (mmsize < 0)
-        return mmsize;
+    const int level = get_level();
+    if (level < 0)
+        return level;
 
     SwsUOpFlags flags = SWS_UOP_FLAG_PSHUFB
                       | SWS_UOP_FLAG_EXPAND_BIT
