@@ -212,13 +212,21 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
 
     const int block_size = ff_sws_uop_block_size_aarch64(uops);
 
+    /* The backend rejects the whole list if any uop has no kernel */
     for (int i = 0; i < uops->num_ops; i++) {
-        SwsUOp uop = uops->ops[i];
-        uop.block_size = block_size;
-        ff_sws_uop_simplify_aarch64(&uop);
+        uops->ops[i].block_size = block_size;
+        ret = ff_sws_uop_simplify_aarch64(&uops->ops[i]);
+        if (ret == AVERROR(ENOTSUP)) {
+            ret = 0;
+            goto end;
+        }
+        if (ret < 0)
+            goto end;
+    }
 
+    for (int i = 0; i < uops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        convert_to_aarch64_impl(&uop, &params);
+        convert_to_aarch64_impl(&uops->ops[i], &params);
         ret = aarch64_collect_op(&params, root);
         if (ret < 0)
             goto end;

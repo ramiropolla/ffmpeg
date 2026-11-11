@@ -185,7 +185,9 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     for (int i = 0; i < uops->num_ops; i++) {
         SwsUOp uop = uops->ops[i];
         uop.block_size = block_size;
-        ff_sws_uop_simplify_aarch64(&uop);
+        ret = ff_sws_uop_simplify_aarch64(&uop);
+        if (ret < 0)
+            goto error;
 
         SwsAArch64OpImplParams params = { 0 };
         convert_to_aarch64_impl(&uop, &params);
