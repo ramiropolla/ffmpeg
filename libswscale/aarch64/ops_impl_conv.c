@@ -26,21 +26,7 @@
 #include "libavutil/error.h"
 
 #include "ops_impl.h"
-
-static int test_uop_aarch64(const SwsUOp *uop, unsigned cpu_flags,
-                            SwsUOpLimits *limits)
-{
-    switch (uop->uop) {
-    case SWS_UOP_READ_PALETTE:
-    case SWS_UOP_EXPAND_BIT:
-    case SWS_UOP_RW_SHUFFLE:
-        return AVERROR(ENOTSUP);
-    default:
-        break;
-    }
-
-    return 0;
-}
+#include "uops_aarch64.h"
 
 /**
  * Convert SwsUOp to a SwsAArch64OpImplParams. Read the comments regarding
