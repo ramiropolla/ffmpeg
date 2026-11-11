@@ -163,6 +163,15 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
 }
 
 /*********************************************************************/
+static SwsUOpTarget aarch64_target(const SwsContext *ctx)
+{
+    return (SwsUOpTarget) {
+        .policy    = &ff_sws_uop_policy_aarch64,
+        .cpu_flags = AV_CPU_FLAG_NEON,
+        .flags     = ctx->flags,
+    };
+}
+
 static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
                                 SwsCompiledOp *out)
 {
@@ -172,7 +181,8 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
-    const int block_size = ff_sws_uop_block_size_aarch64(uops);
+    const SwsUOpTarget target = aarch64_target(ctx);
+    const int block_size = target.policy->block_size(&target, uops);
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)
@@ -188,7 +198,7 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     for (int i = 0; i < uops->num_ops; i++) {
         SwsUOp uop = uops->ops[i];
         uop.block_size = block_size;
-        ret = ff_sws_uop_simplify_aarch64(&uop);
+        ret = target.policy->simplify(&target, &uop);
         if (ret < 0)
             goto error;
 
@@ -242,11 +252,7 @@ static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,
     if (!uops)
         return AVERROR(ENOMEM);
 
-    const SwsUOpTarget target = {
-        .policy    = &ff_sws_uop_policy_aarch64,
-        .cpu_flags = AV_CPU_FLAG_NEON,
-        .flags     = ctx->flags,
-    };
+    const SwsUOpTarget target = aarch64_target(ctx);
     int ret = ff_sws_ops_translate(ctx, ops, &target, uops);
     if (ret < 0)
         goto error;
