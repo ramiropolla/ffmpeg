@@ -453,18 +453,6 @@ int ff_sws_uop_list_check(const SwsUOpList *uops, SwsUOpTestFunc test_uop,
                           unsigned cpu_flags);
 
 /**
- * Test all uops in a list for support by the backend, and resolve their
- * sizes.
- *
- * @param block_size The number of pixels per block, or 0 to pick the largest
- *
- * Returns 0 or a negative error code. On failure, this may have partially
- * mutated `uops`.
- */
-int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
-                            unsigned cpu_flags, int block_size);
-
-/**
  * Translate a list of operations down to micro-ops, which can be further
  * optimized and then directly executed by backends.
  *

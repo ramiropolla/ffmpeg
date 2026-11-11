@@ -149,8 +149,9 @@ typedef struct SwsOpBackend {
     int (*compile_uops)(SwsContext *ctx, const SwsUOpList *uops, SwsCompiledOp *out);
 
     /**
-     * Resolve a list of micro-ops for this backend, as by
-     * ff_sws_uop_list_resolve(). Required if `compile_uops` is set.
+     * Test a list of micro-ops for support by this backend, and resolve
+     * their block sizes. A `block_size` of 0 lets the backend pick it.
+     * Required if `compile_uops` is set.
      */
     int (*resolve_uops)(SwsUOpList *uops, int block_size);
 

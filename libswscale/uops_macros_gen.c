@@ -197,8 +197,11 @@ static int register_uop(struct EnumPriv *s, const SwsUOp *uop)
     return 0;
 }
 
+typedef int (*ResolveFunc)(SwsUOpList *uops, unsigned cpu_flags);
+
 static int register_flags(SwsContext *ctx, const SwsOpList *ops, SwsUOpFlags flags,
-                          SwsUOpTestFunc test_uop, unsigned cpu_flags)
+                          SwsUOpTestFunc test_uop, ResolveFunc resolve,
+                          unsigned cpu_flags)
 {
     SwsUOpList *uops = ff_sws_uop_list_alloc();
     if (!uops)
@@ -206,7 +209,7 @@ static int register_flags(SwsContext *ctx, const SwsOpList *ops, SwsUOpFlags fla
 
     int ret = ff_sws_ops_translate(ctx, ops, flags, test_uop, cpu_flags, uops);
     if (ret >= 0)
-        ret = ff_sws_uop_list_resolve(uops, test_uop, cpu_flags, 0);
+        ret = resolve(uops, cpu_flags);
     if (ret < 0)
         goto fail;
 
@@ -235,7 +238,18 @@ typedef struct Backend {
     const char *guard; /* include guard for the generated C header */
     BackendConfig configs[3]; /* all flag combinations used by the backend */
     SwsUOpTestFunc test_uop;
+    ResolveFunc resolve;
 } Backend;
+
+static int resolve_c(SwsUOpList *uops, unsigned cpu_flags)
+{
+    return ff_sws_uop_list_check(uops, ff_sws_test_uop_c, cpu_flags);
+}
+
+static int resolve_x86(SwsUOpList *uops, unsigned cpu_flags)
+{
+    return ff_sws_uop_list_resolve_x86(uops, cpu_flags, 0);
+}
 
 #define SSE4 AV_CPU_FLAG_SSE4
 #define AVX2 AV_CPU_FLAG_AVX2
@@ -247,6 +261,7 @@ static const Backend backends[] = {
         .guard = "SWSCALE_UOPS_MACROS_H",
         .configs = { { COMMON_FLAGS } },
         .test_uop = ff_sws_test_uop_c,
+        .resolve  = resolve_c,
     }, {
         .name  = "x86",
         .guard = "SWSCALE_X86_UOPS_MACROS_H",
@@ -256,6 +271,7 @@ static const Backend backends[] = {
             { COMMON_FLAGS | SWS_UOP_FLAG_FMA, SSE4 | AVX2 | FMA3 },
         },
         .test_uop = test_uop_x86,
+        .resolve  = resolve_x86,
     },
 };
 
@@ -277,7 +293,7 @@ static int register_uops(SwsContext *ctx, const SwsOpList *ops,
         if (!config->flags)
             break;
         int ret = register_flags(ctx, ops, config->flags, s->backend->test_uop,
-                                 config->cpu_flags);
+                                 s->backend->resolve, config->cpu_flags);
         if (ret < 0 && ret != AVERROR(ENOTSUP)) /* may depend on the CPU */
             return ret;
     }
