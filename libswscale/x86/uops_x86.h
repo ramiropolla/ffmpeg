@@ -60,7 +60,7 @@ static inline int ff_sws_x86_level(int cpu_flags)
 
 static inline SwsUOpFlags ff_sws_uop_flags_x86(void)
 {
-    return SWS_UOP_FLAG_PUNNING;
+    return 0;
 }
 
 /* Vector register size in bytes */
@@ -227,6 +227,7 @@ static inline void x86_policy_name(const SwsUOp *uop, int list,
 
 av_unused static const SwsUOpPolicy ff_sws_uop_policy_x86 = {
     .uop_flags  = x86_policy_uop_flags,
+    .punning    = true,
     .supported  = x86_policy_supported,
     .block_size = x86_policy_block_size,
     .simplify   = x86_policy_simplify,

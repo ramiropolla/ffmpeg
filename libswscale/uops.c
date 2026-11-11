@@ -225,11 +225,11 @@ int ff_sws_dither_height(const SwsDitherUOp *dither)
     return (1 << dither->size_log2) + max_offset;
 }
 
-/* Conditionally promotes a pixel type to integer only if allowed by the flags */
+/* Conditionally promotes a pixel type to integer if the policy allows it */
 static SwsPixelType pixel_type_to_int(const SwsUOpTarget *target,
                                       const SwsPixelType type)
 {
-    if (!(target->policy->uop_flags(target) & SWS_UOP_FLAG_PUNNING))
+    if (!target->policy->punning)
         return type;
 
     switch (ff_sws_pixel_type_size(type)) {

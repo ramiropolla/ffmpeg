@@ -158,7 +158,6 @@ static inline char *ff_sws_comp_mask_print(SwsCompMask mask, char buf[5])
 typedef uint32_t SwsUOpFlags;
 typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_NONE         = 0,
-    SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
 } SwsUOpFlagBits;
 
 typedef enum SwsUOpType {

@@ -37,7 +37,7 @@
 
 static inline SwsUOpFlags ff_sws_uop_flags_aarch64(void)
 {
-    return SWS_UOP_FLAG_PUNNING;
+    return 0;
 }
 
 /* Use at most two full vregs during the widest precision section */
@@ -280,6 +280,7 @@ static inline void aarch64_policy_name(const SwsUOp *uop, int list,
 
 av_unused static const SwsUOpPolicy ff_sws_uop_policy_aarch64 = {
     .uop_flags  = aarch64_policy_uop_flags,
+    .punning    = true,
     .supported  = aarch64_policy_supported,
     .block_size = aarch64_policy_block_size,
     .simplify   = aarch64_policy_simplify,
