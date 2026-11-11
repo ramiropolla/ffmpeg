@@ -35,11 +35,8 @@
 #include "libavutil/sanitizer.h"
 
 #include "ops_chain.h"
+#include "uops_backend.h"
 #include "uops_macros.h"
-
-#ifndef SWS_BLOCK_SIZE
-#  define SWS_BLOCK_SIZE 32
-#endif
 
 typedef union block_t {
     float    f32[SWS_BLOCK_SIZE];
