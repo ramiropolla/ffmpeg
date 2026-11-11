@@ -107,20 +107,14 @@ static inline int ff_sws_uop_pixel_size_x86(const SwsUOp *uop)
  * CPUs supporting `level`. uop->block_size must be set to the block size of
  * the chain, and is adjusted to match the kernel.
  *
+ * The uop must be accepted by x86_policy_supported(), and must not be
+ * SWS_UOP_RW_SHUFFLE.
+ *
  * Returns the ISA of the kernel, or AVERROR(ENOTSUP).
  */
 static inline int ff_sws_uop_simplify_x86(SwsX86ISA level, SwsUOp *uop)
 {
     switch (uop->uop) {
-    case SWS_UOP_RW_SHUFFLE: /* only as a standalone uop */
-    case SWS_UOP_LUT_3D:
-        return AVERROR(ENOTSUP);
-    case SWS_UOP_TO_F32:
-    case SWS_UOP_TO_U32:
-        /* The kernels use signed 32-bit conversions */
-        if (uop->type == SWS_PIXEL_U32 || uop->type == SWS_PIXEL_F32)
-            return AVERROR(ENOTSUP);
-        break;
     case SWS_UOP_READ_PLANAR:
     case SWS_UOP_WRITE_PLANAR:
     case SWS_UOP_CLEAR:
@@ -179,6 +173,12 @@ static inline bool x86_policy_supported(const SwsUOpTarget *target,
                                         const SwsUOp *uop)
 {
     switch (uop->uop) {
+    case SWS_UOP_LUT_3D:
+        return false;
+    case SWS_UOP_TO_F32:
+    case SWS_UOP_TO_U32:
+        /* The kernels use signed 32-bit conversions */
+        return uop->type != SWS_PIXEL_U32 && uop->type != SWS_PIXEL_F32;
     case SWS_UOP_READ_PLANAR_FV_FMA:
     case SWS_UOP_LINEAR_FMA:
         return target->cpu_flags & AV_CPU_FLAG_FMA3;
@@ -198,6 +198,8 @@ static inline int x86_policy_simplify(const SwsUOpTarget *target, SwsUOp *uop)
     const int level = ff_sws_x86_level(target->cpu_flags);
     if (level < 0)
         return level;
+    if (!x86_policy_supported(target, uop))
+        return AVERROR(ENOTSUP);
 
     /* The optimizer only produces SWS_UOP_RW_SHUFFLE as a standalone uop,
      * which is implemented by a single kernel without a block size */
