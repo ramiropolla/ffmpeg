@@ -352,6 +352,39 @@ typedef struct SwsUOpList {
     int pixel_size_max;     /* size of largest pixel type seen in any uop */
 } SwsUOpList;
 
+typedef struct SwsUOpPolicy SwsUOpPolicy;
+
+/* What a backend translates uops for */
+typedef struct SwsUOpTarget {
+    const SwsUOpPolicy *policy;
+    int cpu_flags;  /* AV_CPU_FLAG_* usable by the backend's kernels */
+    unsigned flags; /* SwsContext.flags */
+} SwsUOpTarget;
+
+/**
+ * Translation policy of a backend. The policies of backends with kernel
+ * lists must not depend on the host architecture, so that the uop list
+ * generator can apply them.
+ */
+struct SwsUOpPolicy {
+    SwsUOpFlags (*uop_flags)(const SwsUOpTarget *target);
+
+    /**
+     * Block size of a chain of uops. NULL for backends without kernel
+     * lists.
+     */
+    int (*block_size)(const SwsUOpTarget *target, const SwsUOpList *uops);
+
+    /**
+     * Rewrite a uop of a chain into the form of the kernel implementing it.
+     * uop->block_size must be set to the block size of the chain, and is
+     * adjusted to match the kernel. NULL for backends without kernel lists.
+     *
+     * Returns the index of the kernel list, or AVERROR(ENOTSUP).
+     */
+    int (*simplify)(const SwsUOpTarget *target, SwsUOp *uop);
+};
+
 SwsUOpList *ff_sws_uop_list_alloc(void);
 void ff_sws_uop_list_free(SwsUOpList **ops);
 void ff_sws_uop_list_remove_at(SwsUOpList *uops, int index, int count);
