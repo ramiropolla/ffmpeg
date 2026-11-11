@@ -28,8 +28,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "libavutil/attributes.h"
 #include "libavutil/error.h"
 
+#include "../swscale.h"
 #include "../uops.h"
 #include "ops_impl.h"
 
@@ -237,5 +239,28 @@ static inline void ff_sws_uop_name_aarch64(const SwsUOp *uop,
              uop_names[uop->uop], suffix, uop->block_size,
              type_names[uop->type], nibble_mask(uop->mask));
 }
+
+static inline SwsUOpFlags aarch64_policy_uop_flags(const SwsUOpTarget *target)
+{
+    return ff_sws_uop_flags_aarch64(target->flags & SWS_BITEXACT);
+}
+
+static inline int aarch64_policy_block_size(const SwsUOpTarget *target,
+                                            const SwsUOpList *uops)
+{
+    return ff_sws_uop_block_size_aarch64(uops);
+}
+
+static inline int aarch64_policy_simplify(const SwsUOpTarget *target,
+                                          SwsUOp *uop)
+{
+    return ff_sws_uop_simplify_aarch64(uop);
+}
+
+av_unused static const SwsUOpPolicy ff_sws_uop_policy_aarch64 = {
+    .uop_flags  = aarch64_policy_uop_flags,
+    .block_size = aarch64_policy_block_size,
+    .simplify   = aarch64_policy_simplify,
+};
 
 #endif /* SWSCALE_AARCH64_UOPS_AARCH64_H */
