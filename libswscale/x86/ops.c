@@ -579,17 +579,19 @@ fail:
 
 static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
 {
-    const int cpu_flags = av_get_cpu_flags();
-    const int level = get_level();
-    if (level < 0)
-        return level;
+    const SwsUOpTarget target = {
+        .policy    = &ff_sws_uop_policy_x86,
+        .cpu_flags = get_cpu_flags(),
+        .flags     = ctx->flags,
+    };
+    if (ff_sws_x86_level(target.cpu_flags) < 0)
+        return AVERROR(ENOTSUP);
 
-    const SwsUOpFlags flags = ff_sws_uop_flags_x86(EXTERNAL_FMA3(cpu_flags));
     SwsUOpList *uops = ff_sws_uop_list_alloc();
     if (!uops)
         return AVERROR(ENOMEM);
 
-    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    int ret = ff_sws_ops_translate(ctx, ops, &target, uops);
     if (ret < 0)
         goto fail;
 

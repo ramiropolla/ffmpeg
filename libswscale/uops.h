@@ -415,7 +415,7 @@ void ff_sws_uop_list_print(void *log_ctx, int log_level, const SwsUOpList *uops)
  * Return 0 or a negative error code.
  */
 int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
-                         SwsUOpFlags flags, SwsUOpList *uops);
+                         const SwsUOpTarget *target, SwsUOpList *uops);
 
 /**
  * Compute a shuffle mask for `pshufb`-style ASM functions, by repeating

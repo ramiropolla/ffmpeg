@@ -644,8 +644,9 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
 }
 
 int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
-                         SwsUOpFlags flags, SwsUOpList *uops)
+                         const SwsUOpTarget *target, SwsUOpList *uops)
 {
+    const SwsUOpFlags flags = target->policy->uop_flags(target);
     const SwsOpPad *inputs = ops->inputs;
     for (int n = 0; n < ops->num_ops; n++) {
         const SwsOp *op = &ops->ops[n];

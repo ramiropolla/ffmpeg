@@ -242,7 +242,7 @@ static int collect_ops(SwsContext *ctx, const SwsOpList *ops)
         if (!uops)
             return AVERROR(ENOMEM);
 
-        int ret = ff_sws_ops_translate(ctx, ops, t->policy->uop_flags(&target), uops);
+        int ret = ff_sws_ops_translate(ctx, ops, &target, uops);
         if (ret >= 0)
             ret = collect_chain(ctx, &target, uops);
         ff_sws_uop_list_free(&uops);

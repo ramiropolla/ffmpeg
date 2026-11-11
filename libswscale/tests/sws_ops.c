@@ -40,7 +40,11 @@ static int print_ops(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
     if (!uops)
         return AVERROR(ENOMEM);
 
-    int ret = ff_sws_ops_translate(ctx, ops, ff_sws_uop_flags_c(), uops);
+    const SwsUOpTarget target = {
+        .policy = &ff_sws_uop_policy_c,
+        .flags  = ctx->flags,
+    };
+    int ret = ff_sws_ops_translate(ctx, ops, &target, uops);
     if (ret == AVERROR(ENOTSUP))
         goto fail;
 

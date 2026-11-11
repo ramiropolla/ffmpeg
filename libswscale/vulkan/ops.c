@@ -1267,6 +1267,15 @@ fail:
     return err;
 }
 
+static SwsUOpFlags vulkan_uop_flags(const SwsUOpTarget *target)
+{
+    return SWS_UOP_FLAG_ADD;
+}
+
+static const SwsUOpPolicy policy_vulkan = {
+    .uop_flags = vulkan_uop_flags,
+};
+
 static int compile_ops_spirv(SwsContext *sws, const SwsOpList *ops,
                              SwsCompiledOp *out)
 {
@@ -1293,7 +1302,11 @@ static int compile_ops_spirv(SwsContext *sws, const SwsOpList *ops,
         goto fail;
     }
 
-    err = ff_sws_ops_translate(sws, ops, SWS_UOP_FLAG_ADD, uops);
+    const SwsUOpTarget target = {
+        .policy = &policy_vulkan,
+        .flags  = sws->flags,
+    };
+    err = ff_sws_ops_translate(sws, ops, &target, uops);
     if (err < 0)
         goto fail;
 

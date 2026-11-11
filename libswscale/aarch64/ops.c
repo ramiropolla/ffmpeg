@@ -242,8 +242,12 @@ static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,
     if (!uops)
         return AVERROR(ENOMEM);
 
-    const SwsUOpFlags flags = ff_sws_uop_flags_aarch64(ctx->flags & SWS_BITEXACT);
-    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    const SwsUOpTarget target = {
+        .policy    = &ff_sws_uop_policy_aarch64,
+        .cpu_flags = AV_CPU_FLAG_NEON,
+        .flags     = ctx->flags,
+    };
+    int ret = ff_sws_ops_translate(ctx, ops, &target, uops);
     if (ret < 0)
         goto error;
 
