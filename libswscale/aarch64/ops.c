@@ -169,8 +169,9 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
-    /* Use at most two full vregs during the widest precision section */
-    int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
+    const int block_size = uops->block_size;
+    if (!block_size)
+        return AVERROR(EINVAL);
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)
@@ -185,7 +186,7 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     /* Look up kernel functions. */
     for (int i = 0; i < uops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
-        convert_to_aarch64_impl(&uops->ops[i], block_size, &params);
+        convert_to_aarch64_impl(&uops->ops[i], &params);
         SwsFuncPtr func = aarch64_lookup(&params);
         if (!func) {
             ret = AVERROR(ENOTSUP);
@@ -229,7 +230,7 @@ error:
 /*********************************************************************/
 static int resolve_uops_aarch64(SwsUOpList *uops, int block_size)
 {
-    return ff_sws_uop_list_resolve(uops, test_uop_aarch64, 0, block_size);
+    return ff_sws_uop_list_resolve_aarch64(uops, AV_CPU_FLAG_NEON, block_size);
 }
 
 static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,
