@@ -155,11 +155,6 @@ static inline char *ff_sws_comp_mask_print(SwsCompMask mask, char buf[5])
     return buf;
 }
 
-typedef uint32_t SwsUOpFlags;
-typedef enum SwsUOpFlagBits {
-    SWS_UOP_FLAG_NONE         = 0,
-} SwsUOpFlagBits;
-
 typedef enum SwsUOpType {
     SWS_UOP_INVALID = 0,
 
@@ -361,8 +356,6 @@ typedef struct SwsUOpTarget {
  * generator can apply them.
  */
 struct SwsUOpPolicy {
-    SwsUOpFlags (*uop_flags)(const SwsUOpTarget *target);
-
     bool punning; /* allow type punning float data as int */
 
     /**

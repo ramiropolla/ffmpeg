@@ -29,16 +29,6 @@
 
 #define SWS_BLOCK_SIZE 32
 
-static inline SwsUOpFlags ff_sws_uop_flags_c(void)
-{
-    return 0;
-}
-
-static inline SwsUOpFlags c_policy_uop_flags(const SwsUOpTarget *target)
-{
-    return ff_sws_uop_flags_c();
-}
-
 static inline bool c_policy_supported(const SwsUOpTarget *target,
                                       const SwsUOp *uop)
 {
@@ -70,7 +60,6 @@ static inline void c_policy_name(const SwsUOp *uop, int list,
 }
 
 av_unused static const SwsUOpPolicy ff_sws_uop_policy_c = {
-    .uop_flags  = c_policy_uop_flags,
     .punning    = true,
     .supported  = c_policy_supported,
     .block_size = c_policy_block_size,
