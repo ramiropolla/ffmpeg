@@ -22,7 +22,7 @@
 #define SWSCALE_X86_OPS_H
 
 /**
- * Note: This header is also used by uops_macros_gen on all architectures,
+ * Note: This header is also used by uops_entries_gen on all architectures,
  * so it must not depend on any x86-specific code or build configuration.
  */
 
