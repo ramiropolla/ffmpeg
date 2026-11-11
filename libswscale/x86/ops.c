@@ -672,8 +672,7 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
         return AVERROR(ENOMEM);
 
     *out = (SwsCompiledOp) {
-        /* Use at most two full YMM regs during the widest precision section */
-        .block_size  = 2 * FFMIN(ff_sws_mmsize_x86(level), 32) / uops->pixel_size_max,
+        .block_size  = ff_sws_uop_block_size_x86(level, uops),
         .slice_align = 1,
     };
 

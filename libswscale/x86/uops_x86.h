@@ -26,6 +26,8 @@
 
 #include <stdbool.h>
 
+#include "libavutil/macros.h"
+
 #include "../uops.h"
 
 /* Used both for the CPU level and for the ISA of a kernel */
@@ -55,6 +57,16 @@ static inline int ff_sws_mmsize_x86(SwsX86ISA isa)
     case SWS_X86_AVX2: return 32;
     default:           return 64;
     }
+}
+
+/**
+ * Block size of a chain of uops. Uses at most two full YMM registers during
+ * the widest precision section.
+ */
+static inline int ff_sws_uop_block_size_x86(SwsX86ISA level,
+                                            const SwsUOpList *uops)
+{
+    return 2 * FFMIN(ff_sws_mmsize_x86(level), 32) / uops->pixel_size_max;
 }
 
 #endif /* SWSCALE_X86_UOPS_X86_H */
