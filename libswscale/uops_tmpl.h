@@ -36,7 +36,6 @@
 
 #include "ops_chain.h"
 #include "uops_backend.h"
-#include "uops_macros.h"
 
 typedef union block_t {
     float    f32[SWS_BLOCK_SIZE];
@@ -140,33 +139,5 @@ static_assert(alignof(SwsFilterPriv) <= alignof(SwsOpPriv),
 #define DECL_SETUP(NAME, PARAMS, OUT)                                           \
     av_unused static int fn(NAME)(const SwsImplParams *PARAMS,                  \
                                   SwsImplResult *OUT)
-
-/* Helper macro for declaring kernel entry points */
-#define DECL_IMPL(FUNC, NAME, TYPE, UOP, ...)                                   \
-    av_flatten static void NAME##_c(SwsOpIter *restrict iter,                   \
-                                    const SwsOpImpl *restrict impl,             \
-                                    void *restrict x, void *restrict y,         \
-                                    void *restrict z, void *restrict w)         \
-    {                                                                           \
-        CALL(FUNC, __VA_ARGS__);                                                \
-    }
-
-#define DECL_IMPL_READ(...)                                                     \
-    DECL_IMPL(__VA_ARGS__,                                                      \
-              (const pixel_t *) iter->in[0], (const pixel_t *) iter->in[1],     \
-              (const pixel_t *) iter->in[2], (const pixel_t *) iter->in[3])
-
-#define DECL_IMPL_WRITE(...)                                                    \
-    DECL_IMPL(__VA_ARGS__,                                                      \
-              (pixel_t *) iter->out[0], (pixel_t *) iter->out[1],               \
-              (pixel_t *) iter->out[2], (pixel_t *) iter->out[3])
-
-#define REF_ENTRY(DUMMY, NAME, ...) &uop_##NAME,
-#define DECL_ENTRY(SETUP, NAME, ...)                                            \
-    static const SwsUOpEntry uop_##NAME = {                                     \
-        .func = (SwsFuncPtr) NAME##_c,                                          \
-        __VA_ARGS__,                                                            \
-        SETUP                                                                   \
-    };
 
 #endif
