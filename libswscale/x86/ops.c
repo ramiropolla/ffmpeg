@@ -661,7 +661,9 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
     for (int i = 0; i < uops->num_ops; i++) {
         SwsUOp uop = uops->ops[i];
         uop.block_size = out->block_size;
-        ff_sws_uop_simplify_x86(level, &uop);
+        ret = ff_sws_uop_simplify_x86(level, &uop);
+        if (ret < 0)
+            goto fail;
 
         ret = ff_sws_uop_lookup(ctx, tables, FF_ARRAY_ELEMS(tables), &uop, chain);
         if (ret < 0)
