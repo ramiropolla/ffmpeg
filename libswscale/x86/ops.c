@@ -434,19 +434,27 @@ SWS_DECL_FUNC(ff_sws_process2_x86);
 SWS_DECL_FUNC(ff_sws_process3_x86);
 SWS_DECL_FUNC(ff_sws_process4_x86);
 
-static int get_level(void)
+/* AV_CPU_FLAG_* of the instruction sets the kernels were assembled for */
+static int get_cpu_flags(void)
 {
     const int cpu_flags = av_get_cpu_flags();
+    int flags = 0;
+    if (EXTERNAL_SSE4(cpu_flags))
+        flags |= AV_CPU_FLAG_SSE4;
+    if (EXTERNAL_AVX2(cpu_flags))
+        flags |= AV_CPU_FLAG_AVX2;
+    if (EXTERNAL_FMA3(cpu_flags))
+        flags |= AV_CPU_FLAG_FMA3;
+    if (EXTERNAL_AVX512(cpu_flags))
+        flags |= AV_CPU_FLAG_AVX512;
     if (EXTERNAL_AVX512ICL(cpu_flags))
-        return SWS_X86_AVX512ICL;
-    else if (EXTERNAL_AVX512(cpu_flags))
-        return SWS_X86_AVX512;
-    else if (EXTERNAL_AVX2(cpu_flags))
-        return SWS_X86_AVX2;
-    else if (EXTERNAL_SSE4(cpu_flags))
-        return SWS_X86_SSE4;
-    else
-        return AVERROR(ENOTSUP);
+        flags |= AV_CPU_FLAG_AVX512ICL;
+    return flags;
+}
+
+static int get_level(void)
+{
+    return ff_sws_x86_level(get_cpu_flags());
 }
 
 static int movsize(const int bytes, const int mmsize)
