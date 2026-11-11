@@ -77,7 +77,7 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
     union {
-        uint8_t  u8[4 * 16];
+        uint8_t  u8[4][16];
         uint16_t u16[4 * 8];
         uint32_t u32[4 * 4];
         float    f32[4 * 4];
@@ -94,7 +94,7 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
                 continue;
             const SwsPixel px = uop->data.mat4x5[i][j];
             switch (p->type) {
-            case SWS_PIXEL_U8:  coeffs.u8[i_coeff++]  = px.u8;  break;
+            case SWS_PIXEL_U8:  memset(coeffs.u8[i_coeff++], px.u8, 16); break;
             case SWS_PIXEL_U16: coeffs.u16[i_coeff++] = px.u16; break;
             case SWS_PIXEL_U32: coeffs.u32[i_coeff++] = px.u32; break;
             case SWS_PIXEL_F32: coeffs.f32[i_coeff++] = px.f32; break;

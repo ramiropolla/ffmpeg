@@ -63,10 +63,14 @@ typedef struct SwsAArch64OpImplParams {
 #define LOOP_MASK(p, idx) LOOP(p->mask, idx)
 #define LOOP_MASK_BWD(p, idx) LOOP_BWD(p->mask, idx)
 
-/* Number of elements in each linear coefficient vector register. */
+/**
+ * Number of coefficients in each linear coefficient vector register.
+ * Integer multiplication by element does not exist for 8-bit elements, so
+ * u8 coefficients are stored pre-broadcast, one per vector.
+ */
 static inline int linear_vreg_nelems(SwsPixelType type)
 {
-    return 16 / ff_sws_pixel_type_size(type);
+    return type == SWS_PIXEL_U8 ? 1 : 16 / ff_sws_pixel_type_size(type);
 }
 
 /**

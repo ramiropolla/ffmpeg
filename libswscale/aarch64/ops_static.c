@@ -328,8 +328,22 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     RasmContext *r = s->rctx;
     RasmOp *sl = regs->sl;
     RasmOp *sh = regs->sh;
-    RasmOp *vc = regs->vk;
     RasmOp *vt = regs->vt;
+
+    /**
+     * Integer mul/mla by element does not exist for 8-bit elements, and
+     * requires the element register to be in v0-v15 for 16-bit elements.
+     * The u8 coefficients are stored pre-broadcast, and loaded into temp
+     * vectors 8-11, which are otherwise only used by the floating-point
+     * fmul+fadd path. The u16 coefficients are loaded into v8, so they
+     * may only take one vector (see check_kernel_vregs()).
+     */
+    RasmOp *vc;
+    switch (p->type) {
+    case SWS_PIXEL_U8:  vc = &vt[8];        break;
+    case SWS_PIXEL_U16: vc = &regs->vsaved; break;
+    default:            vc = regs->vk;      break;
+    }
 
     /* Preload coefficients from impl->priv. */
     const uint32_t coeff_mask = linear_coeff_mask(p);
@@ -344,18 +358,7 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     load_vectors(s, vc, off, num_vregs, s->impl, true, names);
     asmgen_set_load_cont_node(s);
 
-    /**
-     * Integer mul/mla by element does not exist for 8-bit elements, and
-     * requires the element register to be in v0-v15 for 16-bit elements.
-     * For these types, the coefficients used as multiplication operands
-     * are broadcast into full temp vectors instead. Temp vectors 8-11
-     * are otherwise only used by the floating-point fmul+fadd path, so
-     * they are free for integer types.
-     */
-    const bool dup_coeffs = (p->type == SWS_PIXEL_U8 || p->type == SWS_PIXEL_U16);
     const int nelems = linear_vreg_nelems(p->type);
-    RasmOp *vint = &vt[8];
-    int i_vint = 0;
 
     /**
      * Populate operands matrix from packed data into linear_vcoeff matrix
@@ -375,12 +378,10 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
             if (!is_offset && (coeff_mask & SWS_MASK(i, src_j))) {
                 uint8_t vc_i = i_coeff / nelems;
                 uint8_t vc_j = i_coeff & (nelems - 1);
-                vcoeff = a64op_elem(vc[vc_i], vc_j);
-                if (dup_coeffs) {
-                    av_assert0(i_vint < 4);
-                    i_dup(r, vint[i_vint], vcoeff);         CMTF("vcoeff%u = broadcast(coeff[%u][%u]);", i_vint, i, src_j);
-                    vcoeff = vint[i_vint++];
-                }
+                if (p->type == SWS_PIXEL_U8)
+                    vcoeff = vc[vc_i];
+                else
+                    vcoeff = a64op_elem(vc[vc_i], vc_j);
                 i_coeff++;
             }
             regs->linear_vcoeff[i][j] = vcoeff;
