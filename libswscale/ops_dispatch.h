@@ -152,7 +152,7 @@ typedef struct SwsOpBackend {
      * Resolve a list of micro-ops for this backend, as by
      * ff_sws_uop_list_resolve(). Required if `compile_uops` is set.
      */
-    int (*resolve_uops)(SwsUOpList *uops, int pixels);
+    int (*resolve_uops)(SwsUOpList *uops, int block_size);
 
     /**
      * If NONE, backend only supports software frames.

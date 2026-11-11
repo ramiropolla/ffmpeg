@@ -98,7 +98,7 @@ static int setup_filter_h(const SwsImplParams *params, SwsImplResult *out)
     const int pixel_size = ff_sws_pixel_type_size(uop->type);
     const int taps_align = sizeof(int32_t) / pixel_size;
     const int filter_size = filter->filter_size;
-    const int block_size = params->pixels;
+    const int block_size = params->block_size;
     const size_t aligned_size = FFALIGN(filter_size, taps_align);
     const size_t line_size = FFALIGN(filter->dst_size, block_size);
     av_assert1(FFALIGN(line_size, taps_align) == line_size);
@@ -207,7 +207,7 @@ static int setup_filter_h_4x4(const SwsImplParams *params, SwsImplResult *out)
     const SwsFilterWeights *filter = uop->data.kernel;
     const int pixel_size = ff_sws_pixel_type_size(uop->type);
     const int sizeof_weights = hscale_sizeof_weight(uop);
-    const int block_size = params->pixels;
+    const int block_size = params->block_size;
     const int taps_align = 16 / sizeof_weights; /* taps per iteration (XMM) */
     const int pixels_align = 4; /* pixels per iteration */
     const int filter_size = filter->filter_size;
@@ -410,7 +410,7 @@ SWS_FOR_STRUCT(TYPE, DITHER,          DECL_ENTRY, EXT, NULL, setup_dither)      
     SWS_FOR(TYPE, DITHER,         REF_ENTRY, EXT)                               \
     /* end of macro */
 
-#define DECL_TABLE_U8(EXT, BYTES, FLAG)                                         \
+#define DECL_TABLE_U8(EXT, SIZE, FLAG)                                          \
 DECL_OPS_COMMON(EXT, U8)                                                        \
 SWS_FOR_STRUCT(U8, READ_PLANAR,     DECL_ENTRY, EXT, NULL, NULL)                \
 SWS_FOR_STRUCT(U8, WRITE_PLANAR,    DECL_ENTRY, EXT, NULL, NULL)                \
@@ -418,7 +418,7 @@ SWS_FOR_STRUCT(U8, CLEAR,           DECL_ENTRY, EXT, NULL, setup_clear)         
                                                                                 \
 static const SwsUOpTable uops_u8##EXT = {                                       \
     .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
-    .bytes = BYTES,                                                             \
+    .block_size = SIZE,                                                         \
     .entries = {                                                                \
         REF_OPS_COMMON(EXT, U8)                                                 \
         SWS_FOR(U8, READ_PLANAR,    REF_ENTRY, EXT)                             \
@@ -428,7 +428,7 @@ static const SwsUOpTable uops_u8##EXT = {                                       
     },                                                                          \
 };
 
-#define DECL_TABLE_U16(EXT, BYTES, FLAG)                                        \
+#define DECL_TABLE_U16(EXT, SIZE, FLAG)                                         \
 DECL_OPS_COMMON(EXT, U16)                                                       \
 SWS_FOR_STRUCT(U8,  TO_U16, DECL_ENTRY, EXT, NULL, NULL)                        \
 SWS_FOR_STRUCT(U16, TO_U8,  DECL_ENTRY, EXT, NULL, NULL)                        \
@@ -436,7 +436,7 @@ SWS_FOR_STRUCT(U8,  EXPAND_PAIR, DECL_ENTRY, EXT, NULL, NULL)                   
                                                                                 \
 static const SwsUOpTable uops_u16##EXT = {                                      \
     .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
-    .bytes = BYTES,                                                             \
+    .block_size = SIZE,                                                         \
     .entries = {                                                                \
         REF_OPS_COMMON(EXT, U16)                                                \
         SWS_FOR(U8,  TO_U16, REF_ENTRY, EXT)                                    \
@@ -446,7 +446,7 @@ static const SwsUOpTable uops_u16##EXT = {                                      
     },                                                                          \
 };
 
-#define DECL_TABLE_U32(EXT, BYTES, FLAG)                                        \
+#define DECL_TABLE_U32(EXT, SIZE, FLAG)                                         \
 DECL_OPS_COMMON(EXT, U32)                                                       \
 SWS_FOR_STRUCT(U8,  TO_U32, DECL_ENTRY, EXT, NULL, NULL)                        \
 SWS_FOR_STRUCT(U32, TO_U8,  DECL_ENTRY, EXT, NULL, NULL)                        \
@@ -456,7 +456,7 @@ SWS_FOR_STRUCT(U8,  EXPAND_QUAD, DECL_ENTRY, EXT, NULL, NULL)                   
                                                                                 \
 static const SwsUOpTable uops_u32##EXT = {                                      \
     .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
-    .bytes = BYTES,                                                             \
+    .block_size = SIZE,                                                         \
     .entries = {                                                                \
         REF_OPS_COMMON(EXT, U32)                                                \
         SWS_FOR(U8,  TO_U32, REF_ENTRY, EXT)                                    \
@@ -468,7 +468,7 @@ static const SwsUOpTable uops_u32##EXT = {                                      
     },                                                                          \
 };
 
-#define DECL_TABLE_F32(EXT, BYTES, FLAG)                                        \
+#define DECL_TABLE_F32(EXT, SIZE, FLAG)                                         \
 DECL_OPS_COMMON(EXT, F32)                                                       \
 SWS_FOR_STRUCT(U8,  TO_F32, DECL_ENTRY, EXT, NULL, NULL)                        \
 SWS_FOR_STRUCT(F32, TO_U8,  DECL_ENTRY, EXT, NULL, NULL)                        \
@@ -492,7 +492,7 @@ SWS_FOR_STRUCT(F32, READ_PLANAR_FV_FMA, DECL_ENTRY, EXT, NULL, setup_filter_v)  
                                                                                 \
 static const SwsUOpTable uops_f32##EXT = {                                      \
     .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
-    .bytes = BYTES,                                                             \
+    .block_size = SIZE,                                                         \
     .entries = {                                                                \
         REF_OPS_COMMON(EXT, F32)                                                \
         SWS_FOR(U8,  TO_F32, REF_ENTRY, EXT)                                    \
@@ -519,10 +519,10 @@ DECL_TABLE_U8( _m16_sse4, 16, SSE4)
 DECL_TABLE_U8( _m32_avx2, 32, AVX2)
 DECL_TABLE_U8( _m32_sse4, 32, SSE4)
 DECL_TABLE_U8( _m64_avx2, 64, AVX2)
-DECL_TABLE_U16(_m32_avx2, 32, AVX2)
-DECL_TABLE_U16(_m64_avx2, 64, AVX2)
-DECL_TABLE_U32(_m64_avx2, 64, AVX2)
-DECL_TABLE_F32(_m64_avx2, 64, AVX2)
+DECL_TABLE_U16(_m32_avx2, 16, AVX2)
+DECL_TABLE_U16(_m64_avx2, 32, AVX2)
+DECL_TABLE_U32(_m64_avx2, 16, AVX2)
+DECL_TABLE_F32(_m64_avx2, 16, AVX2)
 
 static const SwsUOpTable *const tables[] = {
     &uops_u8_m16_sse4,
@@ -578,7 +578,7 @@ static int translate_shuffle(const SwsUOp *uop, SwsCompiledOp *out)
     const SwsShuffleUOp *par = &uop->par.shuffle;
     const int lane_aligned = par->read_size == par->write_size &&
                              16 % par->read_size == 0;
-    const int mmsize = uop->bytes;
+    const int mmsize = uop->block_size;
 
     /* Generate the shuffle mask */
     const int mask_size = lane_aligned ? 16 : mmsize;
@@ -638,13 +638,13 @@ do {                                                                            
 static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiledOp *out)
 {
     int ret;
-    if (!uops->pixels)
+    if (!uops->block_size)
         return AVERROR(EINVAL);
 
     if (uops->num_ops == 1 && uops->ops[0].uop == SWS_UOP_RW_SHUFFLE) {
         const SwsUOp *uop = &uops->ops[0];
         ret = translate_shuffle(uop, out);
-        av_assert1(ret < 0 || out->block_size == uops->pixels);
+        av_assert1(ret < 0 || out->block_size == uops->block_size);
         if (ret >= 0) {
             char name[SWS_UOP_NAME_MAX];
             ff_sws_uop_name(uop, name);
@@ -658,7 +658,7 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
         return AVERROR(ENOMEM);
 
     *out = (SwsCompiledOp) {
-        .block_size  = uops->pixels,
+        .block_size  = uops->block_size,
         .slice_align = 1,
     };
 
@@ -685,9 +685,10 @@ fail:
     return ret;
 }
 
-static int resolve_uops_x86(SwsUOpList *uops, int pixels)
+static int resolve_uops_x86(SwsUOpList *uops, int block_size)
 {
-    return ff_sws_uop_list_resolve(uops, test_uop_x86, get_uop_cpu_flags(), pixels);
+    return ff_sws_uop_list_resolve(uops, test_uop_x86, get_uop_cpu_flags(),
+                                   block_size);
 }
 
 static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)

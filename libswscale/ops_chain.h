@@ -103,7 +103,7 @@ typedef struct SwsImplParams {
     const SwsUOpTable *table;
     const SwsUOp *uop;
     SwsContext *ctx;
-    int pixels; /* number of pixels per block */
+    int block_size; /* number of pixels per block */
 } SwsImplParams;
 
 typedef struct SwsImplResult {
@@ -151,7 +151,7 @@ static inline void ff_sws_op_priv_pack_refptr(SwsImplResult *out, const void *da
 
 struct SwsUOpTable {
     unsigned cpu_flags;   /* required CPU flags for this table */
-    int bytes;            /* fixed uop size of this table, in bytes, or 0 */
+    int block_size;       /* fixed SwsUOp.block_size of this table, or 0 */
     const SwsUOpEntry *entries[]; /* terminated by NULL */
 };
 

@@ -227,9 +227,9 @@ error:
 }
 
 /*********************************************************************/
-static int resolve_uops_aarch64(SwsUOpList *uops, int pixels)
+static int resolve_uops_aarch64(SwsUOpList *uops, int block_size)
 {
-    return ff_sws_uop_list_resolve(uops, test_uop_aarch64, 0, pixels);
+    return ff_sws_uop_list_resolve(uops, test_uop_aarch64, 0, block_size);
 }
 
 static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,

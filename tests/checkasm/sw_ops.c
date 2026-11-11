@@ -291,7 +291,7 @@ static void check_compiled(const Test *test,
 }
 
 static int resolve_uops(const Test *test, const SwsOpBackend *backend,
-                        int pixels, SwsUOpList *uops)
+                        int block_size, SwsUOpList *uops)
 {
     SwsUOp *ops = uops->ops;
     av_assert0(test->num_uops <= MAX_UOPS);
@@ -312,7 +312,7 @@ static int resolve_uops(const Test *test, const SwsOpBackend *backend,
             uops->pixel_size_max = pixel_size;
     }
 
-    return backend->resolve_uops(uops, pixels);
+    return backend->resolve_uops(uops, block_size);
 }
 
 static void run_test(const Test *test)
@@ -359,9 +359,9 @@ static void run_test(const Test *test)
         if (!backend->compile_uops)
             continue;
 
-        int pixels = 0; /* pick the largest supported size in first iter */
+        int block_size = 0; /* pick the largest supported size in first iter */
         do {
-            ret = resolve_uops(test, backend, pixels, &oplist);
+            ret = resolve_uops(test, backend, block_size, &oplist);
             if (ret == AVERROR(ENOTSUP)) {
                 break;
             } else if (ret < 0) {
@@ -380,14 +380,14 @@ static void run_test(const Test *test)
             }
 
             /* Distinguish backends from each other even with same CPU flags */
-            checkasm_set_func_variant("w%d_%s_%s", oplist.pixels, backend->name,
-                                      checkasm_get_cpu_suffix());
+            checkasm_set_func_variant("w%d_%s_%s", oplist.block_size,
+                                      backend->name, checkasm_get_cpu_suffix());
             check_compiled(test, &comp_ref, &comp_new);
             ff_sws_compiled_op_unref(&comp_new);
 
-            av_assert0(!pixels || oplist.pixels == pixels);
-            pixels = oplist.pixels >> 1;
-        } while (pixels);
+            av_assert0(!block_size || oplist.block_size == block_size);
+            block_size = oplist.block_size >> 1;
+        } while (block_size);
     }
 
 done:

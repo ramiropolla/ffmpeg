@@ -85,7 +85,7 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
     SwsImplParams params = {
         .ctx = ctx,
         .uop = uop,
-        .pixels = block_size,
+        .block_size = block_size,
     };
 
     for (int n = 0; !match && n < num_tables; n++) {
@@ -100,7 +100,8 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
                 .type = entry->type,
                 .mask = entry->mask,
                 .par  = entry->par,
-                .bytes = table->bytes ? table->bytes : uop->bytes,
+                .block_size = table->block_size ? table->block_size
+                                                : uop->block_size,
             };
 
             if (ff_sws_uop_cmp(uop, &entry_uop) != 0)

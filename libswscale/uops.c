@@ -38,8 +38,8 @@ int ff_sws_uop_cmp(const SwsUOp *a, const SwsUOp *b)
         return (int) a->type - b->type;
     if (a->uop != b->uop)
         return (int) a->uop - b->uop;
-    if (a->bytes != b->bytes)
-        return a->bytes - b->bytes;
+    if (a->block_size != b->block_size)
+        return a->block_size - b->block_size;
     if (a->mask != b->mask)
         return (int) a->mask - b->mask;
     return memcmp(&a->par, &b->par, sizeof(a->par));
@@ -138,9 +138,6 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
         av_bprintf(&bp, "_%s", par->lut3d.dynamic ? "dynamic" : "static");
         break;
     }
-
-    if (op->bytes)
-        av_bprintf(&bp, "_m%d", op->bytes);
 
     av_assert0(av_bprint_is_complete(&bp));
 }
@@ -684,10 +681,10 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
 }
 
 int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
-                            unsigned cpu_flags, int pixels)
+                            unsigned cpu_flags, int block_size)
 {
     int pixels_min = 0, pixels_max = INT_MAX;
-    if (uops->pixels)
+    if (uops->block_size)
         return AVERROR(EINVAL); /* already resolved */
 
     for (int i = 0; i < uops->num_ops; i++) {
@@ -701,8 +698,10 @@ int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
             /* The number of pixels is fixed by the shuffle pattern */
             const SwsShuffleUOp *par = &uop->par.shuffle;
             const int group_size = FFMAX(par->read_size, par->write_size);
-            uop->bytes = limits.max_bytes;
-            uops->pixels = uop->bytes / group_size * uop->data.shuffle.pixels;
+            /* SWS_UOP_RW_SHUFFLE is a u8 uop, so its block size is in bytes */
+            uop->block_size = limits.max_bytes;
+            uops->block_size = limits.max_bytes / group_size *
+                               uop->data.shuffle.pixels;
             av_assert0(uops->num_ops == 1);
             return 0;
         }
@@ -718,23 +717,27 @@ int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
         const int max = limits.max_bytes / pixel_size;
         pixels_min = FFMAX(pixels_min, min);
         pixels_max = FFMIN(pixels_max, max);
-        uop->bytes = pixel_size; /* size for 1 pixel first */
+        /* Bytes per pixel, before any type change */
+        uop->block_size = pixel_size;
         if (limits.type)
             uop->type = limits.type;
     }
 
     /* Use the largest number of pixels supported by all sized uops */
     if (pixels_max == INT_MAX)
-        pixels = 0; /* unsized */
-    else if (!pixels)
-        pixels = pixels_max;
+        block_size = 0; /* unsized */
+    else if (!block_size)
+        block_size = pixels_max;
 
-    if (pixels < pixels_min || pixels > pixels_max)
+    if (block_size < pixels_min || block_size > pixels_max)
         return AVERROR(ENOTSUP);
 
-    uops->pixels = pixels;
-    for (int i = 0; i < uops->num_ops; i++)
-        uops->ops[i].bytes *= pixels;
+    uops->block_size = block_size;
+    for (int i = 0; i < uops->num_ops; i++) {
+        SwsUOp *uop = &uops->ops[i];
+        const int pixel_size = ff_sws_uop_pixel_size_max(uop);
+        uop->block_size = block_size * uop->block_size / pixel_size;
+    }
 
     return 0;
 }

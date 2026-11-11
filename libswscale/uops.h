@@ -309,10 +309,11 @@ typedef struct SwsUOp {
     SwsUOpParams par;
 
     /**
-     * Number of bytes per component processed at once, for the largest pixel
-     * type involved in this uop, or 0 if unsized.
+     * Number of elements of `type` per component processed at once, or 0 if
+     * unsized. This differs from SwsUOpList.block_size if the uop is executed
+     * as a different pixel type.
      */
-    int bytes;
+    int block_size;
 
     /* Constant data for this uop; not part of the unique identifier */
     union {
@@ -382,7 +383,7 @@ typedef struct SwsUOpList {
     SwsCompMask planes_in;  /* mask of planes read from */
     SwsCompMask planes_out; /* mask of planes written to */
     int pixel_size_max;     /* size of largest pixel type seen in any uop */
-    int pixels;             /* pixels per block, or 0 if unsized */
+    int block_size;         /* pixels per block, or 0 if unsized */
 } SwsUOpList;
 
 SwsUOpList *ff_sws_uop_list_alloc(void);
@@ -394,7 +395,8 @@ int ff_sws_uop_list_append(SwsUOpList *uops, SwsUOp *uop);
 
 typedef struct SwsUOpLimits {
     /**
-     * Range of supported values for SwsUOp.bytes. Must be a power of two,
+     * Range of supported sizes in bytes, for the largest pixel type involved
+     * in the uop. Must be a power of two,
      * or zero for backends without size annotations.
      */
     int min_bytes;
@@ -446,13 +448,13 @@ void ff_sws_uop_list_print(void *log_ctx, int log_level, const SwsUOpList *uops)
  * Test all uops in a list for support by the backend, and resolve their
  * sizes.
  *
- * @param pixels The number of pixels per block, or 0 to pick the largest
+ * @param block_size The number of pixels per block, or 0 to pick the largest
  *
  * Returns 0 or a negative error code. On failure, this may have partially
  * mutated `uops`.
  */
 int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,
-                            unsigned cpu_flags, int pixels);
+                            unsigned cpu_flags, int block_size);
 
 /**
  * Translate a list of operations down to micro-ops, which can be further

@@ -141,7 +141,7 @@ static void process_c(const SwsOpExec *exec, const void *priv,
 static int compile_uops_c(SwsContext *ctx, const SwsUOpList *uops, SwsCompiledOp *out)
 {
     int ret;
-    if (uops->pixels != SWS_BLOCK_SIZE)
+    if (uops->block_size != SWS_BLOCK_SIZE)
         return AVERROR(EINVAL);
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
@@ -186,9 +186,9 @@ int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limit
     return 0;
 }
 
-static int resolve_uops_c(SwsUOpList *uops, int pixels)
+static int resolve_uops_c(SwsUOpList *uops, int block_size)
 {
-    return ff_sws_uop_list_resolve(uops, ff_sws_test_uop_c, 0, pixels);
+    return ff_sws_uop_list_resolve(uops, ff_sws_test_uop_c, 0, block_size);
 }
 
 static int compile_ops_c(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)

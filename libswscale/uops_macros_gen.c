@@ -179,7 +179,7 @@ static int register_uop(struct EnumPriv *s, const SwsUOp *uop)
     if (!key)
         return AVERROR(ENOMEM);
     memset(&key->data, 0, sizeof(key->data));
-    key->bytes = 0; /* backends instantiate all sizes they support */
+    key->block_size = 0; /* backends instantiate all sizes they support */
 
     struct AVTreeNode *node = av_tree_node_alloc();
     if (!node) {
