@@ -515,24 +515,24 @@ static const SwsUOpTable uops_f32##EXT = {                                      
     },                                                                          \
 };
 
-DECL_TABLE_U8( _m16_sse4, 16, SSE4)
-DECL_TABLE_U8( _m32_avx2, 32, AVX2)
-DECL_TABLE_U8( _m32_sse4, 32, SSE4)
-DECL_TABLE_U8( _m64_avx2, 64, AVX2)
-DECL_TABLE_U16(_m32_avx2, 16, AVX2)
-DECL_TABLE_U16(_m64_avx2, 32, AVX2)
-DECL_TABLE_U32(_m64_avx2, 16, AVX2)
-DECL_TABLE_F32(_m64_avx2, 16, AVX2)
+DECL_TABLE_U8( _m1_sse4, 16, SSE4)
+DECL_TABLE_U8( _m1_avx2, 32, AVX2)
+DECL_TABLE_U8( _m2_sse4, 32, SSE4)
+DECL_TABLE_U8( _m2_avx2, 64, AVX2)
+DECL_TABLE_U16(_m1_avx2, 16, AVX2)
+DECL_TABLE_U16(_m2_avx2, 32, AVX2)
+DECL_TABLE_U32(_m2_avx2, 16, AVX2)
+DECL_TABLE_F32(_m2_avx2, 16, AVX2)
 
 static const SwsUOpTable *const tables[] = {
-    &uops_u8_m16_sse4,
-    &uops_u8_m32_avx2, /* order before _m32_sse4 */
-    &uops_u8_m32_sse4,
-    &uops_u8_m64_avx2,
-    &uops_u16_m32_avx2,
-    &uops_u16_m64_avx2,
-    &uops_u32_m64_avx2,
-    &uops_f32_m64_avx2,
+    &uops_u8_m1_sse4,
+    &uops_u8_m1_avx2, /* order before _m2_sse4 */
+    &uops_u8_m2_sse4,
+    &uops_u8_m2_avx2,
+    &uops_u16_m1_avx2,
+    &uops_u16_m2_avx2,
+    &uops_u32_m2_avx2,
+    &uops_f32_m2_avx2,
 };
 
 SWS_DECL_FUNC(ff_sws_process1_x86);

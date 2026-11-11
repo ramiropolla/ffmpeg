@@ -70,28 +70,27 @@
 ; if we load 8-bit values and convert them to 32-bit floats internally, then
 ; we would have an operation chain which combines an SSE4 V2=0 u8 kernel (128
 ; bits = 16 pixels) with an AVX2 V2=1 f32 kernel (512 bits = 16 pixels). This
-; keeps the number of pixels being processed (BLOCK_WIDTH) constant. The
-; resulting vector size in bytes (BLOCK_SIZE) is suffixed to the operation name
-; (e.g. _m32), along with any other custom NAME_SUFFIX (e.g. for operation
-; variants).
+; keeps the number of pixels being processed (BLOCK_WIDTH) constant. The V2
+; setting is suffixed to the operation name (_m1 or _m2), along with any other
+; custom NAME_SUFFIX (e.g. for operation variants).
 ;
 ; This design leaves us with the following set of possibilities:
 ;
 ; SSE4:
 ; - max element is 32-bit: currently unsupported
 ; - max element is 16-bit: currently unsupported
-; - max element is 8-bit:  block size 32, u8_m32_sse4
+; - max element is 8-bit:  block size 32, u8_m2_sse4
 ;
 ; AVX2:
-; - max element is 32-bit: block size 16, u32_m64_avx2, u16_m32_avx2, u8_m16_sse4
-; - max element is 16-bit: block size 32, u16_m64_avx2, u8_m32_avx2
-; - max element is 8-bit:  block size 64, u8_m64_avx2
+; - max element is 32-bit: block size 16, u32_m2_avx2, u16_m1_avx2, u8_m1_sse4
+; - max element is 16-bit: block size 32, u16_m2_avx2, u8_m1_avx2
+; - max element is 8-bit:  block size 64, u8_m2_avx2
 ;
 ; Meaning we need to cover the following code paths for each bit depth:
 ;
-; -  8-bit kernels: m16_sse4, m32_sse4, m32_avx2, m64_avx2
-; - 16-bit kernels: m32_avx2, m64_avx2
-; - 32-bit kernels: m64_avx2
+; -  8-bit kernels: m1_sse4, m2_sse4, m1_avx2, m2_avx2
+; - 16-bit kernels: m1_avx2, m2_avx2
+; - 32-bit kernels: m2_avx2
 ;
 ; See the bottom of ops_int.asm for an example.
 
@@ -196,8 +195,11 @@ endstruc
 
     ; Add the correct name mangling / suffix for decl_v2
     %ifdef V2
-        %xdefine MUL_SUFFIX _m %+ BLOCK_SIZE
-        %define ADD_MUL(name) name %+ MUL_SUFFIX
+        %if V2
+            %define ADD_MUL(name) name %+ _m2
+        %else
+            %define ADD_MUL(name) name %+ _m1
+        %endif
     %else
         %define ADD_MUL(name) name
     %endif
@@ -220,7 +222,6 @@ endstruc
     %undef BLOCK_SIZE
     %undef BLOCK_WIDTH
     %undef ADD_MUL
-    %undef MUL_SUFFIX
 %endmacro
 
 ; Declare a set of operations with a custom name suffix
