@@ -188,7 +188,18 @@ int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limit
 
 static int resolve_uops_c(SwsUOpList *uops, int block_size)
 {
-    return ff_sws_uop_list_resolve(uops, ff_sws_test_uop_c, 0, block_size);
+    if (block_size && block_size != SWS_BLOCK_SIZE)
+        return AVERROR(ENOTSUP);
+
+    for (int i = 0; i < uops->num_ops; i++) {
+        SwsUOp *uop = &uops->ops[i];
+        if (!ff_sws_uop_supported(ff_sws_test_uop_c, 0, uop))
+            return AVERROR(ENOTSUP);
+        uop->block_size = SWS_BLOCK_SIZE;
+    }
+
+    uops->block_size = SWS_BLOCK_SIZE;
+    return 0;
 }
 
 static int compile_ops_c(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
