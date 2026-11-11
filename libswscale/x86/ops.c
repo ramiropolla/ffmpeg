@@ -714,14 +714,7 @@ static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp 
     if (level < 0)
         return level;
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_PSHUFB
-                      | SWS_UOP_FLAG_EXPAND_BIT
-                      | SWS_UOP_FLAG_READ_PALETTE
-                      | SWS_UOP_FLAG_ADD
-                      | SWS_UOP_FLAG_PUNNING;
-    if (EXTERNAL_FMA3(cpu_flags))
-        flags |= SWS_UOP_FLAG_FMA;
-
+    const SwsUOpFlags flags = ff_sws_uop_flags_x86(EXTERNAL_FMA3(cpu_flags));
     SwsUOpList *uops = ff_sws_uop_list_alloc();
     if (!uops)
         return AVERROR(ENOMEM);

@@ -24,6 +24,10 @@
  * This must not depend on the host architecture.
  */
 
+#include <stdbool.h>
+
+#include "../uops.h"
+
 /* Used both for the CPU level and for the ISA of a kernel */
 typedef enum SwsX86ISA {
     SWS_X86_SSE4,
@@ -32,6 +36,16 @@ typedef enum SwsX86ISA {
     SWS_X86_AVX512ICL,
     SWS_X86_ISA_NB,
 } SwsX86ISA;
+
+static inline SwsUOpFlags ff_sws_uop_flags_x86(bool fma)
+{
+    return SWS_UOP_FLAG_PSHUFB
+         | SWS_UOP_FLAG_EXPAND_BIT
+         | SWS_UOP_FLAG_READ_PALETTE
+         | SWS_UOP_FLAG_ADD
+         | SWS_UOP_FLAG_PUNNING
+         | (fma ? SWS_UOP_FLAG_FMA : 0);
+}
 
 /* Vector register size in bytes */
 static inline int ff_sws_mmsize_x86(SwsX86ISA isa)
