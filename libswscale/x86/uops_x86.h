@@ -70,6 +70,26 @@ static inline int ff_sws_uop_block_size_x86(SwsX86ISA level,
 }
 
 /**
+ * Rewrite a uop of a chain into the form of the kernel implementing it on
+ * CPUs supporting `level`. uop->block_size must be set to the block size of
+ * the chain, and is adjusted to match the kernel.
+ */
+static inline void ff_sws_uop_simplify_x86(SwsX86ISA level, SwsUOp *uop)
+{
+    switch (uop->uop) {
+    case SWS_UOP_READ_PLANAR:
+    case SWS_UOP_WRITE_PLANAR:
+    case SWS_UOP_CLEAR:
+        /* These only depend on the bit pattern of their data */
+        uop->block_size *= ff_sws_pixel_type_size(uop->type);
+        uop->type = SWS_PIXEL_U8;
+        break;
+    default:
+        break;
+    }
+}
+
+/**
  * ISA of the kernel implementing a standalone SWS_UOP_RW_SHUFFLE on CPUs
  * supporting `level`. Shuffles which are not lane aligned need vpermb to
  * use vectors wider than XMM.

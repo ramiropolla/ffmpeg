@@ -349,18 +349,6 @@ static int setup_linear(const SwsImplParams *params, SwsImplResult *out)
     return 0;
 }
 
-static bool uop_is_type_invariant(const SwsUOpType uop)
-{
-    switch (uop) {
-    case SWS_UOP_READ_PLANAR:
-    case SWS_UOP_WRITE_PLANAR:
-    case SWS_UOP_CLEAR:
-        return true;
-    default:
-        return false;
-    }
-}
-
 #define REF_ENTRY(EXT, NAME, ...) &uop_##NAME##EXT,
 #define DECL_ENTRY(EXT, CHECK, SETUP, NAME, ...)                                \
     void ff_##NAME##EXT(void);                                                  \
@@ -673,11 +661,7 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
     for (int i = 0; i < uops->num_ops; i++) {
         SwsUOp uop = uops->ops[i];
         uop.block_size = out->block_size;
-
-        if (uop_is_type_invariant(uop.uop)) {
-            uop.block_size *= ff_sws_pixel_type_size(uop.type);
-            uop.type = SWS_PIXEL_U8;
-        }
+        ff_sws_uop_simplify_x86(level, &uop);
 
         ret = ff_sws_uop_lookup(ctx, tables, FF_ARRAY_ELEMS(tables), &uop, chain);
         if (ret < 0)
