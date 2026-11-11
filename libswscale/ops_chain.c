@@ -95,14 +95,12 @@ int ff_sws_uop_lookup(SwsContext *ctx, const SwsUOpTable *const tables[],
 
         for (int i = 0; table->entries[i]; i++) {
             const SwsUOpEntry *entry = table->entries[i];
-            const int block_size = entry->block_size ? entry->block_size
-                                                     : table->block_size;
             const SwsUOp entry_uop = {
                 .uop  = entry->uop,
                 .type = entry->type,
                 .mask = entry->mask,
                 .par  = entry->par,
-                .block_size = block_size ? block_size : uop->block_size,
+                .block_size = entry->block_size,
             };
 
             if (ff_sws_uop_cmp(uop, &entry_uop) != 0)
