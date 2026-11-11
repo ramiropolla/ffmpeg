@@ -172,18 +172,14 @@ fail:
     return ret;
 }
 
-int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limits)
+int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags)
 {
     switch (uop->uop) {
     case SWS_UOP_RW_SHUFFLE:
         return AVERROR(ENOTSUP);
     default:
-        break;
+        return 0;
     }
-
-    /* All uops process a fixed number of pixels per block */
-    limits->min_bytes = limits->max_bytes = SWS_BLOCK_SIZE * ff_sws_uop_pixel_size_max(uop);
-    return 0;
 }
 
 static int resolve_uops_c(SwsUOpList *uops, int block_size)

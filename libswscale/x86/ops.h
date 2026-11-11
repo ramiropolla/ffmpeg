@@ -67,8 +67,7 @@ static inline int ff_sws_uop_shuffle_size_x86(unsigned cpu_flags,
     return bytes;
 }
 
-static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags,
-                               SwsUOpLimits *limits)
+static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags)
 {
     switch (uop->uop) {
     case SWS_UOP_TO_U32:
@@ -79,12 +78,6 @@ static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags,
         break;
     case SWS_UOP_LUT_3D:
         return AVERROR(ENOTSUP);
-    case SWS_UOP_READ_PLANAR:
-    case SWS_UOP_WRITE_PLANAR:
-    case SWS_UOP_CLEAR:
-        /* Only implemented for U8, other types are executed as U8 */
-        limits->type = SWS_PIXEL_U8;
-        break;
     case SWS_UOP_RW_SHUFFLE: {
         const int bytes = ff_sws_uop_shuffle_size_x86(cpu_flags, uop);
         return bytes < 0 ? bytes : 0;
@@ -93,23 +86,8 @@ static inline int test_uop_x86(const SwsUOp *uop, unsigned cpu_flags,
         break;
     }
 
-    int pixel_size = ff_sws_uop_pixel_size_max(uop);
-    if (limits->type)
-        pixel_size = ff_sws_pixel_type_size(limits->type);
-
     const int mmsize = get_mmsize(cpu_flags);
-    if (mmsize < 0)
-        return mmsize;
-    else if (mmsize == 16 && pixel_size > 1)
-        return AVERROR(ENOTSUP); /* Only 8-bit kernels are implemented for SSE4 */
-
-    /**
-     * Use at most two full YMM registers per component for the largest pixel
-     * type. All kernels process at least 16 pixels at a time.
-     */
-    limits->min_bytes = 16 * pixel_size;
-    limits->max_bytes = 2 * FFMIN(mmsize, 32);
-    return 0;
+    return mmsize < 0 ? mmsize : 0;
 }
 
 /**

@@ -393,45 +393,25 @@ void ff_sws_uop_list_remove_at(SwsUOpList *uops, int index, int count);
 /* Takes over ownership of `uop` and sets it to {0}, even on failure. */
 int ff_sws_uop_list_append(SwsUOpList *uops, SwsUOp *uop);
 
-typedef struct SwsUOpLimits {
-    /**
-     * Range of supported sizes in bytes, for the largest pixel type involved
-     * in the uop. Must be a power of two,
-     * or zero for backends without size annotations.
-     */
-    int min_bytes;
-    int max_bytes;
-
-    /**
-     * If set, execute the uop as this pixel type instead, at the same size
-     * in bytes. May be useful for e.g. planar reads or clears.
-     */
-    SwsPixelType type;
-} SwsUOpLimits;
-
 /**
  * Backend callback to test whether a uop is supported on a given set of CPU
  * flags. This must be a pure function of its inputs, and may not depend on
  * `uop->data`.
  *
- * `limits` is zero-initialized by the caller.
- *
  * Returns 0 if supported, or AVERROR(ENOTSUP).
  */
-typedef int (*SwsUOpTestFunc)(const SwsUOp *uop, unsigned cpu_flags,
-                              SwsUOpLimits *limits);
+typedef int (*SwsUOpTestFunc)(const SwsUOp *uop, unsigned cpu_flags);
 
 static inline bool ff_sws_uop_supported(SwsUOpTestFunc test_uop,
                                         unsigned cpu_flags, const SwsUOp *uop)
 {
-    SwsUOpLimits limits = {0};
-    return test_uop(uop, cpu_flags, &limits) >= 0;
+    return test_uop(uop, cpu_flags) >= 0;
 }
 
 /**
  * SwsUOpTestFunc for the C backend.
  */
-int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags, SwsUOpLimits *limits);
+int ff_sws_test_uop_c(const SwsUOp *uop, unsigned cpu_flags);
 
 /**
  * Called internally by ff_sws_ops_translate().
