@@ -1309,6 +1309,8 @@ static int compile_ops_spirv(SwsContext *sws, const SwsOpList *ops,
     }
 
     err = ff_sws_ops_translate(sws, ops, SWS_UOP_FLAG_NONE, test_uop_spirv, 0, uops);
+    if (err >= 0)
+        err = ff_sws_uop_list_resolve(uops, test_uop_spirv, 0, 0);
     if (err < 0)
         goto fail;
 

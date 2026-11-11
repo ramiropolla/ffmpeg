@@ -205,6 +205,8 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     if (!(ctx->flags & SWS_BITEXACT))
         flags |= SWS_UOP_FLAG_FMA;
     ret = ff_sws_ops_translate(ctx, ops, flags, test_uop_aarch64, 0, uops);
+    if (ret >= 0)
+        ret = ff_sws_uop_list_resolve(uops, test_uop_aarch64, 0, 0);
     if (ret == AVERROR(ENOTSUP)) {
         ret = 0;
         goto end;

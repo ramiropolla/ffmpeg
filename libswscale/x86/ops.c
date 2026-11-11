@@ -710,6 +710,10 @@ static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp 
     if (ret < 0)
         goto fail;
 
+    ret = resolve_uops_x86(uops, 0);
+    if (ret < 0)
+        goto fail;
+
     ret = compile_uops_x86(ctx, uops, out);
 
 fail:

@@ -680,11 +680,7 @@ int ff_sws_ops_translate(SwsContext *ctx, const SwsOpList *ops,
         inputs = op->outputs;
     }
 
-    ret = ff_sws_uop_list_optimize(ctx, test_uop, cpu_flags, uops);
-    if (ret < 0)
-        return ret;
-
-    return ff_sws_uop_list_resolve(uops, test_uop, cpu_flags, 0);
+    return ff_sws_uop_list_optimize(ctx, test_uop, cpu_flags, uops);
 }
 
 int ff_sws_uop_list_resolve(SwsUOpList *uops, SwsUOpTestFunc test_uop,

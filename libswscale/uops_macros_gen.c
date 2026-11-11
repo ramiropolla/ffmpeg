@@ -205,6 +205,8 @@ static int register_flags(SwsContext *ctx, const SwsOpList *ops, SwsUOpFlags fla
         return AVERROR(ENOMEM);
 
     int ret = ff_sws_ops_translate(ctx, ops, flags, test_uop, cpu_flags, uops);
+    if (ret >= 0)
+        ret = ff_sws_uop_list_resolve(uops, test_uop, cpu_flags, 0);
     if (ret < 0)
         goto fail;
 

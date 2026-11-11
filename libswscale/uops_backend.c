@@ -202,6 +202,10 @@ static int compile_ops_c(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *o
     if (ret < 0)
         goto fail;
 
+    ret = resolve_uops_c(uops, 0);
+    if (ret < 0)
+        goto fail;
+
     ret = compile_uops_c(ctx, uops, out);
 
 fail:

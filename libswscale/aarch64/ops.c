@@ -246,6 +246,10 @@ static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto error;
 
+    ret = resolve_uops_aarch64(uops, 0);
+    if (ret < 0)
+        goto error;
+
     ret = compile_uops_aarch64(ctx, uops, out);
 
 error:

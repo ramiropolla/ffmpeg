@@ -444,7 +444,7 @@ void ff_sws_uop_list_print(void *log_ctx, int log_level, const SwsUOpList *uops)
 
 /**
  * Test all uops in a list for support by the backend, and resolve their
- * sizes. Called internally by ff_sws_ops_translate().
+ * sizes.
  *
  * @param pixels The number of pixels per block, or 0 to pick the largest
  *
