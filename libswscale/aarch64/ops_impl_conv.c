@@ -32,13 +32,13 @@
  * Convert SwsUOp to a SwsAArch64OpImplParams. Read the comments regarding
  * SwsAArch64OpImplParams in ops_impl.h for more information.
  */
-static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
+static void convert_to_aarch64_impl(const SwsUOp *uop,
                                     SwsAArch64OpImplParams *out)
 {
     out->uop = uop->uop;
     out->mask = uop->mask;
     out->type = uop->type;
-    out->block_size = block_size;
+    out->block_size = uop->block_size;
     out->par = uop->par;
 
     /**
@@ -57,7 +57,7 @@ static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
         }
 
         /* The element size and type don't matter. */
-        out->block_size = block_size * ff_sws_pixel_type_size(out->type);
+        out->block_size *= ff_sws_pixel_type_size(out->type);
         out->type = SWS_PIXEL_U8;
         break;
     }

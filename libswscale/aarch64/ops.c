@@ -183,15 +183,18 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
 
     /* Look up kernel functions. */
     for (int i = 0; i < uops->num_ops; i++) {
+        SwsUOp uop = uops->ops[i];
+        uop.block_size = block_size;
+
         SwsAArch64OpImplParams params = { 0 };
-        convert_to_aarch64_impl(&uops->ops[i], block_size, &params);
+        convert_to_aarch64_impl(&uop, &params);
         SwsFuncPtr func = aarch64_lookup(&params);
         if (!func) {
             ret = AVERROR(ENOTSUP);
             goto error;
         }
         SwsImplResult res = { 0 };
-        ret = aarch64_setup(&uops->ops[i], &params, &res);
+        ret = aarch64_setup(&uop, &params, &res);
         if (ret < 0)
             goto error;
         av_assert1(res.priv_size == aarch64_priv_size(&params));
