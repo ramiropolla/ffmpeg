@@ -70,12 +70,36 @@ static inline int ff_sws_uop_block_size_x86(SwsX86ISA level,
     return 2 * FFMIN(ff_sws_mmsize_x86(level), 32) / uops->pixel_size_max;
 }
 
+/* Size of the widest pixel type a uop keeps in vector registers */
+static inline int ff_sws_uop_pixel_size_x86(const SwsUOp *uop)
+{
+    SwsPixelType out = uop->type;
+    switch (uop->uop) {
+    case SWS_UOP_TO_U8:       out = SWS_PIXEL_U8;  break;
+    case SWS_UOP_TO_U16:      out = SWS_PIXEL_U16; break;
+    case SWS_UOP_TO_U32:      out = SWS_PIXEL_U32; break;
+    case SWS_UOP_TO_F32:      out = SWS_PIXEL_F32; break;
+    case SWS_UOP_EXPAND_PAIR: out = SWS_PIXEL_U16; break;
+    case SWS_UOP_EXPAND_QUAD: out = SWS_PIXEL_U32; break;
+    case SWS_UOP_READ_PLANAR_FH:
+    case SWS_UOP_READ_PLANAR_FV:
+    case SWS_UOP_READ_PLANAR_FV_FMA:
+        out = uop->par.filter.type;
+        break;
+    default:
+        break;
+    }
+
+    return FFMAX(ff_sws_pixel_type_size(uop->type),
+                 ff_sws_pixel_type_size(out));
+}
+
 /**
  * Rewrite a uop of a chain into the form of the kernel implementing it on
  * CPUs supporting `level`. uop->block_size must be set to the block size of
  * the chain, and is adjusted to match the kernel.
  *
- * Returns 0, or AVERROR(ENOTSUP).
+ * Returns the ISA of the kernel, or AVERROR(ENOTSUP).
  */
 static inline int ff_sws_uop_simplify_x86(SwsX86ISA level, SwsUOp *uop)
 {
@@ -100,7 +124,14 @@ static inline int ff_sws_uop_simplify_x86(SwsX86ISA level, SwsUOp *uop)
         break;
     }
 
-    return 0;
+    /* Only 8-bit kernels have SSE4 versions, with one or two registers */
+    const int pixel_size = ff_sws_uop_pixel_size_x86(uop);
+    const int bytes = uop->block_size * pixel_size;
+    if (level >= SWS_X86_AVX2 && (bytes == 32 || bytes == 64))
+        return SWS_X86_AVX2;
+    if (pixel_size == 1 && (bytes == 16 || bytes == 32))
+        return SWS_X86_SSE4;
+    return AVERROR(ENOTSUP);
 }
 
 /**

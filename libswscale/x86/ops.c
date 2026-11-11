@@ -524,10 +524,13 @@ DECL_TABLE_U16(_m2_avx2, 32, AVX2)
 DECL_TABLE_U32(_m2_avx2, 16, AVX2)
 DECL_TABLE_F32(_m2_avx2, 16, AVX2)
 
-static const SwsUOpTable *const tables[] = {
+static const SwsUOpTable *const tables_sse4[] = {
     &uops_u8_m1_sse4,
-    &uops_u8_m1_avx2, /* order before _m2_sse4 */
     &uops_u8_m2_sse4,
+};
+
+static const SwsUOpTable *const tables_avx2[] = {
+    &uops_u8_m1_avx2,
     &uops_u8_m2_avx2,
     &uops_u16_m1_avx2,
     &uops_u16_m2_avx2,
@@ -665,7 +668,13 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
         if (ret < 0)
             goto fail;
 
-        ret = ff_sws_uop_lookup(ctx, tables, FF_ARRAY_ELEMS(tables), &uop, chain);
+        if (ret == SWS_X86_SSE4) {
+            ret = ff_sws_uop_lookup(ctx, tables_sse4, FF_ARRAY_ELEMS(tables_sse4),
+                                    &uop, chain);
+        } else {
+            ret = ff_sws_uop_lookup(ctx, tables_avx2, FF_ARRAY_ELEMS(tables_avx2),
+                                    &uop, chain);
+        }
         if (ret < 0)
             goto fail;
     }
