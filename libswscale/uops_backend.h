@@ -53,10 +53,17 @@ static inline int c_policy_simplify(const SwsUOpTarget *target, SwsUOp *uop)
     return 0;
 }
 
+static inline void c_policy_name(const SwsUOp *uop, int list,
+                                 char buf[SWS_UOP_NAME_MAX])
+{
+    ff_sws_uop_name(uop, buf);
+}
+
 av_unused static const SwsUOpPolicy ff_sws_uop_policy_c = {
     .uop_flags  = c_policy_uop_flags,
     .block_size = c_policy_block_size,
     .simplify   = c_policy_simplify,
+    .name       = c_policy_name,
 };
 
 #endif /* SWSCALE_UOPS_BACKEND_H */

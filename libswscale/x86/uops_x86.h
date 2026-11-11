@@ -212,10 +212,17 @@ static inline int x86_policy_simplify(const SwsUOpTarget *target, SwsUOp *uop)
     return ff_sws_uop_simplify_x86(level, uop);
 }
 
+static inline void x86_policy_name(const SwsUOp *uop, int list,
+                                   char buf[SWS_UOP_NAME_MAX])
+{
+    ff_sws_uop_name_x86(uop, list, buf);
+}
+
 av_unused static const SwsUOpPolicy ff_sws_uop_policy_x86 = {
     .uop_flags  = x86_policy_uop_flags,
     .block_size = x86_policy_block_size,
     .simplify   = x86_policy_simplify,
+    .name       = x86_policy_name,
 };
 
 #endif /* SWSCALE_X86_UOPS_X86_H */

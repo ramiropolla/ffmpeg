@@ -383,6 +383,12 @@ struct SwsUOpPolicy {
      * Returns the index of the kernel list, or AVERROR(ENOTSUP).
      */
     int (*simplify)(const SwsUOpTarget *target, SwsUOp *uop);
+
+    /**
+     * Name of the kernel of list `list` implementing a simplified uop. NULL
+     * for backends without kernel lists.
+     */
+    void (*name)(const SwsUOp *uop, int list, char buf[SWS_UOP_NAME_MAX]);
 };
 
 SwsUOpList *ff_sws_uop_list_alloc(void);

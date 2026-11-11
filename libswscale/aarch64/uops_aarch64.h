@@ -257,10 +257,17 @@ static inline int aarch64_policy_simplify(const SwsUOpTarget *target,
     return ff_sws_uop_simplify_aarch64(uop);
 }
 
+static inline void aarch64_policy_name(const SwsUOp *uop, int list,
+                                       char buf[SWS_UOP_NAME_MAX])
+{
+    ff_sws_uop_name_aarch64(uop, buf);
+}
+
 av_unused static const SwsUOpPolicy ff_sws_uop_policy_aarch64 = {
     .uop_flags  = aarch64_policy_uop_flags,
     .block_size = aarch64_policy_block_size,
     .simplify   = aarch64_policy_simplify,
+    .name       = aarch64_policy_name,
 };
 
 #endif /* SWSCALE_AARCH64_UOPS_AARCH64_H */
