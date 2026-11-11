@@ -26,8 +26,9 @@
 
 #include "../ops_chain.h"
 #include "../uops.h"
+#include "../uops_entries.h"
 #include "ops.h"
-#include "uops_macros.h"
+#include "uops_entries.h"
 
 static int setup_rw_packed(const SwsImplParams *params, SwsImplResult *out)
 {
@@ -349,202 +350,89 @@ static int setup_linear(const SwsImplParams *params, SwsImplResult *out)
     return 0;
 }
 
-#define REF_ENTRY(EXT, NAME, ...) &uop_##NAME##EXT,
-#define DECL_ENTRY(EXT, CHECK, SETUP, NAME, ...)                                \
-    void ff_##NAME##EXT(void);                                                  \
-    static const SwsUOpEntry uop_##NAME##EXT = {                                \
-        .func = (SwsFuncPtr) ff_##NAME##EXT,                                    \
+/**
+ * Check and setup functions of each uop type, as arguments of M. Several
+ * kernel variants are declared in order of preference, distinguished by a
+ * name suffix.
+ */
+#define X86_ENTRY_READ_PLANAR(M, ...)        M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_READ_PLANAR_FH(M, ...)                                        \
+    M(check_filter_h_4x4, setup_filter_h_4x4, _4x4, __VA_ARGS__)                \
+    M(NULL, setup_filter_h, , __VA_ARGS__)
+#define X86_ENTRY_READ_PLANAR_FV(M, ...)     M(NULL, setup_filter_v, , __VA_ARGS__)
+#define X86_ENTRY_READ_PLANAR_FV_FMA(M, ...) M(NULL, setup_filter_v, , __VA_ARGS__)
+#define X86_ENTRY_READ_PACKED(M, ...)        M(NULL, setup_rw_packed, , __VA_ARGS__)
+#define X86_ENTRY_READ_NIBBLE(M, ...)        M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_READ_BIT(M, ...)           M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_READ_PALETTE(M, ...)       M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_WRITE_PLANAR(M, ...)       M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_WRITE_PACKED(M, ...)       M(NULL, setup_rw_packed, , __VA_ARGS__)
+#define X86_ENTRY_WRITE_NIBBLE(M, ...)       M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_WRITE_BIT(M, ...)          M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_RW_SHUFFLE(M, ...)         M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_PERMUTE(M, ...)            M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_COPY(M, ...)               M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_SWAP_BYTES(M, ...)         M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_EXPAND_BIT(M, ...)         M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_EXPAND_PAIR(M, ...)        M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_EXPAND_QUAD(M, ...)        M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_TO_U8(M, ...)              M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_TO_U16(M, ...)             M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_TO_U32(M, ...)             M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_TO_F32(M, ...)             M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_SCALE(M, ...)              M(NULL, setup_scale, , __VA_ARGS__)
+#define X86_ENTRY_ADD(M, ...)                M(NULL, ff_sws_setup_vec4, , __VA_ARGS__)
+#define X86_ENTRY_MIN(M, ...)                M(NULL, ff_sws_setup_vec4, , __VA_ARGS__)
+#define X86_ENTRY_MAX(M, ...)                M(NULL, ff_sws_setup_vec4, , __VA_ARGS__)
+#define X86_ENTRY_UNPACK(M, ...)             M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_PACK(M, ...)               M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_LSHIFT(M, ...)             M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_RSHIFT(M, ...)             M(NULL, NULL, , __VA_ARGS__)
+#define X86_ENTRY_CLEAR(M, ...)              M(NULL, setup_clear, , __VA_ARGS__)
+#define X86_ENTRY_LINEAR(M, ...)             M(NULL, setup_linear, , __VA_ARGS__)
+#define X86_ENTRY_LINEAR_FMA(M, ...)         M(NULL, setup_linear, , __VA_ARGS__)
+#define X86_ENTRY_DITHER(M, ...)             M(NULL, setup_dither, , __VA_ARGS__)
+
+#define X86_ENTRY(M, EXT, NAME, TYPE, UOP, ...)                                 \
+    X86_ENTRY_##UOP(M, EXT, NAME, __VA_ARGS__)
+
+#define X86_DECL(CHECK, SETUP, SUFFIX, EXT, NAME, BLOCK_SIZE, ARGS, INIT)       \
+    void ff_##NAME##SUFFIX##EXT(void);                                          \
+    static const SwsUOpEntry uop_##NAME##SUFFIX##EXT = {                        \
+        SWS_UNPAREN INIT,                                                       \
+        .func  = (SwsFuncPtr) ff_##NAME##SUFFIX##EXT,                           \
         .check = CHECK,                                                         \
         .setup = SETUP,                                                         \
-        __VA_ARGS__,                                                            \
     };
 
-/* Define all UOPs except conversion ops and type-invariant ops */
-#define DECL_OPS_COMMON(EXT, TYPE)                                              \
-SWS_FOR_STRUCT(TYPE, READ_PACKED,     DECL_ENTRY, EXT, NULL, setup_rw_packed)   \
-SWS_FOR_STRUCT(TYPE, READ_NIBBLE,     DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, READ_BIT,        DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, READ_PALETTE,    DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, WRITE_PACKED,    DECL_ENTRY, EXT, NULL, setup_rw_packed)   \
-SWS_FOR_STRUCT(TYPE, WRITE_NIBBLE,    DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, WRITE_BIT,       DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, SWAP_BYTES,      DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, EXPAND_BIT,      DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, PERMUTE,         DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, COPY,            DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, SCALE,           DECL_ENTRY, EXT, NULL, setup_scale)       \
-SWS_FOR_STRUCT(TYPE, ADD,             DECL_ENTRY, EXT, NULL, ff_sws_setup_vec4) \
-SWS_FOR_STRUCT(TYPE, MIN,             DECL_ENTRY, EXT, NULL, ff_sws_setup_vec4) \
-SWS_FOR_STRUCT(TYPE, MAX,             DECL_ENTRY, EXT, NULL, ff_sws_setup_vec4) \
-SWS_FOR_STRUCT(TYPE, UNPACK,          DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, PACK,            DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, LSHIFT,          DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, RSHIFT,          DECL_ENTRY, EXT, NULL, NULL)              \
-SWS_FOR_STRUCT(TYPE, LINEAR,          DECL_ENTRY, EXT, NULL, setup_linear)      \
-SWS_FOR_STRUCT(TYPE, LINEAR_FMA,      DECL_ENTRY, EXT, NULL, setup_linear)      \
-SWS_FOR_STRUCT(TYPE, DITHER,          DECL_ENTRY, EXT, NULL, setup_dither)      \
-/* end of macro */
+#define X86_REF(CHECK, SETUP, SUFFIX, EXT, NAME, ...) &uop_##NAME##SUFFIX##EXT,
 
-#define REF_OPS_COMMON(EXT, TYPE)                                               \
-    SWS_FOR(TYPE, READ_PACKED,    REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, READ_NIBBLE,    REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, READ_BIT,       REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, READ_PALETTE,   REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, WRITE_PACKED,   REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, WRITE_NIBBLE,   REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, WRITE_BIT,      REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, SWAP_BYTES,     REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, EXPAND_BIT,     REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, PERMUTE,        REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, COPY,           REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, SCALE,          REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, ADD,            REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, MIN,            REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, MAX,            REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, UNPACK,         REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, PACK,           REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, LSHIFT,         REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, RSHIFT,         REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, LINEAR,         REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, LINEAR_FMA,     REF_ENTRY, EXT)                               \
-    SWS_FOR(TYPE, DITHER,         REF_ENTRY, EXT)                               \
-    /* end of macro */
+#define X86_TABLE(LIST, EXT, FLAG)                                              \
+    SWS_ENTRIES_##LIST(X86_ENTRY, X86_DECL, EXT)                                \
+    static const SwsUOpTable uops##EXT = {                                      \
+        .cpu_flags = AV_CPU_FLAG_##FLAG,                                        \
+        .entries = {                                                            \
+            SWS_ENTRIES_##LIST(X86_ENTRY, X86_REF, EXT)                         \
+            NULL                                                                \
+        },                                                                      \
+    };
 
-#define DECL_TABLE_U8(EXT, SIZE, FLAG)                                          \
-DECL_OPS_COMMON(EXT, U8)                                                        \
-SWS_FOR_STRUCT(U8, READ_PLANAR,     DECL_ENTRY, EXT, NULL, NULL)                \
-SWS_FOR_STRUCT(U8, WRITE_PLANAR,    DECL_ENTRY, EXT, NULL, NULL)                \
-SWS_FOR_STRUCT(U8, CLEAR,           DECL_ENTRY, EXT, NULL, setup_clear)         \
-                                                                                \
-static const SwsUOpTable uops_u8##EXT = {                                       \
-    .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
-    .block_size = SIZE,                                                         \
-    .entries = {                                                                \
-        REF_OPS_COMMON(EXT, U8)                                                 \
-        SWS_FOR(U8, READ_PLANAR,    REF_ENTRY, EXT)                             \
-        SWS_FOR(U8, WRITE_PLANAR,   REF_ENTRY, EXT)                             \
-        SWS_FOR(U8, CLEAR,          REF_ENTRY, EXT)                             \
-        NULL                                                                    \
-    },                                                                          \
-};
+X86_TABLE(X86_SSE4,      _sse4,      SSE4)
+X86_TABLE(X86_AVX2,      _avx2,      AVX2)
+X86_TABLE(X86_AVX512,    _avx512,    AVX512)
+X86_TABLE(X86_AVX512ICL, _avx512icl, AVX512ICL)
 
-#define DECL_TABLE_U16(EXT, SIZE, FLAG)                                         \
-DECL_OPS_COMMON(EXT, U16)                                                       \
-SWS_FOR_STRUCT(U8,  TO_U16, DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(U16, TO_U8,  DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(U8,  EXPAND_PAIR, DECL_ENTRY, EXT, NULL, NULL)                   \
-                                                                                \
-static const SwsUOpTable uops_u16##EXT = {                                      \
-    .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
-    .block_size = SIZE,                                                         \
-    .entries = {                                                                \
-        REF_OPS_COMMON(EXT, U16)                                                \
-        SWS_FOR(U8,  TO_U16, REF_ENTRY, EXT)                                    \
-        SWS_FOR(U16, TO_U8,  REF_ENTRY, EXT)                                    \
-        SWS_FOR(U8,  EXPAND_PAIR, REF_ENTRY, EXT)                               \
-        NULL                                                                    \
-    },                                                                          \
-};
-
-#define DECL_TABLE_U32(EXT, SIZE, FLAG)                                         \
-DECL_OPS_COMMON(EXT, U32)                                                       \
-SWS_FOR_STRUCT(U8,  TO_U32, DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(U32, TO_U8,  DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(U16, TO_U32, DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(U32, TO_U16, DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(U8,  EXPAND_QUAD, DECL_ENTRY, EXT, NULL, NULL)                   \
-                                                                                \
-static const SwsUOpTable uops_u32##EXT = {                                      \
-    .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
-    .block_size = SIZE,                                                         \
-    .entries = {                                                                \
-        REF_OPS_COMMON(EXT, U32)                                                \
-        SWS_FOR(U8,  TO_U32, REF_ENTRY, EXT)                                    \
-        SWS_FOR(U32, TO_U8,  REF_ENTRY, EXT)                                    \
-        SWS_FOR(U16, TO_U32, REF_ENTRY, EXT)                                    \
-        SWS_FOR(U32, TO_U16, REF_ENTRY, EXT)                                    \
-        SWS_FOR(U8,  EXPAND_QUAD, REF_ENTRY, EXT)                               \
-        NULL                                                                    \
-    },                                                                          \
-};
-
-#define DECL_TABLE_F32(EXT, SIZE, FLAG)                                         \
-DECL_OPS_COMMON(EXT, F32)                                                       \
-SWS_FOR_STRUCT(U8,  TO_F32, DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(F32, TO_U8,  DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(U16, TO_F32, DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(F32, TO_U16, DECL_ENTRY, EXT, NULL, NULL)                        \
-SWS_FOR_STRUCT(U8,  READ_PLANAR_FH, DECL_ENTRY, EXT, NULL, setup_filter_h)      \
-SWS_FOR_STRUCT(U16, READ_PLANAR_FH, DECL_ENTRY, EXT, NULL, setup_filter_h)      \
-SWS_FOR_STRUCT(F32, READ_PLANAR_FH, DECL_ENTRY, EXT, NULL, setup_filter_h)      \
-SWS_FOR_STRUCT(U8,  READ_PLANAR_FH, DECL_ENTRY, _4x4##EXT,                      \
-               check_filter_h_4x4, setup_filter_h_4x4)                          \
-SWS_FOR_STRUCT(U16, READ_PLANAR_FH, DECL_ENTRY, _4x4##EXT,                      \
-               check_filter_h_4x4, setup_filter_h_4x4)                          \
-SWS_FOR_STRUCT(F32, READ_PLANAR_FH, DECL_ENTRY, _4x4##EXT,                      \
-               check_filter_h_4x4, setup_filter_h_4x4)                          \
-SWS_FOR_STRUCT(U8,  READ_PLANAR_FV, DECL_ENTRY, EXT, NULL, setup_filter_v)      \
-SWS_FOR_STRUCT(U16, READ_PLANAR_FV, DECL_ENTRY, EXT, NULL, setup_filter_v)      \
-SWS_FOR_STRUCT(F32, READ_PLANAR_FV, DECL_ENTRY, EXT, NULL, setup_filter_v)      \
-SWS_FOR_STRUCT(U8,  READ_PLANAR_FV_FMA, DECL_ENTRY, EXT, NULL, setup_filter_v)  \
-SWS_FOR_STRUCT(U16, READ_PLANAR_FV_FMA, DECL_ENTRY, EXT, NULL, setup_filter_v)  \
-SWS_FOR_STRUCT(F32, READ_PLANAR_FV_FMA, DECL_ENTRY, EXT, NULL, setup_filter_v)  \
-                                                                                \
-static const SwsUOpTable uops_f32##EXT = {                                      \
-    .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \
-    .block_size = SIZE,                                                         \
-    .entries = {                                                                \
-        REF_OPS_COMMON(EXT, F32)                                                \
-        SWS_FOR(U8,  TO_F32, REF_ENTRY, EXT)                                    \
-        SWS_FOR(F32, TO_U8,  REF_ENTRY, EXT)                                    \
-        SWS_FOR(U16, TO_F32, REF_ENTRY, EXT)                                    \
-        SWS_FOR(F32, TO_U16, REF_ENTRY, EXT)                                    \
-        SWS_FOR(U8,  READ_PLANAR_FH, REF_ENTRY, _4x4##EXT)                      \
-        SWS_FOR(U16, READ_PLANAR_FH, REF_ENTRY, _4x4##EXT)                      \
-        SWS_FOR(F32, READ_PLANAR_FH, REF_ENTRY, _4x4##EXT)                      \
-        SWS_FOR(U8,  READ_PLANAR_FH, REF_ENTRY, EXT)                            \
-        SWS_FOR(U16, READ_PLANAR_FH, REF_ENTRY, EXT)                            \
-        SWS_FOR(F32, READ_PLANAR_FH, REF_ENTRY, EXT)                            \
-        SWS_FOR(U8,  READ_PLANAR_FV, REF_ENTRY, EXT)                            \
-        SWS_FOR(U16, READ_PLANAR_FV, REF_ENTRY, EXT)                            \
-        SWS_FOR(F32, READ_PLANAR_FV, REF_ENTRY, EXT)                            \
-        SWS_FOR(U8,  READ_PLANAR_FV_FMA, REF_ENTRY, EXT)                        \
-        SWS_FOR(U16, READ_PLANAR_FV_FMA, REF_ENTRY, EXT)                        \
-        SWS_FOR(F32, READ_PLANAR_FV_FMA, REF_ENTRY, EXT)                        \
-        NULL                                                                    \
-    },                                                                          \
-};
-
-DECL_TABLE_U8( _m1_sse4, 16, SSE4)
-DECL_TABLE_U8( _m1_avx2, 32, AVX2)
-DECL_TABLE_U8( _m2_sse4, 32, SSE4)
-DECL_TABLE_U8( _m2_avx2, 64, AVX2)
-DECL_TABLE_U16(_m1_avx2, 16, AVX2)
-DECL_TABLE_U16(_m2_avx2, 32, AVX2)
-DECL_TABLE_U32(_m2_avx2, 16, AVX2)
-DECL_TABLE_F32(_m2_avx2, 16, AVX2)
-
-static const SwsUOpTable *const tables[] = {
-    &uops_u8_m1_sse4,
-    &uops_u8_m1_avx2, /* order before _m2_sse4 */
-    &uops_u8_m2_sse4,
-    &uops_u8_m2_avx2,
-    &uops_u16_m1_avx2,
-    &uops_u16_m2_avx2,
-    &uops_u32_m2_avx2,
-    &uops_f32_m2_avx2,
+static const SwsUOpTable *const tables[SWS_X86_ISA_NB] = {
+    [SWS_X86_SSE4]      = &uops_sse4,
+    [SWS_X86_AVX2]      = &uops_avx2,
+    [SWS_X86_AVX512]    = &uops_avx512,
+    [SWS_X86_AVX512ICL] = &uops_avx512icl,
 };
 
 SWS_DECL_FUNC(ff_sws_process1_x86);
 SWS_DECL_FUNC(ff_sws_process2_x86);
 SWS_DECL_FUNC(ff_sws_process3_x86);
 SWS_DECL_FUNC(ff_sws_process4_x86);
-
-/* Declare packed shuffle functions */
-SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _sse4,       NULL, NULL)
-SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx2,       NULL, NULL)
-SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx512,     NULL, NULL)
-SWS_FOR_STRUCT(U8, RW_SHUFFLE, DECL_ENTRY, _avx512icl,  NULL, NULL)
 
 /* CPU flags for test_uop_x86(), excluding instruction sets disabled at build time */
 static unsigned get_uop_cpu_flags(void)
@@ -579,6 +467,9 @@ static int translate_shuffle(const SwsUOp *uop, SwsCompiledOp *out)
     const int lane_aligned = par->read_size == par->write_size &&
                              16 % par->read_size == 0;
     const int mmsize = uop->block_size;
+    const int isa = ff_sws_uop_isa_x86(get_uop_cpu_flags(), uop);
+    if (isa < 0)
+        return isa;
 
     /* Generate the shuffle mask */
     const int mask_size = lane_aligned ? 16 : mmsize;
@@ -606,25 +497,15 @@ static int translate_shuffle(const SwsUOp *uop, SwsCompiledOp *out)
         .over_write  = { movsize(out_total, mmsize) - out_total },
     };
 
-#define ASSIGN_SHUFFLE_FUNC(CPU, EXT, NAME, ...)                                \
-do {                                                                            \
-    const SwsUOpEntry *entry = &uop_##NAME##EXT;                                \
-    if (!memcmp(&uop->par, &entry->par, sizeof(uop->par))) {                    \
-        out->func = (SwsOpFunc) entry->func;                                    \
-        out->cpu_flags = AV_CPU_FLAG_##CPU;                                     \
-    }                                                                           \
-} while (0);
-
-    switch (mmsize) {
-    case 16: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, SSE4, _sse4); break;
-    case 32: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX2, _avx2); break;
-    case 64:
-        if (lane_aligned) {
-            SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX512, _avx512);
-        } else { /* vpermb variant */
-            SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX512ICL, _avx512icl);
+    const SwsUOpTable *table = tables[isa];
+    for (int i = 0; table->entries[i]; i++) {
+        const SwsUOpEntry *entry = table->entries[i];
+        if (entry->uop == SWS_UOP_RW_SHUFFLE &&
+            !memcmp(&uop->par, &entry->par, sizeof(uop->par))) {
+            out->func = (SwsOpFunc) entry->func;
+            out->cpu_flags = table->cpu_flags;
+            break;
         }
-        break;
     }
 
     if (!out->func) {
@@ -637,6 +518,7 @@ do {                                                                            
 
 static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiledOp *out)
 {
+    const unsigned cpu_flags = get_uop_cpu_flags();
     int ret;
     if (!uops->block_size)
         return AVERROR(EINVAL);
@@ -663,8 +545,14 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
     };
 
     for (int i = 0; i < uops->num_ops; i++) {
-        ret = ff_sws_uop_lookup(ctx, tables, FF_ARRAY_ELEMS(tables),
-                                &uops->ops[i], out->block_size, chain);
+        const SwsUOp *uop = &uops->ops[i];
+        const int isa = ff_sws_uop_isa_x86(cpu_flags, uop);
+        if (isa < 0) {
+            ret = isa;
+            goto fail;
+        }
+
+        ret = ff_sws_uop_lookup(ctx, &tables[isa], 1, uop, out->block_size, chain);
         if (ret < 0)
             goto fail;
     }
