@@ -144,6 +144,7 @@ fate-sws-ops-list: CMD = run libswscale/tests/sws_ops$(EXESUF) | do_md5sum | cut
 FATE_SWS_UOPS_ENTRIES = fate-sws-uops-entries-c                        \
                         fate-sws-uops-entries-x86                      \
                         fate-sws-uops-entries-x86-nasm                 \
+                        fate-sws-uops-entries-aarch64                  \
 
 ifeq ($(HAVE_INT128),yes)
 # Disable by default without int128 because it is too slow (several minutes)
@@ -165,6 +166,10 @@ fate-sws-uops-entries-x86: CMD = run libswscale/uops_entries_gen$(EXESUF) x86 \
 fate-sws-uops-entries-x86-nasm: fate-sws-uops-entries-x86
 fate-sws-uops-entries-x86-nasm: REF = $(SRC_PATH)/libswscale/x86/uops_entries.asm
 fate-sws-uops-entries-x86-nasm: CMD = cat tests/data/fate/sws-uops-entries-x86.asm
+
+fate-sws-uops-entries-aarch64: libswscale/uops_entries_gen$(EXESUF)
+fate-sws-uops-entries-aarch64: REF = $(SRC_PATH)/libswscale/aarch64/uops_entries.h
+fate-sws-uops-entries-aarch64: CMD = run libswscale/uops_entries_gen$(EXESUF) aarch64
 
 fate-sws-uops-entries: $(FATE_SWS_UOPS_ENTRIES)
 

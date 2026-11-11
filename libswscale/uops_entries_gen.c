@@ -47,6 +47,7 @@
 #include "uops.h"
 #include "uops_backend.h"
 #include "uops_list.h"
+#include "aarch64/uops_aarch64.h"
 #include "x86/ops.h"
 
 static const char uop_names[SWS_UOP_TYPE_NB][32] = {
@@ -257,6 +258,7 @@ static void name_generic(const SwsUOp *uop, int list,
 #define AVX512    (AVX2   | AV_CPU_FLAG_AVX512)
 #define AVX512ICL (AVX512 | AV_CPU_FLAG_AVX512ICL)
 #define FMA3      AV_CPU_FLAG_FMA3
+#define NEON      AV_CPU_FLAG_NEON
 
 #define PUNNING SWS_UOP_FLAG_PUNNING
 #define FMA     SWS_UOP_FLAG_FMA
@@ -293,6 +295,17 @@ static const Target targets[] = {
         .list       = ff_sws_uop_isa_x86,
         .kernel_name = ff_sws_uop_name_x86,
         .vectors    = ff_sws_uop_vectors_x86,
+    }, {
+        .name       = "aarch64",
+        .guard      = "SWSCALE_AARCH64_UOPS_ENTRIES_H",
+        .lists      = { "AARCH64" },
+        .configs    = {
+            { PUNNING,       NEON },
+            { PUNNING | FMA, NEON },
+        },
+        .test_uop   = test_uop_aarch64,
+        .resolve    = ff_sws_uop_list_resolve_aarch64,
+        .kernel_name = ff_sws_uop_name_aarch64,
     },
 };
 
@@ -578,7 +591,7 @@ static int usage(void)
     fprintf(stderr, "Usage: uops_entries_gen TARGET [-nasm FILE]\n"
                     "Writes the C kernel lists of TARGET to stdout, and the NASM\n"
                     "kernel lists to FILE for targets which have them.\n"
-                    "TARGET is one of: c, x86\n");
+                    "TARGET is one of: c, x86, aarch64\n");
     return 1;
 }
 
