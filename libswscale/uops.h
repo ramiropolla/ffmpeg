@@ -364,6 +364,8 @@ typedef struct SwsUOpTarget {
 struct SwsUOpPolicy {
     SwsUOpFlags (*uop_flags)(const SwsUOpTarget *target);
 
+    bool punning; /* allow type punning float data as int */
+
     /**
      * Whether the backend implements `uop` on `target`. Translation asks
      * this before emitting a uop which has an alternative, and only sets
