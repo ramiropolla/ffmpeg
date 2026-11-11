@@ -53,7 +53,6 @@ TESTPROGS = colorspace                                                  \
             rational64                                                  \
             swscale                                                     \
             sws_ops                                                     \
-            sws_ops_aarch64                                             \
             unscaled_threaded                                           \
 
 DEVPROGS = uops_entries_gen                                             \

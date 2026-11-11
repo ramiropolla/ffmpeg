@@ -132,7 +132,6 @@ static void print_params(AVBPrint *bp, const SwsUOp *uop, bool designated)
 }
 
 /* A kernel, as listed in the generated output */
-/* A kernel, as listed in the generated output */
 typedef struct Entry {
     SwsUOp uop;
     int list; /* index into Target.lists */
