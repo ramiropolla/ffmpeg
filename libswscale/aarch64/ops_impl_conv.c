@@ -26,6 +26,7 @@
 #include "libavutil/error.h"
 
 #include "ops_impl.h"
+#include "uops_aarch64.h"
 
 /**
  * Convert SwsUOp to a SwsAArch64OpImplParams. Read the comments regarding
