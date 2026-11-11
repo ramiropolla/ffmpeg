@@ -840,7 +840,7 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
 
 /*********************************************************************/
 /* SWS_UOP_LINEAR:     mask = non-trivial output rows */
-/* SWS_UOP_LINEAR_FMA: with SWS_UOP_FLAG_FMA */
+/* SWS_UOP_LINEAR_FMA: with fused multiply-add */
 
 static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                         SwsAArch64OpRegs *regs, bool vh_pass)

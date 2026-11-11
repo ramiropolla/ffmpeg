@@ -35,9 +35,9 @@
 #include "../uops.h"
 #include "ops_impl.h"
 
-static inline SwsUOpFlags ff_sws_uop_flags_aarch64(bool bitexact)
+static inline SwsUOpFlags ff_sws_uop_flags_aarch64(void)
 {
-    return SWS_UOP_FLAG_PUNNING | (bitexact ? 0 : SWS_UOP_FLAG_FMA);
+    return SWS_UOP_FLAG_PUNNING;
 }
 
 /* Use at most two full vregs during the widest precision section */
@@ -241,7 +241,7 @@ static inline void ff_sws_uop_name_aarch64(const SwsUOp *uop,
 
 static inline SwsUOpFlags aarch64_policy_uop_flags(const SwsUOpTarget *target)
 {
-    return ff_sws_uop_flags_aarch64(target->flags & SWS_BITEXACT);
+    return ff_sws_uop_flags_aarch64();
 }
 
 static inline bool aarch64_policy_supported(const SwsUOpTarget *target,
@@ -252,6 +252,9 @@ static inline bool aarch64_policy_supported(const SwsUOpTarget *target,
     case SWS_UOP_READ_PALETTE:
     case SWS_UOP_RW_SHUFFLE:
         return false;
+    case SWS_UOP_READ_PLANAR_FV_FMA:
+    case SWS_UOP_LINEAR_FMA:
+        return !(target->flags & SWS_BITEXACT);
     default:
         return true;
     }

@@ -44,6 +44,8 @@ static inline bool c_policy_supported(const SwsUOpTarget *target,
 {
     switch (uop->uop) {
     case SWS_UOP_RW_SHUFFLE:
+    case SWS_UOP_READ_PLANAR_FV_FMA:
+    case SWS_UOP_LINEAR_FMA:
         return false;
     default:
         return true;

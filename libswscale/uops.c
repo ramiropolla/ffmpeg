@@ -278,7 +278,11 @@ static bool exact_prod(SwsPixel coef, const SwsOpPad *input)
 static bool check_filter_fma(SwsContext *ctx, const SwsUOpTarget *target,
                              const SwsOp *op)
 {
-    if (!(target->policy->uop_flags(target) & SWS_UOP_FLAG_FMA))
+    const SwsUOp fma = {
+        .uop  = SWS_UOP_READ_PLANAR_FV_FMA,
+        .type = op->rw.type,
+    };
+    if (!target->policy->supported(target, &fma))
         return false;
     if (!(ctx->flags & SWS_BITEXACT))
         return true;
@@ -539,7 +543,11 @@ static int translate_linear_op(SwsContext *ctx, SwsUOpList *ops,
         }
     }
 
-    if ((target->policy->uop_flags(target) & SWS_UOP_FLAG_FMA) &&
+    const SwsUOp fma = {
+        .uop  = SWS_UOP_LINEAR_FMA,
+        .type = uop.type,
+    };
+    if (target->policy->supported(target, &fma) &&
         !ff_sws_pixel_type_is_int(uop.type)) {
         /* multiplication by 1 and 0 are always exact by definition */
         uop.uop = SWS_UOP_LINEAR_FMA;

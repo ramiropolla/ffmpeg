@@ -58,10 +58,9 @@ static inline int ff_sws_x86_level(int cpu_flags)
         return AVERROR(ENOTSUP);
 }
 
-static inline SwsUOpFlags ff_sws_uop_flags_x86(bool fma)
+static inline SwsUOpFlags ff_sws_uop_flags_x86(void)
 {
-    return SWS_UOP_FLAG_PUNNING
-         | (fma ? SWS_UOP_FLAG_FMA : 0);
+    return SWS_UOP_FLAG_PUNNING;
 }
 
 /* Vector register size in bytes */
@@ -183,13 +182,19 @@ static inline SwsX86ISA ff_sws_uop_shuffle_isa_x86(SwsX86ISA level,
 
 static inline SwsUOpFlags x86_policy_uop_flags(const SwsUOpTarget *target)
 {
-    return ff_sws_uop_flags_x86(target->cpu_flags & AV_CPU_FLAG_FMA3);
+    return ff_sws_uop_flags_x86();
 }
 
 static inline bool x86_policy_supported(const SwsUOpTarget *target,
                                         const SwsUOp *uop)
 {
-    return true;
+    switch (uop->uop) {
+    case SWS_UOP_READ_PLANAR_FV_FMA:
+    case SWS_UOP_LINEAR_FMA:
+        return target->cpu_flags & AV_CPU_FLAG_FMA3;
+    default:
+        return true;
+    }
 }
 
 static inline int x86_policy_block_size(const SwsUOpTarget *target,

@@ -1278,6 +1278,8 @@ static bool vulkan_supported(const SwsUOpTarget *target, const SwsUOp *uop)
     case SWS_UOP_EXPAND_BIT:
     case SWS_UOP_READ_PALETTE:
     case SWS_UOP_RW_SHUFFLE:
+    case SWS_UOP_READ_PLANAR_FV_FMA:
+    case SWS_UOP_LINEAR_FMA:
         return false;
     default:
         return true;

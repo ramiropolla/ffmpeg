@@ -158,7 +158,6 @@ static inline char *ff_sws_comp_mask_print(SwsCompMask mask, char buf[5])
 typedef uint32_t SwsUOpFlags;
 typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_NONE         = 0,
-    SWS_UOP_FLAG_FMA          = (1 << 0), /* platform supports FMA ops */
     SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
 } SwsUOpFlagBits;
 
@@ -210,7 +209,7 @@ typedef enum SwsUOpType {
     SWS_UOP_RSHIFT,          /* mask = components to shift */
     SWS_UOP_CLEAR,           /* mask = components to clear */
     SWS_UOP_LINEAR,          /* mask = non-trivial output rows */
-    SWS_UOP_LINEAR_FMA,      /* with SWS_UOP_FLAG_FMA */
+    SWS_UOP_LINEAR_FMA,      /* with fused multiply-add */
     SWS_UOP_DITHER,          /* mask = components to dither */
     SWS_UOP_LUT_3D,          /* mask = needed output components */
 
