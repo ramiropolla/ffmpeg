@@ -42,7 +42,12 @@ static inline SwsUOpFlags c_policy_uop_flags(const SwsUOpTarget *target)
 static inline bool c_policy_supported(const SwsUOpTarget *target,
                                       const SwsUOp *uop)
 {
-    return true;
+    switch (uop->uop) {
+    case SWS_UOP_RW_SHUFFLE:
+        return false;
+    default:
+        return true;
+    }
 }
 
 static inline int c_policy_block_size(const SwsUOpTarget *target,

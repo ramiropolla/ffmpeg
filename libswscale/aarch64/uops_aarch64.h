@@ -250,6 +250,7 @@ static inline bool aarch64_policy_supported(const SwsUOpTarget *target,
     switch (uop->uop) {
     case SWS_UOP_EXPAND_BIT:
     case SWS_UOP_READ_PALETTE:
+    case SWS_UOP_RW_SHUFFLE:
         return false;
     default:
         return true;

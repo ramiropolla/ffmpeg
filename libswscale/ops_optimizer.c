@@ -1063,7 +1063,6 @@ int ff_sws_uop_list_optimize(SwsContext *ctx, const SwsUOpTarget *target,
 {
     static const SwsUOp dummy = {0};
     const SwsUOpPolicy *policy = target->policy;
-    const SwsUOpFlags flags = policy->uop_flags(target);
 
 retry:
     for (int i = 0; i < uops->num_ops; i++) {
@@ -1107,7 +1106,11 @@ retry:
     }
 
     /* Try promoting the entire uop list to a packed shuffle operation */
-    if (flags & SWS_UOP_FLAG_PSHUFB) {
+    const SwsUOp shuffle_uop = {
+        .uop  = SWS_UOP_RW_SHUFFLE,
+        .type = SWS_PIXEL_U8,
+    };
+    if (policy->supported(target, &shuffle_uop)) {
         SwsUOp shuffle;
         int ret = solve_shuffle(uops, &shuffle);
         if (ret >= 0) {
