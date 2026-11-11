@@ -34,4 +34,10 @@ static inline SwsUOpFlags ff_sws_uop_flags_aarch64(bool bitexact)
            (bitexact ? 0 : SWS_UOP_FLAG_FMA);
 }
 
+/* Use at most two full vregs during the widest precision section */
+static inline int ff_sws_uop_block_size_aarch64(const SwsUOpList *uops)
+{
+    return uops->pixel_size_max == 4 ? 8 : 16;
+}
+
 #endif /* SWSCALE_AARCH64_UOPS_AARCH64_H */

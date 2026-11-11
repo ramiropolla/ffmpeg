@@ -169,8 +169,7 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
-    /* Use at most two full vregs during the widest precision section */
-    int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
+    const int block_size = ff_sws_uop_block_size_aarch64(uops);
 
     SwsOpChain *chain = ff_sws_op_chain_alloc();
     if (!chain)

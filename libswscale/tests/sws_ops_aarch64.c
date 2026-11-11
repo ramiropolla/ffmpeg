@@ -210,8 +210,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto end;
 
-    /* Use at most two full vregs during the widest precision section */
-    int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
+    const int block_size = ff_sws_uop_block_size_aarch64(uops);
 
     for (int i = 0; i < uops->num_ops; i++) {
         SwsAArch64OpImplParams params = { 0 };
