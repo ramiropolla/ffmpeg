@@ -26,6 +26,8 @@
 
 #include <stdbool.h>
 
+#include "libavutil/attributes.h"
+#include "libavutil/cpu.h"
 #include "libavutil/error.h"
 #include "libavutil/macros.h"
 
@@ -39,6 +41,21 @@ typedef enum SwsX86ISA {
     SWS_X86_AVX512ICL,
     SWS_X86_ISA_NB,
 } SwsX86ISA;
+
+/* CPU level from AV_CPU_FLAG_*, or AVERROR(ENOTSUP) */
+static inline int ff_sws_x86_level(int cpu_flags)
+{
+    if (cpu_flags & AV_CPU_FLAG_AVX512ICL)
+        return SWS_X86_AVX512ICL;
+    else if (cpu_flags & AV_CPU_FLAG_AVX512)
+        return SWS_X86_AVX512;
+    else if (cpu_flags & AV_CPU_FLAG_AVX2)
+        return SWS_X86_AVX2;
+    else if (cpu_flags & AV_CPU_FLAG_SSE4)
+        return SWS_X86_SSE4;
+    else
+        return AVERROR(ENOTSUP);
+}
 
 static inline SwsUOpFlags ff_sws_uop_flags_x86(bool fma)
 {
@@ -156,5 +173,38 @@ static inline SwsX86ISA ff_sws_uop_shuffle_isa_x86(SwsX86ISA level,
         return level == SWS_X86_AVX512ICL ? SWS_X86_AVX512ICL : SWS_X86_SSE4;
     return FFMIN(level, SWS_X86_AVX512);
 }
+
+static inline SwsUOpFlags x86_policy_uop_flags(const SwsUOpTarget *target)
+{
+    return ff_sws_uop_flags_x86(target->cpu_flags & AV_CPU_FLAG_FMA3);
+}
+
+static inline int x86_policy_block_size(const SwsUOpTarget *target,
+                                        const SwsUOpList *uops)
+{
+    return ff_sws_uop_block_size_x86(ff_sws_x86_level(target->cpu_flags), uops);
+}
+
+static inline int x86_policy_simplify(const SwsUOpTarget *target, SwsUOp *uop)
+{
+    const int level = ff_sws_x86_level(target->cpu_flags);
+    if (level < 0)
+        return level;
+
+    /* The optimizer only produces SWS_UOP_RW_SHUFFLE as a standalone uop,
+     * which is implemented by a single kernel without a block size */
+    if (uop->uop == SWS_UOP_RW_SHUFFLE) {
+        uop->block_size = 0;
+        return ff_sws_uop_shuffle_isa_x86(level, uop);
+    }
+
+    return ff_sws_uop_simplify_x86(level, uop);
+}
+
+av_unused static const SwsUOpPolicy ff_sws_uop_policy_x86 = {
+    .uop_flags  = x86_policy_uop_flags,
+    .block_size = x86_policy_block_size,
+    .simplify   = x86_policy_simplify,
+};
 
 #endif /* SWSCALE_X86_UOPS_X86_H */
