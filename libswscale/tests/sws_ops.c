@@ -25,6 +25,7 @@
 #include "libswscale/ops_internal.h"
 #include "libswscale/op_list_gen_template.c"
 #include "libswscale/format.h"
+#include "libswscale/uops_backend.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -39,11 +40,7 @@ static int print_ops(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *out)
     if (!uops)
         return AVERROR(ENOMEM);
 
-    const SwsUOpFlags flags = SWS_UOP_FLAG_EXPAND_BIT
-                            | SWS_UOP_FLAG_READ_PALETTE
-                            | SWS_UOP_FLAG_ADD
-                            | SWS_UOP_FLAG_PUNNING;
-    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    int ret = ff_sws_ops_translate(ctx, ops, ff_sws_uop_flags_c(), uops);
     if (ret == AVERROR(ENOTSUP))
         goto fail;
 
