@@ -33,9 +33,13 @@
 static inline int test_uop_aarch64(const SwsUOp *uop, unsigned cpu_flags)
 {
     switch (uop->uop) {
+    case SWS_UOP_READ_PLANAR_FH:
+    case SWS_UOP_READ_PLANAR_FV:
+    case SWS_UOP_READ_PLANAR_FV_FMA:
     case SWS_UOP_READ_PALETTE:
     case SWS_UOP_EXPAND_BIT:
     case SWS_UOP_RW_SHUFFLE:
+    case SWS_UOP_LUT_3D:
         return AVERROR(ENOTSUP);
     default:
         break;
