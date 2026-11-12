@@ -884,8 +884,46 @@ static void asmgen_op_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *
 /* SWS_UOP_LINEAR:     mask = non-trivial output rows */
 /* SWS_UOP_LINEAR_FMA: with SWS_UOP_FLAG_FMA */
 
+/* Position of the pre-broadcast offset of row `row` in the kernel data. */
+static int linear_offset_pos(const SwsAArch64OpImplParams *p, int row)
+{
+    int pos = 16 * linear_num_vregs(p);
+    LOOP_MASK(p, i) {
+        if (i == row)
+            break;
+        if (!(p->par.lin.zero & SWS_MASK_OFF(i)))
+            pos += 16;
+    }
+    return pos;
+}
+
+/**
+ * Load the pre-broadcast offsets of the rows in `mask` into the output
+ * registers of one bank. The continuation address is loaded after the
+ * last of these loads, since they still address the data from impl.
+ */
+static void linear_load_offsets(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                SwsAArch64OpRegs *regs, bool vh_pass, SwsCompMask mask)
+{
+    RasmContext *r = s->rctx;
+    const bool full = vh_pass || p->block_size * ff_sws_pixel_type_size(p->type) >= 16;
+    RasmOp dst[4];
+    int off[4];
+    char names[4][16];
+    int n = 0;
+    LOOP(mask, i) {
+        dst[n] = (vh_pass ? regs->dh : regs->dl)[i];
+        off[n] = aarch64_priv_offset(p) + linear_offset_pos(p, i);
+        snprintf(names[n], sizeof(names[n]), "v%c[%u]", vh_pass ? 'h' : 'l', i);
+        n++;
+    }
+    load_vectors(s, dst, off, n, s->impl, full, names);
+    if (n)
+        s->load_cont_node = rasm_get_current_node(r);
+}
+
 static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                        SwsAArch64OpRegs *regs, bool vh_pass)
+                        SwsAArch64OpRegs *regs, bool vh_pass, SwsCompMask preloaded)
 {
     RasmContext *r = s->rctx;
     /**
@@ -917,7 +955,8 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             RasmOp vsrc = sx[src_j];
             RasmOp vcoeff = regs->linear_vcoeff[i][j];
             if (first && is_offset) {
-                i_dup (r, dx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(offset[%u]);", cvh, i, i);
+                if (!(preloaded & SWS_COMP(i)))
+                    linear_load_offsets(s, p, regs, vh_pass, SWS_COMP(i));
             } else if (first && !is_offset) {
                 if (p->par.lin.one & SWS_MASK(i, src_j)) {
                     i_mov16b(r, dx[i], vsrc);           CMTF("v%c[%u]  = vsrc%c[%u];", cvh, i, cvh, src_j);
@@ -961,9 +1000,33 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 static void asmgen_op_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
+    /**
+     * Load the offsets of all rows whose output register is not read as an
+     * input by any row up front (both banks), so that in-order cores don't
+     * stall on the load right before the first multiply-accumulate.
+     */
+    SwsCompMask preloaded = 0;
+    LOOP_MASK(p, i) {
+        if (p->par.lin.zero & SWS_MASK_OFF(i))
+            continue;
+        bool read = false;
+        LOOP_MASK(p, k) {
+            for (int j = 0; j < 4; j++) {
+                if (!(p->par.lin.zero & SWS_MASK(k, j)) &&
+                    a64op_vec_n(regs->sl[j]) == a64op_vec_n(regs->dl[i]))
+                    read = true;
+            }
+        }
+        if (!read)
+            preloaded |= SWS_COMP(i);
+    }
+    linear_load_offsets(s, p, regs, false, preloaded);
+    if (s->use_vh)
+        linear_load_offsets(s, p, regs, true, preloaded);
+
     /* Perform linear passes for low and high vector banks. */
-    linear_pass(s, p, regs, false);
-    linear_pass(s, p, regs, true);
+    linear_pass(s, p, regs, false, preloaded);
+    linear_pass(s, p, regs, true,  preloaded);
 }
 
 /*********************************************************************/
