@@ -664,6 +664,29 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 }
 
 /*********************************************************************/
+/**
+ * The process functions only save the bottom half of v8 out of the
+ * callee-saved v8-v15 (see asmgen_process()). Check that the most recently
+ * generated kernel doesn't use v9-v15.
+ */
+static void check_kernel_vregs(const RasmContext *r)
+{
+    const RasmEntry *entry = &r->entries[r->num_entries - 1];
+    for (const RasmNode *node = entry->start; node != entry->end; node = node->next) {
+        if (node->type != RASM_NODE_INSN)
+            continue;
+        for (int k = 0; k < FF_ARRAY_ELEMS(node->insn.op); k++) {
+            const RasmOp op = node->insn.op[k];
+            if (rasm_op_type(op) != AARCH64_OP_VEC)
+                continue;
+            const int n = FFMAX(a64op_vec_num_regs(op), 1);
+            for (int v = 0; v < n; v++) {
+                const int reg = (a64op_vec_n(op) + v) & 0x1f;
+                av_assert0(reg < 9 || reg > 15);
+            }
+        }
+    }
+}
 
 /* Generate all functions described by ops_entries.c */
 static int asmgen(void)
@@ -688,6 +711,7 @@ static int asmgen(void)
     const SwsAArch64OpEntry *entries = ops_entries;
     while (entries->name) {
         asmgen_op_cps(&s, entries++);
+        check_kernel_vregs(rctx);
         if (rctx->error) {
             ret = rctx->error;
             goto error;

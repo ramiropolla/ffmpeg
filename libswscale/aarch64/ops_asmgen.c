@@ -176,6 +176,14 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
     if (nsaved)
         asmgen_prologue(s, saved_regs, nsaved);
 
+    /**
+     * The bottom halves of v8-v15 are callee-saved. The kernels may use v8
+     * (but not v9-v15, see check_kernel_vregs()), so it is always saved,
+     * which only costs a store and a load per call.
+     */
+    const RasmOp saved_vreg = v_d(a64op_vec(8));
+    asmgen_prologue(s, &saved_vreg, 1);
+
     /* Load values from exec. */
     RasmOp exec_in[4];
     RasmOp exec_in_bump[4];
@@ -244,6 +252,7 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
     i_bne(r, next_row);                     CMT("    goto next_row;");
 
     /* Function epilogue */
+    asmgen_epilogue(s, &saved_vreg, 1);
     if (nsaved)
         asmgen_epilogue(s, saved_regs, nsaved);
 
