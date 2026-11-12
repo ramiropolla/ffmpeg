@@ -210,6 +210,23 @@ RasmNode *rasm_add_directive(RasmContext *rctx, const char *text);
 RasmNode *rasm_get_current_node(RasmContext *rctx);
 RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node);
 
+/**
+ * Emit nodes after an earlier node (the anchor) instead of at the current
+ * position:
+ *
+ *     RasmNode *saved = rasm_insert_begin(rctx, anchor);
+ *     ... emit nodes ...
+ *     rasm_insert_end(rctx, &anchor, saved);
+ *
+ * rasm_insert_end() sets the anchor to the last inserted node, so that
+ * further insertions follow the previous ones, and restores the current
+ * position. If the current position was the anchor itself (nothing was
+ * emitted after it), emission continues after the inserted nodes instead,
+ * so that they stay before anything that is emitted next.
+ */
+RasmNode *rasm_insert_begin(RasmContext *rctx, RasmNode *anchor);
+void rasm_insert_end(RasmContext *rctx, RasmNode **anchor, RasmNode *saved);
+
 /* Top-level IR entries */
 int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
                     bool jumpable);

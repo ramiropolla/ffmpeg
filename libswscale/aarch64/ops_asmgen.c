@@ -903,9 +903,9 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                  * There is no need to perform multiplications by 1.
                  */
                 if (!(p->par.lin.one & SWS_MASK(i, src_j))) {
-                    pre_mul = rasm_set_current_node(r, pre_mul);
+                    RasmNode *saved = rasm_insert_begin(r, pre_mul);
                     i_fmul(r, vtmp[src_j], vsrc, vcoeff);   CMTF("vtmp[%u] = vsrc%c[%u] * coeff[%u][%u];", src_j, cvh, src_j, i, src_j);
-                    pre_mul = rasm_set_current_node(r, pre_mul);
+                    rasm_insert_end(r, &pre_mul, saved);
                     i_fadd(r, dx[i], dx[i], vtmp[src_j]);   CMTF("v%c[%u] += vtmp[%u];", cvh, i, src_j);
                 } else {
                     i_fadd(r, dx[i], dx[i], vsrc);          CMTF("v%c[%u] += vsrc%c[%u];", cvh, i, cvh, src_j);

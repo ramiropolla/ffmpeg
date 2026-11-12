@@ -203,6 +203,20 @@ RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node)
     return current_node;
 }
 
+RasmNode *rasm_insert_begin(RasmContext *rctx, RasmNode *anchor)
+{
+    return rasm_set_current_node(rctx, anchor);
+}
+
+void rasm_insert_end(RasmContext *rctx, RasmNode **anchor, RasmNode *saved)
+{
+    RasmNode *last = rctx->current_node;
+    if (saved == *anchor)
+        saved = last;
+    *anchor = last;
+    rctx->current_node = saved;
+}
+
 /*********************************************************************/
 /* Top-level IR entries */
 

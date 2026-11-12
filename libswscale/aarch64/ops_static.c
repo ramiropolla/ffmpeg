@@ -649,10 +649,10 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     } else {
         /* Load continuation address and increment impl pointer. */
         const size_t priv_size = FFALIGN(aarch64_priv_size(p), alignof_impl);
-        RasmNode *node = rasm_set_current_node(r, s->load_cont_node);
+        RasmNode *saved = rasm_insert_begin(r, s->load_cont_node);
         RasmOp impl_pre = a64op_pre(s->impl, offsetof_impl_priv + priv_size);
         i_ldr(r, s->cont, impl_pre);                    CMT("SwsFuncPtr cont = (++impl)->func;");
-        rasm_set_current_node(r, node);
+        rasm_insert_end(r, &s->load_cont_node, saved);
         /* Common end for remaining CPS functions. */
         i_br (r, s->cont);                              CMT("jump to cont");
     }
