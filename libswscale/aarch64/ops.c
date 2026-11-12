@@ -140,13 +140,18 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX: {
-        const size_t start = out->priv_size;
-        int ret = ff_sws_setup_vec4(&(const SwsImplParams) { .uop = uop }, out);
-        if (ret < 0)
-            return ret;
-        /* Pad to the full vector register loaded by the kernel */
-        static const uint8_t zero[16];
-        ff_sws_op_priv_pack(out, zero, sizeof(zero) - (out->priv_size - start));
+        /**
+         * Store each constant pre-broadcast to a full vector register, so
+         * that the kernel can load it directly instead of loading and
+         * broadcasting it on every block.
+         */
+        const int size = ff_sws_pixel_type_size(uop->type);
+        LOOP(const_vec_mask(p), i) {
+            uint8_t vec[16];
+            for (int j = 0; j < sizeof(vec); j += size)
+                memcpy(&vec[j], &uop->data.vec4[i], size);
+            ff_sws_op_priv_pack(out, vec, sizeof(vec));
+        }
         return 0;
     }
     case SWS_UOP_SCALE:

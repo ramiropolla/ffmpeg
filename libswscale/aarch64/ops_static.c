@@ -227,60 +227,69 @@ static void asmgen_setup_unpack(SwsAArch64Context *s, const SwsAArch64OpImplPara
 static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
+    const bool full = p->block_size * ff_sws_pixel_type_size(p->type) >= 16;
 
     /**
-     * TODO
-     * - pack elements in impl->priv and perform smaller loads
-     * - if only 1 element and not vh, load directly with ld1r
+     * The pre-broadcast clear values are loaded directly into the output
+     * registers. This must happen before impl is advanced.
      */
-
-    bool load_priv = false;
-    LOOP_MASK(p, i) {
-        if (!((p->par.clear.zero | p->par.clear.one) & SWS_COMP(i)))
-            load_priv = true;
+    RasmOp dl[4], dh[4];
+    int off[4];
+    char nl[4][16], nh[4][16];
+    int n = 0;
+    LOOP(const_vec_mask(p), i) {
+        dl[n] = regs->dl[i];
+        dh[n] = regs->dh[i];
+        off[n] = aarch64_priv_offset(p) + 16 * n;
+        snprintf(nl[n], sizeof(nl[n]), "vl[%u]", i);
+        snprintf(nh[n], sizeof(nh[n]), "vh[%u]", i);
+        n++;
     }
-    if (load_priv) {
-        i_ldr(r, v_q(vk[0]), IMPL_DATA(s, p, 0));  CMT("v128 clear_vec = impl->priv.v128;");
+    load_vectors(s, dl, off, n, s->impl, full, nl);
+    if (s->use_vh)
+        load_vectors(s, dh, off, n, s->impl, true, nh);
+    if (n)
         asmgen_set_load_cont_node(s);
+}
+
+/**
+ * Load the pre-broadcast constants of SWS_UOP_ADD/MIN/MAX into vk[], indexed
+ * by component.
+ */
+static void asmgen_setup_const_vecs(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                    SwsAArch64OpRegs *regs, const char *name)
+{
+    RasmOp vk[4];
+    memcpy(vk, regs->vk, sizeof(vk));
+    int off[4];
+    char names[4][16];
+    int n = 0;
+    LOOP(const_vec_mask(p), i) {
+        off[n] = aarch64_priv_offset(p) + 16 * n;
+        snprintf(names[n], sizeof(names[n]), "v%s%u", name, i);
+        regs->vk[i] = vk[n];
+        n++;
     }
+    load_vectors(s, vk, off, n, s->impl, true, names);
+    asmgen_set_load_cont_node(s);
 }
 
 static void asmgen_setup_add(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
-
-    RasmOp add_vec = regs->vt[0];
-    i_ldr(r, v_q(add_vec), IMPL_DATA(s, p, 0));                    CMT("v128 add_vec = impl->priv.v128;");
-    asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(add_vec, i));      CMTF("v128 vadd%u = add_vec[%u];", i, i); }
+    asmgen_setup_const_vecs(s, p, regs, "add");
 }
 
 static void asmgen_setup_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
-
-    RasmOp min_vec = regs->vt[0];
-    i_ldr(r, v_q(min_vec), IMPL_DATA(s, p, 0));                    CMT("v128 min_vec = impl->priv.v128;");
-    asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(min_vec, i));      CMTF("v128 vmin%u = min_vec[%u];", i, i); }
+    asmgen_setup_const_vecs(s, p, regs, "min");
 }
 
 static void asmgen_setup_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
-
-    RasmOp max_vec = regs->vt[0];
-    i_ldr(r, v_q(max_vec), IMPL_DATA(s, p, 0));                    CMT("v128 max_vec = impl->priv.v128;");
-    asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(max_vec, i));      CMTF("v128 vmax%u = max_vec[%u];", i, i); }
+    asmgen_setup_const_vecs(s, p, regs, "max");
 }
 
 static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
