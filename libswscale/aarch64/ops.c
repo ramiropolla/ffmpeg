@@ -140,12 +140,13 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX: {
+        const size_t start = out->priv_size;
         int ret = ff_sws_setup_vec4(&(const SwsImplParams) { .uop = uop }, out);
         if (ret < 0)
             return ret;
         /* Pad to the full vector register loaded by the kernel */
         static const uint8_t zero[16];
-        ff_sws_op_priv_pack(out, zero, sizeof(zero) - out->priv_size);
+        ff_sws_op_priv_pack(out, zero, sizeof(zero) - (out->priv_size - start));
         return 0;
     }
     case SWS_UOP_SCALE:
@@ -191,11 +192,20 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
             ret = AVERROR(ENOTSUP);
             goto error;
         }
+        /**
+         * Pad the kernel data so that it starts at aarch64_priv_offset()
+         * and the SwsOpImpl takes aarch64_impl_size() bytes.
+         */
+        static const uint8_t zero[16];
+        const int pre_pad = aarch64_priv_offset(&params) - offsetof_impl_priv;
         SwsImplResult res = { 0 };
+        ff_sws_op_priv_pack(&res, zero, pre_pad);
         ret = aarch64_setup(&uops->ops[i], &params, &res);
         if (ret < 0)
             goto error;
-        av_assert1(res.priv_size == aarch64_priv_size(&params));
+        av_assert1(res.priv_size == pre_pad + aarch64_priv_size(&params));
+        const int post_pad = aarch64_impl_size(&params) - offsetof_impl_priv - res.priv_size;
+        ff_sws_op_priv_pack(&res, zero, post_pad);
         ret = ff_sws_op_chain_append(chain, func, res.ref, res.priv, res.priv_size);
         av_refstruct_unref(&res.ref);
         if (ret < 0)

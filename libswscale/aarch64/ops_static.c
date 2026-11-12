@@ -129,7 +129,8 @@ static const SwsAArch64OpEntry ops_entries[] = {
 #include "ops_asmgen.c"
 
 /*********************************************************************/
-#define IMPL_PRIV(s) a64op_off(s->impl, offsetof_impl_priv)
+/* Kernel data at byte offset `off`, before impl is advanced. */
+#define IMPL_DATA(s, p, off) a64op_off(s->impl, aarch64_priv_offset(p) + (off))
 
 /**
  * Set node where the continuation address will be loaded and impl will
@@ -156,7 +157,7 @@ static void asmgen_setup_read_bit(SwsAArch64Context *s, const SwsAArch64OpImplPa
     AArch64VecViews bitmask_vec = a64op_vec_views(regs->vk[1]);
 
     rasm_annotate_next(r, "v128 shift_vec = impl->priv.v128;");
-    i_ldr(r, shift_vec.q, IMPL_PRIV(s));
+    i_ldr(r, shift_vec.q, IMPL_DATA(s, p, 0));
     asmgen_set_load_cont_node(s);
     if (p->block_size == 16) {
         i_movi(r, bitmask_vec.b16, IMM(1));                 CMT("v128 bitmask_vec = {1 <repeats 16 times>};");
@@ -182,7 +183,7 @@ static void asmgen_setup_write_bit(SwsAArch64Context *s, const SwsAArch64OpImplP
     AArch64VecViews shift_vec = a64op_vec_views(regs->vk[0]);
 
     rasm_annotate_next(r, "v128 shift_vec = impl->priv.v128;");
-    i_ldr(r, shift_vec.q, IMPL_PRIV(s));
+    i_ldr(r, shift_vec.q, IMPL_DATA(s, p, 0));
     asmgen_set_load_cont_node(s);
 }
 
@@ -241,7 +242,7 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
             load_priv = true;
     }
     if (load_priv) {
-        i_ldr(r, v_q(vk[0]), IMPL_PRIV(s));         CMT("v128 clear_vec = impl->priv.v128;");
+        i_ldr(r, v_q(vk[0]), IMPL_DATA(s, p, 0));  CMT("v128 clear_vec = impl->priv.v128;");
         asmgen_set_load_cont_node(s);
     }
 }
@@ -253,7 +254,7 @@ static void asmgen_setup_add(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     RasmOp *vk = regs->vk;
 
     RasmOp add_vec = regs->vt[0];
-    i_ldr(r, v_q(add_vec), IMPL_PRIV(s));                           CMT("v128 add_vec = impl->priv.v128;");
+    i_ldr(r, v_q(add_vec), IMPL_DATA(s, p, 0));                    CMT("v128 add_vec = impl->priv.v128;");
     asmgen_set_load_cont_node(s);
     LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(add_vec, i));      CMTF("v128 vadd%u = add_vec[%u];", i, i); }
 }
@@ -265,7 +266,7 @@ static void asmgen_setup_min(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     RasmOp *vk = regs->vk;
 
     RasmOp min_vec = regs->vt[0];
-    i_ldr(r, v_q(min_vec), IMPL_PRIV(s));                           CMT("v128 min_vec = impl->priv.v128;");
+    i_ldr(r, v_q(min_vec), IMPL_DATA(s, p, 0));                    CMT("v128 min_vec = impl->priv.v128;");
     asmgen_set_load_cont_node(s);
     LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(min_vec, i));      CMTF("v128 vmin%u = min_vec[%u];", i, i); }
 }
@@ -277,7 +278,7 @@ static void asmgen_setup_max(SwsAArch64Context *s, const SwsAArch64OpImplParams 
     RasmOp *vk = regs->vk;
 
     RasmOp max_vec = regs->vt[0];
-    i_ldr(r, v_q(max_vec), IMPL_PRIV(s));                           CMT("v128 max_vec = impl->priv.v128;");
+    i_ldr(r, v_q(max_vec), IMPL_DATA(s, p, 0));                    CMT("v128 max_vec = impl->priv.v128;");
     asmgen_set_load_cont_node(s);
     LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(max_vec, i));      CMTF("v128 vmax%u = max_vec[%u];", i, i); }
 }
@@ -289,7 +290,7 @@ static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParam
     RasmOp scale_vec = regs->vk[0];
 
     RasmOp priv_ptr = s->tmp0;
-    i_add (r, priv_ptr, s->impl, IMM(offsetof_impl_priv));          CMT("v128 *scale_vec_ptr = &impl->priv;");
+    i_add (r, priv_ptr, s->impl, IMM(aarch64_priv_offset(p)));      CMT("v128 *scale_vec_ptr = &impl->priv;");
     asmgen_set_load_cont_node(s);
     i_ld1r(r, vv_1(scale_vec), a64op_base(priv_ptr));               CMT("v128 scale_vec = broadcast(*scale_vec_ptr);");
 }
@@ -303,21 +304,17 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     RasmOp *vc = regs->vk;
     RasmOp *vt = regs->vt;
 
-    RasmOp ptr = s->tmp0;
-    RasmOp coeff_veclist;
-
     /* Preload coefficients from impl->priv. */
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
-    switch (num_vregs) {
-    case 1: coeff_veclist = vv_1(vc[0]);                      break;
-    case 2: coeff_veclist = vv_2(vc[0], vc[1]);               break;
-    case 3: coeff_veclist = vv_3(vc[0], vc[1], vc[2]);        break;
-    case 4: coeff_veclist = vv_4(vc[0], vc[1], vc[2], vc[3]); break;
+    int off[4];
+    char names[4][16];
+    for (int k = 0; k < num_vregs; k++) {
+        off[k] = aarch64_priv_offset(p) + 16 * k;
+        snprintf(names[k], sizeof(names[k]), "vcoeff%d", k);
     }
-    i_add(r, ptr, s->impl, IMM(offsetof_impl_priv));        CMT("v128 *vcoeff_ptr = &impl->priv;");
+    load_vectors(s, vc, off, num_vregs, s->impl, true, names);
     asmgen_set_load_cont_node(s);
-    i_ld1(r, coeff_veclist, a64op_base(ptr));               CMT("coeff_veclist = *vcoeff_ptr;");
 
     /**
      * Integer mul/mla by element does not exist for 8-bit elements, and
@@ -387,7 +384,7 @@ static void asmgen_setup_dither(SwsAArch64Context *s, const SwsAArch64OpImplPara
     RasmOp src_ptr = s->tmp0;
 
     regs->dither_ptr = src_ptr;
-    i_ldr(r, src_ptr, IMPL_PRIV(s));                        CMT("void *ptr = impl->priv.ptr;");
+    i_ldr(r, src_ptr, IMPL_DATA(s, p, 0));                 CMT("void *ptr = impl->priv.ptr;");
     asmgen_set_load_cont_node(s);
 }
 
@@ -648,9 +645,8 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
         i_ret(r);
     } else {
         /* Load continuation address and increment impl pointer. */
-        const size_t priv_size = FFALIGN(aarch64_priv_size(p), alignof_impl);
         RasmNode *saved = rasm_insert_begin(r, s->load_cont_node);
-        RasmOp impl_pre = a64op_pre(s->impl, offsetof_impl_priv + priv_size);
+        RasmOp impl_pre = a64op_pre(s->impl, aarch64_impl_size(p));
         i_ldr(r, s->cont, impl_pre);                    CMT("SwsFuncPtr cont = (++impl)->func;");
         rasm_insert_end(r, &s->load_cont_node, saved);
         /* Common end for remaining CPS functions. */

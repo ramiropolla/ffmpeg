@@ -32,6 +32,26 @@
 #define CMT(comment)   rasm_annotate(r, comment)
 #define CMTF(fmt, ...) rasm_annotatef(r, (char[128]){0}, 128, fmt, __VA_ARGS__)
 
+/**
+ * Load the vectors dst[0..n-1] from base + off[k] (only the low halves if
+ * !full). Full vectors at consecutive offsets are loaded in pairs with ldp.
+ */
+static void load_vectors(SwsAArch64Context *s, const RasmOp *dst, const int *off,
+                         int n, RasmOp base, bool full, const char (*names)[16])
+{
+    RasmContext *r = s->rctx;
+    for (int k = 0; k < n; k++) {
+        if (full && k + 1 < n && off[k + 1] == off[k] + 16) {
+            i_ldp(r, v_q(dst[k]), v_q(dst[k + 1]), a64op_off(base, off[k]));
+            CMTF("{ %s, %s } = data[%d];", names[k], names[k + 1], off[k]);
+            k++;
+        } else {
+            i_ldr(r, full ? v_q(dst[k]) : v_d(dst[k]), a64op_off(base, off[k]));
+            CMTF("%s = data[%d];", names[k], off[k]);
+        }
+    }
+}
+
 /* Reshape input/output vector registers for current SwsOp. */
 static void reshape_io_vectors(SwsAArch64OpRegs *regs, int el_count, int el_size)
 {

@@ -121,4 +121,30 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
 #define offsetof_impl_priv       8
 #define alignof_impl             8
 
+/**
+ * Offset of the kernel data from the start of its SwsOpImpl. Every
+ * SwsOpImpl takes a multiple of 16 bytes (see aarch64_impl_size()) and the
+ * chain is 16-byte aligned, so data that holds vectors is placed at offset
+ * 16 to keep it 16-byte aligned. This allows loading two vectors with a
+ * single ldp, and keeps vectors from crossing cache lines.
+ */
+static inline int aarch64_priv_offset(const SwsAArch64OpImplParams *params)
+{
+    switch (params->uop) {
+    case SWS_UOP_SCALE:
+        return offsetof_impl_priv; /* scalar */
+    case SWS_UOP_DITHER:
+        return offsetof_impl_priv; /* pointer */
+    default:
+        return aarch64_priv_size(params) ? 16 : offsetof_impl_priv;
+    }
+}
+
+/* Number of bytes taken by the SwsOpImpl of each kernel. */
+static inline int aarch64_impl_size(const SwsAArch64OpImplParams *params)
+{
+    const int size = aarch64_priv_offset(params) + aarch64_priv_size(params);
+    return (size + 15) & ~15;
+}
+
 #endif /* SWSCALE_AARCH64_OPS_IMPL_H */
