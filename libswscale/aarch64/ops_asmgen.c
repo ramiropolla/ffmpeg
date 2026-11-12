@@ -156,6 +156,11 @@ static unsigned clobbered_gprs(const SwsAArch64Context *s,
     return count;
 }
 
+/* Position of the horizontal loop of the process functions. */
+#define PROCESS_LOOP_ALIGN_LOG2  7
+#define PROCESS_LOOP_ALIGN       (1 << PROCESS_LOOP_ALIGN_LOG2)
+#define PROCESS_LOOP_OFFSET      0
+
 static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask omask)
 {
     RasmContext *r = s->rctx;
@@ -194,6 +199,26 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
 
     /* Jump to first row (skips padding). */
     i_b  (r, rasm_op_label(first_row));     CMT("goto first_row;");
+
+    /**
+     * Place the horizontal loop (next_block) at a fixed offset within a
+     * 128-byte block. Cortex-A76 is very sensitive to the address of this
+     * loop, which would otherwise move with the length of the prologue.
+     * The padding follows an unconditional branch, so it never runs.
+     */
+    unsigned n_bump = 1; /* bx = bx_start */
+    LOOP(imask, i) n_bump++;
+    LOOP(omask, i) n_bump++;
+    const unsigned pad = (PROCESS_LOOP_OFFSET - 4 * n_bump) & (PROCESS_LOOP_ALIGN - 1);
+    char directive[64];
+    snprintf(directive, sizeof(directive), "        .p2align %d", PROCESS_LOOP_ALIGN_LOG2);
+    rasm_add_directive(r, directive);
+    if (pad) {
+        snprintf(directive, sizeof(directive), "        .rept %u", pad / 4);
+        rasm_add_directive(r, directive);
+        rasm_add_directive(r, "        nop");
+        rasm_add_directive(r, "        .endr");
+    }
 
     /* Perform padding, preparing for next row. */
     rasm_add_label(r, next_row);            CMT("next_row:");
