@@ -1001,19 +1001,23 @@ add_cppflags(){
 }
 
 add_cflags(){
-    append CFLAGS $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    append CFLAGS $filtered
 }
 
 add_cflags_headers(){
-    append CFLAGS_HEADERS $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    append CFLAGS_HEADERS $filtered
 }
 
 add_cxxflags(){
-    append CXXFLAGS $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    append CXXFLAGS $filtered
 }
 
 add_objcflags(){
-    append OBJCFLAGS $($objcflags_filter "$@")
+    run_filter $objcflags_filter "$@"
+    append OBJCFLAGS $filtered
 }
 
 # This also covers ObjC, it inherits CFLAGS.
@@ -1023,23 +1027,28 @@ add_allcflags(){
 }
 
 add_asflags(){
-    append ASFLAGS $($asflags_filter "$@")
+    run_filter $asflags_filter "$@"
+    append ASFLAGS $filtered
 }
 
 add_ldflags(){
-    append LDFLAGS $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    append LDFLAGS $filtered
 }
 
 add_ldexeflags(){
-    append LDEXEFLAGS $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    append LDEXEFLAGS $filtered
 }
 
 add_ldsoflags(){
-    append LDSOFLAGS $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    append LDSOFLAGS $filtered
 }
 
 add_extralibs(){
-    prepend extralibs $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    prepend extralibs $filtered
 }
 
 add_stripflags(){
@@ -1051,11 +1060,13 @@ add_host_cppflags(){
 }
 
 add_host_cflags(){
-    append host_cflags $($host_cflags_filter "$@")
+    run_filter $host_cflags_filter "$@"
+    append host_cflags $filtered
 }
 
 add_host_ldflags(){
-    append host_ldflags $($host_ldflags_filter "$@")
+    run_filter $host_ldflags_filter "$@"
+    append host_ldflags $filtered
 }
 
 add_compat(){
@@ -1081,6 +1092,21 @@ expand_o(){
     expand_o_tmpl=$2
     shift 2
     eval $expand_o_var=\"$expand_o_tmpl\"
+}
+
+# Run the flags filter $1 on the other arguments and store the result in
+# $filtered. The default filter, echo, only joins its arguments, so do that
+# directly unless echo would interpret them.
+run_filter(){
+    run_filter_cmd=$1
+    shift
+    if test "$run_filter_cmd" = echo && test "$1" != "-n"; then
+        case $* in
+            *\\*) ;;
+            *) filtered=$*; return ;;
+        esac
+    fi
+    filtered=$($run_filter_cmd "$@")
 }
 
 # Like "cat > $1", without starting a process.
@@ -1304,9 +1330,12 @@ test_ld(){
     shift 1
     flags=$(filter_out '-l*|*.so' $@)
     libs=$(filter '-l*|*.so' $@)
-    test_$type $($cflags_filter $flags) || return
-    flags=$($ldflags_filter $flags)
-    libs=$($ldflags_filter $libs)
+    run_filter $cflags_filter $flags
+    test_$type $filtered || return
+    run_filter $ldflags_filter $flags
+    flags=$filtered
+    run_filter $ldflags_filter $libs
+    libs=$filtered
     expand_o ld_out "$LD_O" $TMPE
     log $ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs
     output=$($ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs 2>&1)
@@ -1357,7 +1386,8 @@ EOF
 
 test_cflags(){
     log test_cflags "$@"
-    set -- $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    set -- $filtered
     test_cc "$@" <<EOF
 int x;
 EOF
@@ -1370,7 +1400,8 @@ check_cflags(){
 
 test_cxxflags(){
     log test_cxxflags "$@"
-    set -- $($cflags_filter "$@")
+    run_filter $cflags_filter "$@"
+    set -- $filtered
     test_cxx "$@" <<EOF
 int x;
 EOF
@@ -1383,7 +1414,8 @@ check_cxxflags(){
 
 test_objcflags(){
     log test_objcflags "$@"
-    set -- $($objcflags_filter "$@")
+    run_filter $objcflags_filter "$@"
+    set -- $filtered
     test_objcc "$@" <<EOF
 int x;
 EOF
@@ -1401,7 +1433,8 @@ check_allcflags(){
 
 test_ldflags(){
     log test_ldflags "$@"
-    set -- $($ldflags_filter "$@")
+    run_filter $ldflags_filter "$@"
+    set -- $filtered
     test_ld "cc" "$@" <<EOF
 int main(void){ return 0; }
 EOF
@@ -1542,7 +1575,8 @@ test_cflags_cc(){
     header=$2
     condition=$3
     shift 3
-    set -- $($cflags_filter "$flags")
+    run_filter $cflags_filter "$flags"
+    set -- $filtered
     test_cc "$@" <<EOF
 #include <$header>
 #if !($condition)
@@ -1563,7 +1597,8 @@ test_cxxflags_cc(){
     header=$2
     condition=$3
     shift 3
-    set -- $($cflags_filter "$flags")
+    run_filter $cflags_filter "$flags"
+    set -- $filtered
     test_cxx "$@" <<EOF
 #include <$header>
 #if !($condition)
@@ -1839,9 +1874,12 @@ test_host_ld(){
     log test_host_ld "$@"
     flags=$(filter_out '-l*|*.so' $@)
     libs=$(filter '-l*|*.so' $@)
-    test_host_cc $($host_cflags_filter $flags) || return
-    flags=$($host_ldflags_filter $flags)
-    libs=$($host_ldflags_filter $libs)
+    run_filter $host_cflags_filter $flags
+    test_host_cc $filtered || return
+    run_filter $host_ldflags_filter $flags
+    flags=$filtered
+    run_filter $host_ldflags_filter $libs
+    libs=$filtered
     expand_o hostld_out "$HOSTLD_O" $TMPE
     test_cmd $host_ld $host_ldflags $flags $hostld_out $TMPO $libs $host_extralibs
 }
@@ -1863,7 +1901,8 @@ EOF
 
 check_host_cflags(){
     log check_host_cflags "$@"
-    set -- $($host_cflags_filter "$@")
+    run_filter $host_cflags_filter "$@"
+    set -- $filtered
     test_host_cc "$@" <<EOF && append host_cflags "$@"
 int x;
 EOF
@@ -1875,7 +1914,8 @@ test_host_cflags_cc(){
     header=$2
     condition=$3
     shift 3
-    set -- $($host_cflags_filter "$flags")
+    run_filter $host_cflags_filter "$flags"
+    set -- $filtered
     test_host_cc "$@" <<EOF
 #include <$header>
 #if !($condition)
