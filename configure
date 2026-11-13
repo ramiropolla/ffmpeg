@@ -1378,18 +1378,30 @@ print_include(){
         echo "#include <$hdr>"
 }
 
+nl='
+'
+
+# Store the #include lines for the headers $1 in $includes, like
+# print_include does.
+build_includes(){
+    includes=
+    for build_includes_hdr in $1; do
+        test "${build_includes_hdr%.h}" = "${build_includes_hdr}" &&
+            includes="$includes#include $build_includes_hdr$nl" ||
+            includes="$includes#include <$build_includes_hdr>$nl"
+    done
+}
+
 test_code(){
     log test_code "$@"
     check=$1
     headers=$2
     code=$3
     shift 3
-    {
-        for hdr in $headers; do
-            print_include $hdr
-        done
-        echo "int main(void) { $code; return 0; }"
-    } | test_$check "$@"
+    build_includes "$headers"
+    test_$check "$@" <<EOF
+${includes}int main(void) { $code; return 0; }
+EOF
 }
 
 check_cppflags(){
@@ -1479,12 +1491,10 @@ check_headers(){
     headers=$1
     shift
     disable_sanitized $headers
-    {
-        for hdr in $headers; do
-            print_include $hdr
-        done
-        echo "int x;"
-    } | test_cpp "$@" && enable_sanitized $headers
+    build_includes "$headers"
+    test_cpp "$@" <<EOF && enable_sanitized $headers
+${includes}int x;
+EOF
 }
 
 check_header_objcc(){
@@ -1493,10 +1503,10 @@ check_header_objcc(){
     header=$1
     shift
     disable_sanitized $header
-    {
-       echo "#include <$header>"
-       echo "int main(void) { return 0; }"
-    } | test_objcc && test_stat "$TMPO" && enable_sanitized $header
+    test_objcc <<EOF && test_stat "$TMPO" && enable_sanitized $header
+#include <$header>
+int main(void) { return 0; }
+EOF
 }
 
 check_apple_framework(){
