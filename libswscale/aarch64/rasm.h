@@ -210,6 +210,9 @@ RasmNode *rasm_add_directive(RasmContext *rctx, const char *text);
 RasmNode *rasm_get_current_node(RasmContext *rctx);
 RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node);
 
+RasmNode *rasm_inject_begin(RasmContext *rctx, RasmNode *node);
+RasmNode *rasm_inject_end(RasmContext *rctx, RasmNode *saved);
+
 /* Top-level IR entries */
 int rasm_func_begin(RasmContext *rctx, const char *name, bool export,
                     bool jumpable);
