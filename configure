@@ -1530,19 +1530,15 @@ int main(void){ $func(); }
 EOF
 }
 
-print_func_headers_test(){
-    headers=$1
-    funcs=$2
-    for hdr in $headers; do
-        print_include $hdr
+# Store a test program that references the functions $2 declared in the
+# headers $1 in $func_headers_test.
+build_func_headers_test(){
+    build_includes "$1"
+    func_headers_test="${includes}#include <stdint.h>${nl}static volatile intptr_t ref;${nl}int main(void) {${nl}"
+    for build_func in $2; do
+        func_headers_test="$func_headers_test ref = (intptr_t) $build_func;$nl"
     done
-    echo "#include <stdint.h>"
-    echo "static volatile intptr_t ref;"
-    echo "int main(void) {"
-    for func in $funcs; do
-        echo " ref = (intptr_t) $func;"
-    done
-    echo "return 0; }"
+    func_headers_test="${func_headers_test}return 0; }"
 }
 
 check_func_headers(){
@@ -1550,7 +1546,10 @@ check_func_headers(){
     headers=$1
     funcs=$2
     shift 2
-    print_func_headers_test "$headers" "$funcs" | test_ld "cc" "$@" &&
+    build_func_headers_test "$headers" "$funcs"
+    test_ld "cc" "$@" <<EOF &&
+$func_headers_test
+EOF
         enable $funcs && enable_sanitized $headers
 }
 
@@ -1559,18 +1558,19 @@ check_class_headers_cxx(){
     headers=$1
     classes=$2
     shift 2
-    {
-        for hdr in $headers; do
-            echo "#include <$hdr>"
-        done
-        echo "int main(void) { "
-        i=1
-        for class in $classes; do
-            echo "$class *obj$i;"
-            i=$(expr $i + 1)
-        done
-        echo "return 0; }"
-    } | test_ld "cxx" "$@" && enable_sanitized $headers
+    class_test=
+    for class_hdr in $headers; do
+        class_test="$class_test#include <$class_hdr>$nl"
+    done
+    class_test="${class_test}int main(void) { $nl"
+    class_i=1
+    for class_name in $classes; do
+        class_test="$class_test$class_name *obj$class_i;$nl"
+        class_i=$(($class_i + 1))
+    done
+    test_ld "cxx" "$@" <<EOF && enable_sanitized $headers
+${class_test}return 0; }
+EOF
 }
 
 test_cpp_condition(){
@@ -1980,7 +1980,10 @@ check_host_lib(){
     headers=$1
     funcs=$2
     shift 2
-    print_func_headers_test "$headers" "$funcs" | test_host_ld "$@" &&
+    build_func_headers_test "$headers" "$funcs"
+    test_host_ld "$@" <<EOF &&
+$func_headers_test
+EOF
         append host_extralibs "$@"
 }
 
