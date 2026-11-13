@@ -1374,7 +1374,8 @@ test_code(){
             print_include $hdr
         done
         echo "int main(void) { $code; return 0; }"
-    } | test_$check "$@"
+    } > $TMPSRC
+    test_$check "$@" < $TMPSRC
 }
 
 check_cppflags(){
@@ -1469,7 +1470,8 @@ check_headers(){
             print_include $hdr
         done
         echo "int x;"
-    } | test_cpp "$@" && enable_sanitized $headers
+    } > $TMPSRC
+    test_cpp "$@" < $TMPSRC && enable_sanitized $headers
 }
 
 check_header_objcc(){
@@ -1481,7 +1483,8 @@ check_header_objcc(){
     {
        echo "#include <$header>"
        echo "int main(void) { return 0; }"
-    } | test_objcc && test_stat "$TMPO" && enable_sanitized $header
+    } > $TMPSRC
+    test_objcc < $TMPSRC && test_stat "$TMPO" && enable_sanitized $header
 }
 
 check_apple_framework(){
@@ -5176,6 +5179,7 @@ tmpfile TMPGLSL .comp.glsl
 tmpfile TMPO   .o
 tmpfile TMPS   .S
 tmpfile TMPSH  .sh
+tmpfile TMPSRC .src
 tmpfile TMPV   .ver
 tmpfile TMPRSP .rsp
 
