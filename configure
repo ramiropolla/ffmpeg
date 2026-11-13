@@ -1122,30 +1122,37 @@ nvcc_o(){
     eval printf '%s\\n' $NVCC_O
 }
 
+# A shell-only cat for small newline-terminated text inputs.
+shcat(){
+    while IFS= read -r shcat_line; do
+        printf '%s\n' "$shcat_line"
+    done
+}
+
 test_cc(){
     log test_cc "$@"
-    cat > $TMPC
+    shcat > $TMPC
     log_file $TMPC
     test_cmd $cc $CPPFLAGS $CFLAGS "$@" $CC_C $(cc_o $TMPO) $TMPC
 }
 
 test_cxx(){
     log test_cxx "$@"
-    cat > $TMPCPP
+    shcat > $TMPCPP
     log_file $TMPCPP
     test_cmd $cxx $CPPFLAGS $CXXFLAGS "$@" $CXX_C $(cxx_o $TMPO) $TMPCPP
 }
 
 test_objcc(){
     log test_objcc "$@"
-    cat > $TMPM
+    shcat > $TMPM
     log_file $TMPM
     test_cmd $objcc -Werror=missing-prototypes $CPPFLAGS $CFLAGS $OBJCFLAGS "$@" $OBJCC_C $(cc_o $TMPO) $TMPM
 }
 
 test_glslc(){
     log test_glslc "$@"
-    cat > $TMPGLSL
+    shcat > $TMPGLSL
     log_file $TMPGLSL
     test_cmd $glslc $GLSLCFLAGS $glslcflags "$@" $(glslc_o $TMPO) $TMPGLSL
 }
@@ -1165,7 +1172,7 @@ EOF
 
 test_nvcc(){
     log test_nvcc "$@"
-    cat > $TMPCU
+    shcat > $TMPCU
     log_file $TMPCU
     tmpcu_=$TMPCU
     tmpo_=$TMPO
@@ -1188,14 +1195,14 @@ EOF
 
 test_cpp(){
     log test_cpp "$@"
-    cat > $TMPC
+    shcat > $TMPC
     log_file $TMPC
     test_cmd $cc $CPPFLAGS $CFLAGS "$@" $(cc_e $TMPO) $TMPC
 }
 
 test_as(){
     log test_as "$@"
-    cat > $TMPS
+    shcat > $TMPS
     log_file $TMPS
     test_cmd $as $CPPFLAGS $ASFLAGS "$@" $AS_C $(as_o $TMPO) $TMPS
 }
@@ -1249,7 +1256,7 @@ check_inline_asm_flags(){
       shift
     done;
     disable $name
-    cat > $TMPC <<EOF
+    shcat > $TMPC <<EOF
 void foo(void){ __asm__ volatile($code); }
 EOF
     log_file $TMPC
@@ -1850,7 +1857,7 @@ require_pkg_config_cxx(){
 
 test_host_cc(){
     log test_host_cc "$@"
-    cat > $TMPC
+    shcat > $TMPC
     log_file $TMPC
     test_cmd $host_cc $host_cflags "$@" $HOSTCC_C $(hostcc_o $TMPO) $TMPC
 }
@@ -1867,7 +1874,7 @@ test_host_ld(){
 
 test_host_cpp(){
     log test_host_cpp "$@"
-    cat > $TMPC
+    shcat > $TMPC
     log_file $TMPC
     test_cmd $host_cc $host_cppflags $host_cflags "$@" $(hostcc_e $TMPO) $TMPC
 }
