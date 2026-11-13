@@ -1096,6 +1096,18 @@ passthrough_flags(){
     filtered_flags=$*
 }
 
+# Split the arguments into libraries and other flags.
+split_link_args(){
+    split_libs=
+    split_flags=
+    for v; do
+        case $v in
+            -l*|*.so) split_libs="$split_libs$v " ;;
+                   *) split_flags="$split_flags$v " ;;
+        esac
+    done
+}
+
 # A shell-only cat for small newline-terminated text inputs.
 shcat(){
     while IFS= read -r shcat_line; do
@@ -1314,13 +1326,12 @@ test_ld(){
     log test_ld "$@"
     type=$1
     shift 1
-    flags=$(filter_out '-l*|*.so' $@)
-    libs=$(filter '-l*|*.so' $@)
-    $cflags_filter $flags
+    split_link_args $@
+    $cflags_filter $split_flags
     test_$type $filtered_flags || return
-    $ldflags_filter $flags
+    $ldflags_filter $split_flags
     flags=$filtered_flags
-    $ldflags_filter $libs
+    $ldflags_filter $split_libs
     libs=$filtered_flags
     expand_o ld_out "$LD_O" $TMPE
     log $ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs
@@ -1858,13 +1869,12 @@ test_host_cc(){
 
 test_host_ld(){
     log test_host_ld "$@"
-    flags=$(filter_out '-l*|*.so' $@)
-    libs=$(filter '-l*|*.so' $@)
-    $host_cflags_filter $flags
+    split_link_args $@
+    $host_cflags_filter $split_flags
     test_host_cc $filtered_flags || return
-    $host_ldflags_filter $flags
+    $host_ldflags_filter $split_flags
     flags=$filtered_flags
-    $host_ldflags_filter $libs
+    $host_ldflags_filter $split_libs
     libs=$filtered_flags
     expand_o hostld_out "$HOSTLD_O" $TMPE
     test_cmd $host_ld $host_ldflags $flags $hostld_out $TMPO $libs $host_extralibs
