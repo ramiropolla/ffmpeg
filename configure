@@ -1001,19 +1001,23 @@ add_cppflags(){
 }
 
 add_cflags(){
-    append CFLAGS $($cflags_filter "$@")
+    $cflags_filter "$@"
+    append CFLAGS $filtered_flags
 }
 
 add_cflags_headers(){
-    append CFLAGS_HEADERS $($cflags_filter "$@")
+    $cflags_filter "$@"
+    append CFLAGS_HEADERS $filtered_flags
 }
 
 add_cxxflags(){
-    append CXXFLAGS $($cflags_filter "$@")
+    $cflags_filter "$@"
+    append CXXFLAGS $filtered_flags
 }
 
 add_objcflags(){
-    append OBJCFLAGS $($objcflags_filter "$@")
+    $objcflags_filter "$@"
+    append OBJCFLAGS $filtered_flags
 }
 
 # This also covers ObjC, it inherits CFLAGS.
@@ -1023,23 +1027,28 @@ add_allcflags(){
 }
 
 add_asflags(){
-    append ASFLAGS $($asflags_filter "$@")
+    $asflags_filter "$@"
+    append ASFLAGS $filtered_flags
 }
 
 add_ldflags(){
-    append LDFLAGS $($ldflags_filter "$@")
+    $ldflags_filter "$@"
+    append LDFLAGS $filtered_flags
 }
 
 add_ldexeflags(){
-    append LDEXEFLAGS $($ldflags_filter "$@")
+    $ldflags_filter "$@"
+    append LDEXEFLAGS $filtered_flags
 }
 
 add_ldsoflags(){
-    append LDSOFLAGS $($ldflags_filter "$@")
+    $ldflags_filter "$@"
+    append LDSOFLAGS $filtered_flags
 }
 
 add_extralibs(){
-    prepend extralibs $($ldflags_filter "$@")
+    $ldflags_filter "$@"
+    prepend extralibs $filtered_flags
 }
 
 add_stripflags(){
@@ -1051,11 +1060,13 @@ add_host_cppflags(){
 }
 
 add_host_cflags(){
-    append host_cflags $($host_cflags_filter "$@")
+    $host_cflags_filter "$@"
+    append host_cflags $filtered_flags
 }
 
 add_host_ldflags(){
-    append host_ldflags $($host_ldflags_filter "$@")
+    $host_ldflags_filter "$@"
+    append host_ldflags $filtered_flags
 }
 
 add_compat(){
@@ -1079,6 +1090,10 @@ expand_o(){
     expand_o_tmpl=$2
     shift 2
     eval $expand_o_var=\"$expand_o_tmpl\"
+}
+
+passthrough_flags(){
+    filtered_flags=$*
 }
 
 # A shell-only cat for small newline-terminated text inputs.
@@ -1301,9 +1316,12 @@ test_ld(){
     shift 1
     flags=$(filter_out '-l*|*.so' $@)
     libs=$(filter '-l*|*.so' $@)
-    test_$type $($cflags_filter $flags) || return
-    flags=$($ldflags_filter $flags)
-    libs=$($ldflags_filter $libs)
+    $cflags_filter $flags
+    test_$type $filtered_flags || return
+    $ldflags_filter $flags
+    flags=$filtered_flags
+    $ldflags_filter $libs
+    libs=$filtered_flags
     expand_o ld_out "$LD_O" $TMPE
     log $ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs
     output=$($ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs 2>&1)
@@ -1354,7 +1372,8 @@ EOF
 
 test_cflags(){
     log test_cflags "$@"
-    set -- $($cflags_filter "$@")
+    $cflags_filter "$@"
+    set -- $filtered_flags
     test_cc "$@" <<EOF
 int x;
 EOF
@@ -1367,7 +1386,8 @@ check_cflags(){
 
 test_cxxflags(){
     log test_cxxflags "$@"
-    set -- $($cflags_filter "$@")
+    $cflags_filter "$@"
+    set -- $filtered_flags
     test_cxx "$@" <<EOF
 int x;
 EOF
@@ -1380,7 +1400,8 @@ check_cxxflags(){
 
 test_objcflags(){
     log test_objcflags "$@"
-    set -- $($objcflags_filter "$@")
+    $objcflags_filter "$@"
+    set -- $filtered_flags
     test_objcc "$@" <<EOF
 int x;
 EOF
@@ -1398,7 +1419,8 @@ check_allcflags(){
 
 test_ldflags(){
     log test_ldflags "$@"
-    set -- $($ldflags_filter "$@")
+    $ldflags_filter "$@"
+    set -- $filtered_flags
     test_ld "cc" "$@" <<EOF
 int main(void){ return 0; }
 EOF
@@ -1539,7 +1561,8 @@ test_cflags_cc(){
     header=$2
     condition=$3
     shift 3
-    set -- $($cflags_filter "$flags")
+    $cflags_filter "$flags"
+    set -- $filtered_flags
     test_cc "$@" <<EOF
 #include <$header>
 #if !($condition)
@@ -1560,7 +1583,8 @@ test_cxxflags_cc(){
     header=$2
     condition=$3
     shift 3
-    set -- $($cflags_filter "$flags")
+    $cflags_filter "$flags"
+    set -- $filtered_flags
     test_cxx "$@" <<EOF
 #include <$header>
 #if !($condition)
@@ -1836,9 +1860,12 @@ test_host_ld(){
     log test_host_ld "$@"
     flags=$(filter_out '-l*|*.so' $@)
     libs=$(filter '-l*|*.so' $@)
-    test_host_cc $($host_cflags_filter $flags) || return
-    flags=$($host_ldflags_filter $flags)
-    libs=$($host_ldflags_filter $libs)
+    $host_cflags_filter $flags
+    test_host_cc $filtered_flags || return
+    $host_ldflags_filter $flags
+    flags=$filtered_flags
+    $host_ldflags_filter $libs
+    libs=$filtered_flags
     expand_o hostld_out "$HOSTLD_O" $TMPE
     test_cmd $host_ld $host_ldflags $flags $hostld_out $TMPO $libs $host_extralibs
 }
@@ -1860,7 +1887,8 @@ EOF
 
 check_host_cflags(){
     log check_host_cflags "$@"
-    set -- $($host_cflags_filter "$@")
+    $host_cflags_filter "$@"
+    set -- $filtered_flags
     test_host_cc "$@" <<EOF && append host_cflags "$@"
 int x;
 EOF
@@ -1872,7 +1900,8 @@ test_host_cflags_cc(){
     header=$2
     condition=$3
     shift 3
-    set -- $($host_cflags_filter "$flags")
+    $host_cflags_filter "$flags"
+    set -- $filtered_flags
     test_host_cc "$@" <<EOF
 #include <$header>
 #if !($condition)
@@ -4487,10 +4516,10 @@ SLIB_INSTALL_NAME='$(SLIBNAME_WITH_VERSION)'
 SLIB_INSTALL_LINKS='$(SLIBNAME_WITH_MAJOR) $(SLIBNAME)'
 VERSION_SCRIPT_POSTPROCESS_CMD="cat"
 
-asflags_filter=echo
-cflags_filter=echo
-objcflags_filter=echo
-ldflags_filter=echo
+asflags_filter=passthrough_flags
+cflags_filter=passthrough_flags
+objcflags_filter=passthrough_flags
+ldflags_filter=passthrough_flags
 
 AS_C='-c'
 AS_O='-o $@'
@@ -4515,8 +4544,8 @@ NVCC_C='-c'
 NVCC_O='-o $@'
 
 host_extralibs=
-host_cflags_filter=echo
-host_ldflags_filter=echo
+host_cflags_filter=passthrough_flags
+host_ldflags_filter=passthrough_flags
 
 target_path='$(CURDIR)'
 
@@ -5155,6 +5184,7 @@ EOF
 fi
 
 armasm_flags(){
+    filtered_flags=
     for flag; do
         case $flag in
             # Filter out MSVC cl.exe options from cflags that shouldn't
@@ -5162,12 +5192,13 @@ armasm_flags(){
             -M[TD]*)                                            ;;
             -guard:signret)                                     ;;
             -experimental:*)                                    ;;
-            *)                  echo $flag                      ;;
+            *)                  append filtered_flags $flag     ;;
         esac
    done
 }
 
 msvc_common_flags(){
+    filtered_flags=
     for flag; do
         case $flag in
             # In addition to specifying certain flags under the compiler
@@ -5175,11 +5206,11 @@ msvc_common_flags(){
             # generic catch all at the bottom will print the original flag.
             -Wall)                ;;
             -Wextra)              ;;
-            -Werror)              echo -WX ;;
-            -std=c*)              echo /std:${flag#-std=};;
+            -Werror)              append filtered_flags -WX ;;
+            -std=c*)              append filtered_flags /std:${flag#-std=};;
             # Common flags
             -fomit-frame-pointer) ;;
-            -g)                   echo -Z7 ;;
+            -g)                   append filtered_flags -Z7 ;;
             -fno-math-errno)      ;;
             -fno-common)          ;;
             -fno-signed-zeros)    ;;
@@ -5187,16 +5218,16 @@ msvc_common_flags(){
             -mthumb)              ;;
             -march=*)             ;;
             -mfp16-format=*)      ;;
-            -lz)                  echo ${zlib_msvc_lib:-zlib.lib} ;;
-            -lx264)               echo libx264.lib ;;
+            -lz)                  append filtered_flags ${zlib_msvc_lib:-zlib.lib} ;;
+            -lx264)               append filtered_flags libx264.lib ;;
             -lstdc++)             ;;
-            -l*)                  echo ${flag#-l}.lib ;;
-            -LARGEADDRESSAWARE)   echo $flag ;;
-            -L*) [ "$_flags_type" != "link" ] || echo -libpath:${flag#-L} ;;
-            -I*) [ "$_flags_type" = "link" ] || echo $flag ;;
-            -D*) [ "$_flags_type" = "link" ] || echo $flag ;;
+            -l*)                  append filtered_flags ${flag#-l}.lib ;;
+            -LARGEADDRESSAWARE)   append filtered_flags $flag ;;
+            -L*) [ "$_flags_type" != "link" ] || append filtered_flags -libpath:${flag#-L} ;;
+            -I*) [ "$_flags_type" = "link" ] || append filtered_flags $flag ;;
+            -D*) [ "$_flags_type" = "link" ] || append filtered_flags $flag ;;
             -Wl,*)                ;;
-            *)                    echo $flag ;;
+            *)                    append filtered_flags $flag ;;
         esac
     done
 }
@@ -5205,13 +5236,13 @@ msvc_flags(){
     msvc_common_flags "$@"
     for flag; do
         case $flag in
-            -Wall)                echo -W3 -wd4018 -wd4146 -wd4244 -wd4305     \
-                                       -wd4554 -wd4267 ;;
-            -Wextra)              echo -W4 -wd4244 -wd4127 -wd4018 -wd4389     \
-                                       -wd4146 -wd4057 -wd4204 -wd4706 -wd4305 \
-                                       -wd4152 -wd4324 -we4013 -wd4100 -wd4214 \
-                                       -wd4307 \
-                                       -wd4273 -wd4554 -wd4701 -wd4703 ;;
+            -Wall)                append filtered_flags -W3 -wd4018 -wd4146 -wd4244 -wd4305     \
+                                                        -wd4554 -wd4267 ;;
+            -Wextra)              append filtered_flags -W4 -wd4244 -wd4127 -wd4018 -wd4389     \
+                                                        -wd4146 -wd4057 -wd4204 -wd4706 -wd4305 \
+                                                        -wd4152 -wd4324 -we4013 -wd4100 -wd4214 \
+                                                        -wd4307 \
+                                                        -wd4273 -wd4554 -wd4701 -wd4703 ;;
         esac
     done
 }
@@ -5228,62 +5259,64 @@ icl_flags(){
         case $flag in
             # Despite what Intel's documentation says -Wall, which is supported
             # on Windows, does enable remarks so disable them here.
-            -Wall)                echo $flag -Qdiag-disable:remark ;;
-            -std=$stdc)           echo -Qstd=$stdc ;;
-            -flto*)               echo -ipo ;;
+            -Wall)                append filtered_flags $flag -Qdiag-disable:remark ;;
+            -std=$stdc)           append filtered_flags -Qstd=$stdc ;;
+            -flto*)               append filtered_flags -ipo ;;
         esac
     done
 }
 
 icc_flags(){
+    filtered_flags=
     for flag; do
         case $flag in
-            -flto*)               echo -ipo ;;
-            *)                    echo $flag ;;
+            -flto*)               append filtered_flags -ipo ;;
+            *)                    append filtered_flags $flag ;;
         esac
     done
 }
 
 suncc_flags(){
+    filtered_flags=
     for flag; do
         case $flag in
             -march=*|-mcpu=*)
                 case "${flag#*=}" in
-                    native)                   echo -xtarget=native       ;;
-                    v9|niagara)               echo -xarch=sparc          ;;
-                    ultrasparc)               echo -xarch=sparcvis       ;;
-                    ultrasparc3|niagara2)     echo -xarch=sparcvis2      ;;
-                    i586|pentium)             echo -xchip=pentium        ;;
-                    i686|pentiumpro|pentium2) echo -xtarget=pentium_pro  ;;
-                    pentium3*|c3-2)           echo -xtarget=pentium3     ;;
-                    pentium-m)          echo -xarch=sse2 -xchip=pentium3 ;;
-                    pentium4*)          echo -xtarget=pentium4           ;;
-                    prescott|nocona)    echo -xarch=sse3 -xchip=pentium4 ;;
-                    *-sse3)             echo -xarch=sse3                 ;;
-                    core2)              echo -xarch=ssse3 -xchip=core2   ;;
-                    bonnell)                   echo -xarch=ssse3         ;;
-                    corei7|nehalem)            echo -xtarget=nehalem     ;;
-                    westmere)                  echo -xtarget=westmere    ;;
-                    silvermont)                echo -xarch=sse4_2        ;;
-                    corei7-avx|sandybridge)    echo -xtarget=sandybridge ;;
+                    native)                   append filtered_flags -xtarget=native       ;;
+                    v9|niagara)               append filtered_flags -xarch=sparc          ;;
+                    ultrasparc)               append filtered_flags -xarch=sparcvis       ;;
+                    ultrasparc3|niagara2)     append filtered_flags -xarch=sparcvis2      ;;
+                    i586|pentium)             append filtered_flags -xchip=pentium        ;;
+                    i686|pentiumpro|pentium2) append filtered_flags -xtarget=pentium_pro  ;;
+                    pentium3*|c3-2)           append filtered_flags -xtarget=pentium3     ;;
+                    pentium-m)          append filtered_flags -xarch=sse2 -xchip=pentium3 ;;
+                    pentium4*)          append filtered_flags -xtarget=pentium4           ;;
+                    prescott|nocona)    append filtered_flags -xarch=sse3 -xchip=pentium4 ;;
+                    *-sse3)             append filtered_flags -xarch=sse3                 ;;
+                    core2)              append filtered_flags -xarch=ssse3 -xchip=core2   ;;
+                    bonnell)                   append filtered_flags -xarch=ssse3         ;;
+                    corei7|nehalem)            append filtered_flags -xtarget=nehalem     ;;
+                    westmere)                  append filtered_flags -xtarget=westmere    ;;
+                    silvermont)                append filtered_flags -xarch=sse4_2        ;;
+                    corei7-avx|sandybridge)    append filtered_flags -xtarget=sandybridge ;;
                     core-avx*|ivybridge|haswell|broadwell|skylake*|knl)
-                                               echo -xarch=avx           ;;
-                    amdfam10|barcelona)        echo -xtarget=barcelona   ;;
-                    btver1)                    echo -xarch=amdsse4a      ;;
-                    btver2|bdver*|znver*)      echo -xarch=avx           ;;
-                    athlon-4|athlon-[mx]p)     echo -xarch=ssea          ;;
+                                               append filtered_flags -xarch=avx           ;;
+                    amdfam10|barcelona)        append filtered_flags -xtarget=barcelona   ;;
+                    btver1)                    append filtered_flags -xarch=amdsse4a      ;;
+                    btver2|bdver*|znver*)      append filtered_flags -xarch=avx           ;;
+                    athlon-4|athlon-[mx]p)     append filtered_flags -xarch=ssea          ;;
                     k8|opteron|athlon64|athlon-fx)
-                                               echo -xarch=sse2a         ;;
-                    athlon*)                   echo -xarch=pentium_proa  ;;
+                                               append filtered_flags -xarch=sse2a         ;;
+                    athlon*)                   append filtered_flags -xarch=pentium_proa  ;;
                 esac
                 ;;
-            -std=$stdc)           echo -x$stdc            ;;
-            -fomit-frame-pointer) echo -xregs=frameptr    ;;
-            -fPIC)                echo -KPIC -xcode=pic32 ;;
-            -W*,*)                echo $flag              ;;
-            -f*-*|-W*|-mimpure-text)                      ;;
-            -shared)              echo -G                 ;;
-            *)                    echo $flag              ;;
+            -std=$stdc)           append filtered_flags -x$stdc            ;;
+            -fomit-frame-pointer) append filtered_flags -xregs=frameptr    ;;
+            -fPIC)                append filtered_flags -KPIC -xcode=pic32 ;;
+            -W*,*)                append filtered_flags $flag              ;;
+            -f*-*|-W*|-mimpure-text)                                       ;;
+            -shared)              append filtered_flags -G                 ;;
+            *)                    append filtered_flags $flag              ;;
         esac
     done
 }
@@ -5295,7 +5328,7 @@ probe_cc(){
     unset _type _ident _cc_c _cc_e _cc_o _flags _cflags _cxxflags
     unset _ld_o _ldflags _ld_lib _ld_path
     unset _depflags _DEPCMD _DEPFLAGS _DEPCCFLAGS _DEPCXXFLAGS
-    _flags_filter=echo
+    _flags_filter=passthrough_flags
 
     if $_cc --version 2>&1 | grep -q '^GNU assembler'; then
         true # no-op to avoid reading stdin in following checks
@@ -8195,7 +8228,8 @@ flatten_extralibs_wrapper(){
     drop_empty $list_name
     unique $list_name
     resolve $list_name
-    eval $list_name=\$\(\$ldflags_filter \$$list_name\)
+    eval \$ldflags_filter \$$list_name
+    eval $list_name=\$filtered_flags
     eval printf \''%s'\' \""\$$list_name"\"
 }
 
@@ -8478,6 +8512,9 @@ echo "config:$arch:$subarch:$cpu:$target_os:$(esc $cc_ident):$(esc $FFMPEG_CONFI
 enabled stripping || striptype="nostrip"
 enabled stripping || ASMSTRIPFLAGS=""
 
+$ldflags_filter $SHFLAGS
+SHFLAGS=$filtered_flags
+
 config_files="$TMPH ffbuild/config.mak doc/config.texi"
 
 cat > ffbuild/config.mak <<EOF
@@ -8564,7 +8601,7 @@ MAKEINFO=$makeinfo
 LDFLAGS=$LDFLAGS
 LDEXEFLAGS=$LDEXEFLAGS
 LDSOFLAGS=$LDSOFLAGS
-SHFLAGS=$(echo $($ldflags_filter $SHFLAGS))
+SHFLAGS=$SHFLAGS
 ASMSTRIPFLAGS=$ASMSTRIPFLAGS
 X86ASMFLAGS=$X86ASMFLAGS
 MSAFLAGS=$MSAFLAGS
