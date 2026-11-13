@@ -203,6 +203,20 @@ RasmNode *rasm_set_current_node(RasmContext *rctx, RasmNode *node)
     return current_node;
 }
 
+RasmNode *rasm_inject_begin(RasmContext *rctx, RasmNode *node)
+{
+    if (node == rasm_get_current_node(rctx))
+        return NULL;
+    return rasm_set_current_node(rctx, node);
+}
+
+RasmNode *rasm_inject_end(RasmContext *rctx, RasmNode *saved)
+{
+    if (saved == NULL)
+        return rasm_get_current_node(rctx);
+    return rasm_set_current_node(rctx, saved);
+}
+
 /*********************************************************************/
 /* Top-level IR entries */
 
