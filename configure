@@ -1074,52 +1074,13 @@ test_stat(){
     stat "$1" >> $logfile 2>&1
 }
 
-cc_e(){
-    eval printf '%s\\n' $CC_E
-}
-
-cc_o(){
-    eval printf '%s\\n' $CC_O
-}
-
-cxx_e(){
-    eval printf '%s\\n' $CXX_E
-}
-
-cxx_o(){
-    eval printf '%s\\n' $CXX_O
-}
-
-as_o(){
-    eval printf '%s\\n' $AS_O
-}
-
-x86asm_o(){
-    eval printf '%s\\n' $X86ASM_O
-}
-
-ld_o(){
-    eval printf '%s\\n' $LD_O
-}
-
-hostcc_e(){
-    eval printf '%s\\n' $HOSTCC_E
-}
-
-hostcc_o(){
-    eval printf '%s\\n' $HOSTCC_O
-}
-
-hostld_o(){
-    eval printf '%s\\n' $HOSTLD_O
-}
-
-glslc_o(){
-    eval printf '%s\\n' $GLSLC_O
-}
-
-nvcc_o(){
-    eval printf '%s\\n' $NVCC_O
+# Expand the output template $2 (such as $CC_O) for the file $3 into the
+# variable $1.
+expand_o(){
+    expand_o_var=$1
+    expand_o_tmpl=$2
+    shift 2
+    eval $expand_o_var=\"$expand_o_tmpl\"
 }
 
 # Like "cat > $1", without starting a process.
@@ -1134,28 +1095,32 @@ test_cc(){
     log test_cc "$@"
     write_stdin $TMPC
     log_file $TMPC
-    test_cmd $cc $CPPFLAGS $CFLAGS "$@" $CC_C $(cc_o $TMPO) $TMPC
+    expand_o cc_out "$CC_O" $TMPO
+    test_cmd $cc $CPPFLAGS $CFLAGS "$@" $CC_C $cc_out $TMPC
 }
 
 test_cxx(){
     log test_cxx "$@"
     write_stdin $TMPCPP
     log_file $TMPCPP
-    test_cmd $cxx $CPPFLAGS $CXXFLAGS "$@" $CXX_C $(cxx_o $TMPO) $TMPCPP
+    expand_o cxx_out "$CXX_O" $TMPO
+    test_cmd $cxx $CPPFLAGS $CXXFLAGS "$@" $CXX_C $cxx_out $TMPCPP
 }
 
 test_objcc(){
     log test_objcc "$@"
     write_stdin $TMPM
     log_file $TMPM
-    test_cmd $objcc -Werror=missing-prototypes $CPPFLAGS $CFLAGS $OBJCFLAGS "$@" $OBJCC_C $(cc_o $TMPO) $TMPM
+    expand_o cc_out "$CC_O" $TMPO
+    test_cmd $objcc -Werror=missing-prototypes $CPPFLAGS $CFLAGS $OBJCFLAGS "$@" $OBJCC_C $cc_out $TMPM
 }
 
 test_glslc(){
     log test_glslc "$@"
     write_stdin $TMPGLSL
     log_file $TMPGLSL
-    test_cmd $glslc $GLSLCFLAGS $glslcflags "$@" $(glslc_o $TMPO) $TMPGLSL
+    expand_o glslc_out "$GLSLC_O" $TMPO
+    test_cmd $glslc $GLSLCFLAGS $glslcflags "$@" $glslc_out $TMPGLSL
 }
 
 check_glslc(){
@@ -1178,7 +1143,8 @@ test_nvcc(){
     tmpcu_=$TMPCU
     tmpo_=$TMPO
     [ -x "$(command -v cygpath)" ] && tmpcu_=$(cygpath -m $tmpcu_) && tmpo_=$(cygpath -m $tmpo_)
-    test_cmd $nvcc $nvccflags "$@" $NVCC_C $(nvcc_o $tmpo_) $tmpcu_
+    expand_o nvcc_out "$NVCC_O" $tmpo_
+    test_cmd $nvcc $nvccflags "$@" $NVCC_C $nvcc_out $tmpcu_
 }
 
 check_nvcc() {
@@ -1198,14 +1164,16 @@ test_cpp(){
     log test_cpp "$@"
     write_stdin $TMPC
     log_file $TMPC
-    test_cmd $cc $CPPFLAGS $CFLAGS "$@" $(cc_e $TMPO) $TMPC
+    expand_o cc_out "$CC_E" $TMPO
+    test_cmd $cc $CPPFLAGS $CFLAGS "$@" $cc_out $TMPC
 }
 
 test_as(){
     log test_as "$@"
     write_stdin $TMPS
     log_file $TMPS
-    test_cmd $as $CPPFLAGS $ASFLAGS "$@" $AS_C $(as_o $TMPO) $TMPS
+    expand_o as_out "$AS_O" $TMPO
+    test_cmd $as $CPPFLAGS $ASFLAGS "$@" $AS_C $as_out $TMPS
 }
 
 test_x86asm(){
@@ -1213,7 +1181,8 @@ test_x86asm(){
     echo "$1" > $TMPASM
     log_file $TMPASM
     shift
-    test_cmd $x86asmexe $X86ASMFLAGS -Werror "$@" $(x86asm_o $TMPO) $TMPASM
+    expand_o x86asm_out "$X86ASM_O" $TMPO
+    test_cmd $x86asmexe $X86ASMFLAGS -Werror "$@" $x86asm_out $TMPASM
 }
 
 check_cmd(){
@@ -1261,7 +1230,8 @@ check_inline_asm_flags(){
 void foo(void){ __asm__ volatile($code); }
 EOF
     log_file $TMPC
-    test_cmd $cc $CPPFLAGS $CFLAGS $flags "$@" $CC_C $(cc_o $TMPO) $TMPC &&
+    expand_o cc_out "$CC_O" $TMPO
+    test_cmd $cc $CPPFLAGS $CFLAGS $flags "$@" $CC_C $cc_out $TMPC &&
     enable $name && add_allcflags $flags && add_asflags $flags && add_ldflags $flags
 }
 
@@ -1337,8 +1307,9 @@ test_ld(){
     test_$type $($cflags_filter $flags) || return
     flags=$($ldflags_filter $flags)
     libs=$($ldflags_filter $libs)
-    log $ld $LDFLAGS $LDEXEFLAGS $flags $(ld_o $TMPE) $TMPO $libs $extralibs
-    output=$($ld $LDFLAGS $LDEXEFLAGS $flags $(ld_o $TMPE) $TMPO $libs $extralibs 2>&1)
+    expand_o ld_out "$LD_O" $TMPE
+    log $ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs
+    output=$($ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs 2>&1)
     ret=$?
     echo "$output" >> $logfile
     # link.exe and lld-link exit 0 even for unrecognized options, emitting
@@ -1860,7 +1831,8 @@ test_host_cc(){
     log test_host_cc "$@"
     write_stdin $TMPC
     log_file $TMPC
-    test_cmd $host_cc $host_cflags "$@" $HOSTCC_C $(hostcc_o $TMPO) $TMPC
+    expand_o hostcc_out "$HOSTCC_O" $TMPO
+    test_cmd $host_cc $host_cflags "$@" $HOSTCC_C $hostcc_out $TMPC
 }
 
 test_host_ld(){
@@ -1870,14 +1842,16 @@ test_host_ld(){
     test_host_cc $($host_cflags_filter $flags) || return
     flags=$($host_ldflags_filter $flags)
     libs=$($host_ldflags_filter $libs)
-    test_cmd $host_ld $host_ldflags $flags $(hostld_o $TMPE) $TMPO $libs $host_extralibs
+    expand_o hostld_out "$HOSTLD_O" $TMPE
+    test_cmd $host_ld $host_ldflags $flags $hostld_out $TMPO $libs $host_extralibs
 }
 
 test_host_cpp(){
     log test_host_cpp "$@"
     write_stdin $TMPC
     log_file $TMPC
-    test_cmd $host_cc $host_cppflags $host_cflags "$@" $(hostcc_e $TMPO) $TMPC
+    expand_o hostcc_out "$HOSTCC_E" $TMPO
+    test_cmd $host_cc $host_cppflags $host_cflags "$@" $hostcc_out $TMPC
 }
 
 check_host_cppflags(){
