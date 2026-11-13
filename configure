@@ -1115,6 +1115,27 @@ shcat(){
     done
 }
 
+nl='
+'
+
+# Store the contents of the file $2 without its trailing newlines in the
+# variable $1.
+read_file(){
+    read_file_out=
+    read_file_sep=
+    while IFS= read -r read_file_line || test -n "$read_file_line"; do
+        read_file_out=$read_file_out$read_file_sep$read_file_line
+        read_file_sep=$nl
+    done < "$2"
+    while :; do
+        case $read_file_out in
+            *"$nl") read_file_out=${read_file_out%?} ;;
+            *) break ;;
+        esac
+    done
+    eval $1=\$read_file_out
+}
+
 test_cc(){
     log test_cc "$@"
     shcat > $TMPC
@@ -5180,6 +5201,7 @@ tmpfile TMPM   .m
 tmpfile TMPCU  .cu
 tmpfile TMPGLSL .comp.glsl
 tmpfile TMPO   .o
+tmpfile TMPOUT .out
 tmpfile TMPS   .S
 tmpfile TMPSH  .sh
 tmpfile TMPSRC .src
@@ -5341,6 +5363,44 @@ suncc_flags(){
     done
 }
 
+# Run $_cc with the arguments, storing its standard output in $probe_out,
+# its standard error in $probe_err and both in $probe_all, and returning its
+# exit status.  The results are cached per command line, since the same
+# compiler is usually probed several times.
+probe_run(){
+    sanitize_var_name "probe_$_cc $*"
+    if eval test -n \"\${${sanitized}_ret}\"; then
+        eval probe_out=\$${sanitized}_out
+        eval probe_err=\$${sanitized}_err
+        probe_all="$probe_out$nl$probe_err"
+        eval return \$${sanitized}_ret
+    fi
+    probe_out=$($_cc "$@" 2> $TMPOUT)
+    probe_ret=$?
+    read_file probe_err $TMPOUT
+    probe_all="$probe_out$nl$probe_err"
+    eval ${sanitized}_out=\$probe_out
+    eval ${sanitized}_err=\$probe_err
+    eval ${sanitized}_ret=\$probe_ret
+    return $probe_ret
+}
+
+# Succeed if a line of $1 starts with the shell pattern $2.
+match_line_start(){
+    case "$nl$1" in
+        *"$nl"$2*) return 0 ;;
+    esac
+    return 1
+}
+
+# Succeed if $1 contains the shell pattern $2.
+match_text(){
+    case $1 in
+        *$2*) return 0 ;;
+    esac
+    return 1
+}
+
 probe_cc(){
     pfx=$1
     _cc=$2
@@ -5350,11 +5410,12 @@ probe_cc(){
     unset _depflags _DEPCMD _DEPFLAGS _DEPCCFLAGS _DEPCXXFLAGS
     _flags_filter=passthrough_flags
 
-    if $_cc --version 2>&1 | grep -q '^GNU assembler'; then
+    if probe_run --version; match_line_start "$probe_all" 'GNU assembler'; then
         true # no-op to avoid reading stdin in following checks
-    elif $_cc -v 2>&1 | grep -qi ^gcc; then
+    elif probe_run -v; match_line_start "$probe_all" '[Gg][Cc][Cc]'; then
         _type=gcc
-        gcc_version=$($_cc --version | head -n1)
+        probe_run --version
+        gcc_version=${probe_out%%"$nl"*}
         gcc_basever=$($_cc -dumpversion)
         gcc_pkg_ver=$(expr "$gcc_version" : '[^ ]* \(([^)]*)\)')
         gcc_ext_ver=$(expr "$gcc_version" : ".*$gcc_pkg_ver $gcc_basever \\(.*\\)")
@@ -5362,21 +5423,22 @@ probe_cc(){
         _depflags='-MMD -MF $(@:.o=.d) -MT $@'
         _cflags_speed='-O3'
         _cflags_size='-Os'
-    elif $_cc --version 2>/dev/null | grep -q ^icc; then
+    elif probe_run --version; match_line_start "$probe_out" icc; then
         _type=icc
-        _ident=$($_cc --version | head -n1)
+        _ident=${probe_out%%"$nl"*}
         _depflags='-MMD'
         _cflags_speed='-O3'
         _cflags_size='-Os'
         _flags_filter=icc_flags
-    elif $_cc -v 2>&1 | grep -q xlc; then
+    elif probe_run -v; match_text "$probe_all" xlc; then
         _type=xlc
         _ident=$($_cc -qversion 2>/dev/null | head -n1)
         _cflags_speed='-O5'
         _cflags_size='-O5 -qcompact'
-    elif $_cc -v 2>&1 | grep -q clang && ! $_cc -? > /dev/null 2>&1; then
+    elif probe_run -v; match_text "$probe_all" clang && ! probe_run '-?'; then
         _type=clang
-        _ident=$($_cc --version 2>/dev/null | head -n1)
+        probe_run --version
+        _ident=${probe_out%%"$nl"*}
         _depflags='-MMD -MF $(@:.o=.d) -MT $@'
         _cflags_speed='-O3'
         _cflags_size='-Oz'
@@ -5431,7 +5493,7 @@ probe_cc(){
         _flags_filter=msvc_flags_link
         _ld_lib='%.lib'
         _ld_path='-libpath:'
-    elif VSLANG=1033 $_cc -nologo- 2>&1 | grep -q ^Microsoft || { $_cc -v 2>&1 | grep -q clang && $_cc -? > /dev/null 2>&1; }; then
+    elif VSLANG=1033 $_cc -nologo- 2>&1 | grep -q ^Microsoft || { probe_run -v; match_text "$probe_all" clang && probe_run '-?'; }; then
         _type=msvc
         if VSLANG=1033 $_cc -nologo- 2>&1 | grep -q ^Microsoft; then
             # Depending on the tool (cl.exe or link.exe), the version number
