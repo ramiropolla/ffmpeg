@@ -1528,7 +1528,8 @@ check_func_headers(){
     headers=$1
     funcs=$2
     shift 2
-    print_func_headers_test "$headers" "$funcs" | test_ld "cc" "$@" &&
+    print_func_headers_test "$headers" "$funcs" > $TMPSRC
+    test_ld "cc" "$@" < $TMPSRC &&
         enable $funcs && enable_sanitized $headers
 }
 
@@ -1548,7 +1549,8 @@ check_class_headers_cxx(){
             i=$(expr $i + 1)
         done
         echo "return 0; }"
-    } | test_ld "cxx" "$@" && enable_sanitized $headers
+    } > $TMPSRC
+    test_ld "cxx" "$@" < $TMPSRC && enable_sanitized $headers
 }
 
 test_cpp_condition(){
@@ -1958,7 +1960,8 @@ check_host_lib(){
     headers=$1
     funcs=$2
     shift 2
-    print_func_headers_test "$headers" "$funcs" | test_host_ld "$@" &&
+    print_func_headers_test "$headers" "$funcs" > $TMPSRC
+    test_host_ld "$@" < $TMPSRC &&
         append host_extralibs "$@"
 }
 
