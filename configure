@@ -1122,30 +1122,38 @@ nvcc_o(){
     eval printf '%s\\n' $NVCC_O
 }
 
+# Like "cat > $1", without starting a process.
+write_stdin(){
+    while IFS= read -r write_stdin_line; do
+        printf '%s\n' "$write_stdin_line"
+    done > "$1"
+    test -n "$write_stdin_line" && printf '%s' "$write_stdin_line" >> "$1"
+}
+
 test_cc(){
     log test_cc "$@"
-    cat > $TMPC
+    write_stdin $TMPC
     log_file $TMPC
     test_cmd $cc $CPPFLAGS $CFLAGS "$@" $CC_C $(cc_o $TMPO) $TMPC
 }
 
 test_cxx(){
     log test_cxx "$@"
-    cat > $TMPCPP
+    write_stdin $TMPCPP
     log_file $TMPCPP
     test_cmd $cxx $CPPFLAGS $CXXFLAGS "$@" $CXX_C $(cxx_o $TMPO) $TMPCPP
 }
 
 test_objcc(){
     log test_objcc "$@"
-    cat > $TMPM
+    write_stdin $TMPM
     log_file $TMPM
     test_cmd $objcc -Werror=missing-prototypes $CPPFLAGS $CFLAGS $OBJCFLAGS "$@" $OBJCC_C $(cc_o $TMPO) $TMPM
 }
 
 test_glslc(){
     log test_glslc "$@"
-    cat > $TMPGLSL
+    write_stdin $TMPGLSL
     log_file $TMPGLSL
     test_cmd $glslc $GLSLCFLAGS $glslcflags "$@" $(glslc_o $TMPO) $TMPGLSL
 }
@@ -1165,7 +1173,7 @@ EOF
 
 test_nvcc(){
     log test_nvcc "$@"
-    cat > $TMPCU
+    write_stdin $TMPCU
     log_file $TMPCU
     tmpcu_=$TMPCU
     tmpo_=$TMPO
@@ -1188,14 +1196,14 @@ EOF
 
 test_cpp(){
     log test_cpp "$@"
-    cat > $TMPC
+    write_stdin $TMPC
     log_file $TMPC
     test_cmd $cc $CPPFLAGS $CFLAGS "$@" $(cc_e $TMPO) $TMPC
 }
 
 test_as(){
     log test_as "$@"
-    cat > $TMPS
+    write_stdin $TMPS
     log_file $TMPS
     test_cmd $as $CPPFLAGS $ASFLAGS "$@" $AS_C $(as_o $TMPO) $TMPS
 }
@@ -1249,7 +1257,7 @@ check_inline_asm_flags(){
       shift
     done;
     disable $name
-    cat > $TMPC <<EOF
+    write_stdin $TMPC <<EOF
 void foo(void){ __asm__ volatile($code); }
 EOF
     log_file $TMPC
@@ -1850,7 +1858,7 @@ require_pkg_config_cxx(){
 
 test_host_cc(){
     log test_host_cc "$@"
-    cat > $TMPC
+    write_stdin $TMPC
     log_file $TMPC
     test_cmd $host_cc $host_cflags "$@" $HOSTCC_C $(hostcc_o $TMPO) $TMPC
 }
@@ -1867,7 +1875,7 @@ test_host_ld(){
 
 test_host_cpp(){
     log test_host_cpp "$@"
-    cat > $TMPC
+    write_stdin $TMPC
     log_file $TMPC
     test_cmd $host_cc $host_cppflags $host_cflags "$@" $(hostcc_e $TMPO) $TMPC
 }
