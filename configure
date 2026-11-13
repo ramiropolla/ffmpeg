@@ -1341,7 +1341,10 @@ test_ld(){
     # link.exe and lld-link exit 0 even for unrecognized options, emitting
     # only a warning (LNK4044 / "ignoring unknown argument").  Treat such
     # output as failure so check_ldflags rejects those flags correctly.
-    test $ret -eq 0 && ! echo "$output" | grep -qE 'LNK4044|lld-link: warning: ignoring unknown argument'
+    test $ret -eq 0 || return
+    case $output in
+        *LNK4044*|*"lld-link: warning: ignoring unknown argument"*) return 1 ;;
+    esac
 }
 
 check_ld(){
