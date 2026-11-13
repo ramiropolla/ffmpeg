@@ -1109,6 +1109,19 @@ run_filter(){
     filtered=$($run_filter_cmd "$@")
 }
 
+# Split the arguments into libraries ($split_libs) and other flags
+# ($split_flags).
+split_link_args(){
+    split_flags=
+    split_libs=
+    for split_v; do
+        case $split_v in
+            -l*|*.so) split_libs="$split_libs$split_v " ;;
+                   *) split_flags="$split_flags$split_v " ;;
+        esac
+    done
+}
+
 # Like "cat > $1", without starting a process.
 write_stdin(){
     while IFS= read -r write_stdin_line; do
@@ -1328,13 +1341,12 @@ test_ld(){
     log test_ld "$@"
     type=$1
     shift 1
-    flags=$(filter_out '-l*|*.so' $@)
-    libs=$(filter '-l*|*.so' $@)
-    run_filter $cflags_filter $flags
+    split_link_args $@
+    run_filter $cflags_filter $split_flags
     test_$type $filtered || return
-    run_filter $ldflags_filter $flags
+    run_filter $ldflags_filter $split_flags
     flags=$filtered
-    run_filter $ldflags_filter $libs
+    run_filter $ldflags_filter $split_libs
     libs=$filtered
     expand_o ld_out "$LD_O" $TMPE
     log $ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs
@@ -1872,13 +1884,12 @@ test_host_cc(){
 
 test_host_ld(){
     log test_host_ld "$@"
-    flags=$(filter_out '-l*|*.so' $@)
-    libs=$(filter '-l*|*.so' $@)
-    run_filter $host_cflags_filter $flags
+    split_link_args $@
+    run_filter $host_cflags_filter $split_flags
     test_host_cc $filtered || return
-    run_filter $host_ldflags_filter $flags
+    run_filter $host_ldflags_filter $split_flags
     flags=$filtered
-    run_filter $host_ldflags_filter $libs
+    run_filter $host_ldflags_filter $split_libs
     libs=$filtered
     expand_o hostld_out "$HOSTLD_O" $TMPE
     test_cmd $host_ld $host_ldflags $flags $hostld_out $TMPO $libs $host_extralibs
