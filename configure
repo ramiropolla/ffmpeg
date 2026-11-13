@@ -1339,25 +1339,25 @@ check_x86asm(){
 
 test_ld(){
     log test_ld "$@"
-    type=$1
+    test_ld_type=$1
     shift 1
     split_link_args $@
     run_filter $cflags_filter $split_flags
-    test_$type $filtered || return
+    test_$test_ld_type $filtered || return
     run_filter $ldflags_filter $split_flags
-    flags=$filtered
+    test_ld_flags=$filtered
     run_filter $ldflags_filter $split_libs
-    libs=$filtered
+    test_ld_libs=$filtered
     expand_o ld_out "$LD_O" $TMPE
-    log $ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs
-    output=$($ld $LDFLAGS $LDEXEFLAGS $flags $ld_out $TMPO $libs $extralibs 2>&1)
-    ret=$?
-    echo "$output" >> $logfile
+    log $ld $LDFLAGS $LDEXEFLAGS $test_ld_flags $ld_out $TMPO $test_ld_libs $extralibs
+    test_ld_output=$($ld $LDFLAGS $LDEXEFLAGS $test_ld_flags $ld_out $TMPO $test_ld_libs $extralibs 2>&1)
+    test_ld_ret=$?
+    echo "$test_ld_output" >> $logfile
     # link.exe and lld-link exit 0 even for unrecognized options, emitting
     # only a warning (LNK4044 / "ignoring unknown argument").  Treat such
     # output as failure so check_ldflags rejects those flags correctly.
-    test $ret -eq 0 || return
-    case $output in
+    test $test_ld_ret -eq 0 || return
+    case $test_ld_output in
         *LNK4044*|*"lld-link: warning: ignoring unknown argument"*) return 1 ;;
     esac
 }
@@ -1891,11 +1891,11 @@ test_host_ld(){
     run_filter $host_cflags_filter $split_flags
     test_host_cc $filtered || return
     run_filter $host_ldflags_filter $split_flags
-    flags=$filtered
+    test_host_ld_flags=$filtered
     run_filter $host_ldflags_filter $split_libs
-    libs=$filtered
+    test_host_ld_libs=$filtered
     expand_o hostld_out "$HOSTLD_O" $TMPE
-    test_cmd $host_ld $host_ldflags $flags $hostld_out $TMPO $libs $host_extralibs
+    test_cmd $host_ld $host_ldflags $test_host_ld_flags $hostld_out $TMPO $test_host_ld_libs $host_extralibs
 }
 
 test_host_cpp(){
