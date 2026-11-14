@@ -69,6 +69,7 @@ typedef struct SwsOpChain {
      * the front of the struct so SIMD kernels can access it directly. */
     DECLARE_ALIGNED_16(uint8_t, impl)[1024];
     int impl_size;
+    int impl_align;
 
     /* Metadata for the chain */
     int cpu_flags;      /* set of all used CPU flags */
