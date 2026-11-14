@@ -319,26 +319,13 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     RasmOp *vc = regs->vk;
     RasmOp *vt = regs->vt;
 
-    RasmOp ptr = s->tmp0;
-    RasmOp coeff_veclist;
-
     /* Preload coefficients from impl->priv. */
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
-    switch (num_vregs) {
-    case 1: coeff_veclist = vv_1(vc[0]);                      break;
-    case 2: coeff_veclist = vv_2(vc[0], vc[1]);               break;
-    case 3: coeff_veclist = vv_3(vc[0], vc[1], vc[2]);        break;
-    case 4: coeff_veclist = vv_4(vc[0], vc[1], vc[2], vc[3]); break;
-    }
-    i_add(r, ptr, s->impl, IMM(AARCH64_IMPL_DATA_OFFSET));  CMT("v128 *vcoeff_ptr = &impl->priv;");
+    load_regs(s, num_vregs, s->vec_size,
+              "vcoeff", vc,
+              "impl->priv", s->impl, AARCH64_IMPL_DATA_OFFSET);
     asmgen_set_load_cont_node(s);
-    i_ld1(r, coeff_veclist, a64op_base(ptr));
-    if (num_vregs == 1) {
-        CMT("vcoeff[0] = *vcoeff_ptr;");
-    } else {
-        CMTF("vcoeff[0..%u] = *vcoeff_ptr;", num_vregs);
-    }
 
     /**
      * Integer mul/mla by element does not exist for 8-bit elements, and
