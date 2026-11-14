@@ -67,7 +67,7 @@ typedef struct SwsOpChain {
     /* Generic data buffer. This contains a packed representation of
      * continuation addresses and kernel private data. This is placed at
      * the front of the struct so SIMD kernels can access it directly. */
-    DECLARE_ALIGNED_8(uint8_t, impl)[1024];
+    DECLARE_ALIGNED_16(uint8_t, impl)[1024];
     int impl_size;
 
     /* Metadata for the chain */
