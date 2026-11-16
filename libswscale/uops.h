@@ -259,10 +259,10 @@ typedef struct SwsPackUOp {
  * The clear values (SwsUOp.data.vec4) are always expanded to repeating 32-bit
  * patterns, so they remain valid if the uop is executed as a smaller type.
  */
-typedef struct SwsClearUOp {
+typedef struct SwsVec4UOp {
     SwsCompMask one;  /* mask of coefficients equal to all 1s */
     SwsCompMask zero; /* mask of coefficients equal to all 0s */
-} SwsClearUOp;
+} SwsVec4UOp;
 
 typedef struct SwsLinearUOp {
     uint32_t one;  /* mask of coefficients equal to one */
@@ -299,7 +299,7 @@ typedef union SwsUOpParams {
     SwsShiftUOp     shift;
     SwsMoveUOp      move; /* for SWS_UOP_PERMUTE and SWS_UOP_COPY */
     SwsPackUOp      pack;
-    SwsClearUOp     clear;
+    SwsVec4UOp      vec4;
     SwsLinearUOp    lin;
     SwsDitherUOp    dither;
     SwsLut3DUOp     lut3d;

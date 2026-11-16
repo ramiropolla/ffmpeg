@@ -98,9 +98,9 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
         for (int i = 0; i < 4; i++) {
             if (!SWS_COMP_TEST(op->mask, i))
                 continue;
-            else if (SWS_COMP_TEST(par->clear.one, i))
+            else if (SWS_COMP_TEST(par->vec4.one, i))
                 av_bprint_chars(&bp, '1', 1);
-            else if (SWS_COMP_TEST(par->clear.zero, i))
+            else if (SWS_COMP_TEST(par->vec4.zero, i))
                 av_bprint_chars(&bp, '0', 1);
             else
                 av_bprint_chars(&bp, 'x', 1);
@@ -606,9 +606,9 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             uop.type = pixel_type_to_int(flags, type);
             uop.data.vec4[i] = ff_sws_pixel_expand32(type, px);
             if (v.num == 0)
-                uop.par.clear.zero |= SWS_COMP(i);
+                uop.par.vec4.zero |= SWS_COMP(i);
             else if (ff_sws_pixel_is_1s(type, px))
-                uop.par.clear.one |= SWS_COMP(i);
+                uop.par.vec4.one |= SWS_COMP(i);
         }
         break;
     case SWS_OP_SCALE:
