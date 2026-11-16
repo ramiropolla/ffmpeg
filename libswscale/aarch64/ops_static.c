@@ -129,7 +129,7 @@ static const SwsAArch64OpEntry ops_entries[] = {
 #include "ops_asmgen.c"
 
 /*********************************************************************/
-#define IMPL_PRIV(s) a64op_off(s->impl, offsetof_impl_priv)
+#define IMPL_PRIV(s) a64op_off(s->impl, AARCH64_IMPL_DATA_OFFSET)
 
 /**
  * Set node where the continuation address will be loaded and impl will
@@ -305,7 +305,7 @@ static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParam
     RasmOp scale_vec = regs->vk[0];
 
     RasmOp priv_ptr = s->tmp0;
-    i_add (r, priv_ptr, s->impl, IMM(offsetof_impl_priv));          CMT("v128 *scale_vec_ptr = &impl->priv;");
+    i_add (r, priv_ptr, s->impl, IMM(AARCH64_IMPL_DATA_OFFSET));    CMT("v128 *scale_vec_ptr = &impl->priv;");
     asmgen_set_load_cont_node(s);
     i_ld1r(r, vv_1(scale_vec), a64op_base(priv_ptr));               CMT("v128 scale_vec = broadcast(*scale_vec_ptr);");
 }
@@ -331,7 +331,7 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     case 3: coeff_veclist = vv_3(vc[0], vc[1], vc[2]);        break;
     case 4: coeff_veclist = vv_4(vc[0], vc[1], vc[2], vc[3]); break;
     }
-    i_add(r, ptr, s->impl, IMM(offsetof_impl_priv));        CMT("v128 *vcoeff_ptr = &impl->priv;");
+    i_add(r, ptr, s->impl, IMM(AARCH64_IMPL_DATA_OFFSET));  CMT("v128 *vcoeff_ptr = &impl->priv;");
     asmgen_set_load_cont_node(s);
     i_ld1(r, coeff_veclist, a64op_base(ptr));
     if (num_vregs == 1) {
@@ -669,9 +669,9 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
         i_ret(r);
     } else {
         /* Load continuation address and increment impl pointer. */
-        const size_t priv_size = FFALIGN(aarch64_priv_size(p), alignof_impl);
+        const size_t priv_size = FFALIGN(aarch64_priv_size(p), AARCH64_IMPL_DATA_ALIGN);
         RasmNode *node = rasm_set_current_node(r, s->load_cont_node);
-        RasmOp impl_pre = a64op_pre(s->impl, offsetof_impl_priv + priv_size);
+        RasmOp impl_pre = a64op_pre(s->impl, AARCH64_IMPL_DATA_OFFSET + priv_size);
         i_ldr(r, s->cont, impl_pre);                    CMT("SwsFuncPtr cont = (++impl)->func;");
         rasm_set_current_node(r, node);
         /* Common end for remaining CPS functions. */
