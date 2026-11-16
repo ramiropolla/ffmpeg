@@ -265,8 +265,11 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_LD1,
     AARCH64_INSN_LD1R,
     AARCH64_INSN_LD2,
+    AARCH64_INSN_LD2R,
     AARCH64_INSN_LD3,
+    AARCH64_INSN_LD3R,
     AARCH64_INSN_LD4,
+    AARCH64_INSN_LD4R,
     AARCH64_INSN_LDP,
     AARCH64_INSN_LDR,
     AARCH64_INSN_LDRB,
@@ -566,8 +569,11 @@ static inline RasmOp a64cond_nv(void) { return a64op_cond(AARCH64_COND_NV); }
 #define i_ld1(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LD1,    op0, op1, OPN, OPN)
 #define i_ld1r(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LD1R,   op0, op1, OPN, OPN)
 #define i_ld2(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LD2,    op0, op1, OPN, OPN)
+#define i_ld2r(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LD2R,   op0, op1, OPN, OPN)
 #define i_ld3(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LD3,    op0, op1, OPN, OPN)
+#define i_ld3r(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LD3R,   op0, op1, OPN, OPN)
 #define i_ld4(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LD4,    op0, op1, OPN, OPN)
+#define i_ld4r(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LD4R,   op0, op1, OPN, OPN)
 #define i_ldp(rctx,    op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_LDP,    op0, op1, op2, OPN)
 #define i_ldr(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LDR,    op0, op1, OPN, OPN)
 #define i_ldrb(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_LDRB,   op0, op1, OPN, OPN)
