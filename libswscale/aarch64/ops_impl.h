@@ -121,4 +121,11 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
 #define offsetof_impl_priv       8
 #define alignof_impl             8
 
+/**
+ * Align the data inside SwsOpImpl.impl to 16 bytes, to allow aligned
+ * load of vector data using ldr/ldp.
+ */
+#define AARCH64_IMPL_DATA_ALIGN     16
+#define AARCH64_IMPL_DATA_OFFSET    FFALIGN(offsetof_impl_priv, AARCH64_IMPL_DATA_ALIGN)
+
 #endif /* SWSCALE_AARCH64_OPS_IMPL_H */
