@@ -139,15 +139,8 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
     case SWS_UOP_CLEAR:
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
-    case SWS_UOP_MAX: {
-        int ret = ff_sws_setup_vec4(&(const SwsImplParams) { .uop = uop }, out);
-        if (ret < 0)
-            return ret;
-        /* Pad to the full vector register loaded by the kernel */
-        static const uint8_t zero[16];
-        ff_sws_op_priv_pack(out, zero, sizeof(zero) - out->priv_size);
-        return 0;
-    }
+    case SWS_UOP_MAX:
+        return ff_sws_setup_vec4(&(const SwsImplParams) { .uop = uop }, out);
     case SWS_UOP_SCALE:
         return ff_sws_setup_scalar(&(const SwsImplParams) { .uop = uop }, out);
     case SWS_UOP_LINEAR:
@@ -176,6 +169,7 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     if (!chain)
         return AVERROR(ENOMEM);
     chain->cpu_flags = AV_CPU_FLAG_NEON;
+    chain->impl_align = AARCH64_IMPL_DATA_ALIGN;
 
     *out = (SwsCompiledOp) {
         .block_size  = block_size,
