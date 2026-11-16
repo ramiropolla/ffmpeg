@@ -627,21 +627,43 @@ SWS_FOR(PX, PACK,   DECL_IMPL, pack)
 SWS_FOR_STRUCT(PX, UNPACK,  DECL_ENTRY)
 SWS_FOR_STRUCT(PX, PACK,    DECL_ENTRY)
 
-/***********************
- * Pixel data clearing *
- ***********************/
+/*********************************
+ * Uops with a vec4 of constants *
+ *********************************/
 
-#ifdef PIXEL_MAX
-DECL_FUNC(clear, const SwsCompMask mask, const SwsCompMask one,
-                 const SwsCompMask zero)
+/**
+ * Constant of component comp, see SwsVec4UOp. The 32-bit patterns repeat
+ * the value, so reading it through the SwsPixel field of pixel_t works for
+ * every type.
+ */
+static av_always_inline pixel_t fn(vec4_const)(const SwsOpImpl *impl,
+                                               const SwsCompMask one,
+                                               const SwsCompMask zero,
+                                               const uint8_t idx, const int comp)
 {
-    #define ONE(N)  SWS_COMP_TEST(one, N)
-    #define ZERO(N) SWS_COMP_TEST(zero, N)
     const SwsOpPriv *priv = SWS_OP_PRIV(impl);
-    const pixel_t cx = ONE(0) ? PIXEL_MAX : ZERO(0) ? 0 : priv->px[0];
-    const pixel_t cy = ONE(1) ? PIXEL_MAX : ZERO(1) ? 0 : priv->px[1];
-    const pixel_t cz = ONE(2) ? PIXEL_MAX : ZERO(2) ? 0 : priv->px[2];
-    const pixel_t cw = ONE(3) ? PIXEL_MAX : ZERO(3) ? 0 : priv->px[3];
+    const SwsPixel val = {
+        .u32 = SWS_COMP_TEST(zero, comp) ? 0 :
+               SWS_COMP_TEST(one,  comp) ? UINT32_MAX : priv->u32[idx],
+    };
+    return val.px;
+}
+
+#define DECL_VEC4_FUNC(NAME)                                                    \
+    DECL_FUNC(NAME, const SwsCompMask mask,                                     \
+              const SwsCompMask one, const SwsCompMask zero,                    \
+              const uint8_t ix, const uint8_t iy,                               \
+              const uint8_t iz, const uint8_t iw)
+
+#define VEC4_CONSTS                                                             \
+    const pixel_t cx = fn(vec4_const)(impl, one, zero, ix, 0);                  \
+    const pixel_t cy = fn(vec4_const)(impl, one, zero, iy, 1);                  \
+    const pixel_t cz = fn(vec4_const)(impl, one, zero, iz, 2);                  \
+    const pixel_t cw = fn(vec4_const)(impl, one, zero, iw, 3)
+
+DECL_VEC4_FUNC(clear)
+{
+    VEC4_CONSTS;
 
     SWS_LOOP
     for (int i = 0; i < SWS_BLOCK_SIZE; i++) {
@@ -651,9 +673,8 @@ DECL_FUNC(clear, const SwsCompMask mask, const SwsCompMask one,
         if (W) w[i] = cw;
     }
 
-    CONTINUE(sizeof(pixel_t[4]), x, y, z, w);
+    CONTINUE(sizeof(uint32_t[4]), x, y, z, w);
 }
-#endif
 
 SWS_FOR(PX, CLEAR, DECL_IMPL, clear)
 SWS_FOR_STRUCT(PX, CLEAR, DECL_ENTRY, .setup = ff_sws_setup_vec4)
@@ -678,49 +699,49 @@ DECL_FUNC(scale, const SwsCompMask mask)
     CONTINUE(sizeof(pixel_t), x, y, z, w);
 }
 
-DECL_FUNC(add, const SwsCompMask mask)
+DECL_VEC4_FUNC(add)
 {
-    const SwsOpPriv *priv = SWS_OP_PRIV(impl);
+    VEC4_CONSTS;
 
     SWS_LOOP
     for (int i = 0; i < SWS_BLOCK_SIZE; i++) {
-        if (X) x[i] += priv->px[0];
-        if (Y) y[i] += priv->px[1];
-        if (Z) z[i] += priv->px[2];
-        if (W) w[i] += priv->px[3];
+        if (X) x[i] += cx;
+        if (Y) y[i] += cy;
+        if (Z) z[i] += cz;
+        if (W) w[i] += cw;
     }
 
-    CONTINUE(sizeof(pixel_t[4]), x, y, z, w);
+    CONTINUE(sizeof(uint32_t[4]), x, y, z, w);
 }
 
-DECL_FUNC(min, const SwsCompMask mask)
+DECL_VEC4_FUNC(min)
 {
-    const SwsOpPriv *priv = SWS_OP_PRIV(impl);
+    VEC4_CONSTS;
 
     SWS_LOOP
     for (int i = 0; i < SWS_BLOCK_SIZE; i++) {
-        if (X) x[i] = FFMIN(x[i], priv->px[0]);
-        if (Y) y[i] = FFMIN(y[i], priv->px[1]);
-        if (Z) z[i] = FFMIN(z[i], priv->px[2]);
-        if (W) w[i] = FFMIN(w[i], priv->px[3]);
+        if (X) x[i] = FFMIN(x[i], cx);
+        if (Y) y[i] = FFMIN(y[i], cy);
+        if (Z) z[i] = FFMIN(z[i], cz);
+        if (W) w[i] = FFMIN(w[i], cw);
     }
 
-    CONTINUE(sizeof(pixel_t[4]), x, y, z, w);
+    CONTINUE(sizeof(uint32_t[4]), x, y, z, w);
 }
 
-DECL_FUNC(max, const SwsCompMask mask)
+DECL_VEC4_FUNC(max)
 {
-    const SwsOpPriv *priv = SWS_OP_PRIV(impl);
+    VEC4_CONSTS;
 
     SWS_LOOP
     for (int i = 0; i < SWS_BLOCK_SIZE; i++) {
-        if (X) x[i] = FFMAX(x[i], priv->px[0]);
-        if (Y) y[i] = FFMAX(y[i], priv->px[1]);
-        if (Z) z[i] = FFMAX(z[i], priv->px[2]);
-        if (W) w[i] = FFMAX(w[i], priv->px[3]);
+        if (X) x[i] = FFMAX(x[i], cx);
+        if (Y) y[i] = FFMAX(y[i], cy);
+        if (Z) z[i] = FFMAX(z[i], cz);
+        if (W) w[i] = FFMAX(w[i], cw);
     }
 
-    CONTINUE(sizeof(pixel_t[4]), x, y, z, w);
+    CONTINUE(sizeof(uint32_t[4]), x, y, z, w);
 }
 
 SWS_FOR(PX, SCALE, DECL_IMPL, scale)

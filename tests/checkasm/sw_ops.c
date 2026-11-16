@@ -474,19 +474,25 @@ static void check_simple(const char *name, const SwsUOp *uop)
     check_range(name, uop, NULL);
 }
 
+/**
+ * Fill data.vec4 with random 32-bit expanded values that match the
+ * SwsVec4UOp parameters, see SwsVec4UOp.
+ */
 static void check_vec4(const char *name, SwsUOp *uop)
 {
-    for (int i = 0; i < 4; i++)
-        uop->data.vec4[i] = rndpx(uop->type);
+    const SwsVec4UOp *vec4 = &uop->par.vec4;
+    SwsPixel vals[4];
+    for (int j = 0; j < 4; j++)
+        vals[j] = ff_sws_pixel_expand32(uop->type, rndpx(uop->type));
 
-    check_simple(name, uop);
-}
-
-static void check_clear(const char *name, SwsUOp *uop)
-{
-    /* Clear values are always expanded to 32 bits, see SwsVec4UOp */
-    for (int i = 0; i < 4; i++)
-        uop->data.vec4[i] = ff_sws_pixel_expand32(uop->type, rndpx(uop->type));
+    for (int i = 0; i < 4; i++) {
+        if (SWS_COMP_TEST(vec4->zero, i))
+            uop->data.vec4[i] = (SwsPixel) { .u32 = 0 };
+        else if (SWS_COMP_TEST(vec4->one, i))
+            uop->data.vec4[i] = (SwsPixel) { .u32 = UINT32_MAX };
+        else
+            uop->data.vec4[i] = vals[vec4->idx[i]];
+    }
 
     check_simple(name, uop);
 }
@@ -718,7 +724,7 @@ void checkasm_check_sw_ops(void)
     CHECK_FOR(PACK,             check_pack);
     CHECK_FOR(LSHIFT,           check_simple);
     CHECK_FOR(RSHIFT,           check_simple);
-    CHECK_FOR(CLEAR,            check_clear);
+    CHECK_FOR(CLEAR,            check_vec4);
     CHECK_FOR(LINEAR,           check_linear);
     CHECK_FOR(DITHER,           check_dither);
     CHECK_FOR(LUT_3D,           check_lut_3d);

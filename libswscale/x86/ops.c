@@ -285,14 +285,6 @@ static int setup_scale(const SwsImplParams *params, SwsImplResult *out)
     return 0;
 }
 
-static int setup_clear(const SwsImplParams *params, SwsImplResult *out)
-{
-    const SwsUOp *uop = params->uop;
-    for (int i = 0; i < 4; i++)
-        SWS_OP_PRIV_PACK(out, uop->data.vec4[i].u32);
-    return 0;
-}
-
 static int setup_dither(const SwsImplParams *params, SwsImplResult *out)
 {
     ff_sws_op_priv_pack_refptr(out, av_refstruct_ref(params->uop->data.ptr));
@@ -425,7 +417,7 @@ SWS_FOR_STRUCT(TYPE, DITHER,          DECL_ENTRY, EXT, NULL, setup_dither)      
 DECL_OPS_COMMON(EXT, U8)                                                        \
 SWS_FOR_STRUCT(U8, READ_PLANAR,     DECL_ENTRY, EXT, NULL, NULL)                \
 SWS_FOR_STRUCT(U8, WRITE_PLANAR,    DECL_ENTRY, EXT, NULL, NULL)                \
-SWS_FOR_STRUCT(U8, CLEAR,           DECL_ENTRY, EXT, NULL, setup_clear)         \
+SWS_FOR_STRUCT(U8, CLEAR,           DECL_ENTRY, EXT, NULL, ff_sws_setup_vec4)   \
                                                                                 \
 static const SwsUOpTable uops_u8##EXT = {                                       \
     .cpu_flags = AV_CPU_FLAG_##FLAG,                                            \

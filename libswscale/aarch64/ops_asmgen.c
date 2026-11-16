@@ -581,34 +581,23 @@ static void asmgen_op_rshift(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 /*********************************************************************/
 /* SWS_UOP_CLEAR: mask = components to clear */
 
-static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                       RasmOp *vx, RasmOp *vk, int i, const char *vx_str)
-{
-    RasmContext *r = s->rctx;
-    RasmOp clear_vec = vk[0];
-    if (p->par.vec4.zero & SWS_COMP(i)) {
-        i_movi(r, vx[i], IMM(0));                   CMTF("%s[%u] = 0;", vx_str, i);
-    } else if (p->par.vec4.one & SWS_COMP(i)) {
-        if (p->block_size * ff_sws_pixel_type_size(p->type) == 8) {
-            i_movi(r, v_8b (vx[i]), IMM(0xff));
-        } else {
-            i_movi(r, v_16b(vx[i]), IMM(0xff));
-        }
-        CMTF("%s[%u] = UINT_MAX;", vx_str, i);
-    } else {
-        i_dup (r, vx[i], a64op_elem(clear_vec, i)); CMTF("%s[%u] = broadcast(clear_vec[%u]);", vx_str, i, i);
-    }
-}
-
 static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                             SwsAArch64OpRegs *regs)
 {
+    RasmContext *r = s->rctx;
     RasmOp *dl = regs->dl;
     RasmOp *dh = regs->dh;
     RasmOp *vk = regs->vk;
 
-    LOOP_MASK      (p, i) { emit_clear(s, p, dl, vk, i, "vl"); }
-    LOOP_MASK_VH(s, p, i) { emit_clear(s, p, dh, vk, i, "vh"); }
+    /* Vector mov only takes byte arrangements. */
+    RasmOp (*bytes)(RasmOp) = s->vec_size == 8 ? v_8b : v_16b;
+
+    LOOP_MASK(p, i) {
+        if (a64op_vec_n(vk[i]) != a64op_vec_n(dl[i])) {
+            i_mov(r, bytes(dl[i]), bytes(vk[i]));   CMTF("vl[%u] = vclear%u;", i, i);
+        }
+    }
+    LOOP_MASK_VH(s, p, i) { i_mov(r, bytes(dh[i]), bytes(dl[i])); CMTF("vh[%u] = vl[%u];", i, i); }
 }
 
 /*********************************************************************/

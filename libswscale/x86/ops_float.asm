@@ -484,58 +484,30 @@ IF W,   mulps mw2, m8
         CONTINUE tmp0q
 %endmacro
 
-%macro ADD 0
-%assign PRIV_SIZE 4 * BYTES
-IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
-IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
-IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 2 * BYTES]
-IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 3 * BYTES]
+%macro VEC4_OP 7 ; insn, one, zero, ix, iy, iz, iw
+        VEC4_CONSTS %2, %3, %4, %5, %6, %7, 0
         LOAD_CONT tmp0q
-IF X,   addps mx, m8
-IF Y,   addps my, m9
-IF Z,   addps mz, m10
-IF W,   addps mw, m11
-IF X,   addps mx2, m8
-IF Y,   addps my2, m9
-IF Z,   addps mz2, m10
-IF W,   addps mw2, m11
+IF X,   %1 mx, m %+ VEC4_K0
+IF Y,   %1 my, m %+ VEC4_K1
+IF Z,   %1 mz, m %+ VEC4_K2
+IF W,   %1 mw, m %+ VEC4_K3
+IF X,   %1 mx2, m %+ VEC4_K0
+IF Y,   %1 my2, m %+ VEC4_K1
+IF Z,   %1 mz2, m %+ VEC4_K2
+IF W,   %1 mw2, m %+ VEC4_K3
         CONTINUE tmp0q
 %endmacro
 
-%macro MIN 0
-%assign PRIV_SIZE 4 * BYTES
-IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
-IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
-IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 2 * BYTES]
-IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 3 * BYTES]
-        LOAD_CONT tmp0q
-IF X,   minps mx, m8
-IF Y,   minps my, m9
-IF Z,   minps mz, m10
-IF W,   minps mw, m11
-IF X,   minps mx2, m8
-IF Y,   minps my2, m9
-IF Z,   minps mz2, m10
-IF W,   minps mw2, m11
-        CONTINUE tmp0q
+%macro ADD 6 ; one, zero, ix, iy, iz, iw
+        VEC4_OP addps, %1, %2, %3, %4, %5, %6
 %endmacro
 
-%macro MAX 0
-%assign PRIV_SIZE 4 * BYTES
-IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
-IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
-IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 2 * BYTES]
-IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 3 * BYTES]
-        LOAD_CONT tmp0q
-IF X,   maxps mx, m8
-IF Y,   maxps my, m9
-IF Z,   maxps mz, m10
-IF W,   maxps mw, m11
-IF X,   maxps mx2, m8
-IF Y,   maxps my2, m9
-IF Z,   maxps mz2, m10
-IF W,   maxps mw2, m11
-        CONTINUE tmp0q
+%macro MIN 6 ; one, zero, ix, iy, iz, iw
+        VEC4_OP minps, %1, %2, %3, %4, %5, %6
+%endmacro
+
+%macro MAX 6 ; one, zero, ix, iy, iz, iw
+        VEC4_OP maxps, %1, %2, %3, %4, %5, %6
 %endmacro
 
 ;---------------------------------------------------------

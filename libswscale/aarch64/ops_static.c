@@ -223,63 +223,93 @@ static void asmgen_setup_unpack(SwsAArch64Context *s, const SwsAArch64OpImplPara
     }
 }
 
+/**
+ * Materialize the constants of a SwsVec4UOp. The distinct values are loaded
+ * with a single ld1r..ld4r into the consecutive registers vk[0..num-1].
+ * Zero and all-ones constants are generated with movi, once per class, into
+ * dst[i] of the first component using them if dst is given, otherwise into
+ * the next free vk registers. On return, vk[i] holds the constant of
+ * component i.
+ */
+static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                              SwsAArch64OpRegs *regs, const RasmOp *dst, const char *name)
+{
+    RasmContext *r = s->rctx;
+    const SwsVec4UOp *vec4 = &p->par.vec4;
+    const int num = ff_sws_vec4_num(p->mask, vec4);
+
+    RasmOp vec[4];
+    for (int i = 0; i < 4; i++)
+        vec[i] = regs->vk[i];
+
+    if (num) {
+        RasmOp priv_ptr = s->tmp0;
+        RasmOp base = a64op_base(priv_ptr);
+        i_add (r, priv_ptr, s->impl, IMM(offsetof_impl_priv));      CMTF("v128 *%s_ptr = &impl->priv;", name);
+        asmgen_set_load_cont_node(s);
+        switch (num) {
+        case 1: i_ld1r(r, vv_1(v_4s(vec[0])), base); break;
+        case 2: i_ld2r(r, vv_2(v_4s(vec[0]), v_4s(vec[1])), base); break;
+        case 3: i_ld3r(r, vv_3(v_4s(vec[0]), v_4s(vec[1]), v_4s(vec[2])), base); break;
+        case 4: i_ld4r(r, vv_4(v_4s(vec[0]), v_4s(vec[1]), v_4s(vec[2]), v_4s(vec[3])), base); break;
+        }
+        CMTF("v128 v%s[0..%d] = broadcast(*%s_ptr);", name, num - 1, name);
+    }
+
+    RasmOp kreg[4];
+    int next = num;
+    LOOP_MASK(p, i) {
+        const SwsCompMask comp = SWS_COMP(i);
+        if (!((vec4->zero | vec4->one) & comp)) {
+            kreg[i] = vec[vec4->idx[i]];
+            continue;
+        }
+
+        const SwsCompMask cls = (vec4->zero & comp) ? vec4->zero : vec4->one;
+        int first = 0;
+        while (!(cls & SWS_COMP(first)))
+            first++;
+        if (first < i) {
+            kreg[i] = kreg[first];
+            continue;
+        }
+
+        const bool zero = vec4->zero & comp;
+        kreg[i] = dst ? dst[i] : vec[next++];
+        i_movi(r, v_16b(kreg[i]), IMM(zero ? 0 : 0xff));            CMTF("v128 v%s%u = %s;", name, i, zero ? "{0}" : "{UINT_MAX}");
+    }
+
+    LOOP_MASK(p, i)
+        regs->vk[i] = kreg[i];
+}
+
 static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
-
     /**
      * TODO
-     * - pack elements in impl->priv and perform smaller loads
-     * - if only 1 element and not vh, load directly with ld1r
+     * - if only 1 value is used by only 1 component and not vh, load it
+     *   directly into the component register with ld1r
      */
-
-    bool load_priv = false;
-    LOOP_MASK(p, i) {
-        if (!((p->par.vec4.zero | p->par.vec4.one) & SWS_COMP(i)))
-            load_priv = true;
-    }
-    if (load_priv) {
-        i_ldr(r, v_q(vk[0]), IMPL_PRIV(s));         CMT("v128 clear_vec = impl->priv.v128;");
-        asmgen_set_load_cont_node(s);
-    }
+    asmgen_setup_vec4(s, p, regs, regs->dl, "clear");
 }
 
 static void asmgen_setup_add(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
-
-    RasmOp add_vec = regs->vt[0];
-    i_ldr(r, v_q(add_vec), IMPL_PRIV(s));                           CMT("v128 add_vec = impl->priv.v128;");
-    asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(add_vec, i));      CMTF("v128 vadd%u = add_vec[%u];", i, i); }
+    asmgen_setup_vec4(s, p, regs, NULL, "add");
 }
 
 static void asmgen_setup_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
-
-    RasmOp min_vec = regs->vt[0];
-    i_ldr(r, v_q(min_vec), IMPL_PRIV(s));                           CMT("v128 min_vec = impl->priv.v128;");
-    asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(min_vec, i));      CMTF("v128 vmin%u = min_vec[%u];", i, i); }
+    asmgen_setup_vec4(s, p, regs, NULL, "min");
 }
 
 static void asmgen_setup_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
-
-    RasmOp max_vec = regs->vt[0];
-    i_ldr(r, v_q(max_vec), IMPL_PRIV(s));                           CMT("v128 max_vec = impl->priv.v128;");
-    asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(max_vec, i));      CMTF("v128 vmax%u = max_vec[%u];", i, i); }
+    asmgen_setup_vec4(s, p, regs, NULL, "max");
 }
 
 static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,

@@ -43,6 +43,43 @@ int ff_sws_uop_cmp(const SwsUOp *a, const SwsUOp *b)
     return memcmp(&a->par, &b->par, sizeof(a->par));
 }
 
+void ff_sws_vec4_pack(const SwsUOp *uop, SwsPixel out[4])
+{
+    const SwsVec4UOp *vec4 = &uop->par.vec4;
+    const SwsCompMask mask = uop->mask & ~(vec4->one | vec4->zero);
+
+    memset(out, 0, 4 * sizeof(*out));
+    for (int i = 0; i < 4; i++) {
+        if (SWS_COMP_TEST(mask, i))
+            out[vec4->idx[i]] = uop->data.vec4[i];
+    }
+}
+
+/* Set the SwsVec4UOp parameters from the 32-bit expanded data.vec4 */
+static void vec4_classify(SwsUOp *uop)
+{
+    SwsVec4UOp *vec4 = &uop->par.vec4;
+    uint32_t vals[4]; /* distinct values */
+    int num = 0;
+    for (int i = 0; i < 4; i++) {
+        if (!SWS_COMP_TEST(uop->mask, i))
+            continue;
+        const uint32_t val = uop->data.vec4[i].u32;
+        if (val == 0) {
+            vec4->zero |= SWS_COMP(i);
+        } else if (val == UINT32_MAX) {
+            vec4->one |= SWS_COMP(i);
+        } else {
+            int j = 0;
+            while (j < num && vals[j] != val)
+                j++;
+            if (j == num)
+                vals[num++] = val;
+            vec4->idx[i] = j;
+        }
+    }
+}
+
 static const struct {
     char abbr[32];
 } uop_names[SWS_UOP_TYPE_NB] = {
@@ -94,6 +131,9 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
             av_bprintf(&bp, "%x", par->pack.pattern[i]);
         break;
     case SWS_UOP_CLEAR:
+    case SWS_UOP_ADD:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX:
         av_bprint_chars(&bp, '_', 1);
         for (int i = 0; i < 4; i++) {
             if (!SWS_COMP_TEST(op->mask, i))
@@ -103,7 +143,7 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
             else if (SWS_COMP_TEST(par->vec4.zero, i))
                 av_bprint_chars(&bp, '0', 1);
             else
-                av_bprint_chars(&bp, 'x', 1);
+                av_bprint_chars(&bp, 'a' + par->vec4.idx[i], 1);
         }
         break;
     case SWS_UOP_LINEAR:
@@ -464,8 +504,9 @@ static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *
             if (!SWS_OP_NEEDED(op, i) || op->dither.y_offset[i] < 0)
                 continue;
             uop.mask |= SWS_COMP(i);
-            uop.data.vec4[i] = val;
+            uop.data.vec4[i] = ff_sws_pixel_expand32(uop.type, val);
         }
+        vec4_classify(&uop);
 
         return ff_sws_uop_list_append(ops, &uop);
     }
@@ -605,11 +646,8 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             const SwsPixel px = ff_sws_pixel_from_q64(type, v);
             uop.type = pixel_type_to_int(flags, type);
             uop.data.vec4[i] = ff_sws_pixel_expand32(type, px);
-            if (v.num == 0)
-                uop.par.vec4.zero |= SWS_COMP(i);
-            else if (ff_sws_pixel_is_1s(type, px))
-                uop.par.vec4.one |= SWS_COMP(i);
         }
+        vec4_classify(&uop);
         break;
     case SWS_OP_SCALE:
         uop.uop = SWS_UOP_SCALE;
@@ -620,9 +658,12 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         uop.uop = op->op == SWS_OP_MIN ? SWS_UOP_MIN : SWS_UOP_MAX;
         uop.mask &= ff_sws_comp_mask_q4(op->clamp.limit);
         for (int i = 0; i < 4; i++) {
-            if (SWS_COMP_TEST(uop.mask, i))
-                uop.data.vec4[i] = ff_sws_pixel_from_q64(uop.type, op->clamp.limit[i]);
+            if (!SWS_COMP_TEST(uop.mask, i))
+                continue;
+            const SwsPixel px = ff_sws_pixel_from_q64(uop.type, op->clamp.limit[i]);
+            uop.data.vec4[i] = ff_sws_pixel_expand32(uop.type, px);
         }
+        vec4_classify(&uop);
         break;
     case SWS_OP_SWAP_BYTES:
         uop.uop = SWS_UOP_SWAP_BYTES;

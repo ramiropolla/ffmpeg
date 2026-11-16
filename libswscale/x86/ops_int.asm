@@ -583,29 +583,13 @@ IF W,   vcvtdq2ps mw2, mw2
         CONTINUE tmp0q
 %endmacro
 
-%macro clear 3 ; idx, reg, reg2
-%if SWS_COMP_TEST(ZERO_MASK, %1)
-        pxor %2, %2
-%elif SWS_COMP_TEST(ONE_MASK, %1)
-        pcmpeqb %2, %2
-%elif cpuflag(avx)
-        vpbroadcastd %2, [implq + SwsOpImpl.priv + 4 * %1]
-%else
-        movd %2, [implq + SwsOpImpl.priv + 4 * %1]
-        pshufd %2, %2, 0
-%endif
-IF V2,  mova %3, %2
-%endmacro
-
-%macro CLEAR 2
-%assign PRIV_SIZE 4 * 4
-%assign ONE_MASK  %1
-%assign ZERO_MASK %2
+%macro CLEAR 6 ; one, zero, ix, iy, iz, iw
+        VEC4_CONSTS %1, %2, %3, %4, %5, %6, 1
         LOAD_CONT tmp0q
-IF1 X,  clear 0, mx, mx2
-IF1 Y,  clear 1, my, my2
-IF1 Z,  clear 2, mz, mz2
-IF1 W,  clear 3, mw, mw2
+IF V2 && X, mova mx2, mx
+IF V2 && Y, mova my2, my
+IF V2 && Z, mova mz2, mz
+IF V2 && W, mova mw2, mw
         CONTINUE tmp0q
 %endmacro
 
@@ -761,15 +745,15 @@ IF1 V2, pmull4 x, mx2, my2, mz2, mw2, m12
         CONTINUE tmp0q
 %endmacro
 
-%macro ADD 0
+%macro ADD 6
 assert 0, SWS_UOP_ADD is not implemented for integer types
 %endmacro
 
-%macro MIN 0
+%macro MIN 6
 assert 0, SWS_UOP_MIN is not implemented for integer types
 %endmacro
 
-%macro MAX 0
+%macro MAX 6
 assert 0, SWS_UOP_MAX is not implemented for integer types
 %endmacro
 

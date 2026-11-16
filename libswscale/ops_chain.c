@@ -158,17 +158,9 @@ int ff_sws_setup_scalar(const SwsImplParams *params, SwsImplResult *out)
 
 int ff_sws_setup_vec4(const SwsImplParams *params, SwsImplResult *out)
 {
-    const SwsUOp *uop = params->uop;
-    for (int i = 0; i < 4; i++) {
-        const SwsPixel vi = uop->data.vec4[i];
-        switch (uop->type) {
-        case SWS_PIXEL_U8:  SWS_OP_PRIV_PACK(out, vi.u8);  break;
-        case SWS_PIXEL_U16: SWS_OP_PRIV_PACK(out, vi.u16); break;
-        case SWS_PIXEL_U32: SWS_OP_PRIV_PACK(out, vi.u32); break;
-        case SWS_PIXEL_F32: SWS_OP_PRIV_PACK(out, vi.f32); break;
-        default: return AVERROR(EINVAL);
-        }
-    }
-
+    SwsPixel packed[4];
+    ff_sws_vec4_pack(params->uop, packed);
+    for (int i = 0; i < 4; i++)
+        SWS_OP_PRIV_PACK(out, packed[i].u32);
     return 0;
 }

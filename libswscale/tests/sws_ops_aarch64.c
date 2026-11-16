@@ -38,19 +38,27 @@
 #endif
 
 /*********************************************************************/
-static uint16_t clear_to_mask(const SwsVec4UOp *clear)
+/* One nibble per component: 0 for zero, 1 for ones, 0xa + idx for values. */
+static uint16_t vec4_to_mask(SwsCompMask comps, SwsCompMask one,
+                             SwsCompMask zero, const uint8_t idx[4])
 {
     uint16_t mask = 0;
     for (int i = 0; i < 4; i++) {
-        if (clear->zero & SWS_COMP(i)) {
+        if (!(comps & SWS_COMP(i)) || (zero & SWS_COMP(i))) {
             /* no-op */
-        } else if (clear->one & SWS_COMP(i)) {
+        } else if (one & SWS_COMP(i)) {
             NIBBLE_SET(mask, i, 1);
         } else {
-            NIBBLE_SET(mask, i, 0xf);
+            NIBBLE_SET(mask, i, 0xa + idx[i]);
         }
     }
     return mask;
+}
+
+static uint16_t params_to_vec4_mask(const SwsAArch64OpImplParams *p)
+{
+    const SwsVec4UOp *vec4 = &p->par.vec4;
+    return vec4_to_mask(p->mask, vec4->one, vec4->zero, vec4->idx);
 }
 
 static uint64_t move_to_mask(const SwsMoveUOp *move)
@@ -133,9 +141,12 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
         if (para->shift.amount != parb->shift.amount)
             return (int) para->shift.amount - parb->shift.amount;
         break;
-    case SWS_UOP_CLEAR: {
-        uint16_t ia = clear_to_mask(&para->vec4);
-        uint16_t ib = clear_to_mask(&parb->vec4);
+    case SWS_UOP_CLEAR:
+    case SWS_UOP_ADD:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX: {
+        uint16_t ia = params_to_vec4_mask(pa);
+        uint16_t ib = params_to_vec4_mask(pb);
         if (ia != ib)
             return (int) ia - ib;
         break;
@@ -377,7 +388,10 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         av_strlcatf(func_name, sizeof(func_name), "_%u", par->shift.amount);
         break;
     case SWS_UOP_CLEAR:
-        av_strlcatf(func_name, sizeof(func_name), "_%04x", clear_to_mask(&par->vec4));
+    case SWS_UOP_ADD:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX:
+        av_strlcatf(func_name, sizeof(func_name), "_%04x", params_to_vec4_mask(params));
         break;
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
@@ -420,7 +434,12 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         av_bprintf(bp, ", .par.shift = { .amount = %u }", par->shift.amount);
         break;
     case SWS_UOP_CLEAR:
-        av_bprintf(bp, ", .par.vec4 = { .one = 0x%0x, .zero = 0x%0x }", par->vec4.one, par->vec4.zero);
+    case SWS_UOP_ADD:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX:
+        av_bprintf(bp, ", .par.vec4 = { .one = 0x%x, .zero = 0x%x, .idx = {%u, %u, %u, %u} }",
+                   par->vec4.one, par->vec4.zero,
+                   par->vec4.idx[0], par->vec4.idx[1], par->vec4.idx[2], par->vec4.idx[3]);
         break;
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:

@@ -256,12 +256,21 @@ typedef struct SwsPackUOp {
 } SwsPackUOp;
 
 /**
- * The clear values (SwsUOp.data.vec4) are always expanded to repeating 32-bit
+ * Parameters of the uops with a vec4 of constants (SWS_UOP_CLEAR,
+ * SWS_UOP_ADD, SWS_UOP_MIN, SWS_UOP_MAX).
+ *
+ * The constants (SwsUOp.data.vec4) are always expanded to repeating 32-bit
  * patterns, so they remain valid if the uop is executed as a smaller type.
+ * Constants equal to all 0s or all 1s are flagged in zero and one. The other
+ * ones are deduplicated: idx[i] selects which of the distinct values
+ * component i uses, numbered in order of first appearance (0 for components
+ * without a value). ff_sws_vec4_pack() gives the distinct values, which is
+ * what the kernel's private data contains.
  */
 typedef struct SwsVec4UOp {
-    SwsCompMask one;  /* mask of coefficients equal to all 1s */
-    SwsCompMask zero; /* mask of coefficients equal to all 0s */
+    SwsCompMask one;  /* mask of constants equal to all 1s */
+    SwsCompMask zero; /* mask of constants equal to all 0s */
+    uint8_t idx[4];   /* value index of the other components */
 } SwsVec4UOp;
 
 typedef struct SwsLinearUOp {
@@ -299,7 +308,7 @@ typedef union SwsUOpParams {
     SwsShiftUOp     shift;
     SwsMoveUOp      move; /* for SWS_UOP_PERMUTE and SWS_UOP_COPY */
     SwsPackUOp      pack;
-    SwsVec4UOp      vec4;
+    SwsVec4UOp      vec4; /* for SWS_UOP_CLEAR, ADD, MIN and MAX */
     SwsLinearUOp    lin;
     SwsDitherUOp    dither;
     SwsLut3DUOp     lut3d;
@@ -340,6 +349,27 @@ static inline int ff_sws_uop_cmp_v(const void *a, const void *b)
  */
 #define SWS_UOP_NAME_MAX 64
 void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX]);
+
+/**
+ * Number of distinct values of the components in mask that are neither
+ * zero nor one, see SwsVec4UOp.
+ */
+static inline int ff_sws_vec4_num(SwsCompMask mask, const SwsVec4UOp *vec4)
+{
+    int num = 0;
+    mask &= ~(vec4->one | vec4->zero);
+    for (int i = 0; i < 4; i++) {
+        if (SWS_COMP_TEST(mask, i) && vec4->idx[i] >= num)
+            num = vec4->idx[i] + 1;
+    }
+    return num;
+}
+
+/**
+ * Write the distinct values of a uop with a vec4 of constants (see
+ * SwsVec4UOp) to out, in index order, with unused entries set to zero.
+ */
+void ff_sws_vec4_pack(const SwsUOp *uop, SwsPixel out[4]);
 
 typedef struct SwsUOpList {
     SwsUOp *ops;

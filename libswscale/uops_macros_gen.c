@@ -98,8 +98,14 @@ static void print_params(AVBPrint *bp, const SwsUOp *uop, bool designated)
                 par->pack.pattern[2], par->pack.pattern[3]);
         break;
     case SWS_UOP_CLEAR:
+    case SWS_UOP_ADD:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX:
         FMT("par.vec4.one",  "0x%05x", par->vec4.one);
         FMT("par.vec4.zero", "0x%05x", par->vec4.zero);
+        FMT_SUB("par.vec4.idx", "%d, %d, %d, %d",
+                par->vec4.idx[0], par->vec4.idx[1],
+                par->vec4.idx[2], par->vec4.idx[3]);
         break;
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:

@@ -131,6 +131,7 @@ typedef struct SwsUOpEntry {
 
 /* Setup helpers for SwsUOp data */
 int ff_sws_setup_scalar(const SwsImplParams *params, SwsImplResult *out);
+/* Packs the distinct 32-bit values of a vec4 uop, see ff_sws_vec4_pack() */
 int ff_sws_setup_vec4(const SwsImplParams *params, SwsImplResult *out);
 
 #define SWS_OP_PRIV_PACK(out, data) ff_sws_op_priv_pack(out, &data, sizeof(data))

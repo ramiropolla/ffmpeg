@@ -387,3 +387,79 @@ endstruc
         %endif
     %endif
 %endmacro
+
+;---------------------------------------------------------
+; Constants of the uops with a vec4 of constants (see SwsVec4UOp)
+
+; Sets VEC4_C<N>, the constant class of component N: its value index, or 4
+; for zero, or 5 for all ones.
+%macro vec4_class 2 ; comp, idx
+    %if SWS_COMP_TEST(VEC4_ZERO, %1)
+        %assign VEC4_C%1 4
+    %elif SWS_COMP_TEST(VEC4_ONE, %1)
+        %assign VEC4_C%1 5
+    %else
+        %assign VEC4_C%1 %2
+    %endif
+%endmacro
+
+; Sets VEC4_K<N>, the register number holding the constant of component N.
+; The first component of each class materializes the constant; the others
+; reuse its register, or copy it when the constants go to the component
+; registers.
+%macro vec4_const 1 ; comp
+    %assign VEC4_K%1 8
+    %if SWS_COMP_TEST(MASK, %1)
+        %assign src -1
+        %assign k 0
+        %rep %1
+            %if src < 0 && SWS_COMP_TEST(MASK, k) && VEC4_C %+ k == VEC4_C%1
+                %assign src VEC4_K %+ k
+            %endif
+            %assign k k + 1
+        %endrep
+        %if VEC4_IN_COMPS
+            %assign VEC4_K%1 %1
+        %elif src >= 0
+            %assign VEC4_K%1 src
+        %else
+            %assign VEC4_K%1 VEC4_NEXT
+            %assign VEC4_NEXT VEC4_NEXT + 1
+        %endif
+        %assign kreg VEC4_K%1
+        %if src >= 0
+            %if src != kreg
+                mova m %+ kreg, m %+ src
+            %endif
+        %elif VEC4_C%1 == 4
+            pxor m %+ kreg, m %+ kreg
+        %elif VEC4_C%1 == 5
+            pcmpeqb m %+ kreg, m %+ kreg
+        %elif cpuflag(avx)
+            vbroadcastss m %+ kreg, [implq + SwsOpImpl.priv + 4 * VEC4_C%1]
+        %else
+            movd m %+ kreg, [implq + SwsOpImpl.priv + 4 * VEC4_C%1]
+            pshufd m %+ kreg, m %+ kreg, 0
+        %endif
+    %endif
+%endmacro
+
+; Materializes the constant of each component in MASK into m(VEC4_K<N>):
+; into the component registers mx..mw if in_comps is set, otherwise into
+; temporary registers starting at m8. The distinct values are read from the
+; private data as packed 32-bit patterns.
+%macro VEC4_CONSTS 7 ; one, zero, ix, iy, iz, iw, in_comps
+%assign PRIV_SIZE 4 * 4
+%assign VEC4_ONE  %1
+%assign VEC4_ZERO %2
+%assign VEC4_IN_COMPS %7
+%assign VEC4_NEXT 8
+    vec4_class 0, %3
+    vec4_class 1, %4
+    vec4_class 2, %5
+    vec4_class 3, %6
+    vec4_const 0
+    vec4_const 1
+    vec4_const 2
+    vec4_const 3
+%endmacro
