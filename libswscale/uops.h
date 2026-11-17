@@ -162,6 +162,7 @@ typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_PSHUFB       = (1 << 1), /* platform supports pshufb equivalent */
     SWS_UOP_FLAG_EXPAND_BIT   = (1 << 2), /* backend implements SWS_UOP_EXPAND_BIT */
     SWS_UOP_FLAG_READ_PALETTE = (1 << 3), /* backend implements SWS_UOP_READ_PALETTE */
+    SWS_UOP_FLAG_VEC4         = (1 << 4), /* backend uses vec4 SWS_UOP_ADD/SWS_UOP_MIN/SWS_UOP_MAX */
     SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
 } SwsUOpFlagBits;
 
@@ -263,6 +264,21 @@ typedef struct SwsClearUOp {
     SwsCompMask zero; /* mask of coefficients equal to all 0s */
 } SwsClearUOp;
 
+typedef struct SwsVec4UOp {
+    uint8_t indices[4]; /* indices inside packed data.vec4 */
+    SwsCompMask zero;   /* mask of values equal to zero */
+} SwsVec4UOp;
+
+static inline int ff_sws_vec4_count(const SwsVec4UOp *vec4, SwsCompMask mask)
+{
+    int count = 0;
+    for (int i = 0; i < 4; i++) {
+        if (SWS_COMP_TEST(mask & ~vec4->zero, i))
+            count = FFMAX(count, vec4->indices[i] + 1);
+    }
+    return count;
+}
+
 typedef struct SwsLinearUOp {
     uint32_t one;  /* mask of coefficients equal to one */
     uint32_t zero; /* mask of coefficients equal to zero */
@@ -298,6 +314,7 @@ typedef union SwsUOpParams {
     SwsShiftUOp     shift;
     SwsMoveUOp      move; /* for SWS_UOP_PERMUTE and SWS_UOP_COPY */
     SwsPackUOp      pack;
+    SwsVec4UOp      vec4;
     SwsClearUOp     clear;
     SwsLinearUOp    lin;
     SwsDitherUOp    dither;
