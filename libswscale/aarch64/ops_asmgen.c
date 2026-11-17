@@ -586,9 +586,9 @@ static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 {
     RasmContext *r = s->rctx;
     RasmOp clear_vec = vk[0];
-    if (p->par.clear.zero & SWS_COMP(i)) {
+    if (p->par.vec4.zero & SWS_COMP(i)) {
         i_movi(r, vx[i], IMM(0));                   CMTF("%s[%u] = 0;", vx_str, i);
-    } else if (p->par.clear.one & SWS_COMP(i)) {
+    } else if (p->par.vec4.one & SWS_COMP(i)) {
         if (p->block_size * ff_sws_pixel_type_size(p->type) == 8) {
             i_movi(r, v_8b (vx[i]), IMM(0xff));
         } else {

@@ -237,7 +237,7 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
 
     bool load_priv = false;
     LOOP_MASK(p, i) {
-        if (!((p->par.clear.zero | p->par.clear.one) & SWS_COMP(i)))
+        if (!((p->par.vec4.zero | p->par.vec4.one) & SWS_COMP(i)))
             load_priv = true;
     }
     if (load_priv) {

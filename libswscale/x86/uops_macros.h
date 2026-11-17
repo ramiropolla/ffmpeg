@@ -309,35 +309,35 @@
 #define SWS_FOR_U8_RSHIFT(MACRO, ...)
 #define SWS_FOR_STRUCT_U8_RSHIFT(MACRO, ...)
 #define SWS_FOR_U8_CLEAR(MACRO, ...) \
-    MACRO(__VA_ARGS__, u8_clear_x_0                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x1, 0x0, 0x1) \
-    MACRO(__VA_ARGS__, u8_clear_x_1                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x1, 0x1, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_y_1                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x2, 0x2, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xy_xx                          , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x3, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xz_xx                          , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x5, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_yz_xx                          , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x6, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xyz_1xx                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x7, 0x1, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_w_0                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x8, 0x0, 0x8) \
-    MACRO(__VA_ARGS__, u8_clear_w_1                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x8, 0x8, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xyw_xx0                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xb, 0x0, 0x8) \
-    MACRO(__VA_ARGS__, u8_clear_xyw_xx1                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xb, 0x8, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_zw_xx                          , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xc, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xzw_1xx                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xd, 0x1, 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xzw_xx1                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xd, 0x8, 0x0)
+    MACRO(__VA_ARGS__, u8_clear_x_0                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x1, 0, 0, 0, 0, 0x0, 0x1) \
+    MACRO(__VA_ARGS__, u8_clear_x_1                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x1, 0, 0, 0, 0, 0x1, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_y_1                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x2, 0, 0, 0, 0, 0x2, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xy_ab                          , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x3, 0, 1, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xz_ac                          , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x5, 0, 0, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_yz_bc                          , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x6, 0, 1, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xyz_1bc                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x7, 0, 1, 2, 0, 0x1, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_w_0                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x8, 0, 0, 0, 0, 0x0, 0x8) \
+    MACRO(__VA_ARGS__, u8_clear_w_1                            , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0x8, 0, 0, 0, 0, 0x8, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xyw_ab0                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xb, 0, 1, 0, 0, 0x0, 0x8) \
+    MACRO(__VA_ARGS__, u8_clear_xyw_ab1                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xb, 0, 1, 0, 0, 0x8, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_zw_cd                          , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xc, 0, 0, 2, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xzw_ac1                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xd, 0, 0, 2, 0, 0x8, 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xzw_1cd                        , SWS_PIXEL_U8 , SWS_UOP_CLEAR           , 0xd, 0, 0, 2, 3, 0x1, 0x0)
 #define SWS_FOR_STRUCT_U8_CLEAR(MACRO, ...) \
-    MACRO(__VA_ARGS__, u8_clear_x_0                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.clear.one = 0x0, .par.clear.zero = 0x1) \
-    MACRO(__VA_ARGS__, u8_clear_x_1                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.clear.one = 0x1, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_y_1                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x2, .par.clear.one = 0x2, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xy_xx                          , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x3, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xz_xx                          , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x5, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_yz_xx                          , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x6, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xyz_1xx                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x7, .par.clear.one = 0x1, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_w_0                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.clear.one = 0x0, .par.clear.zero = 0x8) \
-    MACRO(__VA_ARGS__, u8_clear_w_1                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.clear.one = 0x8, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xyw_xx0                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xb, .par.clear.one = 0x0, .par.clear.zero = 0x8) \
-    MACRO(__VA_ARGS__, u8_clear_xyw_xx1                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xb, .par.clear.one = 0x8, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_zw_xx                          , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xc, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xzw_1xx                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.clear.one = 0x1, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u8_clear_xzw_xx1                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.clear.one = 0x8, .par.clear.zero = 0x0)
+    MACRO(__VA_ARGS__, u8_clear_x_0                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x1) \
+    MACRO(__VA_ARGS__, u8_clear_x_1                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x1, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_y_1                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x2, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x2, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xy_ab                          , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x3, .par.vec4.indices = {0, 1, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xz_ac                          , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x5, .par.vec4.indices = {0, 0, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_yz_bc                          , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x6, .par.vec4.indices = {0, 1, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xyz_1bc                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x7, .par.vec4.indices = {0, 1, 2, 0}, .par.vec4.one = 0x1, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_w_0                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x8) \
+    MACRO(__VA_ARGS__, u8_clear_w_1                            , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x8, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xyw_ab0                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xb, .par.vec4.indices = {0, 1, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x8) \
+    MACRO(__VA_ARGS__, u8_clear_xyw_ab1                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xb, .par.vec4.indices = {0, 1, 0, 0}, .par.vec4.one = 0x8, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_zw_cd                          , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xc, .par.vec4.indices = {0, 0, 2, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xzw_ac1                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.vec4.indices = {0, 0, 2, 0}, .par.vec4.one = 0x8, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u8_clear_xzw_1cd                        , .type = SWS_PIXEL_U8 , .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.vec4.indices = {0, 0, 2, 3}, .par.vec4.one = 0x1, .par.vec4.zero = 0x0)
 #define SWS_FOR_U8_LINEAR(MACRO, ...) \
     MACRO(__VA_ARGS__, u8_linear_x_x000x                       , SWS_PIXEL_U8 , SWS_UOP_LINEAR          , 0x1, 0x41040, 0xbefae) \
     MACRO(__VA_ARGS__, u8_linear_y_0x000                       , SWS_PIXEL_U8 , SWS_UOP_LINEAR          , 0x2, 0x41001, 0xbefbe) \
@@ -605,31 +605,31 @@
     MACRO(__VA_ARGS__, u16_rshift_xyz_4                        , .type = SWS_PIXEL_U16, .uop = SWS_UOP_RSHIFT          , .mask = 0x7, .par.shift.amount = 4) \
     MACRO(__VA_ARGS__, u16_rshift_xyz_6                        , .type = SWS_PIXEL_U16, .uop = SWS_UOP_RSHIFT          , .mask = 0x7, .par.shift.amount = 6)
 #define SWS_FOR_U16_CLEAR(MACRO, ...) \
-    MACRO(__VA_ARGS__, u16_clear_x_x                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x1, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_x_1                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x1, 0x1, 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_y_1                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x2, 0x2, 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_xy_xx                         , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x3, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_xyz_xxx                       , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x7, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_xyz_1xx                       , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x7, 0x1, 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_w_x                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x8, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_w_0                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x8, 0x0, 0x8) \
-    MACRO(__VA_ARGS__, u16_clear_w_1                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x8, 0x8, 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_zw_xx                         , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0xc, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_xzw_xx0                       , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0xd, 0x0, 0x8) \
-    MACRO(__VA_ARGS__, u16_clear_xzw_1xx                       , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0xd, 0x1, 0x0)
+    MACRO(__VA_ARGS__, u16_clear_x_a                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x1, 0, 0, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_x_1                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x1, 0, 0, 0, 0, 0x1, 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_y_1                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x2, 0, 0, 0, 0, 0x2, 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_xy_ab                         , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x3, 0, 1, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_xyz_abc                       , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x7, 0, 1, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_xyz_1bc                       , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x7, 0, 1, 2, 0, 0x1, 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_w_0                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x8, 0, 0, 0, 0, 0x0, 0x8) \
+    MACRO(__VA_ARGS__, u16_clear_w_1                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x8, 0, 0, 0, 0, 0x8, 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_w_d                           , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0x8, 0, 0, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_zw_cd                         , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0xc, 0, 0, 2, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_xzw_ac0                       , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0xd, 0, 0, 2, 0, 0x0, 0x8) \
+    MACRO(__VA_ARGS__, u16_clear_xzw_1cd                       , SWS_PIXEL_U16, SWS_UOP_CLEAR           , 0xd, 0, 0, 2, 3, 0x1, 0x0)
 #define SWS_FOR_STRUCT_U16_CLEAR(MACRO, ...) \
-    MACRO(__VA_ARGS__, u16_clear_x_x                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_x_1                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.clear.one = 0x1, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_y_1                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x2, .par.clear.one = 0x2, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_xy_xx                         , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x3, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_xyz_xxx                       , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x7, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_xyz_1xx                       , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x7, .par.clear.one = 0x1, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_w_x                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_w_0                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.clear.one = 0x0, .par.clear.zero = 0x8) \
-    MACRO(__VA_ARGS__, u16_clear_w_1                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.clear.one = 0x8, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_zw_xx                         , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0xc, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u16_clear_xzw_xx0                       , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.clear.one = 0x0, .par.clear.zero = 0x8) \
-    MACRO(__VA_ARGS__, u16_clear_xzw_1xx                       , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.clear.one = 0x1, .par.clear.zero = 0x0)
+    MACRO(__VA_ARGS__, u16_clear_x_a                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_x_1                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x1, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_y_1                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x2, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x2, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_xy_ab                         , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x3, .par.vec4.indices = {0, 1, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_xyz_abc                       , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x7, .par.vec4.indices = {0, 1, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_xyz_1bc                       , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x7, .par.vec4.indices = {0, 1, 2, 0}, .par.vec4.one = 0x1, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_w_0                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x8) \
+    MACRO(__VA_ARGS__, u16_clear_w_1                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x8, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_w_d                           , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.vec4.indices = {0, 0, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_zw_cd                         , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0xc, .par.vec4.indices = {0, 0, 2, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u16_clear_xzw_ac0                       , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.vec4.indices = {0, 0, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x8) \
+    MACRO(__VA_ARGS__, u16_clear_xzw_1cd                       , .type = SWS_PIXEL_U16, .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.vec4.indices = {0, 0, 2, 3}, .par.vec4.one = 0x1, .par.vec4.zero = 0x0)
 #define SWS_FOR_U16_LINEAR(MACRO, ...) \
     MACRO(__VA_ARGS__, u16_linear_x_x000x                      , SWS_PIXEL_U16, SWS_UOP_LINEAR          , 0x1, 0x41040, 0xbefae) \
     MACRO(__VA_ARGS__, u16_linear_xyz_x000x_0x00x_00x0x        , SWS_PIXEL_U16, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbadae) \
@@ -845,21 +845,21 @@
 #define SWS_FOR_U32_RSHIFT(MACRO, ...)
 #define SWS_FOR_STRUCT_U32_RSHIFT(MACRO, ...)
 #define SWS_FOR_U32_CLEAR(MACRO, ...) \
-    MACRO(__VA_ARGS__, u32_clear_x_x                           , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x1, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_y_x                           , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x2, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_xz_xx                         , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x5, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_w_x                           , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x8, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_yw_xx                         , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0xa, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_xyw_xxx                       , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0xb, 0x0, 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_xzw_xxx                       , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0xd, 0x0, 0x0)
+    MACRO(__VA_ARGS__, u32_clear_x_a                           , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x1, 0, 0, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_y_b                           , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x2, 0, 1, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_xz_ac                         , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x5, 0, 0, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_w_d                           , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0x8, 0, 0, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_yw_bd                         , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0xa, 0, 1, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_xyw_abd                       , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0xb, 0, 1, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_xzw_acd                       , SWS_PIXEL_U32, SWS_UOP_CLEAR           , 0xd, 0, 0, 2, 3, 0x0, 0x0)
 #define SWS_FOR_STRUCT_U32_CLEAR(MACRO, ...) \
-    MACRO(__VA_ARGS__, u32_clear_x_x                           , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_y_x                           , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0x2, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_xz_xx                         , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0x5, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_w_x                           , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_yw_xx                         , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0xa, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_xyw_xxx                       , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0xb, .par.clear.one = 0x0, .par.clear.zero = 0x0) \
-    MACRO(__VA_ARGS__, u32_clear_xzw_xxx                       , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.clear.one = 0x0, .par.clear.zero = 0x0)
+    MACRO(__VA_ARGS__, u32_clear_x_a                           , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0x1, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_y_b                           , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0x2, .par.vec4.indices = {0, 1, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_xz_ac                         , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0x5, .par.vec4.indices = {0, 0, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_w_d                           , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0x8, .par.vec4.indices = {0, 0, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_yw_bd                         , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0xa, .par.vec4.indices = {0, 1, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_xyw_abd                       , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0xb, .par.vec4.indices = {0, 1, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, u32_clear_xzw_acd                       , .type = SWS_PIXEL_U32, .uop = SWS_UOP_CLEAR           , .mask = 0xd, .par.vec4.indices = {0, 0, 2, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0)
 #define SWS_FOR_U32_LINEAR(MACRO, ...) \
     MACRO(__VA_ARGS__, u32_linear_x_x000x                      , SWS_PIXEL_U32, SWS_UOP_LINEAR          , 0x1, 0x41040, 0xbefae) \
     MACRO(__VA_ARGS__, u32_linear_xyz_x000x_0x00x_00x0x        , SWS_PIXEL_U32, SWS_UOP_LINEAR          , 0x7, 0x40000, 0xbadae) \
@@ -991,59 +991,59 @@
     MACRO(__VA_ARGS__, f32_scale_yzw                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_SCALE           , .mask = 0xe) \
     MACRO(__VA_ARGS__, f32_scale_xyzw                          , .type = SWS_PIXEL_F32, .uop = SWS_UOP_SCALE           , .mask = 0xf)
 #define SWS_FOR_F32_ADD(MACRO, ...) \
-    MACRO(__VA_ARGS__, f32_add_x                               , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x1) \
-    MACRO(__VA_ARGS__, f32_add_xy                              , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x3) \
-    MACRO(__VA_ARGS__, f32_add_xz                              , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x5) \
-    MACRO(__VA_ARGS__, f32_add_xyz                             , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x7) \
-    MACRO(__VA_ARGS__, f32_add_w                               , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x8) \
-    MACRO(__VA_ARGS__, f32_add_xw                              , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x9) \
-    MACRO(__VA_ARGS__, f32_add_yzw                             , SWS_PIXEL_F32, SWS_UOP_ADD             , 0xe) \
-    MACRO(__VA_ARGS__, f32_add_xyzw                            , SWS_PIXEL_F32, SWS_UOP_ADD             , 0xf)
+    MACRO(__VA_ARGS__, f32_add_x_a                             , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x1, 0, 0, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xy_ab                           , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x3, 0, 1, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xz_ac                           , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x5, 0, 0, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xyz_abc                         , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x7, 0, 1, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_add_w_d                             , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x8, 0, 0, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xw_ad                           , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x9, 0, 0, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_add_yzw_bcd                         , SWS_PIXEL_F32, SWS_UOP_ADD             , 0xe, 0, 1, 2, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xyzw_abcd                       , SWS_PIXEL_F32, SWS_UOP_ADD             , 0xf, 0, 1, 2, 3, 0x0, 0x0)
 #define SWS_FOR_STRUCT_F32_ADD(MACRO, ...) \
-    MACRO(__VA_ARGS__, f32_add_x                               , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x1) \
-    MACRO(__VA_ARGS__, f32_add_xy                              , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x3) \
-    MACRO(__VA_ARGS__, f32_add_xz                              , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x5) \
-    MACRO(__VA_ARGS__, f32_add_xyz                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x7) \
-    MACRO(__VA_ARGS__, f32_add_w                               , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x8) \
-    MACRO(__VA_ARGS__, f32_add_xw                              , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x9) \
-    MACRO(__VA_ARGS__, f32_add_yzw                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0xe) \
-    MACRO(__VA_ARGS__, f32_add_xyzw                            , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0xf)
+    MACRO(__VA_ARGS__, f32_add_x_a                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x1, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xy_ab                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x3, .par.vec4.indices = {0, 1, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xz_ac                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x5, .par.vec4.indices = {0, 0, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xyz_abc                         , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x7, .par.vec4.indices = {0, 1, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_add_w_d                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x8, .par.vec4.indices = {0, 0, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xw_ad                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0x9, .par.vec4.indices = {0, 0, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_add_yzw_bcd                         , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0xe, .par.vec4.indices = {0, 1, 2, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_add_xyzw_abcd                       , .type = SWS_PIXEL_F32, .uop = SWS_UOP_ADD             , .mask = 0xf, .par.vec4.indices = {0, 1, 2, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0)
 #define SWS_FOR_F32_MIN(MACRO, ...) \
-    MACRO(__VA_ARGS__, f32_min_x                               , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x1) \
-    MACRO(__VA_ARGS__, f32_min_y                               , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x2) \
-    MACRO(__VA_ARGS__, f32_min_xy                              , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x3) \
-    MACRO(__VA_ARGS__, f32_min_z                               , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x4) \
-    MACRO(__VA_ARGS__, f32_min_xz                              , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x5) \
-    MACRO(__VA_ARGS__, f32_min_xyz                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x7) \
-    MACRO(__VA_ARGS__, f32_min_w                               , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x8) \
-    MACRO(__VA_ARGS__, f32_min_xw                              , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x9) \
-    MACRO(__VA_ARGS__, f32_min_yzw                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0xe) \
-    MACRO(__VA_ARGS__, f32_min_xyzw                            , SWS_PIXEL_F32, SWS_UOP_MIN             , 0xf)
+    MACRO(__VA_ARGS__, f32_min_x_a                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x1, 0, 0, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_min_y_b                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x2, 0, 1, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xy_ab                           , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x3, 0, 1, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_min_z_c                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x4, 0, 0, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xz_ac                           , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x5, 0, 0, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xyz_abc                         , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x7, 0, 1, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_min_w_d                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x8, 0, 0, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xw_ad                           , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x9, 0, 0, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_min_yzw_bcd                         , SWS_PIXEL_F32, SWS_UOP_MIN             , 0xe, 0, 1, 2, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xyzw_abcd                       , SWS_PIXEL_F32, SWS_UOP_MIN             , 0xf, 0, 1, 2, 3, 0x0, 0x0)
 #define SWS_FOR_STRUCT_F32_MIN(MACRO, ...) \
-    MACRO(__VA_ARGS__, f32_min_x                               , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x1) \
-    MACRO(__VA_ARGS__, f32_min_y                               , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x2) \
-    MACRO(__VA_ARGS__, f32_min_xy                              , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x3) \
-    MACRO(__VA_ARGS__, f32_min_z                               , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x4) \
-    MACRO(__VA_ARGS__, f32_min_xz                              , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x5) \
-    MACRO(__VA_ARGS__, f32_min_xyz                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x7) \
-    MACRO(__VA_ARGS__, f32_min_w                               , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x8) \
-    MACRO(__VA_ARGS__, f32_min_xw                              , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x9) \
-    MACRO(__VA_ARGS__, f32_min_yzw                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0xe) \
-    MACRO(__VA_ARGS__, f32_min_xyzw                            , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0xf)
+    MACRO(__VA_ARGS__, f32_min_x_a                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x1, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_min_y_b                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x2, .par.vec4.indices = {0, 1, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xy_ab                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x3, .par.vec4.indices = {0, 1, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_min_z_c                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x4, .par.vec4.indices = {0, 0, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xz_ac                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x5, .par.vec4.indices = {0, 0, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xyz_abc                         , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x7, .par.vec4.indices = {0, 1, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_min_w_d                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x8, .par.vec4.indices = {0, 0, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xw_ad                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0x9, .par.vec4.indices = {0, 0, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_min_yzw_bcd                         , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0xe, .par.vec4.indices = {0, 1, 2, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_min_xyzw_abcd                       , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MIN             , .mask = 0xf, .par.vec4.indices = {0, 1, 2, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0)
 #define SWS_FOR_F32_MAX(MACRO, ...) \
-    MACRO(__VA_ARGS__, f32_max_x                               , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x1) \
-    MACRO(__VA_ARGS__, f32_max_xy                              , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x3) \
-    MACRO(__VA_ARGS__, f32_max_xyz                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x7) \
-    MACRO(__VA_ARGS__, f32_max_w                               , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x8) \
-    MACRO(__VA_ARGS__, f32_max_xw                              , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x9) \
-    MACRO(__VA_ARGS__, f32_max_xyzw                            , SWS_PIXEL_F32, SWS_UOP_MAX             , 0xf)
+    MACRO(__VA_ARGS__, f32_max_x_a                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x1, 0, 0, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_max_xy_ab                           , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x3, 0, 1, 0, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_max_xyz_abc                         , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x7, 0, 1, 2, 0, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_max_w_d                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x8, 0, 0, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_max_xw_ad                           , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x9, 0, 0, 0, 3, 0x0, 0x0) \
+    MACRO(__VA_ARGS__, f32_max_xyzw_abcd                       , SWS_PIXEL_F32, SWS_UOP_MAX             , 0xf, 0, 1, 2, 3, 0x0, 0x0)
 #define SWS_FOR_STRUCT_F32_MAX(MACRO, ...) \
-    MACRO(__VA_ARGS__, f32_max_x                               , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x1) \
-    MACRO(__VA_ARGS__, f32_max_xy                              , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x3) \
-    MACRO(__VA_ARGS__, f32_max_xyz                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x7) \
-    MACRO(__VA_ARGS__, f32_max_w                               , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x8) \
-    MACRO(__VA_ARGS__, f32_max_xw                              , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x9) \
-    MACRO(__VA_ARGS__, f32_max_xyzw                            , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0xf)
+    MACRO(__VA_ARGS__, f32_max_x_a                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x1, .par.vec4.indices = {0, 0, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_max_xy_ab                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x3, .par.vec4.indices = {0, 1, 0, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_max_xyz_abc                         , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x7, .par.vec4.indices = {0, 1, 2, 0}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_max_w_d                             , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x8, .par.vec4.indices = {0, 0, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_max_xw_ad                           , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0x9, .par.vec4.indices = {0, 0, 0, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0) \
+    MACRO(__VA_ARGS__, f32_max_xyzw_abcd                       , .type = SWS_PIXEL_F32, .uop = SWS_UOP_MAX             , .mask = 0xf, .par.vec4.indices = {0, 1, 2, 3}, .par.vec4.one = 0x0, .par.vec4.zero = 0x0)
 #define SWS_FOR_F32_UNPACK(MACRO, ...)
 #define SWS_FOR_STRUCT_F32_UNPACK(MACRO, ...)
 #define SWS_FOR_F32_PACK(MACRO, ...)

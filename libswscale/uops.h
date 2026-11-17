@@ -255,10 +255,11 @@ typedef struct SwsPackUOp {
     uint8_t pattern[4]; /* bit depth pattern, from MSB to LSB */
 } SwsPackUOp;
 
-typedef struct SwsClearUOp {
-    SwsCompMask one;  /* mask of coefficients equal to all 1s */
-    SwsCompMask zero; /* mask of coefficients equal to all 0s */
-} SwsClearUOp;
+typedef struct SwsVec4UOp {
+    uint8_t indices[4]; /* indices inside packed data.vec4 */
+    SwsCompMask one;    /* mask of coefficients equal to all 1s */
+    SwsCompMask zero;   /* mask of coefficients equal to all 0s */
+} SwsVec4UOp;
 
 typedef struct SwsLinearUOp {
     uint32_t one;  /* mask of coefficients equal to one */
@@ -295,7 +296,7 @@ typedef union SwsUOpParams {
     SwsShiftUOp     shift;
     SwsMoveUOp      move; /* for SWS_UOP_PERMUTE and SWS_UOP_COPY */
     SwsPackUOp      pack;
-    SwsClearUOp     clear;
+    SwsVec4UOp      vec4;
     SwsLinearUOp    lin;
     SwsDitherUOp    dither;
     SwsLut3DUOp     lut3d;
