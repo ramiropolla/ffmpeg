@@ -38,6 +38,21 @@
 #endif
 
 /*********************************************************************/
+static uint16_t vec4_to_mask(const SwsAArch64OpImplParams *p, const SwsVec4UOp *vec4)
+{
+    uint16_t mask = 0;
+    for (int i = 0; i < 4; i++) {
+        if (!(p->mask & SWS_COMP(i))) {
+            NIBBLE_SET(mask, i, 0xf);
+        } else if (vec4->zero & SWS_COMP(i)) {
+            /* no-op */
+        } else {
+            NIBBLE_SET(mask, i, 0xa + vec4->indices[i]);
+        }
+    }
+    return mask;
+}
+
 static uint16_t clear_to_mask(const SwsClearUOp *clear)
 {
     uint16_t mask = 0;
@@ -133,6 +148,15 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
         if (para->shift.amount != parb->shift.amount)
             return (int) para->shift.amount - parb->shift.amount;
         break;
+    case SWS_UOP_ADD:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX: {
+        uint16_t ia = vec4_to_mask(pa, &para->vec4);
+        uint16_t ib = vec4_to_mask(pb, &parb->vec4);
+        if (ia != ib)
+            return (int) ia - ib;
+        break;
+    }
     case SWS_UOP_CLEAR: {
         uint16_t ia = clear_to_mask(&para->clear);
         uint16_t ib = clear_to_mask(&parb->clear);
@@ -376,6 +400,11 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
     case SWS_UOP_RSHIFT:
         av_strlcatf(func_name, sizeof(func_name), "_%u", par->shift.amount);
         break;
+    case SWS_UOP_ADD:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX:
+        av_strlcatf(func_name, sizeof(func_name), "_%04x", vec4_to_mask(params, &par->vec4));
+        break;
     case SWS_UOP_CLEAR:
         av_strlcatf(func_name, sizeof(func_name), "_%04x", clear_to_mask(&par->clear));
         break;
@@ -408,6 +437,14 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
                    par->move.dst[3], par->move.dst[4], par->move.dst[5],
                    par->move.src[0], par->move.src[1], par->move.src[2],
                    par->move.src[3], par->move.src[4], par->move.src[5]);
+        break;
+    case SWS_UOP_ADD:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX:
+        av_bprintf(bp, ", .par.vec4 = { .indices = {%d, %d, %d, %d}, .zero = 0x%0x }",
+                   par->vec4.indices[0], par->vec4.indices[1],
+                   par->vec4.indices[2], par->vec4.indices[3],
+                   par->vec4.zero);
         break;
     case SWS_UOP_UNPACK:
     case SWS_UOP_PACK:

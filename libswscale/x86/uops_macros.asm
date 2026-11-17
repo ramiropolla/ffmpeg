@@ -762,36 +762,36 @@
 %endmacro
 
 %macro DECL_F32_ADD 1
-    DECL_OP %1, f32_add_x                               , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x1
-    DECL_OP %1, f32_add_xy                              , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x3
-    DECL_OP %1, f32_add_xz                              , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x5
-    DECL_OP %1, f32_add_xyz                             , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x7
-    DECL_OP %1, f32_add_w                               , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x8
-    DECL_OP %1, f32_add_xw                              , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x9
-    DECL_OP %1, f32_add_yzw                             , SWS_PIXEL_F32, SWS_UOP_ADD             , 0xe
-    DECL_OP %1, f32_add_xyzw                            , SWS_PIXEL_F32, SWS_UOP_ADD             , 0xf
+    DECL_OP %1, f32_add_x_a                             , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x1, 0, 0, 0, 0, 0x0
+    DECL_OP %1, f32_add_xy_ab                           , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x3, 0, 1, 0, 0, 0x0
+    DECL_OP %1, f32_add_xz_ac                           , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x5, 0, 0, 2, 0, 0x0
+    DECL_OP %1, f32_add_xyz_abc                         , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x7, 0, 1, 2, 0, 0x0
+    DECL_OP %1, f32_add_w_d                             , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x8, 0, 0, 0, 3, 0x0
+    DECL_OP %1, f32_add_xw_ad                           , SWS_PIXEL_F32, SWS_UOP_ADD             , 0x9, 0, 0, 0, 3, 0x0
+    DECL_OP %1, f32_add_yzw_bcd                         , SWS_PIXEL_F32, SWS_UOP_ADD             , 0xe, 0, 1, 2, 3, 0x0
+    DECL_OP %1, f32_add_xyzw_abcd                       , SWS_PIXEL_F32, SWS_UOP_ADD             , 0xf, 0, 1, 2, 3, 0x0
 %endmacro
 
 %macro DECL_F32_MIN 1
-    DECL_OP %1, f32_min_x                               , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x1
-    DECL_OP %1, f32_min_y                               , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x2
-    DECL_OP %1, f32_min_xy                              , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x3
-    DECL_OP %1, f32_min_z                               , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x4
-    DECL_OP %1, f32_min_xz                              , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x5
-    DECL_OP %1, f32_min_xyz                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x7
-    DECL_OP %1, f32_min_w                               , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x8
-    DECL_OP %1, f32_min_xw                              , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x9
-    DECL_OP %1, f32_min_yzw                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0xe
-    DECL_OP %1, f32_min_xyzw                            , SWS_PIXEL_F32, SWS_UOP_MIN             , 0xf
+    DECL_OP %1, f32_min_x_a                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x1, 0, 0, 0, 0, 0x0
+    DECL_OP %1, f32_min_y_b                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x2, 0, 1, 0, 0, 0x0
+    DECL_OP %1, f32_min_xy_ab                           , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x3, 0, 1, 0, 0, 0x0
+    DECL_OP %1, f32_min_z_c                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x4, 0, 0, 2, 0, 0x0
+    DECL_OP %1, f32_min_xz_ac                           , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x5, 0, 0, 2, 0, 0x0
+    DECL_OP %1, f32_min_xyz_abc                         , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x7, 0, 1, 2, 0, 0x0
+    DECL_OP %1, f32_min_w_d                             , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x8, 0, 0, 0, 3, 0x0
+    DECL_OP %1, f32_min_xw_ad                           , SWS_PIXEL_F32, SWS_UOP_MIN             , 0x9, 0, 0, 0, 3, 0x0
+    DECL_OP %1, f32_min_yzw_bcd                         , SWS_PIXEL_F32, SWS_UOP_MIN             , 0xe, 0, 1, 2, 3, 0x0
+    DECL_OP %1, f32_min_xyzw_abcd                       , SWS_PIXEL_F32, SWS_UOP_MIN             , 0xf, 0, 1, 2, 3, 0x0
 %endmacro
 
 %macro DECL_F32_MAX 1
-    DECL_OP %1, f32_max_x                               , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x1
-    DECL_OP %1, f32_max_xy                              , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x3
-    DECL_OP %1, f32_max_xyz                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x7
-    DECL_OP %1, f32_max_w                               , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x8
-    DECL_OP %1, f32_max_xw                              , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x9
-    DECL_OP %1, f32_max_xyzw                            , SWS_PIXEL_F32, SWS_UOP_MAX             , 0xf
+    DECL_OP %1, f32_max_x_a                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x1, 0, 0, 0, 0, 0x0
+    DECL_OP %1, f32_max_xy_ab                           , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x3, 0, 1, 0, 0, 0x0
+    DECL_OP %1, f32_max_xyz_abc                         , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x7, 0, 1, 2, 0, 0x0
+    DECL_OP %1, f32_max_w_d                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x8, 0, 0, 0, 3, 0x0
+    DECL_OP %1, f32_max_xw_ad                           , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x9, 0, 0, 0, 3, 0x0
+    DECL_OP %1, f32_max_xyzw_abcd                       , SWS_PIXEL_F32, SWS_UOP_MAX             , 0xf, 0, 1, 2, 3, 0x0
 %endmacro
 
 %macro DECL_F32_UNPACK 1
