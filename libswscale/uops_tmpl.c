@@ -632,8 +632,10 @@ SWS_FOR_STRUCT(PX, PACK,    DECL_ENTRY)
  ***********************/
 
 #ifdef PIXEL_MAX
-DECL_FUNC(clear, const SwsCompMask mask, const SwsCompMask one,
-                 const SwsCompMask zero)
+DECL_FUNC(clear, const SwsCompMask mask,
+                 const uint8_t idx0, const uint8_t idx1,
+                 const uint8_t idx2, const uint8_t idx3,
+                 const SwsCompMask one, const SwsCompMask zero)
 {
     #define ONE(N)  SWS_COMP_TEST(one, N)
     #define ZERO(N) SWS_COMP_TEST(zero, N)
@@ -678,7 +680,10 @@ DECL_FUNC(scale, const SwsCompMask mask)
     CONTINUE(sizeof(pixel_t), x, y, z, w);
 }
 
-DECL_FUNC(add, const SwsCompMask mask)
+DECL_FUNC(add, const SwsCompMask mask,
+               const uint8_t idx0, const uint8_t idx1,
+               const uint8_t idx2, const uint8_t idx3,
+               const SwsCompMask one, const SwsCompMask zero)
 {
     const SwsOpPriv *priv = SWS_OP_PRIV(impl);
 
@@ -693,7 +698,10 @@ DECL_FUNC(add, const SwsCompMask mask)
     CONTINUE(sizeof(pixel_t[4]), x, y, z, w);
 }
 
-DECL_FUNC(min, const SwsCompMask mask)
+DECL_FUNC(min, const SwsCompMask mask,
+               const uint8_t idx0, const uint8_t idx1,
+               const uint8_t idx2, const uint8_t idx3,
+               const SwsCompMask one, const SwsCompMask zero)
 {
     const SwsOpPriv *priv = SWS_OP_PRIV(impl);
 
@@ -708,7 +716,10 @@ DECL_FUNC(min, const SwsCompMask mask)
     CONTINUE(sizeof(pixel_t[4]), x, y, z, w);
 }
 
-DECL_FUNC(max, const SwsCompMask mask)
+DECL_FUNC(max, const SwsCompMask mask,
+               const uint8_t idx0, const uint8_t idx1,
+               const uint8_t idx2, const uint8_t idx3,
+               const SwsCompMask one, const SwsCompMask zero)
 {
     const SwsOpPriv *priv = SWS_OP_PRIV(impl);
 

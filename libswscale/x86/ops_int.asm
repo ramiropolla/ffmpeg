@@ -597,10 +597,10 @@ IF W,   vcvtdq2ps mw2, mw2
 IF V2,  mova %3, %2
 %endmacro
 
-%macro CLEAR 2
+%macro CLEAR 6
 %assign PRIV_SIZE 4 * 4
-%assign ONE_MASK  %1
-%assign ZERO_MASK %2
+%assign ONE_MASK  %5
+%assign ZERO_MASK %6
         LOAD_CONT tmp0q
 IF1 X,  clear 0, mx, mx2
 IF1 Y,  clear 1, my, my2

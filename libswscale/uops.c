@@ -93,17 +93,20 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
         for (int i = 0; i < 4 && par->pack.pattern[i]; i++)
             av_bprintf(&bp, "%x", par->pack.pattern[i]);
         break;
+    case SWS_UOP_ADD:
+    case SWS_UOP_MIN:
+    case SWS_UOP_MAX:
     case SWS_UOP_CLEAR:
         av_bprint_chars(&bp, '_', 1);
         for (int i = 0; i < 4; i++) {
             if (!SWS_COMP_TEST(op->mask, i))
                 continue;
-            else if (SWS_COMP_TEST(par->clear.one, i))
+            else if (SWS_COMP_TEST(par->vec4.one, i))
                 av_bprint_chars(&bp, '1', 1);
-            else if (SWS_COMP_TEST(par->clear.zero, i))
+            else if (SWS_COMP_TEST(par->vec4.zero, i))
                 av_bprint_chars(&bp, '0', 1);
             else
-                av_bprint_chars(&bp, 'x', 1);
+                av_bprint_chars(&bp, 'a' + par->vec4.indices[i], 1);
         }
         break;
     case SWS_UOP_LINEAR:
@@ -241,7 +244,7 @@ static SwsPixelType pixel_type_to_int(SwsUOpFlags flags, const SwsPixelType type
 }
 
 static void set_vec4_val(SwsPixel data[4],
-                         SwsCompMask *zero, SwsCompMask *one,
+                         SwsCompMask *zero, SwsCompMask *one, uint8_t indices[4],
                          AVRational64 v, SwsPixelType type, SwsPixel px,
                          int i)
 {
@@ -250,6 +253,7 @@ static void set_vec4_val(SwsPixel data[4],
     } else if (one && ff_sws_pixel_is_1s(type, px)) {
         *one |= SWS_COMP(i);
     } else {
+        indices[i] = i;
         data[i] = px;
     }
 }
@@ -483,6 +487,7 @@ static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *
             set_vec4_val(uop.data.vec4,
                          NULL,
                          NULL,
+                         uop.par.vec4.indices,
                          v, type, px, i);
         }
 
@@ -623,8 +628,9 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             const SwsPixelType type = op->clear.type[i];
             const SwsPixel px = ff_sws_pixel_from_q64(type, v);
             set_vec4_val(uop.data.vec4,
-                         &uop.par.clear.zero,
-                         &uop.par.clear.one,
+                         &uop.par.vec4.zero,
+                         &uop.par.vec4.one,
+                         uop.par.vec4.indices,
                          v, type, px, i);
             uop.type = pixel_type_to_int(flags, type);
         }
@@ -646,6 +652,7 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             set_vec4_val(uop.data.vec4,
                          NULL,
                          NULL,
+                         uop.par.vec4.indices,
                          v, type, px, i);
         }
         break;

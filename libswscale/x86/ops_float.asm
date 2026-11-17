@@ -484,7 +484,7 @@ IF W,   mulps mw2, m8
         CONTINUE tmp0q
 %endmacro
 
-%macro ADD 0
+%macro ADD 6
 %assign PRIV_SIZE 4 * BYTES
 IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
 IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
@@ -502,7 +502,7 @@ IF W,   addps mw2, m11
         CONTINUE tmp0q
 %endmacro
 
-%macro MIN 0
+%macro MIN 6
 %assign PRIV_SIZE 4 * BYTES
 IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
 IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
@@ -520,7 +520,7 @@ IF W,   minps mw2, m11
         CONTINUE tmp0q
 %endmacro
 
-%macro MAX 0
+%macro MAX 6
 %assign PRIV_SIZE 4 * BYTES
 IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
 IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
