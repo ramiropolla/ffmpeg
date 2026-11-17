@@ -28,6 +28,12 @@
 #include "../uops.h"
 #include "uops_macros.h"
 
+/* Dummy defines to allow bootstrapping uops_macros.h. */
+#ifndef SWS_FOR
+#  define SWS_FOR(TYPE, UOP, MACRO, ...)
+#  define SWS_FOR_STRUCT(TYPE, UOP, MACRO, ...)
+#endif
+
 static int setup_rw_packed(const SwsImplParams *params, SwsImplResult *out)
 {
     const SwsUOp *uop = params->uop;
