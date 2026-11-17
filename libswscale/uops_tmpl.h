@@ -37,6 +37,12 @@
 #include "ops_chain.h"
 #include "uops_macros.h"
 
+/* Dummy defines to allow bootstrapping uops_macros.h. */
+#ifndef SWS_FOR
+#  define SWS_FOR(TYPE, UOP, MACRO, ...)
+#  define SWS_FOR_STRUCT(TYPE, UOP, MACRO, ...)
+#endif
+
 #ifndef SWS_BLOCK_SIZE
 #  define SWS_BLOCK_SIZE 32
 #endif
