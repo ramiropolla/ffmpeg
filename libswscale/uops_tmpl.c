@@ -644,6 +644,8 @@ DECL_FUNC(clear, const SwsCompMask mask,
     const pixel_t cy = ONE(1) ? PIXEL_MAX : ZERO(1) ? 0 : priv->px[1];
     const pixel_t cz = ONE(2) ? PIXEL_MAX : ZERO(2) ? 0 : priv->px[2];
     const pixel_t cw = ONE(3) ? PIXEL_MAX : ZERO(3) ? 0 : priv->px[3];
+    #undef ONE
+    #undef ZERO
 
     SWS_LOOP
     for (int i = 0; i < SWS_BLOCK_SIZE; i++) {
