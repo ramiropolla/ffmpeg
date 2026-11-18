@@ -469,14 +469,53 @@ IF W,   mulps mw2, m10
 ;---------------------------------------------------------
 ; Arithmetic operations
 
-%macro load_vec4 2 ; comp, reg
-%if SWS_COMP_TEST(ZERO_MASK, %1)
-        xorps %2, %2
-%elif SWS_COMP_TEST(ONE_MASK, %1)
-        pcmpeqb %2, %2
-%else
-        vbroadcastss %2, [implq + SwsOpImpl.priv + %1 * BYTES]
+; Point %1 at the register cached as VEC4_%2, allocating it from VEC4_NEXT
+; and initializing it with "%3 reg, %4" (or "%3 reg, reg") on first use.
+%macro vec4_reg 3-4 ; name, cache, insn, src
+%ifndef VEC4_%2
+    %xdefine VEC4_%2 m %+ VEC4_NEXT
+    %assign VEC4_NEXT VEC4_NEXT + 1
+    %if %0 == 4
+        %3 VEC4_%2, %4
+    %else
+        %3 VEC4_%2, VEC4_%2
+    %endif
 %endif
+%xdefine %1 VEC4_%2
+%endmacro
+
+; Set %3 to the register holding the value of component %1. Registers are
+; allocated from m8 upwards, and are shared between components that use the
+; same packed value, the zero mask, or the one mask.
+%macro load_vec4_comp 3 ; comp, idx, name
+%if SWS_COMP_TEST(ZERO_MASK, %1)
+        vec4_reg %3, ZERO, xorps
+%elif SWS_COMP_TEST(ONE_MASK, %1)
+        vec4_reg %3, ONE, pcmpeqb
+%else
+        vec4_reg %3, DATA%2, vbroadcastss, [implq + SwsOpImpl.priv + %2 * BYTES]
+%endif
+%endmacro
+
+; Load the vec4 constants into VX/VY/VZ/VW
+%macro load_vec4 6 ; idx0, idx1, idx2, idx3, one, zero
+%assign ONE_MASK  %5
+%assign ZERO_MASK %6
+%assign VEC4_NEXT 8
+%undef VEC4_ZERO
+%undef VEC4_ONE
+%undef VEC4_DATA0
+%undef VEC4_DATA1
+%undef VEC4_DATA2
+%undef VEC4_DATA3
+%undef VX
+%undef VY
+%undef VZ
+%undef VW
+IF X,   load_vec4_comp 0, %1, VX
+IF Y,   load_vec4_comp 1, %2, VY
+IF Z,   load_vec4_comp 2, %3, VZ
+IF W,   load_vec4_comp 3, %4, VW
 %endmacro
 
 %macro SCALE 0
@@ -496,61 +535,46 @@ IF W,   mulps mw2, m8
 
 %macro ADD 6
 %assign PRIV_SIZE 4 * BYTES
-%assign ONE_MASK  %5
-%assign ZERO_MASK %6
-IF1 X,  load_vec4 0, m8
-IF1 Y,  load_vec4 1, m9
-IF1 Z,  load_vec4 2, m10
-IF1 W,  load_vec4 3, m11
+        load_vec4 %1, %2, %3, %4, %5, %6
         LOAD_CONT tmp0q
-IF X,   addps mx, m8
-IF Y,   addps my, m9
-IF Z,   addps mz, m10
-IF W,   addps mw, m11
-IF X,   addps mx2, m8
-IF Y,   addps my2, m9
-IF Z,   addps mz2, m10
-IF W,   addps mw2, m11
+IF X,   addps mx, VX
+IF Y,   addps my, VY
+IF Z,   addps mz, VZ
+IF W,   addps mw, VW
+IF X,   addps mx2, VX
+IF Y,   addps my2, VY
+IF Z,   addps mz2, VZ
+IF W,   addps mw2, VW
         CONTINUE tmp0q
 %endmacro
 
 %macro MIN 6
 %assign PRIV_SIZE 4 * BYTES
-%assign ONE_MASK  %5
-%assign ZERO_MASK %6
-IF1 X,  load_vec4 0, m8
-IF1 Y,  load_vec4 1, m9
-IF1 Z,  load_vec4 2, m10
-IF1 W,  load_vec4 3, m11
+        load_vec4 %1, %2, %3, %4, %5, %6
         LOAD_CONT tmp0q
-IF X,   minps mx, m8
-IF Y,   minps my, m9
-IF Z,   minps mz, m10
-IF W,   minps mw, m11
-IF X,   minps mx2, m8
-IF Y,   minps my2, m9
-IF Z,   minps mz2, m10
-IF W,   minps mw2, m11
+IF X,   minps mx, VX
+IF Y,   minps my, VY
+IF Z,   minps mz, VZ
+IF W,   minps mw, VW
+IF X,   minps mx2, VX
+IF Y,   minps my2, VY
+IF Z,   minps mz2, VZ
+IF W,   minps mw2, VW
         CONTINUE tmp0q
 %endmacro
 
 %macro MAX 6
 %assign PRIV_SIZE 4 * BYTES
-%assign ONE_MASK  %5
-%assign ZERO_MASK %6
-IF1 X,  load_vec4 0, m8
-IF1 Y,  load_vec4 1, m9
-IF1 Z,  load_vec4 2, m10
-IF1 W,  load_vec4 3, m11
+        load_vec4 %1, %2, %3, %4, %5, %6
         LOAD_CONT tmp0q
-IF X,   maxps mx, m8
-IF Y,   maxps my, m9
-IF Z,   maxps mz, m10
-IF W,   maxps mw, m11
-IF X,   maxps mx2, m8
-IF Y,   maxps my2, m9
-IF Z,   maxps mz2, m10
-IF W,   maxps mw2, m11
+IF X,   maxps mx, VX
+IF Y,   maxps my, VY
+IF Z,   maxps mz, VZ
+IF W,   maxps mw, VW
+IF X,   maxps mx2, VX
+IF Y,   maxps my2, VY
+IF Z,   maxps mz2, VZ
+IF W,   maxps mw2, VW
         CONTINUE tmp0q
 %endmacro
 

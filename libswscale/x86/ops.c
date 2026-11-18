@@ -728,7 +728,8 @@ static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp 
                       | SWS_UOP_FLAG_EXPAND_BIT
                       | SWS_UOP_FLAG_READ_PALETTE
                       | SWS_UOP_FLAG_VEC4_MASKS
-                      | SWS_UOP_FLAG_PUNNING;
+                      | SWS_UOP_FLAG_PUNNING
+                      | SWS_UOP_FLAG_VEC4_PACKED;
     if (EXTERNAL_FMA3(cpu_flags))
         flags |= SWS_UOP_FLAG_FMA;
 
