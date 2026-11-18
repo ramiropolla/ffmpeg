@@ -683,6 +683,14 @@ static int compile_uops_x86(SwsContext *ctx, const SwsUOpList *uops, SwsCompiled
         int op_block_size = out->block_size;
 
         if (uop_is_type_invariant(uop->uop)) {
+            if (uop->uop == SWS_UOP_CLEAR) {
+                /**
+                 * Expand clear values to repeating 32-bit patterns, so that
+                 * vpbroadcastd may be used for all kernel types.
+                 */
+                for (int j = 0; j < 4; j++)
+                    uop->data.vec4[j] = ff_sws_pixel_expand32(uop->type, uop->data.vec4[j]);
+            }
             op_block_size *= ff_sws_pixel_type_size(uop->type);
             uop->type = SWS_PIXEL_U8;
         }

@@ -484,9 +484,8 @@ static void check_vec4(const char *name, SwsUOp *uop)
 
 static void check_clear(const char *name, SwsUOp *uop)
 {
-    /* Clear values are always expanded to 32 bits, see SwsClearUOp */
     for (int i = 0; i < 4; i++)
-        uop->data.vec4[i] = ff_sws_pixel_expand32(uop->type, rndpx(uop->type));
+        uop->data.vec4[i] = rndpx(uop->type);
 
     check_simple(name, uop);
 }
