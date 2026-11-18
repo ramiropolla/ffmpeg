@@ -246,40 +246,34 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
     }
 }
 
-static void asmgen_setup_add(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
-                             SwsAArch64OpRegs *regs)
+static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                              SwsAArch64OpRegs *regs, const char *name)
 {
     RasmContext *r = s->rctx;
     RasmOp *vk = regs->vk;
 
-    RasmOp add_vec = regs->vt[0];
-    i_ldr(r, v_q(add_vec), IMPL_PRIV(s));                           CMT("v128 add_vec = impl->priv.v128;");
+    RasmOp priv_data = regs->vt[0];
+    i_ldr(r, v_q(priv_data), IMPL_PRIV(s));                         CMTF("v128 %s_vec = impl->priv.v128;", name);
     asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(add_vec, i));      CMTF("v128 vadd%u = add_vec[%u];", i, i); }
+    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(priv_data, i));    CMTF("v128 v%s%u = %s_vec[%u];", name, i, name, i); }
+}
+
+static void asmgen_setup_add(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                             SwsAArch64OpRegs *regs)
+{
+    asmgen_setup_vec4(s, p, regs, "add");
 }
 
 static void asmgen_setup_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
-
-    RasmOp min_vec = regs->vt[0];
-    i_ldr(r, v_q(min_vec), IMPL_PRIV(s));                           CMT("v128 min_vec = impl->priv.v128;");
-    asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(min_vec, i));      CMTF("v128 vmin%u = min_vec[%u];", i, i); }
+    asmgen_setup_vec4(s, p, regs, "min");
 }
 
 static void asmgen_setup_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp *vk = regs->vk;
-
-    RasmOp max_vec = regs->vt[0];
-    i_ldr(r, v_q(max_vec), IMPL_PRIV(s));                           CMT("v128 max_vec = impl->priv.v128;");
-    asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(max_vec, i));      CMTF("v128 vmax%u = max_vec[%u];", i, i); }
+    asmgen_setup_vec4(s, p, regs, "max");
 }
 
 static void asmgen_setup_scale(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
