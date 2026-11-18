@@ -243,7 +243,7 @@ static SwsPixelType pixel_type_to_int(SwsUOpFlags flags, const SwsPixelType type
     return SWS_PIXEL_NONE;
 }
 
-static void set_vec4_val(SwsPixel data[4],
+static void set_vec4_val(SwsPixel data[4], int *packed_i,
                          SwsCompMask *zero, SwsCompMask *one, uint8_t indices[4],
                          AVRational64 v, SwsPixelType type, SwsPixel px,
                          int i)
@@ -252,6 +252,21 @@ static void set_vec4_val(SwsPixel data[4],
         *zero |= SWS_COMP(i);
     } else if (one && ff_sws_pixel_is_1s(type, px)) {
         *one |= SWS_COMP(i);
+    } else if (packed_i) {
+        int idx = -1;
+        for (int j = 0; j < *packed_i; j++) {
+            if (data[j].u32 == px.u32) {
+                idx = j;
+                break;
+            }
+        }
+        if (idx < 0) {
+            data[*packed_i] = px;
+            indices[i] = *packed_i;
+            (*packed_i)++;
+        } else {
+            indices[i] = idx;
+        }
     } else {
         indices[i] = i;
         data[i] = px;
@@ -480,11 +495,13 @@ static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *
         const SwsPixelType type = uop.type;
         const SwsPixel px = ff_sws_pixel_from_q64(type, v);
         uop.uop = SWS_UOP_ADD;
+        int packed_i = 0;
         for (int i = 0; i < 4; i++) {
             if (!SWS_OP_NEEDED(op, i) || op->dither.y_offset[i] < 0)
                 continue;
             uop.mask |= SWS_COMP(i);
             set_vec4_val(uop.data.vec4,
+                         (flags & SWS_UOP_FLAG_VEC4_PACKED) ? &packed_i : NULL,
                          (flags & SWS_UOP_FLAG_VEC4_MASKS) ? &uop.par.vec4.zero : NULL,
                          (flags & SWS_UOP_FLAG_VEC4_MASKS) ? &uop.par.vec4.one  : NULL,
                          uop.par.vec4.indices,
@@ -618,9 +635,10 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         uop.uop = op->op == SWS_OP_LSHIFT ? SWS_UOP_LSHIFT : SWS_UOP_RSHIFT;
         uop.par.shift.amount = op->shift.amount;
         break;
-    case SWS_OP_CLEAR:
+    case SWS_OP_CLEAR: {
         uop.uop = SWS_UOP_CLEAR;
         uop.mask &= op->clear.mask;
+        int packed_i = 0;
         for (int i = 0; i < 4; i++) {
             if (!SWS_COMP_TEST(op->clear.mask, i))
                 continue;
@@ -628,6 +646,7 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             const SwsPixelType type = op->clear.type[i];
             const SwsPixel px = ff_sws_pixel_from_q64(type, v);
             set_vec4_val(uop.data.vec4,
+                         (flags & SWS_UOP_FLAG_VEC4_PACKED) ? &packed_i : NULL,
                          &uop.par.vec4.zero,
                          &uop.par.vec4.one,
                          uop.par.vec4.indices,
@@ -635,14 +654,16 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             uop.type = pixel_type_to_int(flags, type);
         }
         break;
+    }
     case SWS_OP_SCALE:
         uop.uop = SWS_UOP_SCALE;
         uop.data.scalar = ff_sws_pixel_from_q64(uop.type, op->scale.factor);
         break;
     case SWS_OP_MIN:
-    case SWS_OP_MAX:
+    case SWS_OP_MAX: {
         uop.uop = op->op == SWS_OP_MIN ? SWS_UOP_MIN : SWS_UOP_MAX;
         uop.mask &= ff_sws_comp_mask_q4(op->clamp.limit);
+        int packed_i = 0;
         for (int i = 0; i < 4; i++) {
             if (!SWS_COMP_TEST(uop.mask, i))
                 continue;
@@ -650,12 +671,14 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             const SwsPixelType type = uop.type;
             const SwsPixel px = ff_sws_pixel_from_q64(type, v);
             set_vec4_val(uop.data.vec4,
+                         (flags & SWS_UOP_FLAG_VEC4_PACKED) ? &packed_i : NULL,
                          (flags & SWS_UOP_FLAG_VEC4_MASKS) ? &uop.par.vec4.zero : NULL,
                          (flags & SWS_UOP_FLAG_VEC4_MASKS) ? &uop.par.vec4.one  : NULL,
                          uop.par.vec4.indices,
                          v, type, px, i);
         }
         break;
+    }
     case SWS_OP_SWAP_BYTES:
         uop.uop = SWS_UOP_SWAP_BYTES;
         uop.type = pixel_type_to_int(flags, uop.type);

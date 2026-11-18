@@ -640,10 +640,10 @@ DECL_FUNC(clear, const SwsCompMask mask,
     #define ONE(N)  SWS_COMP_TEST(one, N)
     #define ZERO(N) SWS_COMP_TEST(zero, N)
     const SwsOpPriv *priv = SWS_OP_PRIV(impl);
-    const pixel_t cx = ONE(0) ? PIXEL_MAX : ZERO(0) ? 0 : priv->px[0];
-    const pixel_t cy = ONE(1) ? PIXEL_MAX : ZERO(1) ? 0 : priv->px[1];
-    const pixel_t cz = ONE(2) ? PIXEL_MAX : ZERO(2) ? 0 : priv->px[2];
-    const pixel_t cw = ONE(3) ? PIXEL_MAX : ZERO(3) ? 0 : priv->px[3];
+    const pixel_t cx = ONE(0) ? PIXEL_MAX : ZERO(0) ? 0 : priv->px[idx0];
+    const pixel_t cy = ONE(1) ? PIXEL_MAX : ZERO(1) ? 0 : priv->px[idx1];
+    const pixel_t cz = ONE(2) ? PIXEL_MAX : ZERO(2) ? 0 : priv->px[idx2];
+    const pixel_t cw = ONE(3) ? PIXEL_MAX : ZERO(3) ? 0 : priv->px[idx3];
     #undef ONE
     #undef ZERO
 
@@ -691,10 +691,10 @@ DECL_FUNC(add, const SwsCompMask mask,
     #define ZERO(N) SWS_COMP_TEST(zero, N)
     #define ONES    ((SwsPixel) { .u32 = UINT32_MAX }).px
     const SwsOpPriv *priv = SWS_OP_PRIV(impl);
-    const pixel_t cx = ONE(0) ? ONES : ZERO(0) ? 0 : priv->px[0];
-    const pixel_t cy = ONE(1) ? ONES : ZERO(1) ? 0 : priv->px[1];
-    const pixel_t cz = ONE(2) ? ONES : ZERO(2) ? 0 : priv->px[2];
-    const pixel_t cw = ONE(3) ? ONES : ZERO(3) ? 0 : priv->px[3];
+    const pixel_t cx = ONE(0) ? ONES : ZERO(0) ? 0 : priv->px[idx0];
+    const pixel_t cy = ONE(1) ? ONES : ZERO(1) ? 0 : priv->px[idx1];
+    const pixel_t cz = ONE(2) ? ONES : ZERO(2) ? 0 : priv->px[idx2];
+    const pixel_t cw = ONE(3) ? ONES : ZERO(3) ? 0 : priv->px[idx3];
     #undef ONE
     #undef ZERO
     #undef ONES
@@ -719,10 +719,10 @@ DECL_FUNC(min, const SwsCompMask mask,
     #define ZERO(N) SWS_COMP_TEST(zero, N)
     #define ONES    ((SwsPixel) { .u32 = UINT32_MAX }).px
     const SwsOpPriv *priv = SWS_OP_PRIV(impl);
-    const pixel_t cx = ONE(0) ? ONES : ZERO(0) ? 0 : priv->px[0];
-    const pixel_t cy = ONE(1) ? ONES : ZERO(1) ? 0 : priv->px[1];
-    const pixel_t cz = ONE(2) ? ONES : ZERO(2) ? 0 : priv->px[2];
-    const pixel_t cw = ONE(3) ? ONES : ZERO(3) ? 0 : priv->px[3];
+    const pixel_t cx = ONE(0) ? ONES : ZERO(0) ? 0 : priv->px[idx0];
+    const pixel_t cy = ONE(1) ? ONES : ZERO(1) ? 0 : priv->px[idx1];
+    const pixel_t cz = ONE(2) ? ONES : ZERO(2) ? 0 : priv->px[idx2];
+    const pixel_t cw = ONE(3) ? ONES : ZERO(3) ? 0 : priv->px[idx3];
     #undef ONE
     #undef ZERO
     #undef ONES
@@ -747,10 +747,10 @@ DECL_FUNC(max, const SwsCompMask mask,
     #define ZERO(N) SWS_COMP_TEST(zero, N)
     #define ONES    ((SwsPixel) { .u32 = UINT32_MAX }).px
     const SwsOpPriv *priv = SWS_OP_PRIV(impl);
-    const pixel_t cx = ONE(0) ? ONES : ZERO(0) ? 0 : priv->px[0];
-    const pixel_t cy = ONE(1) ? ONES : ZERO(1) ? 0 : priv->px[1];
-    const pixel_t cz = ONE(2) ? ONES : ZERO(2) ? 0 : priv->px[2];
-    const pixel_t cw = ONE(3) ? ONES : ZERO(3) ? 0 : priv->px[3];
+    const pixel_t cx = ONE(0) ? ONES : ZERO(0) ? 0 : priv->px[idx0];
+    const pixel_t cy = ONE(1) ? ONES : ZERO(1) ? 0 : priv->px[idx1];
+    const pixel_t cz = ONE(2) ? ONES : ZERO(2) ? 0 : priv->px[idx2];
+    const pixel_t cw = ONE(3) ? ONES : ZERO(3) ? 0 : priv->px[idx3];
     #undef ONE
     #undef ZERO
     #undef ONES
