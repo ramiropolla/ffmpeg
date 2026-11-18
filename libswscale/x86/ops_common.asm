@@ -245,6 +245,8 @@ cglobal NAME, 6, 10, 3, exec, shuffle, bx, y, bxend, yend, src, dst, src_stride,
 %endif
 %endmacro
 
+%ifdef SWS_UOPS_MACROS
+
 INIT_XMM sse4
 DECL_U8_RW_SHUFFLE RW_SHUFFLE
 
@@ -256,3 +258,5 @@ DECL_U8_RW_SHUFFLE RW_SHUFFLE
 
 INIT_ZMM avx512icl
 DECL_U8_RW_SHUFFLE RW_SHUFFLE
+
+%endif
