@@ -485,8 +485,8 @@ static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *
                 continue;
             uop.mask |= SWS_COMP(i);
             set_vec4_val(uop.data.vec4,
-                         NULL,
-                         NULL,
+                         (flags & SWS_UOP_FLAG_VEC4_MASKS) ? &uop.par.vec4.zero : NULL,
+                         (flags & SWS_UOP_FLAG_VEC4_MASKS) ? &uop.par.vec4.one  : NULL,
                          uop.par.vec4.indices,
                          v, type, px, i);
         }
@@ -650,8 +650,8 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             const SwsPixelType type = uop.type;
             const SwsPixel px = ff_sws_pixel_from_q64(type, v);
             set_vec4_val(uop.data.vec4,
-                         NULL,
-                         NULL,
+                         (flags & SWS_UOP_FLAG_VEC4_MASKS) ? &uop.par.vec4.zero : NULL,
+                         (flags & SWS_UOP_FLAG_VEC4_MASKS) ? &uop.par.vec4.one  : NULL,
                          uop.par.vec4.indices,
                          v, type, px, i);
         }
