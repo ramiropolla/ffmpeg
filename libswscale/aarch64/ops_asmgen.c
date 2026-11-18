@@ -592,7 +592,8 @@ static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
         RasmOp dst = (s->vec_size == 8) ? v_8b(vx[i]) : v_16b(vx[i]);
         i_movi(r, dst, IMM(0xff));                  CMTF("%s[%u] = UINT_MAX;", vx_str, i);
     } else {
-        i_dup (r, vx[i], a64op_elem(clear_vec, i)); CMTF("%s[%u] = broadcast(clear_vec[%u]);", vx_str, i, i);
+        int idx = p->par.vec4.indices[i];
+        i_dup (r, vx[i], a64op_elem(clear_vec, idx)); CMTF("%s[%u] = broadcast(clear_vec[%u]);", vx_str, i, idx);
     }
 }
 

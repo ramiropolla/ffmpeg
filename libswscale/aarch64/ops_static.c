@@ -228,29 +228,52 @@ static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams
 {
     RasmContext *r = s->rctx;
     RasmOp *vk = regs->vk;
+    RasmOp *vt = regs->vt;
 
     const SwsCompMask zero = p->par.vec4.zero;
     const SwsCompMask one  = p->par.vec4.one;
+    int k = 0;
 
     /* First load priv data if needed. */
     SwsCompMask data_mask = p->mask & ~(zero | one);
-    RasmOp priv_data = regs->vt[0];
     if (data_mask) {
+        RasmOp priv_data = vt[k++];
         i_ldr(r, v_q(priv_data), IMPL_PRIV(s));         CMTF("v128 %s_vec = impl->priv.v128;", name);
         asmgen_set_load_cont_node(s);
+        RasmOp values[4] = {
+            rasm_op_none(),
+            rasm_op_none(),
+            rasm_op_none(),
+            rasm_op_none()
+        };
         LOOP(data_mask, i) {
-            i_dup(r, vk[i], a64op_elem(priv_data, i));  CMTF("v128 v%s%u = %s_vec[%u];", name, i, name, i);
+            int idx = p->par.vec4.indices[i];
+            if (rasm_op_type(values[idx]) == RASM_OP_NONE) {
+                values[idx] = vt[k++];
+                i_dup(r, values[idx], a64op_elem(priv_data, idx));  CMTF("v128 v%s%u = %s_vec[%u];", name, i, name, idx);
+            }
+            vk[i] = values[idx];
         }
     }
 
     /* Load immediate values. */
     SwsCompMask imm_mask = zero | one;
+    RasmOp zero_vec = rasm_op_none();
+    RasmOp one_vec = rasm_op_none();
     LOOP(imm_mask, i) {
         if (zero & SWS_COMP(i)) {
-            i_movi(r, vk[i], IMM(0));                   CMTF("v128 %s%u = 0;", name, i);
+            if (rasm_op_type(zero_vec) == RASM_OP_NONE) {
+                zero_vec = vt[k++];
+                i_movi(r, zero_vec, IMM(0));            CMTF("v128 %s%u = 0;", name, i);
+            }
+            vk[i] = zero_vec;
         } else if (one & SWS_COMP(i)) {
-            RasmOp dst = (s->vec_size == 8) ? v_8b(vk[i]) : v_16b(vk[i]);
-            i_movi(r, dst, IMM(0xff));                  CMTF("v128 %s%u = UINT_MAX;", name, i);
+            if (rasm_op_type(one_vec) == RASM_OP_NONE) {
+                one_vec = vt[k++];
+                RasmOp dst = (s->vec_size == 8) ? v_8b(one_vec) : v_16b(one_vec);
+                i_movi(r, dst, IMM(0xff));              CMTF("v128 %s%u = UINT_MAX;", name, i);
+            }
+            vk[i] = one_vec;
         }
     }
 }
