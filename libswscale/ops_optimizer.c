@@ -980,6 +980,10 @@ static int solve_shuffle(const SwsUOpList *const uops, SwsUOp *out)
                 if (!SWS_COMP_TEST(uop->mask, i))
                     continue;
                 SwsPixel val = uop->data.vec4[i];
+                if (SWS_COMP_TEST(par->clear.one, i))
+                    val.u32 = UINT32_MAX;
+                else if (SWS_COMP_TEST(par->clear.zero, i))
+                    val.u32 = 0;
                 if (!pixel_is_repeating(uop->type, val) ||
                     (clear_val >= 0 && clear_val != val.u8))
                     return AVERROR(ENOTSUP); /* would require different bytes */
