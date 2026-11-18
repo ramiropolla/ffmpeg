@@ -474,7 +474,7 @@ static int translate_dither_op(SwsUOpList *ops, SwsUOpFlags flags, const SwsOp *
         .par.dither.size_log2 = op->dither.size_log2,
     };
 
-    if ((flags & SWS_UOP_FLAG_ADD) && op->dither.size_log2 == 0) {
+    if (op->dither.size_log2 == 0) {
         /* Constant offset */
         const AVRational64 v = op->dither.matrix[0];
         const SwsPixelType type = uop.type;
