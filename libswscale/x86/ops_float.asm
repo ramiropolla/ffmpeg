@@ -469,6 +469,16 @@ IF W,   mulps mw2, m10
 ;---------------------------------------------------------
 ; Arithmetic operations
 
+%macro load_vec4 2 ; comp, reg
+%if SWS_COMP_TEST(ZERO_MASK, %1)
+        xorps %2, %2
+%elif SWS_COMP_TEST(ONE_MASK, %1)
+        pcmpeqb %2, %2
+%else
+        vbroadcastss %2, [implq + SwsOpImpl.priv + %1 * BYTES]
+%endif
+%endmacro
+
 %macro SCALE 0
 %assign PRIV_SIZE BYTES
         vbroadcastss m8, [implq + SwsOpImpl.priv]
@@ -486,10 +496,12 @@ IF W,   mulps mw2, m8
 
 %macro ADD 6
 %assign PRIV_SIZE 4 * BYTES
-IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
-IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
-IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 2 * BYTES]
-IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 3 * BYTES]
+%assign ONE_MASK  %5
+%assign ZERO_MASK %6
+IF1 X,  load_vec4 0, m8
+IF1 Y,  load_vec4 1, m9
+IF1 Z,  load_vec4 2, m10
+IF1 W,  load_vec4 3, m11
         LOAD_CONT tmp0q
 IF X,   addps mx, m8
 IF Y,   addps my, m9
@@ -504,10 +516,12 @@ IF W,   addps mw2, m11
 
 %macro MIN 6
 %assign PRIV_SIZE 4 * BYTES
-IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
-IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
-IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 2 * BYTES]
-IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 3 * BYTES]
+%assign ONE_MASK  %5
+%assign ZERO_MASK %6
+IF1 X,  load_vec4 0, m8
+IF1 Y,  load_vec4 1, m9
+IF1 Z,  load_vec4 2, m10
+IF1 W,  load_vec4 3, m11
         LOAD_CONT tmp0q
 IF X,   minps mx, m8
 IF Y,   minps my, m9
@@ -522,10 +536,12 @@ IF W,   minps mw2, m11
 
 %macro MAX 6
 %assign PRIV_SIZE 4 * BYTES
-IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
-IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
-IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 2 * BYTES]
-IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 3 * BYTES]
+%assign ONE_MASK  %5
+%assign ZERO_MASK %6
+IF1 X,  load_vec4 0, m8
+IF1 Y,  load_vec4 1, m9
+IF1 Z,  load_vec4 2, m10
+IF1 W,  load_vec4 3, m11
         LOAD_CONT tmp0q
 IF X,   maxps mx, m8
 IF Y,   maxps my, m9
