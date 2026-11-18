@@ -252,10 +252,32 @@ static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams
     RasmContext *r = s->rctx;
     RasmOp *vk = regs->vk;
 
-    RasmOp priv_data = regs->vt[0];
-    i_ldr(r, v_q(priv_data), IMPL_PRIV(s));                         CMTF("v128 %s_vec = impl->priv.v128;", name);
-    asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(priv_data, i));    CMTF("%s = %s_vec[%u];", VEC4_NAME(p, name, i), name, i); }
+    /* Load priv data. */
+    int count = ff_sws_vec4_count(&p->par.vec4, p->mask);
+    if (count) {
+        RasmOp priv_data = regs->vt[0];
+        i_ldr(r, v_q(priv_data), IMPL_PRIV(s));                     CMTF("v128 %s_vec = impl->priv.v128;", name);
+        asmgen_set_load_cont_node(s);
+        for (int i = 0; i < count; i++) {
+            i_dup(r, vk[i], a64op_elem(priv_data, i));              CMTF("%s = %s_vec[%u];", VEC4_NAME(p, name, i), name, i);
+        }
+    }
+
+    /* Load zero vector. */
+    if (p->par.vec4.zero) {
+        i_movi(r, vk[count], IMM(0));                               CMTF("%s = 0;", VEC4_NAME(p, name, 0));
+    }
+
+    /* Update vk for asmgen. */
+    RasmOp orig_vk[4];
+    memcpy(orig_vk, vk, sizeof(orig_vk));
+    LOOP_MASK(p, i) {
+        if (p->par.vec4.zero & SWS_COMP(i)) {
+            vk[i] = vk[count];
+        } else {
+            vk[i] = orig_vk[p->par.vec4.indices[i]];
+        }
+    }
 }
 
 static void asmgen_setup_add(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,

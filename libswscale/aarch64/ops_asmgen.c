@@ -757,7 +757,11 @@ static void asmgen_op_expand(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 static const char *vec4_name(const SwsAArch64OpImplParams *p, char buf[16],
                              const char *name, int n)
 {
-    snprintf(buf, sizeof(char[16]), "v%s[%u]", name, n);
+    if (p->par.vec4.zero & SWS_COMP(n)) {
+        snprintf(buf, sizeof(char[16]), "v_0");
+    } else {
+        snprintf(buf, sizeof(char[16]), "v%s[%u]", name, p->par.vec4.indices[n]);
+    }
     return buf;
 }
 #define VEC4_NAME(p, name, n) vec4_name(p, (char[16]){ 0 }, name, n)
