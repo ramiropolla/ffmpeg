@@ -686,6 +686,8 @@ IF W,   addps mw2, m11
 ;---------------------------------------------------------
 ; Instantiate above macros to generate all uop kernels
 
+%ifdef SWS_UOPS_MACROS
+
 %macro decl_filter_ops 1 ; type
     decl_suffix _4x4,   DECL_%1_READ_PLANAR_FH READ_PLANAR_FH_4X4
 
@@ -711,3 +713,5 @@ decl_filter_ops U8
 decl_filter_ops U16
 decl_filter_ops F32
 decl_float_ops  F32
+
+%endif
