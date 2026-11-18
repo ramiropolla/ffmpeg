@@ -786,12 +786,12 @@
 %endmacro
 
 %macro DECL_F32_MAX 1
-    DECL_OP %1, f32_max_x_a                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x1, 0, 0, 0, 0, 0x0, 0x0
-    DECL_OP %1, f32_max_xy_ab                           , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x3, 0, 1, 0, 0, 0x0, 0x0
-    DECL_OP %1, f32_max_xyz_abc                         , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x7, 0, 1, 2, 0, 0x0, 0x0
-    DECL_OP %1, f32_max_w_d                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x8, 0, 0, 0, 3, 0x0, 0x0
-    DECL_OP %1, f32_max_xw_ad                           , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x9, 0, 0, 0, 3, 0x0, 0x0
-    DECL_OP %1, f32_max_xyzw_abcd                       , SWS_PIXEL_F32, SWS_UOP_MAX             , 0xf, 0, 1, 2, 3, 0x0, 0x0
+    DECL_OP %1, f32_max_x_0                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x1, 0, 0, 0, 0, 0x0, 0x1
+    DECL_OP %1, f32_max_xy_00                           , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x3, 0, 0, 0, 0, 0x0, 0x3
+    DECL_OP %1, f32_max_xyz_000                         , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x7, 0, 0, 0, 0, 0x0, 0x7
+    DECL_OP %1, f32_max_w_0                             , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x8, 0, 0, 0, 0, 0x0, 0x8
+    DECL_OP %1, f32_max_xw_00                           , SWS_PIXEL_F32, SWS_UOP_MAX             , 0x9, 0, 0, 0, 0, 0x0, 0x9
+    DECL_OP %1, f32_max_xyzw_0000                       , SWS_PIXEL_F32, SWS_UOP_MAX             , 0xf, 0, 0, 0, 0, 0x0, 0xf
 %endmacro
 
 %macro DECL_F32_UNPACK 1
