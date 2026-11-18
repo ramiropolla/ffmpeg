@@ -604,11 +604,12 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
             const SwsPixelType type = op->clear.type[i];
             const SwsPixel px = ff_sws_pixel_from_q64(type, v);
             uop.type = pixel_type_to_int(flags, type);
-            uop.data.vec4[i] = px;
             if (v.num == 0)
                 uop.par.clear.zero |= SWS_COMP(i);
             else if (ff_sws_pixel_is_1s(type, px))
                 uop.par.clear.one |= SWS_COMP(i);
+            else
+                uop.data.vec4[i] = px;
         }
         break;
     case SWS_OP_SCALE:
