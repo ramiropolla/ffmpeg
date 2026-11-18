@@ -583,18 +583,18 @@ IF W,   vcvtdq2ps mw2, mw2
         CONTINUE tmp0q
 %endmacro
 
-%macro clear 3 ; idx, reg, reg2
+%macro clear 4 ; comp, idx, reg, reg2
 %if SWS_COMP_TEST(ZERO_MASK, %1)
-        pxor %2, %2
+        pxor %3, %3
 %elif SWS_COMP_TEST(ONE_MASK, %1)
-        pcmpeqb %2, %2
+        pcmpeqb %3, %3
 %elif cpuflag(avx)
-        vpbroadcastd %2, [implq + SwsOpImpl.priv + 4 * %1]
+        vpbroadcastd %3, [implq + SwsOpImpl.priv + 4 * %2]
 %else
-        movd %2, [implq + SwsOpImpl.priv + 4 * %1]
-        pshufd %2, %2, 0
+        movd %3, [implq + SwsOpImpl.priv + 4 * %2]
+        pshufd %3, %3, 0
 %endif
-IF V2,  mova %3, %2
+IF V2,  mova %4, %3
 %endmacro
 
 %macro CLEAR 6
@@ -602,10 +602,10 @@ IF V2,  mova %3, %2
 %assign ONE_MASK  %5
 %assign ZERO_MASK %6
         LOAD_CONT tmp0q
-IF1 X,  clear 0, mx, mx2
-IF1 Y,  clear 1, my, my2
-IF1 Z,  clear 2, mz, mz2
-IF1 W,  clear 3, mw, mw2
+IF1 X,  clear 0, %1, mx, mx2
+IF1 Y,  clear 1, %2, my, my2
+IF1 Z,  clear 2, %3, mz, mz2
+IF1 W,  clear 3, %4, mw, mw2
         CONTINUE tmp0q
 %endmacro
 
