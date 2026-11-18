@@ -469,6 +469,10 @@ IF W,   mulps mw2, m10
 ;---------------------------------------------------------
 ; Arithmetic operations
 
+%macro SPLAT_VEC4 2 ; dst, idx
+        vbroadcastss %1, [implq + SwsOpImpl.priv + %2 * BYTES]
+%endmacro
+
 %macro SCALE 0
 %assign PRIV_SIZE BYTES
         vbroadcastss m8, [implq + SwsOpImpl.priv]
@@ -486,56 +490,65 @@ IF W,   mulps mw2, m8
 
 %macro ADD 5
 %assign PRIV_SIZE 4 * BYTES
-IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
-IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
-IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 2 * BYTES]
-IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 3 * BYTES]
+%assign ZERO_MASK %5
+%assign VEC4_M 8
+IF X,   LOAD_VEC4 MX, %1, 0
+IF Y,   LOAD_VEC4 MY, %2, 1
+IF Z,   LOAD_VEC4 MZ, %3, 2
+IF W,   LOAD_VEC4 MW, %4, 3
         LOAD_CONT tmp0q
-IF X,   addps mx, m8
-IF Y,   addps my, m9
-IF Z,   addps mz, m10
-IF W,   addps mw, m11
-IF X,   addps mx2, m8
-IF Y,   addps my2, m9
-IF Z,   addps mz2, m10
-IF W,   addps mw2, m11
+IF X,   addps mx, MX
+IF Y,   addps my, MY
+IF Z,   addps mz, MZ
+IF W,   addps mw, MW
+IF X,   addps mx2, MX
+IF Y,   addps my2, MY
+IF Z,   addps mz2, MZ
+IF W,   addps mw2, MW
         CONTINUE tmp0q
+        UNDEF_VEC4
 %endmacro
 
 %macro MIN 5
 %assign PRIV_SIZE 4 * BYTES
-IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
-IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
-IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 2 * BYTES]
-IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 3 * BYTES]
+%assign ZERO_MASK %5
+%assign VEC4_M 8
+IF X,   LOAD_VEC4 MX, %1, 0
+IF Y,   LOAD_VEC4 MY, %2, 1
+IF Z,   LOAD_VEC4 MZ, %3, 2
+IF W,   LOAD_VEC4 MW, %4, 3
         LOAD_CONT tmp0q
-IF X,   minps mx, m8
-IF Y,   minps my, m9
-IF Z,   minps mz, m10
-IF W,   minps mw, m11
-IF X,   minps mx2, m8
-IF Y,   minps my2, m9
-IF Z,   minps mz2, m10
-IF W,   minps mw2, m11
+IF X,   minps mx, MX
+IF Y,   minps my, MY
+IF Z,   minps mz, MZ
+IF W,   minps mw, MW
+IF X,   minps mx2, MX
+IF Y,   minps my2, MY
+IF Z,   minps mz2, MZ
+IF W,   minps mw2, MW
         CONTINUE tmp0q
+        UNDEF_VEC4
 %endmacro
 
 %macro MAX 5
 %assign PRIV_SIZE 4 * BYTES
-IF X,   vbroadcastss m8,  [implq + SwsOpImpl.priv + 0 * BYTES]
-IF Y,   vbroadcastss m9,  [implq + SwsOpImpl.priv + 1 * BYTES]
-IF Z,   vbroadcastss m10, [implq + SwsOpImpl.priv + 2 * BYTES]
-IF W,   vbroadcastss m11, [implq + SwsOpImpl.priv + 3 * BYTES]
+%assign ZERO_MASK %5
+%assign VEC4_M 8
+IF X,   LOAD_VEC4 MX, %1, 0
+IF Y,   LOAD_VEC4 MY, %2, 1
+IF Z,   LOAD_VEC4 MZ, %3, 2
+IF W,   LOAD_VEC4 MW, %4, 3
         LOAD_CONT tmp0q
-IF X,   maxps mx, m8
-IF Y,   maxps my, m9
-IF Z,   maxps mz, m10
-IF W,   maxps mw, m11
-IF X,   maxps mx2, m8
-IF Y,   maxps my2, m9
-IF Z,   maxps mz2, m10
-IF W,   maxps mw2, m11
+IF X,   maxps mx, MX
+IF Y,   maxps my, MY
+IF Z,   maxps mz, MZ
+IF W,   maxps mw, MW
+IF X,   maxps mx2, MX
+IF Y,   maxps my2, MY
+IF Z,   maxps mz2, MZ
+IF W,   maxps mw2, MW
         CONTINUE tmp0q
+        UNDEF_VEC4
 %endmacro
 
 ;---------------------------------------------------------

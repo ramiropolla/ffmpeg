@@ -225,7 +225,7 @@ fail:
 
 enum {
     COMMON_FLAGS = SWS_UOP_FLAG_EXPAND_BIT | SWS_UOP_FLAG_READ_PALETTE |
-                   SWS_UOP_FLAG_PUNNING,
+                   SWS_UOP_FLAG_VEC4 | SWS_UOP_FLAG_PUNNING,
 };
 
 typedef struct Backend {
@@ -238,7 +238,7 @@ static const Backend backends[] = {
     {
         .name  = "c",
         .guard = "SWSCALE_UOPS_MACROS_H",
-        .flags = { COMMON_FLAGS | SWS_UOP_FLAG_VEC4 },
+        .flags = { COMMON_FLAGS },
     }, {
         .name  = "x86",
         .guard = "SWSCALE_X86_UOPS_MACROS_H",

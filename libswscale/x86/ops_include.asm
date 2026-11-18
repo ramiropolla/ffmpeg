@@ -326,6 +326,39 @@ endstruc
 %endmacro
 
 ;---------------------------------------------------------
+; Helpers for SwsVec4UOp constants
+
+%macro LOAD_VEC4 3 ; name, comp, idx
+    %if SWS_COMP_TEST(ZERO_MASK, %3)
+        %ifndef VEC4_ZERO
+            %xdefine VEC4_ZERO m%+VEC4_M
+            xorps VEC4_ZERO, VEC4_ZERO
+            %assign VEC4_M VEC4_M + 1
+        %endif
+        %xdefine %1 VEC4_ZERO
+    %else
+        %ifndef VEC4_DATA%2
+            %xdefine VEC4_DATA%2 m%+VEC4_M
+            SPLAT_VEC4 VEC4_DATA%2, %2
+            %assign VEC4_M VEC4_M + 1
+        %endif
+        %xdefine %1 VEC4_DATA%2
+    %endif
+%endmacro
+
+%macro UNDEF_VEC4 0
+%undef VEC4_ZERO
+%undef VEC4_DATA0
+%undef VEC4_DATA1
+%undef VEC4_DATA2
+%undef VEC4_DATA3
+%undef MX
+%undef MY
+%undef MZ
+%undef MW
+%endmacro
+
+;---------------------------------------------------------
 ; Miscellaneous helpers
 
 ; Helper for inline conditionals; used to conditionally include single lines
