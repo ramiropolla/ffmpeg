@@ -892,6 +892,8 @@ IF2 V2, linear_pass 2
 ;---------------------------------------------------------
 ; Instantiate above macros to generate all uop kernels
 
+%ifdef SWS_UOPS_MACROS
+
 %macro decl_ops 1 ; type
     DECL_%1_READ_PACKED     READ_PACKED
     DECL_%1_READ_NIBBLE     READ_NIBBLE
@@ -965,3 +967,5 @@ decl_v2 1, decl_cast_u16
 decl_v2 1, decl_ops U32
 decl_v2 1, decl_cast_u32
 decl_v2 1, decl_cast_f32
+
+%endif
