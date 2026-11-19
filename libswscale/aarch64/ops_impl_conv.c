@@ -60,6 +60,17 @@ static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
         out->type = SWS_PIXEL_U8;
         break;
     }
+    case SWS_UOP_CLEAR: {
+        const SwsCompMask imm_mask = out->mask & ~(out->par.clear.zero | out->par.clear.one);
+        for (int i = 0; i < 4; i++) {
+            AArch64VecImm imm;
+            const uint32_t val = uop->data.vec4[i].u32;
+            if ((imm_mask & SWS_COMP(i)) &&
+                aarch64_vec_imm(val, ff_sws_pixel_type_size(out->type), &imm))
+                out->clear_imm[i] = val;
+        }
+        break;
+    }
     case SWS_UOP_LINEAR_FMA:
         /* par.lin.exact is currently unused by asmgen_op_linear(). */
         out->par.lin.exact = 0;

@@ -91,6 +91,22 @@ static inline int32_t rasm_op_imm_val(RasmOp op)
 
 #define IMM(val) rasm_op_imm(val)
 
+/* Immediate with a shift modifier (e.g. "#imm, lsl #amount"). */
+#define RASM_IMM_LSL 1
+#define RASM_IMM_MSL 2
+#define RASM_IMM_F32 3 /* print val as a float (fmov immediate) */
+
+static inline RasmOp rasm_op_imm_shift(int32_t val, uint8_t kind, uint8_t amount)
+{
+    RasmOp op = rasm_op_imm(val);
+    op.u8[4] = kind;
+    op.u8[5] = amount;
+    return op;
+}
+
+static inline uint8_t rasm_op_imm_shift_kind(RasmOp op)   { return op.u8[4]; }
+static inline uint8_t rasm_op_imm_shift_amount(RasmOp op) { return op.u8[5]; }
+
 /* RASM_OP_LABEL */
 
 static inline RasmOp rasm_op_label(int id)
@@ -263,6 +279,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_FMAX,
     AARCH64_INSN_FMIN,
     AARCH64_INSN_FMLA,
+    AARCH64_INSN_FMOV,
     AARCH64_INSN_FMUL,
     AARCH64_INSN_INS,
     AARCH64_INSN_LD1,
@@ -279,6 +296,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_MOV,
     AARCH64_INSN_MOVI,
     AARCH64_INSN_MUL,
+    AARCH64_INSN_MVNI,
     AARCH64_INSN_ORR,
     AARCH64_INSN_RET,
     AARCH64_INSN_REV16,
@@ -579,6 +597,8 @@ static inline RasmOp a64cond_nv(void) { return a64op_cond(AARCH64_COND_NV); }
 #define i_mla(rctx,    op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_MLA,    op0, op1, op2, OPN)
 #define i_mov(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_MOV,    op0, op1, OPN, OPN)
 #define i_movi(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_MOVI,   op0, op1, OPN, OPN)
+#define i_fmov(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_FMOV,   op0, op1, OPN, OPN)
+#define i_mvni(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_MVNI,   op0, op1, OPN, OPN)
 #define i_mul(rctx,    op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_MUL,    op0, op1, op2, OPN)
 #define i_orr(rctx,    op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_ORR,    op0, op1, op2, OPN)
 #define i_ret(rctx                       ) rasm_add_insn(rctx, AARCH64_INSN_RET,    OPN, OPN, OPN, OPN)

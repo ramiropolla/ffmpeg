@@ -611,7 +611,19 @@ static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 {
     RasmContext *r = s->rctx;
     RasmOp clear_vec = vk[0];
-    if (p->par.clear.zero & SWS_COMP(i)) {
+    AArch64VecImm imm;
+    if (p->clear_imm[i] && aarch64_vec_imm(p->clear_imm[i], s->el_size, &imm)) {
+        RasmOp dst = a64op_make_vec(a64op_vec_n(vx[i]), s->vec_size / imm.esize, imm.esize);
+        RasmOp src = rasm_op_imm_shift(imm.imm8, imm.kind, imm.amount);
+        if (imm.fmov) {
+            src = rasm_op_imm_shift(imm.val, RASM_IMM_F32, 0);
+            i_fmov(r, dst, src);                    CMTF("%s[%u] = 0x%x;", vx_str, i, p->clear_imm[i]);
+        } else if (imm.mvni) {
+            i_mvni(r, dst, src);                    CMTF("%s[%u] = 0x%x;", vx_str, i, p->clear_imm[i]);
+        } else {
+            i_movi(r, dst, src);                    CMTF("%s[%u] = 0x%x;", vx_str, i, p->clear_imm[i]);
+        }
+    } else if (p->par.clear.zero & SWS_COMP(i)) {
         i_movi(r, vx[i], IMM(0));                   CMTF("%s[%u] = 0;", vx_str, i);
     } else if (p->par.clear.one & SWS_COMP(i)) {
         if (p->block_size * ff_sws_pixel_type_size(p->type) == 8) {

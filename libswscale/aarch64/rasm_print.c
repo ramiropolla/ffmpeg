@@ -49,7 +49,16 @@ static void indent_to(AVBPrint *bp, unsigned line_start, int col)
 
 static void print_op_imm(AVBPrint *bp, RasmOp op)
 {
+    if (rasm_op_imm_shift_kind(op) == RASM_IMM_F32) {
+        union { uint32_t u; float f; } v = { .u = rasm_op_imm_val(op) };
+        av_bprintf(bp, "#%.9g", v.f);
+        return;
+    }
     av_bprintf(bp, "#%d", rasm_op_imm_val(op));
+    switch (rasm_op_imm_shift_kind(op)) {
+    case RASM_IMM_LSL: av_bprintf(bp, ", lsl #%u", rasm_op_imm_shift_amount(op)); break;
+    case RASM_IMM_MSL: av_bprintf(bp, ", msl #%u", rasm_op_imm_shift_amount(op)); break;
+    }
 }
 
 /*********************************************************************/
@@ -272,6 +281,7 @@ static const char insn_names[AARCH64_INSN_NB][8] = {
     [AARCH64_INSN_FMAX  ] = "fmax",
     [AARCH64_INSN_FMIN  ] = "fmin",
     [AARCH64_INSN_FMLA  ] = "fmla",
+    [AARCH64_INSN_FMOV  ] = "fmov",
     [AARCH64_INSN_FMUL  ] = "fmul",
     [AARCH64_INSN_INS   ] = "ins",
     [AARCH64_INSN_LD1   ] = "ld1",
@@ -288,6 +298,7 @@ static const char insn_names[AARCH64_INSN_NB][8] = {
     [AARCH64_INSN_MOV   ] = "mov",
     [AARCH64_INSN_MOVI  ] = "movi",
     [AARCH64_INSN_MUL   ] = "mul",
+    [AARCH64_INSN_MVNI  ] = "mvni",
     [AARCH64_INSN_ORR   ] = "orr",
     [AARCH64_INSN_RET   ] = "ret",
     [AARCH64_INSN_REV16 ] = "rev16",

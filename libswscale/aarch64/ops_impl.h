@@ -50,7 +50,78 @@ typedef struct SwsAArch64OpImplParams {
     SwsPixelType        type;
     uint8_t block_size;
     SwsUOpParams par;
+    /* SWS_UOP_CLEAR: repeating 32-bit pattern of each value set with an
+     * immediate move, or 0 if the value is loaded from the kernel data. */
+    uint32_t clear_imm[4];
 } SwsAArch64OpImplParams;
+
+/* Vector immediate move: insn (movi/mvni) arr.esize #imm8{, lsl/msl #amount}. */
+typedef struct AArch64VecImm {
+    uint8_t mvni;   /* use mvni instead of movi */
+    uint8_t fmov;   /* use fmov with the float value val */
+    uint32_t val;
+    uint8_t esize;  /* arrangement element size in bytes (1, 2, or 4) */
+    uint8_t imm8;
+    uint8_t kind;   /* 0, RASM_IMM_LSL or RASM_IMM_MSL */
+    uint8_t amount;
+} AArch64VecImm;
+
+/**
+ * Find a single movi/mvni that sets all elements of size el_size to the
+ * repeating 32-bit pattern val. Returns 0 if there is none.
+ */
+static inline int aarch64_vec_imm(uint32_t val, int el_size, AArch64VecImm *out)
+{
+    const uint32_t b = val & 0xff;
+    if (val == b * 0x01010101u) {
+        *out = (AArch64VecImm) { .esize = 1, .imm8 = b };
+        return 1;
+    }
+    if (el_size == 1)
+        return 0;
+    if (el_size == 2 && (val >> 16) != (val & 0xffff))
+        return 0;
+
+    /* fmov: aBbbbbbc defgh000 00000000 00000000, with B = !b */
+    const uint32_t exp = (val >> 25) & 0x3f;
+    if (el_size == 4 && !(val & 0x7ffff) && (exp == 0x20 || exp == 0x1f)) {
+        *out = (AArch64VecImm) { .fmov = 1, .esize = 4, .val = val };
+        return 1;
+    }
+
+    for (int inv = 0; inv < 2; inv++) {
+        if (el_size == 2) {
+            const uint32_t x = (inv ? ~val : val) & 0xffff;
+            for (int sh = 0; sh <= 8; sh += 8) {
+                if (!(x & ~(0xffu << sh))) {
+                    *out = (AArch64VecImm) { .mvni = inv, .esize = 2, .imm8 = x >> sh,
+                                             .kind = sh ? 1 : 0, .amount = sh };
+                    return 1;
+                }
+            }
+        } else {
+            const uint32_t x = inv ? ~val : val;
+            for (int sh = 0; sh <= 24; sh += 8) {
+                if (!(x & ~(0xffu << sh))) {
+                    *out = (AArch64VecImm) { .mvni = inv, .esize = 4, .imm8 = x >> sh,
+                                             .kind = sh ? 1 : 0, .amount = sh };
+                    return 1;
+                }
+            }
+            if (!(x >> 16) && (x & 0xff) == 0xff) {
+                *out = (AArch64VecImm) { .mvni = inv, .esize = 4, .imm8 = x >> 8,
+                                         .kind = 2, .amount = 8 };
+                return 1;
+            }
+            if (!(x >> 24) && (x & 0xffff) == 0xffff) {
+                *out = (AArch64VecImm) { .mvni = inv, .esize = 4, .imm8 = x >> 16,
+                                         .kind = 2, .amount = 16 };
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
 
 /* SwsCompMask-related helpers. */
 #define LOOP(mask, idx)                 \
@@ -110,7 +181,12 @@ static inline int clear_use_vh(const SwsAArch64OpImplParams *params)
 /* Components whose clear value is loaded from the kernel data. */
 static inline SwsCompMask clear_load_mask(const SwsAArch64OpImplParams *params)
 {
-    return params->mask & ~(params->par.clear.zero | params->par.clear.one);
+    SwsCompMask mask = params->mask & ~(params->par.clear.zero | params->par.clear.one);
+    LOOP(mask, i) {
+        if (params->clear_imm[i])
+            mask &= ~SWS_COMP(i);
+    }
+    return mask;
 }
 
 /* Number of pre-broadcast vectors in the clear kernel data. */

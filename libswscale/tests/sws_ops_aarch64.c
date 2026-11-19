@@ -138,6 +138,9 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
         uint16_t ib = clear_to_mask(&parb->clear);
         if (ia != ib)
             return (int) ia - ib;
+        for (int i = 0; i < 4; i++)
+            if (pa->clear_imm[i] != pb->clear_imm[i])
+                return pa->clear_imm[i] < pb->clear_imm[i] ? -1 : 1;
         break;
     }
     case SWS_UOP_LINEAR:
@@ -361,7 +364,7 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
 
     const SwsUOpParams *par = &params->par;
 
-    char func_name[FUNC_NAME_WIDTH + 2];
+    char func_name[FUNC_NAME_WIDTH + 64];
     snprintf(func_name, sizeof(func_name), "ff_sws_%s", op_type_names[params->uop]);
     switch (params->uop) {
     case SWS_UOP_PERMUTE:
@@ -378,6 +381,9 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         break;
     case SWS_UOP_CLEAR:
         av_strlcatf(func_name, sizeof(func_name), "_%04x", clear_to_mask(&par->clear));
+        for (int i = 0; i < 4; i++)
+            if (params->clear_imm[i])
+                av_strlcatf(func_name, sizeof(func_name), "_%c%x", "xyzw"[i], params->clear_imm[i]);
         break;
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
@@ -421,6 +427,10 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         break;
     case SWS_UOP_CLEAR:
         av_bprintf(bp, ", .par.clear = { .one = 0x%0x, .zero = 0x%0x }", par->clear.one, par->clear.zero);
+        if (params->clear_imm[0] | params->clear_imm[1] | params->clear_imm[2] | params->clear_imm[3])
+            av_bprintf(bp, ", .clear_imm = { 0x%x, 0x%x, 0x%x, 0x%x }",
+                       params->clear_imm[0], params->clear_imm[1],
+                       params->clear_imm[2], params->clear_imm[3]);
         break;
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
