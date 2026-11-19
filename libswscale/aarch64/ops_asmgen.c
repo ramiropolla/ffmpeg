@@ -58,6 +58,25 @@ static void reshape_const_vectors(SwsAArch64OpRegs *regs, int el_count, int el_s
 }
 
 /*********************************************************************/
+static void load_scalars(SwsAArch64Context *s, RasmOp base, int offset,
+                         RasmOp *vecs, const char *name, int n, int vec_size)
+{
+    RasmContext *r = s->rctx;
+
+    int i = 0;
+    for (; i + 1 < n; i += 2, offset += 2 * vec_size) {
+        RasmOp dst1 = a64op_make_vec(a64op_vec_n(vecs[i    ]), 0, vec_size);
+        RasmOp dst2 = a64op_make_vec(a64op_vec_n(vecs[i + 1]), 0, vec_size);
+        i_ldp(r, dst1, dst2, a64op_off(base, offset));           CMTF("{ %s[%d], %s[%d] } = data[%d];", name, i, name, i + 1, offset);
+    }
+    for (; i < n; i++, offset += vec_size) {
+        RasmOp dst = a64op_make_vec(a64op_vec_n(vecs[i]), 0, vec_size);
+        i_ldr(r, dst,        a64op_off(base, offset));           CMTF("%s[%d] = data[%d];", name, i, offset);
+    }
+}
+
+
+/*********************************************************************/
 /* Function frame */
 
 static unsigned clobbered_frame_size(unsigned n)

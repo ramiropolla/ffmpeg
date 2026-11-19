@@ -142,24 +142,6 @@ static void asmgen_set_load_cont_node(SwsAArch64Context *s)
     s->load_cont_node = rasm_get_current_node(r);
 }
 
-static void load_scalars(SwsAArch64Context *s, RasmOp *vecs, const char *name,
-                         int n, int vec_size)
-{
-    RasmContext *r = s->rctx;
-
-    int offset = AARCH64_IMPL_DATA_OFFSET;
-    int i = 0;
-    for (; i + 1 < n; i += 2, offset += 2 * vec_size) {
-        RasmOp dst1 = a64op_make_vec(a64op_vec_n(vecs[i    ]), 0, vec_size);
-        RasmOp dst2 = a64op_make_vec(a64op_vec_n(vecs[i + 1]), 0, vec_size);
-        i_ldp(r, dst1, dst2, a64op_off(s->impl, offset));           CMTF("{ %s[%d], %s[%d] } = data[%d];", name, i, name, i + 1, offset);
-    }
-    for (; i < n; i++, offset += vec_size) {
-        RasmOp dst = a64op_make_vec(a64op_vec_n(vecs[i]), 0, vec_size);
-        i_ldr(r, dst,        a64op_off(s->impl, offset));           CMTF("%s[%d] = data[%d];", name, i, offset);
-    }
-}
-
 /*********************************************************************/
 /* SWS_UOP_READ_BIT:    fractional read (1 bit) from single plane */
 /* SWS_UOP_READ_NIBBLE: fractional read (4 bits) from single plane */
@@ -241,6 +223,8 @@ static void asmgen_setup_unpack(SwsAArch64Context *s, const SwsAArch64OpImplPara
     }
 }
 
+// 1. Load *into* fixed vk regs
+// 2. Load into packed vk, update regs->vk
 static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                               SwsAArch64OpRegs *regs, const char *name)
 {
@@ -252,9 +236,14 @@ static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams
     const SwsCompMask one  = p->par.vec4.one;
     int k = 0;
 
+#if 0
+FF_ARRAY_ELEMS(regs->vk);
+    RasmOp vk[ 4]; /* constant data (may be gprs) */
+#endif
+
     /* First load priv data if needed. */
-    SwsCompMask data_mask = p->mask & ~(zero | one);
-    if (data_mask) {
+    int count = ff_sws_vec4_count(&p->par.vec4, p->mask);
+    if (count) {
         RasmOp priv_data = vt[k++];
         i_ldr(r, v_q(priv_data), IMPL_PRIV(s));         CMTF("v128 %s_vec = impl->priv.v128;", name);
         asmgen_set_load_cont_node(s);
@@ -264,33 +253,31 @@ static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams
             rasm_op_none(),
             rasm_op_none()
         };
-        LOOP(data_mask, i) {
+        for (int i = 0; i < count; i++) {
+            values[i] = vt[k++];
+            i_dup(r, values[i], a64op_elem(priv_data, i));  CMTF("v128 v%s%u = %s_vec[%u];", name, i, name, i);
+        }
+        LOOP(p->mask & ~(zero | one), i) {
             int idx = p->par.vec4.indices[i];
-            if (rasm_op_type(values[idx]) == RASM_OP_NONE) {
-                values[idx] = vt[k++];
-                i_dup(r, values[idx], a64op_elem(priv_data, idx));  CMTF("v128 v%s%u = %s_vec[%u];", name, i, name, idx);
-            }
             vk[i] = values[idx];
         }
     }
 
     /* Load immediate values. */
     SwsCompMask imm_mask = zero | one;
-    RasmOp zero_vec = rasm_op_none();
-    RasmOp one_vec = rasm_op_none();
+    RasmOp zero_vec = zero ? vt[k++] : rasm_op_none();
+    RasmOp one_vec  = one  ? vt[k++] : rasm_op_none();
+    if (zero) {
+        i_movi(r, zero_vec, IMM(0));            CMTF("v128 %s%u = 0;", name, 0);
+    }
+    if (one) {
+        RasmOp dst = (s->vec_size == 8) ? v_8b(one_vec) : v_16b(one_vec);
+        i_movi(r, dst, IMM(0xff));              CMTF("v128 %s%u = UINT_MAX;", name, 0);
+    }
     LOOP(imm_mask, i) {
         if (zero & SWS_COMP(i)) {
-            if (rasm_op_type(zero_vec) == RASM_OP_NONE) {
-                zero_vec = vt[k++];
-                i_movi(r, zero_vec, IMM(0));            CMTF("v128 %s%u = 0;", name, i);
-            }
             vk[i] = zero_vec;
         } else if (one & SWS_COMP(i)) {
-            if (rasm_op_type(one_vec) == RASM_OP_NONE) {
-                one_vec = vt[k++];
-                RasmOp dst = (s->vec_size == 8) ? v_8b(one_vec) : v_16b(one_vec);
-                i_movi(r, dst, IMM(0xff));              CMTF("v128 %s%u = UINT_MAX;", name, i);
-            }
             vk[i] = one_vec;
         }
     }
@@ -308,12 +295,8 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
      * - if only 1 element and not vh, load directly with ld1r
      */
 
-    bool load_priv = false;
-    LOOP_MASK(p, i) {
-        if (!((p->par.vec4.zero | p->par.vec4.one) & SWS_COMP(i)))
-            load_priv = true;
-    }
-    if (load_priv) {
+    int count = ff_sws_vec4_count(&p->par.vec4, p->mask);
+    if (count) {
         i_ldr(r, v_q(vk[0]), IMPL_PRIV(s));         CMT("v128 clear_vec = impl->priv.v128;");
         asmgen_set_load_cont_node(s);
     }
@@ -361,7 +344,7 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     /* Preload coefficients from impl->priv. */
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
-    load_scalars(s, vc, "coeff", num_vregs, s->vec_size);
+    load_scalars(s, s->impl, AARCH64_IMPL_DATA_OFFSET, vc, "coeff", num_vregs, s->vec_size);
     asmgen_set_load_cont_node(s);
 
     /**

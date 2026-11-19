@@ -262,6 +262,16 @@ typedef struct SwsVec4UOp {
     SwsCompMask zero;   /* mask of coefficients equal to all 0s */
 } SwsVec4UOp;
 
+static inline int ff_sws_vec4_count(const SwsVec4UOp *vec4, SwsCompMask mask)
+{
+    int count = 0;
+    for (int i = 0; i < 4; i++) {
+        if (SWS_COMP_TEST(mask & ~(vec4->zero | vec4->one), i))
+            count = FFMAX(count, vec4->indices[i] + 1);
+    }
+    return count;
+}
+
 typedef struct SwsLinearUOp {
     uint32_t one;  /* mask of coefficients equal to one */
     uint32_t zero; /* mask of coefficients equal to zero */
