@@ -625,6 +625,21 @@ static void asmgen_op_rshift(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 }
 
 /*********************************************************************/
+static const char *vec4_name(const SwsAArch64OpImplParams *p, char buf[16],
+                             const char *name, int n)
+{
+    if (p->par.vec4.zero & SWS_COMP(n)) {
+        snprintf(buf, sizeof(char[16]), "v_0");
+    } else if (p->par.vec4.one & SWS_COMP(n)) {
+        snprintf(buf, sizeof(char[16]), "v_1");
+    } else {
+        snprintf(buf, sizeof(char[16]), "v%s[%u]", name, p->par.vec4.indices[n]);
+    }
+    return buf;
+}
+#define VEC4_NAME(p, name, n) vec4_name(p, (char[16]){ 0 }, name, n)
+
+/*********************************************************************/
 /* SWS_UOP_CLEAR: mask = components to clear */
 
 static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -639,7 +654,8 @@ static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
         i_movi(r, dst, IMM(0xff));                  CMTF("%s[%u] = UINT_MAX;", vx_str, i);
     } else {
         int idx = p->par.vec4.indices[i];
-        i_dup (r, vx[i], a64op_elem(clear_vec, idx)); CMTF("%s[%u] = broadcast(clear_vec[%u]);", vx_str, i, idx);
+        /* TODO ldr/ldp */
+        i_dup (r, vx[i], a64op_elem(clear_vec, idx)); CMTF("%s[%u] = %s;", vx_str, i, VEC4_NAME(p, "clear", i));
     }
 }
 
@@ -811,8 +827,8 @@ static void asmgen_op_add(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 
     av_assert0(p->type == SWS_PIXEL_F32);
 
-    LOOP_MASK      (p, i) { i_fadd(r, dl[i], sl[i], vk[i]);         CMTF("vl[%u] += vadd%u;", i, i); }
-    LOOP_MASK_VH(s, p, i) { i_fadd(r, dh[i], sh[i], vk[i]);         CMTF("vh[%u] += vadd%u;", i, i); }
+    LOOP_MASK      (p, i) { i_fadd(r, dl[i], sl[i], vk[i]);         CMTF("vl[%u] += %s;", i, VEC4_NAME(p, "add", i)); }
+    LOOP_MASK_VH(s, p, i) { i_fadd(r, dh[i], sh[i], vk[i]);         CMTF("vh[%u] += %s;", i, VEC4_NAME(p, "add", i)); }
 }
 
 /*********************************************************************/
@@ -829,11 +845,11 @@ static void asmgen_op_min(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     RasmOp *vk = regs->vk;
 
     if (p->type == SWS_PIXEL_F32) {
-        LOOP_MASK      (p, i) { i_fmin(r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] = min(vl[%u], vmin%u);", i, i, i); }
-        LOOP_MASK_VH(s, p, i) { i_fmin(r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] = min(vh[%u], vmin%u);", i, i, i); }
+        LOOP_MASK      (p, i) { i_fmin(r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] = min(vl[%u], %s);", i, i, VEC4_NAME(p, "min", i)); }
+        LOOP_MASK_VH(s, p, i) { i_fmin(r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] = min(vh[%u], %s);", i, i, VEC4_NAME(p, "min", i)); }
     } else {
-        LOOP_MASK      (p, i) { i_umin(r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] = min(vl[%u], vmin%u);", i, i, i); }
-        LOOP_MASK_VH(s, p, i) { i_umin(r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] = min(vh[%u], vmin%u);", i, i, i); }
+        LOOP_MASK      (p, i) { i_umin(r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] = min(vl[%u], %s);", i, i, VEC4_NAME(p, "min", i)); }
+        LOOP_MASK_VH(s, p, i) { i_umin(r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] = min(vh[%u], %s);", i, i, VEC4_NAME(p, "min", i)); }
     }
 }
 
@@ -851,11 +867,11 @@ static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
     RasmOp *vk = regs->vk;
 
     if (p->type == SWS_PIXEL_F32) {
-        LOOP_MASK      (p, i) { i_fmax(r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] = max(vl[%u], vmax%u);", i, i, i); }
-        LOOP_MASK_VH(s, p, i) { i_fmax(r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] = max(vh[%u], vmax%u);", i, i, i); }
+        LOOP_MASK      (p, i) { i_fmax(r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] = max(vl[%u], %s);", i, i, VEC4_NAME(p, "max", i)); }
+        LOOP_MASK_VH(s, p, i) { i_fmax(r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] = max(vh[%u], %s);", i, i, VEC4_NAME(p, "max", i)); }
     } else {
-        LOOP_MASK      (p, i) { i_umax(r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] = max(vl[%u], vmax%u);", i, i, i); }
-        LOOP_MASK_VH(s, p, i) { i_umax(r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] = max(vh[%u], vmax%u);", i, i, i); }
+        LOOP_MASK      (p, i) { i_umax(r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] = max(vl[%u], %s);", i, i, VEC4_NAME(p, "max", i)); }
+        LOOP_MASK_VH(s, p, i) { i_umax(r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] = max(vh[%u], %s);", i, i, VEC4_NAME(p, "max", i)); }
     }
 }
 
@@ -918,6 +934,7 @@ static void linear_pass(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             RasmOp vsrc = sx[src_j];
             RasmOp vcoeff = regs->linear_vcoeff[i][j];
             if (first && is_offset) {
+                /* TODO ldr/ldp ??? */
                 i_dup (r, dx[i], vcoeff);               CMTF("v%c[%u]  = broadcast(offset[%u]);", cvh, i, i);
             } else if (first && !is_offset) {
                 if (p->par.lin.one & SWS_MASK(i, src_j)) {

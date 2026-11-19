@@ -256,32 +256,24 @@ FF_ARRAY_ELEMS(regs->vk);
         RasmOp priv_data = vt[k++];
         i_ldr(r, v_q(priv_data), IMPL_PRIV(s));         CMTF("v128 %s_vec = impl->priv.v128;", name);
         asmgen_set_load_cont_node(s);
-        RasmOp values[4] = {
-            rasm_op_none(),
-            rasm_op_none(),
-            rasm_op_none(),
-            rasm_op_none()
-        };
-        for (int i = 0; i < count; i++) {
-            values[i] = vt[k++];
-            i_dup(r, values[i], a64op_elem(priv_data, i));  CMTF("v128 v%s%u = %s_vec[%u];", name, i, name, i);
-        }
+        load_regs(s, name, vk, "data", priv_data, AARCH64_IMPL_DATA_OFFSET, count, s->vec_size);
+        RasmOp orig_vk[4];
+        memcpy(orig_vk, vk, sizeof(orig_vk));
         LOOP(p->mask & ~(zero | one), i) {
-            int idx = p->par.vec4.indices[i];
-            vk[i] = values[idx];
+            vk[i] = orig_vk[p->par.vec4.indices[i]];
         }
     }
 
     /* Load immediate values. */
     SwsCompMask imm_mask = zero | one;
-    RasmOp zero_vec = zero ? vt[k++] : rasm_op_none();
-    RasmOp one_vec  = one  ? vt[k++] : rasm_op_none();
+    RasmOp zero_vec = zero ? vk[count++] : rasm_op_none();
+    RasmOp one_vec  = one  ? vk[count++] : rasm_op_none();
     if (zero) {
-        i_movi(r, zero_vec, IMM(0));            CMTF("v128 %s%u = 0;", name, 0);
+        i_movi(r, zero_vec, IMM(0));            CMTF("v128 %s = 0;", VEC4_NAME(p, name, 0));
     }
     if (one) {
         RasmOp dst = (s->vec_size == 8) ? v_8b(one_vec) : v_16b(one_vec);
-        i_movi(r, dst, IMM(0xff));              CMTF("v128 %s%u = UINT_MAX;", name, 0);
+        i_movi(r, dst, IMM(0xff));              CMTF("v128 %s = UINT_MAX;", VEC4_NAME(p, name, 0));
     }
     LOOP(imm_mask, i) {
         if (zero & SWS_COMP(i)) {
@@ -394,6 +386,7 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
             bool is_one = !is_offset && (p->par.lin.one & SWS_MASK(i, src_j));
             if (dup_coeffs && !(first && (is_offset || is_one))) {
                 av_assert0(i_vint < 4);
+                /* TODO ldr/ldp */
                 i_dup(r, vint[i_vint], vcoeff);             CMTF("vcoeff%u = broadcast(coeff[%u][%u]);", i_vint, i, src_j);
                 vcoeff = vint[i_vint++];
             }
