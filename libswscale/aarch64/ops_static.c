@@ -82,6 +82,15 @@ static void *av_memdup(const void *p, size_t size)
     return ptr;
 }
 
+static int av_popcount(uint32_t x)
+{
+    x -= (x >> 1) & 0x55555555;
+    x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
+    x = (x + (x >> 4)) & 0x0F0F0F0F;
+    x += x >> 8;
+    return (x + (x >> 16)) & 0x3F;
+}
+
 #include "libavutil/dynarray.h"
 
 static void *av_dynarray2_add(void **tab_ptr, int *nb_ptr, size_t elem_size,
@@ -344,7 +353,8 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     /* Preload coefficients from impl->priv. */
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
-    load_scalars(s, s->impl, AARCH64_IMPL_DATA_OFFSET, vc, "coeff", num_vregs, s->vec_size);
+    load_regs(s, "coeff", vc, "data",
+              s->impl, AARCH64_IMPL_DATA_OFFSET, num_vregs, s->vec_size);
     asmgen_set_load_cont_node(s);
 
     /**
