@@ -93,7 +93,7 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
  *  6: as 5, vh copied from vl with mov
  */
 #ifndef AARCH64_CLEAR_VARIANT
-#define AARCH64_CLEAR_VARIANT 1
+#define AARCH64_CLEAR_VARIANT 2
 #endif
 
 static inline int clear_vec_size(const SwsAArch64OpImplParams *params)
