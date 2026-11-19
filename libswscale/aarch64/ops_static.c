@@ -232,8 +232,7 @@ static void asmgen_setup_unpack(SwsAArch64Context *s, const SwsAArch64OpImplPara
     }
 }
 
-// 1. Load *into* fixed vk regs
-// 2. Load into packed vk, update regs->vk
+/* Load packed vec4 */
 static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                               SwsAArch64OpRegs *regs, const char *name)
 {
@@ -241,45 +240,35 @@ static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams
     RasmOp *vk = regs->vk;
     RasmOp *vt = regs->vt;
 
-    const SwsCompMask zero = p->par.vec4.zero;
-    const SwsCompMask one  = p->par.vec4.one;
-    int k = 0;
-
-#if 0
-FF_ARRAY_ELEMS(regs->vk);
-    RasmOp vk[ 4]; /* constant data (may be gprs) */
-#endif
-
-    /* First load priv data if needed. */
+    /* First load priv data. */
     int count = ff_sws_vec4_count(&p->par.vec4, p->mask);
     if (count) {
-        RasmOp priv_data = vt[k++];
-        i_ldr(r, v_q(priv_data), IMPL_PRIV(s));         CMTF("v128 %s_vec = impl->priv.v128;", name);
+        RasmOp priv_data = vt[0];
+        i_ldr(r, v_q(priv_data), IMPL_PRIV(s)); CMTF("v128 %s_vec = impl->priv.v128;", name);
         asmgen_set_load_cont_node(s);
         load_regs(s, name, vk, "data", priv_data, AARCH64_IMPL_DATA_OFFSET, count, s->vec_size);
-        RasmOp orig_vk[4];
-        memcpy(orig_vk, vk, sizeof(orig_vk));
-        LOOP(p->mask & ~(zero | one), i) {
-            vk[i] = orig_vk[p->par.vec4.indices[i]];
-        }
     }
 
     /* Load immediate values. */
-    SwsCompMask imm_mask = zero | one;
-    RasmOp zero_vec = zero ? vk[count++] : rasm_op_none();
-    RasmOp one_vec  = one  ? vk[count++] : rasm_op_none();
-    if (zero) {
+    RasmOp zero_vec = p->par.vec4.zero ? vk[count++] : rasm_op_none();
+    RasmOp one_vec  = p->par.vec4.one  ? vk[count++] : rasm_op_none();
+    if (p->par.vec4.zero) {
         i_movi(r, zero_vec, IMM(0));            CMTF("v128 %s = 0;", VEC4_NAME(p, name, 0));
     }
-    if (one) {
+    if (p->par.vec4.one) {
         RasmOp dst = (s->vec_size == 8) ? v_8b(one_vec) : v_16b(one_vec);
         i_movi(r, dst, IMM(0xff));              CMTF("v128 %s = UINT_MAX;", VEC4_NAME(p, name, 0));
     }
-    LOOP(imm_mask, i) {
-        if (zero & SWS_COMP(i)) {
+
+    RasmOp orig_vk[4];
+    memcpy(orig_vk, vk, sizeof(orig_vk));
+    LOOP_MASK(p, i) {
+        if (p->par.vec4.zero & SWS_COMP(i)) {
             vk[i] = zero_vec;
-        } else if (one & SWS_COMP(i)) {
+        } else if (p->par.vec4.one & SWS_COMP(i)) {
             vk[i] = one_vec;
+        } else {
+            vk[i] = orig_vk[p->par.vec4.indices[i]];
         }
     }
 }
@@ -289,12 +278,6 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
 {
     RasmContext *r = s->rctx;
     RasmOp *vk = regs->vk;
-
-    /**
-     * TODO
-     * - pack elements in impl->priv and perform smaller loads
-     * - if only 1 element and not vh, load directly with ld1r
-     */
 
     int count = ff_sws_vec4_count(&p->par.vec4, p->mask);
     if (count) {

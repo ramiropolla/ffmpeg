@@ -646,6 +646,7 @@ static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                        RasmOp *vx, RasmOp *vk, int i, const char *vx_str)
 {
     RasmContext *r = s->rctx;
+#if 0
     RasmOp clear_vec = vk[0];
     if (p->par.vec4.zero & SWS_COMP(i)) {
         i_movi(r, vx[i], IMM(0));                   CMTF("%s[%u] = 0;", vx_str, i);
@@ -657,6 +658,58 @@ static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
         /* TODO ldr/ldp */
         i_dup (r, vx[i], a64op_elem(clear_vec, idx)); CMTF("%s[%u] = %s;", vx_str, i, VEC4_NAME(p, "clear", i));
     }
+#else
+    /* First load priv data. */
+    SwsCompMask zero = p->par.vec4.zero;
+    SwsCompMask one  = p->par.vec4.one;
+    SwsCompMask mask = p->mask & ~(zero | one);
+    const uint8_t *indices = p->par.vec4.indices;
+    LOOP(mask, i) {
+        LOOP(mask, j) {
+            if (indices[j] == (indices[i] + 1)) {
+                RasmOp dst[2] = { vx[i], vx[j] };
+                load_regs(s, "xxx", dst, "data", s->impl, AARCH64_IMPL_DATA_OFFSET + indices[i] * s->vec_size, 2, s->vec_size);
+                mask &= ~(SWS_COMP(i) | SWS_COMP(j));
+                break;
+            }
+        }
+    }
+    LOOP((mask | zero | one), i) {
+        if (p->par.vec4.zero & SWS_COMP(i)) {
+            i_movi(r, vx[i], IMM(0));                   CMTF("%s[%u] = 0;", vx_str, i);
+        } else if (p->par.vec4.one & SWS_COMP(i)) {
+            RasmOp dst = (s->vec_size == 8) ? v_8b(vx[i]) : v_16b(vx[i]);
+            i_movi(r, dst, IMM(0xff));                  CMTF("%s[%u] = UINT_MAX;", vx_str, i);
+        } else {
+            load_regs(s, "xxx", vx + i, "data", s->impl, AARCH64_IMPL_DATA_OFFSET + indices[i] * s->vec_size, 1, s->vec_size);
+        }
+    }
+
+#if 0
+    /* Load immediate values. */
+    RasmOp zero_vec = p->par.vec4.zero ? vk[count++] : rasm_op_none();
+    RasmOp one_vec  = p->par.vec4.one  ? vk[count++] : rasm_op_none();
+    if (p->par.vec4.zero) {
+        i_movi(r, zero_vec, IMM(0));            CMTF("v128 %s = 0;", VEC4_NAME(p, name, 0));
+    }
+    if (p->par.vec4.one) {
+        RasmOp dst = (s->vec_size == 8) ? v_8b(one_vec) : v_16b(one_vec);
+        i_movi(r, dst, IMM(0xff));              CMTF("v128 %s = UINT_MAX;", VEC4_NAME(p, name, 0));
+    }
+
+    RasmOp orig_vk[4];
+    memcpy(orig_vk, vk, sizeof(orig_vk));
+    LOOP_MASK(p, i) {
+        if (p->par.vec4.zero & SWS_COMP(i)) {
+            vk[i] = zero_vec;
+        } else if (p->par.vec4.one & SWS_COMP(i)) {
+            vk[i] = one_vec;
+        } else {
+            vk[i] = orig_vk[p->par.vec4.indices[i]];
+        }
+    }
+#endif
+#endif
 }
 
 static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -666,8 +719,11 @@ static void asmgen_op_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *
     RasmOp *dh = regs->dh;
     RasmOp *vk = regs->vk;
 
-    LOOP_MASK      (p, i) { emit_clear(s, p, dl, vk, i, "vl"); }
-    LOOP_MASK_VH(s, p, i) { emit_clear(s, p, dh, vk, i, "vh"); }
+    // LOOP_MASK      (p, i)
+    { emit_clear(s, p, dl, vk, 0, "vl"); }
+    if (s->use_vh)
+    // LOOP_MASK_VH(s, p, i) 
+    { emit_clear(s, p, dh, vk, 0, "vh"); }
 }
 
 /*********************************************************************/
