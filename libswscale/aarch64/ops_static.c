@@ -223,11 +223,89 @@ static void asmgen_setup_unpack(SwsAArch64Context *s, const SwsAArch64OpImplPara
     }
 }
 
+/* Load n vectors from consecutive slots of the kernel data with ldp/ldr. */
+static void clear_load_slots(SwsAArch64Context *s, const RasmOp *dst, int n, int offset)
+{
+    RasmContext *r = s->rctx;
+    const int size = s->vec_size;
+    for (int i = 0; i < n; i += 2) {
+        RasmOp addr = a64op_off(s->impl, AARCH64_IMPL_DATA_OFFSET + offset + i * size);
+        RasmOp dst1 = a64op_make_vec(a64op_vec_n(dst[i]), 0, size);
+        if (i + 1 < n) {
+            RasmOp dst2 = a64op_make_vec(a64op_vec_n(dst[i + 1]), 0, size);
+            i_ldp(r, dst1, dst2, addr);             CMTF("load clear slots %d..%d", i, i + 1);
+        } else {
+            i_ldr(r, dst1,       addr);             CMTF("load clear slot %d", i);
+        }
+    }
+}
+
+static void asmgen_setup_clear_slots(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                     SwsAArch64OpRegs *regs)
+{
+    RasmContext *r = s->rctx;
+    const int variant = AARCH64_CLEAR_VARIANT;
+    const SwsCompMask load_mask = clear_load_mask(p);
+    if (!load_mask)
+        return;
+
+    RasmOp vl[4];
+    RasmOp vh[4];
+    int n = 0;
+    LOOP(load_mask, i) {
+        vl[n] = regs->dl[i];
+        vh[n] = regs->dh[i];
+        n++;
+    }
+
+    if ((variant == 5 || variant == 6) && n == 1) {
+        RasmOp ptr = s->tmp0;
+        i_add (r, ptr, s->impl, IMM(AARCH64_IMPL_DATA_OFFSET)); CMT("void *clear_ptr = &impl->priv;");
+        i_ld1r(r, vv_1(vl[0]), a64op_base(ptr));                CMT("vl = broadcast(*clear_ptr);");
+        if (s->use_vh && variant == 5) {
+            i_ld1r(r, vv_1(vh[0]), a64op_base(ptr));            CMT("vh = broadcast(*clear_ptr);");
+        }
+        asmgen_set_load_cont_node(s);
+        if (s->use_vh && variant == 6) {
+            i_mov16b(r, vh[0], vl[0]);                          CMT("vh = vl;");
+        }
+        return;
+    }
+
+    if (variant == 3 && s->use_vh) {
+        RasmOp all[8];
+        for (int i = 0; i < n; i++) {
+            all[i]     = vl[i];
+            all[n + i] = vh[i];
+        }
+        clear_load_slots(s, all, 2 * n, 0);
+        asmgen_set_load_cont_node(s);
+        return;
+    }
+
+    clear_load_slots(s, vl, n, 0);
+    if (s->use_vh && (variant == 4 || variant == 6)) {
+        asmgen_set_load_cont_node(s);
+        for (int i = 0; i < n; i++) {
+            i_mov16b(r, vh[i], vl[i]);                          CMT("vh = vl;");
+        }
+        return;
+    }
+    if (s->use_vh)
+        clear_load_slots(s, vh, n, 0);
+    asmgen_set_load_cont_node(s);
+}
+
 static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                                SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
     RasmOp *vk = regs->vk;
+
+    if (AARCH64_CLEAR_VARIANT != 1) {
+        asmgen_setup_clear_slots(s, p, regs);
+        return;
+    }
 
     /**
      * TODO

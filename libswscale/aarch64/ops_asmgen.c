@@ -620,7 +620,7 @@ static void emit_clear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
             i_movi(r, v_16b(vx[i]), IMM(0xff));
         }
         CMTF("%s[%u] = UINT_MAX;", vx_str, i);
-    } else {
+    } else if (AARCH64_CLEAR_VARIANT == 1) {
         i_dup (r, vx[i], a64op_elem(clear_vec, i)); CMTF("%s[%u] = broadcast(clear_vec[%u]);", vx_str, i, i);
     }
 }

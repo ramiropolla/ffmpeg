@@ -83,6 +83,55 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
 }
 
 /**
+ * Clear kernel implementation:
+ *  1: all clear values in one vector, broadcast to each lane with dup
+ *  2: one pre-broadcast vector per value, loaded into vl and into vh with
+ *     ldp/ldr
+ *  3: as 2, with the vl and vh loads paired into the same ldp sequence
+ *  4: as 2 for vl, vh copied from vl with mov
+ *  5: as 2, but a single value is loaded into vl and into vh with ld1r
+ *  6: as 5, vh copied from vl with mov
+ */
+#ifndef AARCH64_CLEAR_VARIANT
+#define AARCH64_CLEAR_VARIANT 1
+#endif
+
+static inline int clear_vec_size(const SwsAArch64OpImplParams *params)
+{
+    const int total_size = params->block_size * ff_sws_pixel_type_size(params->type);
+    return total_size < 16 ? total_size : 16;
+}
+
+static inline int clear_use_vh(const SwsAArch64OpImplParams *params)
+{
+    return params->block_size * ff_sws_pixel_type_size(params->type) > 16;
+}
+
+/* Components whose clear value is loaded from the kernel data. */
+static inline SwsCompMask clear_load_mask(const SwsAArch64OpImplParams *params)
+{
+    return params->mask & ~(params->par.clear.zero | params->par.clear.one);
+}
+
+/* Number of pre-broadcast vectors in the clear kernel data. */
+static inline int clear_num_slots(const SwsAArch64OpImplParams *params)
+{
+    int count = 0;
+    LOOP(clear_load_mask(params), i)
+        count++;
+    if (AARCH64_CLEAR_VARIANT == 3 && clear_use_vh(params))
+        count *= 2;
+    return count;
+}
+
+static inline int clear_priv_size(const SwsAArch64OpImplParams *params)
+{
+    if (AARCH64_CLEAR_VARIANT == 1)
+        return 16;
+    return clear_num_slots(params) * clear_vec_size(params);
+}
+
+/**
  * Number of bytes of private data consumed by each kernel; must match what
  * aarch64_setup() packs.
  */
@@ -91,11 +140,12 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
     switch (params->uop) {
     case SWS_UOP_READ_BIT:
     case SWS_UOP_WRITE_BIT:
-    case SWS_UOP_CLEAR:
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
         return 16; /* one full vector register */
+    case SWS_UOP_CLEAR:
+        return clear_priv_size(params);
     case SWS_UOP_SCALE:
         return ff_sws_pixel_type_size(params->type);
     case SWS_UOP_LINEAR:

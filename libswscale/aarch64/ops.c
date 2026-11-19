@@ -114,6 +114,23 @@ static int aarch64_setup_dither(const SwsUOp *uop, SwsImplResult *res)
 }
 
 /*********************************************************************/
+static int aarch64_setup_clear(const SwsAArch64OpImplParams *p,
+                               const SwsUOp *uop, SwsImplResult *res)
+{
+    /* The clear values are repeating 32-bit patterns. */
+    const int vec_size = clear_vec_size(p);
+    const int nlanes = (AARCH64_CLEAR_VARIANT == 3 && clear_use_vh(p)) ? 2 : 1;
+    for (int lane = 0; lane < nlanes; lane++) {
+        LOOP(clear_load_mask(p), i) {
+            const uint32_t val = uop->data.vec4[i].u32;
+            for (int j = 0; j < vec_size; j += sizeof(val))
+                SWS_OP_PRIV_PACK(res, val);
+        }
+    }
+    return 0;
+}
+
+/*********************************************************************/
 static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
                          SwsImplResult *out)
 {
@@ -137,6 +154,9 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
         break;
     }
     case SWS_UOP_CLEAR:
+        if (AARCH64_CLEAR_VARIANT != 1)
+            return aarch64_setup_clear(p, uop, out);
+        av_fallthrough;
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX: {
