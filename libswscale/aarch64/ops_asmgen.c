@@ -58,23 +58,30 @@ static void reshape_const_vectors(SwsAArch64OpRegs *regs, int el_count, int el_s
 }
 
 /*********************************************************************/
-static void load_scalars(SwsAArch64Context *s, RasmOp base, int offset,
-                         RasmOp *vecs, const char *name, int n, int vec_size)
+static void ldr_multi(SwsAArch64Context *s,
+                      const char *dst_name, RasmOp *dst,
+                      const char *src_name, RasmOp base, int offset,
+                      int n, int size)
 {
     RasmContext *r = s->rctx;
 
     int i = 0;
-    for (; i + 1 < n; i += 2, offset += 2 * vec_size) {
-        RasmOp dst1 = a64op_make_vec(a64op_vec_n(vecs[i    ]), 0, vec_size);
-        RasmOp dst2 = a64op_make_vec(a64op_vec_n(vecs[i + 1]), 0, vec_size);
-        i_ldp(r, dst1, dst2, a64op_off(base, offset));           CMTF("{ %s[%d], %s[%d] } = data[%d];", name, i, name, i + 1, offset);
+    for (; i + 1 < n; i += 2, offset += 2 * size) {
+        i_ldp(r, dst[i], dst[i + 1], a64op_off(base, offset));      CMTF("%s[%d..%d] = %s[%d..%d];", dst_name, i, i + 1, src_name, i, i + 1);
     }
-    for (; i < n; i++, offset += vec_size) {
-        RasmOp dst = a64op_make_vec(a64op_vec_n(vecs[i]), 0, vec_size);
-        i_ldr(r, dst,        a64op_off(base, offset));           CMTF("%s[%d] = data[%d];", name, i, offset);
+    for (; i < n; i++, offset += size) {
+        i_ldr(r, dst[i],             a64op_off(base, offset));      CMTF("%s[%d] = %s[%d];", dst_name, i, src_name, i);
     }
 }
 
+static void load_scalars(SwsAArch64Context *s, RasmOp base, int offset,
+                         RasmOp *vecs, const char *name, int n, int vec_size)
+{
+    RasmOp dst[4];
+    for (int i = 0; i < n; i++)
+        dst[i] = a64op_make_vec(a64op_vec_n(vecs[i]), 0, vec_size);
+    ldr_multi(s, name, dst, "data", base, offset, n, vec_size);
+}
 
 /*********************************************************************/
 /* Function frame */
