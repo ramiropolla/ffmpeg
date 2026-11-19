@@ -251,11 +251,42 @@ static void asmgen_setup_clear_slots(SwsAArch64Context *s, const SwsAArch64OpImp
 
     RasmOp vl[4];
     RasmOp vh[4];
+    int slot[4];
     int n = 0;
     LOOP(load_mask, i) {
+        if (p->clear_dup[i])
+            continue;
+        slot[i] = n;
         vl[n] = regs->dl[i];
         vh[n] = regs->dh[i];
         n++;
+    }
+
+    if (AARCH64_CLEAR_USE_DEDUP) {
+        const bool vh_mov = (variant == 4);
+        for (int lane = 0; lane < (s->use_vh ? 2 : 1); lane++) {
+            RasmOp *dst = lane ? regs->dh : regs->dl;
+            if (lane && vh_mov) {
+                asmgen_set_load_cont_node(s);
+                LOOP(load_mask, i) {
+                    i_mov16b(r, regs->dh[i], regs->dl[i]);      CMT("vh = vl;");
+                }
+                return;
+            }
+            clear_load_slots(s, lane ? vh : vl, n, 0);
+            LOOP(load_mask, i) {
+                if (!p->clear_dup[i])
+                    continue;
+                const int k = p->clear_dup[i] - 1;
+                if (AARCH64_CLEAR_DEDUP == 1) {
+                    clear_load_slots(s, &dst[i], 1, slot[k] * s->vec_size);
+                } else {
+                    i_mov16b(r, dst[i], dst[k]);                CMT("duplicate clear value");
+                }
+            }
+        }
+        asmgen_set_load_cont_node(s);
+        return;
     }
 
     if ((variant == 5 || variant == 6) && n == 1) {

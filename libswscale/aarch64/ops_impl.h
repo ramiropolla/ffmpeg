@@ -50,6 +50,9 @@ typedef struct SwsAArch64OpImplParams {
     SwsPixelType        type;
     uint8_t block_size;
     SwsUOpParams par;
+    /* SWS_UOP_CLEAR: 1 + index of an earlier loaded component with the
+     * same value, or 0 if the value has its own slot. */
+    uint8_t clear_dup[4];
 } SwsAArch64OpImplParams;
 
 /* SwsCompMask-related helpers. */
@@ -96,6 +99,18 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
 #define AARCH64_CLEAR_VARIANT 2
 #endif
 
+/**
+ * Deduplication of clear values (variants 2 and 4 only):
+ *  0: one slot per loaded component
+ *  1: one slot per distinct value, duplicates loaded again from the slot
+ *  2: one slot per distinct value, duplicates copied with mov
+ */
+#ifndef AARCH64_CLEAR_DEDUP
+#define AARCH64_CLEAR_DEDUP 0
+#endif
+#define AARCH64_CLEAR_USE_DEDUP \
+    (AARCH64_CLEAR_DEDUP && (AARCH64_CLEAR_VARIANT == 2 || AARCH64_CLEAR_VARIANT == 4))
+
 static inline int clear_vec_size(const SwsAArch64OpImplParams *params)
 {
     const int total_size = params->block_size * ff_sws_pixel_type_size(params->type);
@@ -117,8 +132,10 @@ static inline SwsCompMask clear_load_mask(const SwsAArch64OpImplParams *params)
 static inline int clear_num_slots(const SwsAArch64OpImplParams *params)
 {
     int count = 0;
-    LOOP(clear_load_mask(params), i)
-        count++;
+    LOOP(clear_load_mask(params), i) {
+        if (!params->clear_dup[i])
+            count++;
+    }
     if (AARCH64_CLEAR_VARIANT == 3 && clear_use_vh(params))
         count *= 2;
     return count;

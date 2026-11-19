@@ -122,6 +122,8 @@ static int aarch64_setup_clear(const SwsAArch64OpImplParams *p,
     const int nlanes = (AARCH64_CLEAR_VARIANT == 3 && clear_use_vh(p)) ? 2 : 1;
     for (int lane = 0; lane < nlanes; lane++) {
         LOOP(clear_load_mask(p), i) {
+            if (p->clear_dup[i])
+                continue;
             const uint32_t val = uop->data.vec4[i].u32;
             for (int j = 0; j < vec_size; j += sizeof(val))
                 SWS_OP_PRIV_PACK(res, val);
