@@ -25,10 +25,13 @@
 #include <inttypes.h>
 #include <sched.h>
 #include <stdio.h>
+#include <unistd.h>
 #endif
 
 #include "libavutil/cpu.h"
 #include "libavutil/cpu_internal.h"
+#include "libavutil/error.h"
+#include "libavutil/aarch64/cpu.h"
 
 #if HAVE_GETAUXVAL || HAVE_ELF_AUX_INFO
 #include <stdint.h>
@@ -294,6 +297,28 @@ static int detect_inorder(void)
     return count ? AV_CPU_FLAG_INORDER : 0;
 }
 #endif
+
+int avpriv_aarch64_get_core_kinds(uint64_t *inorder, uint64_t *ooo)
+{
+    *inorder = *ooo = 0;
+#if HAVE_SCHED_GETAFFINITY && defined(__linux__)
+    const long ncpus = sysconf(_SC_NPROCESSORS_CONF);
+    if (ncpus <= 0 || ncpus > 64)
+        return AVERROR(ENOSYS);
+    for (int cpu = 0; cpu < ncpus; cpu++) {
+        uint64_t midr;
+        if (!read_midr(cpu, &midr))
+            continue;
+        if (midr_is_inorder(midr))
+            *inorder |= UINT64_C(1) << cpu;
+        else
+            *ooo |= UINT64_C(1) << cpu;
+    }
+    return 0;
+#else
+    return AVERROR(ENOSYS);
+#endif
+}
 
 int ff_get_cpu_flags_aarch64(void)
 {

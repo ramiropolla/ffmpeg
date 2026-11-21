@@ -19,6 +19,8 @@
 #ifndef AVUTIL_AARCH64_CPU_H
 #define AVUTIL_AARCH64_CPU_H
 
+#include <stdint.h>
+
 #include "libavutil/cpu.h"
 #include "libavutil/cpu_internal.h"
 
@@ -36,6 +38,17 @@
 #define have_sme(flags)     CPUEXT(flags, SME)
 #define have_sme_i16i64(flags) CPUEXT(flags, SME_I16I64)
 #define have_sme2(flags)    CPUEXT(flags, SME2)
+
+/**
+ * Identify the kinds of the cores of the system, numbered 0-63.
+ * Cores that can't be identified (e.g. offline ones) are in neither set.
+ *
+ * @param inorder set to the in-order cores (e.g. Cortex-A55)
+ * @param ooo     set to the out-of-order cores
+ * @return 0 on success, or a negative error code if the cores can't be
+ *         identified on this system, or if there are more than 64 of them
+ */
+int avpriv_aarch64_get_core_kinds(uint64_t *inorder, uint64_t *ooo);
 
 #if HAVE_SVE
 int ff_aarch64_sve_length(void);
