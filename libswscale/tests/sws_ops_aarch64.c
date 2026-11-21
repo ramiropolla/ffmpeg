@@ -209,14 +209,24 @@ static int collect_uops(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto end;
 
-    const int block_size = aarch64_block_size(uops, inorder);
+    /**
+     * The in-order variants are used both with their own block size (when
+     * all cores are in-order) and with the block size for out-of-order cores
+     * (in the in-order sub-chain of a dispatching chain).
+     */
+    const int block_sizes[2] = {
+        aarch64_block_size(uops, inorder),
+        aarch64_block_size(uops, false),
+    };
 
-    for (int i = 0; i < uops->num_ops; i++) {
-        SwsAArch64OpImplParams params = { 0 };
-        convert_to_aarch64_impl(&uops->ops[i], block_size, inorder, &params);
-        ret = aarch64_collect_op(&params, root);
-        if (ret < 0)
-            goto end;
+    for (int n = 0; n < (inorder ? 2 : 1); n++) {
+        for (int i = 0; i < uops->num_ops; i++) {
+            SwsAArch64OpImplParams params = { 0 };
+            convert_to_aarch64_impl(&uops->ops[i], block_sizes[n], inorder, &params);
+            ret = aarch64_collect_op(&params, root);
+            if (ret < 0)
+                goto end;
+        }
     }
 
 end:

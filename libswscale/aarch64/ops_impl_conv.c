@@ -43,15 +43,10 @@ static bool uop_supports_x4(const SwsUOp *uop, bool inorder)
         /* Row by row, banks 2-3 are processed after banks 0-1. */
         if (!inorder)
             return true;
-        /* Up to 3 inputs can be saved with 4 banks (12 temps). */
         const SwsAArch64OpImplParams params = {
             .uop = uop->uop, .mask = uop->mask, .type = uop->type, .par = uop->par,
         };
-        const SwsCompMask save_mask = linear_interleaved_save_mask(&params);
-        int nsaved = 0;
-        for (int i = 0; i < 4; i++)
-            nsaved += !!(save_mask & SWS_COMP(i));
-        return nsaved <= 3;
+        return linear_interleaved_fits_x4(&params);
     }
     case SWS_UOP_LINEAR:
         /* Banks 2-3 are processed after banks 0-1 (see asmgen_op_linear). */

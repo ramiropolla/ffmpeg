@@ -607,12 +607,46 @@ static void asmgen_func_begin(RasmContext *r, const char *name, bool jumpable)
     rasm_func_set_slot(r, FUNC_SLOT_SIZE, FUNC_SLOT_OFFSET);
 }
 
-static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
+/**
+ * Select the sub-chain for the kind of core that the calling thread is
+ * running on (see the description of the dyn header in ops_impl.h). This
+ * is done once per call, so a thread that is migrated to another kind of
+ * core in the middle of a call keeps running the sub-chain it started
+ * with, which gives the same results, only at a different speed.
+ * The C code only enables this when all CPU numbers are below 64, and
+ * when the rseq area is registered, so cpu_id needs no range check.
+ */
+static void asmgen_process_select_dyn(SwsAArch64Context *s)
+{
+    RasmContext *r = s->rctx;
+    RasmOp tp   = s->tmp0;
+    RasmOp cpu  = s->tmp0;
+    RasmOp off  = s->tmp1;
+    RasmOp mask = s->op0_func;
+    RasmOp sel  = s->op0_func;
+
+    i_mrs  (r, tp, a64op_tpidr_el0());                      CMT("tp = thread pointer;");
+    i_ldp  (r, off, mask, a64op_off(s->impl, offsetof_dyn_rseq_cpu_id));
+                                                            CMT("off = hdr->rseq_cpu_id; mask = hdr->inorder_mask;");
+    i_add  (r, tp, tp, off);                                CMT("tp += off;");
+    i_ldr  (r, a64op_w(cpu), a64op_base(tp));               CMT("cpu = rseq->cpu_id;");
+    i_lsr  (r, mask, mask, cpu);                            CMT("mask >>= cpu;");
+    i_ubfiz(r, sel, mask, IMM(3), IMM(1));                  CMT("sel = (mask & 1) * sizeof(uint64_t);");
+    i_add  (r, sel, s->impl, sel);                          CMT("sel = (char *) hdr + sel;");
+    i_ldr  (r, off, a64op_off(sel, offsetof_dyn_chain_off));
+                                                            CMT("off = hdr->chain_off[inorder];");
+    i_add  (r, s->op0_impl, s->impl, off);                  CMT("SwsOpImpl *op0_impl = (char *) impl + off;");
+    RasmOp impl_func = a64op_off(s->op0_impl, offsetof_impl_func);
+    i_ldr  (r, s->op0_func, impl_func);                     CMT("SwsFuncPtr op0_func = op0_impl->func;");
+}
+
+static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask, bool dyn)
 {
     RasmContext *r = s->rctx;
     char func_name[128];
 
-    snprintf(func_name, sizeof(func_name), "ff_sws_process_%04x_neon", nibble_mask(mask));
+    snprintf(func_name, sizeof(func_name), "ff_sws_process_%04x%s_neon",
+             nibble_mask(mask), dyn ? "_dyn" : "");
     asmgen_func_begin(r, func_name, false);
     asmgen_process_frame(s, mask, mask);
 
@@ -620,9 +654,13 @@ static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
 
     /* Load values from impl. */
     rasm_set_current_node(r, s->setup);
-    RasmOp impl_func = a64op_off(s->impl, offsetof_impl_func);
-    i_ldr(r, s->op0_func, impl_func);                   CMT("SwsFuncPtr op0_func = impl->func;");
-    i_mov(r, s->op0_impl, s->impl);                     CMT("SwsOpImpl *op0_impl = impl;");
+    if (dyn) {
+        asmgen_process_select_dyn(s);
+    } else {
+        RasmOp impl_func = a64op_off(s->impl, offsetof_impl_func);
+        i_ldr(r, s->op0_func, impl_func);               CMT("SwsFuncPtr op0_func = impl->func;");
+        i_mov(r, s->op0_impl, s->impl);                 CMT("SwsOpImpl *op0_impl = impl;");
+    }
 
     /* Reset impl and call first kernel. */
     rasm_set_current_node(r, s->loop);
@@ -771,10 +809,12 @@ static int asmgen(void)
     av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
 
     /* Generate all process functions using rasm. */
-    asmgen_process_cps(&s, SWS_COMP_ELEMS(1));
-    asmgen_process_cps(&s, SWS_COMP_ELEMS(2));
-    asmgen_process_cps(&s, SWS_COMP_ELEMS(3));
-    asmgen_process_cps(&s, SWS_COMP_ELEMS(4));
+    for (int dyn = 0; dyn < 2; dyn++) {
+        asmgen_process_cps(&s, SWS_COMP_ELEMS(1), dyn);
+        asmgen_process_cps(&s, SWS_COMP_ELEMS(2), dyn);
+        asmgen_process_cps(&s, SWS_COMP_ELEMS(3), dyn);
+        asmgen_process_cps(&s, SWS_COMP_ELEMS(4), dyn);
+    }
 
     /* Generate all functions from ops_entries.c using rasm. */
     const SwsAArch64OpEntry *entries = ops_entries;

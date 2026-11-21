@@ -147,6 +147,19 @@ static inline SwsCompMask linear_interleaved_save_mask(const SwsAArch64OpImplPar
 }
 
 /**
+ * Whether an interleaved f32 SWS_UOP_LINEAR_FMA fits in four vector banks
+ * (block_size 16): up to 3 inputs can be saved in the 12 temporaries.
+ */
+static inline bool linear_interleaved_fits_x4(const SwsAArch64OpImplParams *params)
+{
+    const SwsCompMask save_mask = linear_interleaved_save_mask(params);
+    int nsaved = 0;
+    for (int i = 0; i < 4; i++)
+        nsaved += !!(save_mask & SWS_COMP(i));
+    return nsaved <= 3;
+}
+
+/**
  * Number of rows with a non-zero offset. These offsets are additionally stored
  * pre-broadcast after the coefficient vectors, one vector per row.
  */
@@ -201,7 +214,11 @@ static inline bool has_inorder_variant(const SwsAArch64OpImplParams *params)
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
         /* The terms are interleaved across rows (see linear_interleaved()). */
-        return params->type != SWS_PIXEL_F32 || params->uop == SWS_UOP_LINEAR_FMA;
+        if (params->type != SWS_PIXEL_F32)
+            return true;
+        if (params->uop != SWS_UOP_LINEAR_FMA)
+            return false;
+        return params->block_size == 8 || linear_interleaved_fits_x4(params);
     case SWS_UOP_TO_U16:
         /* The high halves are zero-extended with uxtl2 instead of zip2. */
         return params->type == SWS_PIXEL_U8 && params->block_size == 16;
@@ -257,5 +274,17 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
 #define offsetof_impl_func       0
 #define offsetof_impl_priv       8
 #define alignof_impl             8
+
+/**
+ * Header at the start of SwsOpChain.impl for chains with one sub-chain for
+ * out-of-order cores and one for in-order cores. The dispatching process
+ * functions (ff_sws_process_*_dyn_neon) read the number of the current CPU
+ * from the rseq area of the calling thread, look it up in inorder_mask, and
+ * run the sub-chain that starts at the matching offset into impl.
+ */
+#define offsetof_dyn_rseq_cpu_id  0  /* int64_t: offset of rseq.cpu_id from the thread pointer */
+#define offsetof_dyn_inorder_mask 8  /* uint64_t: bit n set if CPU n is an in-order core */
+#define offsetof_dyn_chain_off   16  /* uint64_t[2]: sub-chain offsets, [0] out-of-order, [1] in-order */
+#define sizeof_dyn_header        32
 
 #endif /* SWSCALE_AARCH64_OPS_IMPL_H */

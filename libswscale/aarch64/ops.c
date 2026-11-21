@@ -18,11 +18,26 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config.h"
+
+#if defined(__linux__) && defined(__GLIBC__)
+#include <features.h>
+#if __GLIBC_PREREQ(2, 35)
+#include <sys/rseq.h>
+#define HAVE_RSEQ_ABI 1
+#endif
+#endif
+#ifndef HAVE_RSEQ_ABI
+#define HAVE_RSEQ_ABI 0
+#endif
+
 #include "../ops_chain.h"
 
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/tree.h"
+#include "libavutil/thread.h"
+#include "libavutil/aarch64/cpu.h"
 
 #include "ops_impl_conv.c"
 
@@ -40,6 +55,7 @@ static_assert(offsetof_exec_out_bump == offsetof(SwsOpExec, out_bump), "SwsOpExe
 static_assert(offsetof_impl_func     == offsetof(SwsOpImpl, func),     "SwsOpImpl layout mismatch");
 static_assert(offsetof_impl_priv     == offsetof(SwsOpImpl, priv),     "SwsOpImpl layout mismatch");
 static_assert(alignof_impl           == alignof(SwsOpImpl),            "SwsOpImpl layout mismatch");
+static_assert(sizeof_dyn_header % alignof_impl == 0,                     "dyn header alignment mismatch");
 
 /*********************************************************************/
 /* Forward-declare exported functions. */
@@ -197,65 +213,172 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
 }
 
 /*********************************************************************/
+/**
+ * Choosing between the kernels for in-order and out-of-order cores on each
+ * call (see the dyn header in ops_impl.h). This needs the number of the
+ * current CPU, which glibc keeps up to date in the rseq area of each thread
+ * that it has registered with the kernel, and a system with both kinds of
+ * cores.
+ */
+typedef struct AArch64DynInfo {
+    bool     enabled;
+    int64_t  rseq_cpu_id;
+    uint64_t inorder_mask;
+} AArch64DynInfo;
+
+static AArch64DynInfo dyn_info;
+static AVOnce dyn_once = AV_ONCE_INIT;
+
+static av_cold void dyn_init(void)
+{
+#if HAVE_RSEQ_ABI
+    /* __rseq_size is 0 if glibc didn't register the rseq area. */
+    if (__rseq_size < offsetof(struct rseq, cpu_id) + sizeof(uint32_t))
+        return;
+    uint64_t inorder, ooo;
+    if (avpriv_aarch64_get_core_kinds(&inorder, &ooo) < 0 || !inorder || !ooo)
+        return;
+    dyn_info.rseq_cpu_id  = __rseq_offset + offsetof(struct rseq, cpu_id);
+    dyn_info.inorder_mask = inorder;
+    dyn_info.enabled      = true;
+#endif
+}
+
+/* Append the kernels for a list of uops to the chain. */
+static int append_uops(SwsOpChain *chain, const SwsUOpList *uops,
+                       int block_size, bool inorder, bool *used_inorder)
+{
+    for (int i = 0; i < uops->num_ops; i++) {
+        SwsAArch64OpImplParams params = { 0 };
+        convert_to_aarch64_impl(&uops->ops[i], block_size, inorder, &params);
+        SwsFuncPtr func = aarch64_lookup(&params);
+        if (!func)
+            return AVERROR(ENOTSUP);
+        if (params.inorder)
+            *used_inorder = true;
+        SwsImplResult res = { 0 };
+        int ret = aarch64_setup(&uops->ops[i], &params, &res);
+        if (ret < 0)
+            return ret;
+        av_assert1(res.priv_size == aarch64_priv_size(&params));
+        ret = ff_sws_op_chain_append(chain, func, res.ref, res.priv, res.priv_size);
+        av_refstruct_unref(&res.ref);
+        if (ret < 0)
+            return ret;
+    }
+    return 0;
+}
+
+/**
+ * Build a chain with a dyn header, a sub-chain for out-of-order cores and
+ * one for in-order cores. Returns 0 with *pchain set to NULL if no kernel
+ * has an in-order variant, so that a plain chain can be used instead.
+ */
+static int build_dyn_chain(const SwsUOpList *uops, int block_size,
+                           SwsOpChain **pchain)
+{
+    bool used_inorder = false;
+    uint64_t chain_off[2];
+    int ret;
+
+    *pchain = NULL;
+    SwsOpChain *chain = ff_sws_op_chain_alloc();
+    if (!chain)
+        return AVERROR(ENOMEM);
+
+    chain->impl_size = sizeof_dyn_header;
+    for (int inorder = 0; inorder < 2; inorder++) {
+        chain_off[inorder] = chain->impl_size;
+        ret = append_uops(chain, uops, block_size, inorder, &used_inorder);
+        if (ret < 0)
+            goto error;
+    }
+    if (!used_inorder) {
+        ff_sws_op_chain_free(chain);
+        return 0;
+    }
+
+    const int64_t rseq_cpu_id = dyn_info.rseq_cpu_id;
+    const uint64_t inorder_mask = dyn_info.inorder_mask;
+    memcpy(&chain->impl[offsetof_dyn_rseq_cpu_id],  &rseq_cpu_id,  sizeof(rseq_cpu_id));
+    memcpy(&chain->impl[offsetof_dyn_inorder_mask], &inorder_mask, sizeof(inorder_mask));
+    memcpy(&chain->impl[offsetof_dyn_chain_off],    chain_off,     sizeof(chain_off));
+    chain->cpu_flags = AV_CPU_FLAG_NEON | AV_CPU_FLAG_INORDER;
+    *pchain = chain;
+    return 0;
+
+error:
+    ff_sws_op_chain_free(chain);
+    return ret;
+}
+
 static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
                                 SwsCompiledOp *out)
 {
+    SwsOpChain *chain = NULL;
+    bool is_dyn = false;
     int ret;
 
     const int cpu_flags = av_get_cpu_flags();
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
 
-    const bool inorder = cpu_flags & AV_CPU_FLAG_INORDER;
-    const int block_size = aarch64_block_size(uops, inorder);
+    ff_thread_once(&dyn_once, dyn_init);
 
-    SwsOpChain *chain = ff_sws_op_chain_alloc();
-    if (!chain)
-        return AVERROR(ENOMEM);
-    chain->cpu_flags = AV_CPU_FLAG_NEON;
+    /**
+     * On systems with both kinds of cores, use the block size for
+     * out-of-order cores in both sub-chains, since the process function
+     * loops over blocks of one size.
+     */
+    bool inorder = cpu_flags & AV_CPU_FLAG_INORDER;
+    int block_size = aarch64_block_size(uops, inorder);
+    if (dyn_info.enabled) {
+        block_size = aarch64_block_size(uops, false);
+        ret = build_dyn_chain(uops, block_size, &chain);
+        /* If both sub-chains don't fit, use a plain one. */
+        if (ret == AVERROR(EINVAL))
+            ret = 0;
+        if (ret < 0)
+            return ret;
+        is_dyn = !!chain;
+        inorder = false;
+    }
+
+    if (!chain) {
+        bool used_inorder = false;
+        chain = ff_sws_op_chain_alloc();
+        if (!chain)
+            return AVERROR(ENOMEM);
+        ret = append_uops(chain, uops, block_size, inorder, &used_inorder);
+        if (ret < 0)
+            goto error;
+        chain->cpu_flags = AV_CPU_FLAG_NEON | (used_inorder ? AV_CPU_FLAG_INORDER : 0);
+    }
 
     *out = (SwsCompiledOp) {
         .block_size  = block_size,
         .slice_align = 1,
     };
 
-    /* Look up kernel functions. */
-    for (int i = 0; i < uops->num_ops; i++) {
-        SwsAArch64OpImplParams params = { 0 };
-        convert_to_aarch64_impl(&uops->ops[i], block_size, inorder, &params);
-        SwsFuncPtr func = aarch64_lookup(&params);
-        if (!func) {
-            ret = AVERROR(ENOTSUP);
-            goto error;
-        }
-        if (params.inorder)
-            chain->cpu_flags |= AV_CPU_FLAG_INORDER;
-        SwsImplResult res = { 0 };
-        ret = aarch64_setup(&uops->ops[i], &params, &res);
-        if (ret < 0)
-            goto error;
-        av_assert1(res.priv_size == aarch64_priv_size(&params));
-        ret = ff_sws_op_chain_append(chain, func, res.ref, res.priv, res.priv_size);
-        av_refstruct_unref(&res.ref);
-        if (ret < 0)
-            goto error;
-    }
-
     /* Look up process function. */
     void ff_sws_process_0001_neon(void);
     void ff_sws_process_0011_neon(void);
     void ff_sws_process_0111_neon(void);
     void ff_sws_process_1111_neon(void);
+    void ff_sws_process_0001_dyn_neon(void);
+    void ff_sws_process_0011_dyn_neon(void);
+    void ff_sws_process_0111_dyn_neon(void);
+    void ff_sws_process_1111_dyn_neon(void);
+    static void (*const process_funcs[2][4])(void) = {
+        { ff_sws_process_0001_neon,     ff_sws_process_0011_neon,
+          ff_sws_process_0111_neon,     ff_sws_process_1111_neon },
+        { ff_sws_process_0001_dyn_neon, ff_sws_process_0011_dyn_neon,
+          ff_sws_process_0111_dyn_neon, ff_sws_process_1111_dyn_neon },
+    };
 
-    SwsOpFunc process_func = NULL;
-    switch (av_popcount(uops->planes_in | uops->planes_out)) {
-    case 1: process_func = (SwsOpFunc) ff_sws_process_0001_neon; break;
-    case 2: process_func = (SwsOpFunc) ff_sws_process_0011_neon; break;
-    case 3: process_func = (SwsOpFunc) ff_sws_process_0111_neon; break;
-    case 4: process_func = (SwsOpFunc) ff_sws_process_1111_neon; break;
-    }
-
-    out->func = process_func;
+    const int nplanes = av_popcount(uops->planes_in | uops->planes_out);
+    av_assert0(nplanes >= 1 && nplanes <= 4);
+    out->func = (SwsOpFunc) process_funcs[is_dyn][nplanes - 1];
     ff_sws_op_chain_attach(chain, out);
 
     return 0;
