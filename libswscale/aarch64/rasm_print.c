@@ -222,6 +222,18 @@ static void print_op_cond(AVBPrint *bp, RasmOp op)
 }
 
 /*********************************************************************/
+/* AARCH64_OP_SYSREG */
+
+static void print_op_sysreg(AVBPrint *bp, RasmOp op)
+{
+    switch (a64op_sysreg_val(op)) {
+    case AARCH64_SYSREG_TPIDR_EL0: av_bprintf(bp, "tpidr_el0"); break;
+    default:
+        av_assert0(!"Invalid system register!");
+    }
+}
+
+/*********************************************************************/
 /* Instruction operands */
 
 static void print_op(const RasmContext *rctx,
@@ -246,6 +258,9 @@ static void print_op(const RasmContext *rctx,
         break;
     case AARCH64_OP_COND:
         print_op_cond(bp, op);
+        break;
+    case AARCH64_OP_SYSREG:
+        print_op_sysreg(bp, op);
         break;
     default:
         av_assert0(0);
@@ -287,6 +302,7 @@ static const char insn_names[AARCH64_INSN_NB][8] = {
     [AARCH64_INSN_MLA   ] = "mla",
     [AARCH64_INSN_MOV   ] = "mov",
     [AARCH64_INSN_MOVI  ] = "movi",
+    [AARCH64_INSN_MRS   ] = "mrs",
     [AARCH64_INSN_MUL   ] = "mul",
     [AARCH64_INSN_ORR   ] = "orr",
     [AARCH64_INSN_RET   ] = "ret",

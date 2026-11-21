@@ -285,6 +285,7 @@ typedef enum AArch64InsnId {
     AARCH64_INSN_MLA,
     AARCH64_INSN_MOV,
     AARCH64_INSN_MOVI,
+    AARCH64_INSN_MRS,
     AARCH64_INSN_MUL,
     AARCH64_INSN_ORR,
     AARCH64_INSN_RET,
@@ -328,6 +329,7 @@ typedef enum AArch64OpType {
     AARCH64_OP_VEC,
     AARCH64_OP_BASE,
     AARCH64_OP_COND,
+    AARCH64_OP_SYSREG,
 
     AARCH64_OP_NB,
 } AArch64OpType;
@@ -535,6 +537,23 @@ static inline RasmOp a64op_cond(int cond)
 
 static inline uint8_t a64op_cond_val(RasmOp op) { return op.u8[0]; }
 
+/*********************************************************************/
+/* AARCH64_OP_SYSREG */
+
+/* System registers readable with mrs */
+#define AARCH64_SYSREG_TPIDR_EL0 0 /* thread pointer */
+
+static inline RasmOp a64op_sysreg(int reg)
+{
+    RasmOp op = rasm_op_new(AARCH64_OP_SYSREG);
+    op.u8[0] = reg;
+    return op;
+}
+
+static inline uint8_t a64op_sysreg_val(RasmOp op) { return op.u8[0]; }
+
+static inline RasmOp a64op_tpidr_el0(void) { return a64op_sysreg(AARCH64_SYSREG_TPIDR_EL0); }
+
 static inline RasmOp a64cond_eq(void) { return a64op_cond(AARCH64_COND_EQ); }
 static inline RasmOp a64cond_ne(void) { return a64op_cond(AARCH64_COND_NE); }
 static inline RasmOp a64cond_hs(void) { return a64op_cond(AARCH64_COND_HS); }
@@ -591,6 +610,7 @@ static inline RasmOp a64cond_nv(void) { return a64op_cond(AARCH64_COND_NV); }
 #define i_mla(rctx,    op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_MLA,    op0, op1, op2, OPN)
 #define i_mov(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_MOV,    op0, op1, OPN, OPN)
 #define i_movi(rctx,   op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_MOVI,   op0, op1, OPN, OPN)
+#define i_mrs(rctx,    op0, op1          ) rasm_add_insn(rctx, AARCH64_INSN_MRS,    op0, op1, OPN, OPN)
 #define i_mul(rctx,    op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_MUL,    op0, op1, op2, OPN)
 #define i_orr(rctx,    op0, op1, op2     ) rasm_add_insn(rctx, AARCH64_INSN_ORR,    op0, op1, op2, OPN)
 #define i_ret(rctx                       ) rasm_add_insn(rctx, AARCH64_INSN_RET,    OPN, OPN, OPN, OPN)
