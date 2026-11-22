@@ -75,6 +75,7 @@ typedef struct SwsAArch64Context {
     /* Process function. */
     RasmNode *setup;
     RasmNode *loop;
+    bool leaf;          /* does not call other functions */
 
     /* Vector register dimensions. */
     size_t el_size;

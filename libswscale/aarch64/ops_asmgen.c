@@ -124,7 +124,8 @@ static unsigned clobbered_gprs(const SwsAArch64Context *s,
                                RasmOp regs[MAX_SAVED_REGS])
 {
     unsigned count = 0;
-    clobber_gpr(regs, &count, a64op_lr());
+    if (!s->leaf)
+        clobber_gpr(regs, &count, a64op_lr());
     LOOP(imask, i) {
         clobber_gpr(regs, &count, s->in[i]);
         clobber_gpr(regs, &count, s->in_bump[i]);
