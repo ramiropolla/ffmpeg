@@ -123,7 +123,7 @@ static inline int shuffle_layout(int read_size, int write_size, int bytes,
     /**
      * Prefer a number of groups for which the output is a whole number of
      * vector registers. Otherwise, the last output vector register is
-     * stored partially (see shuffle_ldst()). The stores must never overlap
+     * stored partially (see asmgen_shuffle()). The stores must never overlap
      * between iterations, since that defeats the write streaming of whole
      * cache lines and doubles the memory traffic for large images.
      */

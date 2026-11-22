@@ -594,47 +594,50 @@ static void shuffle_store_partial(SwsAArch64Context *s, RasmOp ptr, RasmOp v,
     }
 }
 
-static void shuffle_ldst(SwsAArch64Context *s, bool load, RasmOp ptr,
-                         const RasmOp *v, int n, int bytes)
+static void shuffle_load(SwsAArch64Context *s, RasmOp ptr, const RasmOp *v,
+                         int n, int bytes)
 {
     RasmContext *r = s->rctx;
-
-    if (!load && (bytes & 15)) {
-        /* Never store past the end of the output of this iteration. */
-        const int full = bytes >> 4;
-        av_assert0(full == n - 1);
-        if (full)
-            shuffle_ldst(s, false, ptr, v, full, 16 * full);
-        /* shuffle_tmp is an input vector register that is no longer needed. */
-        shuffle_store_partial(s, ptr, v[full], s->shuffle_tmp, bytes & 15);
-        return;
-    }
 
 #if SHUFFLE_PTR_OFFSET == 0
     for (int i = 0; i < n; i += 2) {
         const int left = bytes - 16 * i; /* remaining pointer increment */
         if (i + 1 < n) {
-            /* ldp/stp post-index immediates must be multiples of 16 */
-            if (load) i_ldp(r, v_q(v[i]), v_q(v[i + 1]), a64op_post(ptr, 32));
-            else      i_stp(r, v_q(v[i]), v_q(v[i + 1]), a64op_post(ptr, 32));
+            /* ldp post-index immediates must be multiples of 16 */
+            i_ldp(r, v_q(v[i]), v_q(v[i + 1]), a64op_post(ptr, 32));
             if (i + 2 == n && left != 32)
                 i_add(r, ptr, ptr, IMM(left - 32));
         } else {
-            if (load) i_ldr(r, v_q(v[i]), a64op_post(ptr, left));
-            else      i_str(r, v_q(v[i]), a64op_post(ptr, left));
+            i_ldr(r, v_q(v[i]), a64op_post(ptr, left));
         }
     }
 #else
     for (int i = 0; i < n; i += 2) {
-        if (i + 1 < n) {
-            if (load) i_ldp(r, v_q(v[i]), v_q(v[i + 1]), a64op_off(ptr, 16 * i));
-            else      i_stp(r, v_q(v[i]), v_q(v[i + 1]), a64op_off(ptr, 16 * i));
-        } else {
-            if (load) i_ldr(r, v_q(v[i]), a64op_off(ptr, 16 * i));
-            else      i_str(r, v_q(v[i]), a64op_off(ptr, 16 * i));
-        }
+        if (i + 1 < n)
+            i_ldp(r, v_q(v[i]), v_q(v[i + 1]), a64op_off(ptr, 16 * i));
+        else
+            i_ldr(r, v_q(v[i]), a64op_off(ptr, 16 * i));
     }
     i_add(r, ptr, ptr, IMM(bytes));
+#endif
+}
+
+/* Store one or two whole vector registers at `offset` from the block start. */
+static void shuffle_store(SwsAArch64Context *s, RasmOp ptr, const RasmOp *v,
+                          int n, int offset)
+{
+    RasmContext *r = s->rctx;
+
+#if SHUFFLE_PTR_OFFSET == 0
+    if (n == 2)
+        i_stp(r, v_q(v[0]), v_q(v[1]), a64op_post(ptr, 32));
+    else
+        i_str(r, v_q(v[0]), a64op_post(ptr, 16));
+#else
+    if (n == 2)
+        i_stp(r, v_q(v[0]), v_q(v[1]), a64op_off(ptr, offset));
+    else
+        i_str(r, v_q(v[0]), a64op_off(ptr, offset));
 #endif
 }
 
@@ -693,21 +696,47 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 
     /* Shuffle one block. */
     rasm_set_current_node(r, s->loop);
-    shuffle_ldst(s, true, s->in[0], vin, l.num_in, l.in_bytes);
+    shuffle_load(s, s->in[0], vin, l.num_in, l.in_bytes);
     CMTF("read %d bytes", l.in_bytes);
-    for (int k = 0; k < l.num_out; k++) {
-        const int n = l.hi[k] - l.lo[k] + 1;
-        i_tbl(r, vout[k], veclist_n(&vin[l.lo[k]], n), vidx[k]);
-        CMTF("vout[%d] = tbl(vin[%d..%d], vidx[%d]);", k, l.lo[k], l.hi[k], k);
-    }
-    if (clear) {
-        for (int k = 0; k < l.num_out; k++) {
-            i_orr(r, vout[k], vout[k], vclr[k]);
-            CMTF("vout[%d] |= vclr[%d];", k, k);
+
+    /**
+     * Store each pair of output vector registers right after computing it.
+     * Storing all of them at the end of the iteration can drop Cortex-A55
+     * out of write streaming mode, depending on the output alignment.
+     */
+    const int full = l.out_bytes >> 4;
+    RasmOp ptr = s->out[0];
+    for (int k = 0; k < l.num_out; k += 2) {
+        const int n = FFMIN(2, l.num_out - k);
+        for (int j = k; j < k + n; j++) {
+            const int nr = l.hi[j] - l.lo[j] + 1;
+            i_tbl(r, vout[j], veclist_n(&vin[l.lo[j]], nr), vidx[j]);
+            CMTF("vout[%d] = tbl(vin[%d..%d], vidx[%d]);", j, l.lo[j], l.hi[j], j);
+        }
+        for (int j = k; clear && j < k + n; j++) {
+            i_orr(r, vout[j], vout[j], vclr[j]);
+            CMTF("vout[%d] |= vclr[%d];", j, j);
+        }
+
+        const int num_full = FFMIN(n, full - k);
+        if (num_full)
+            shuffle_store(s, ptr, &vout[k], num_full, 16 * k);
+        if (num_full < n) {
+            /**
+             * Never store past the end of the output of this iteration.
+             * All tbl instructions have been emitted, so an input vector
+             * register can be used as a temporary.
+             */
+#if SHUFFLE_PTR_OFFSET != 0
+            i_add(r, ptr, ptr, IMM(16 * full));
+#endif
+            shuffle_store_partial(s, ptr, vout[full], vin[0], l.out_bytes & 15);
         }
     }
-    s->shuffle_tmp = vin[0]; /* all tbl instructions have been emitted */
-    shuffle_ldst(s, false, s->out[0], vout, l.num_out, l.out_bytes);
+#if SHUFFLE_PTR_OFFSET != 0
+    if (!(l.out_bytes & 15))
+        i_add(r, ptr, ptr, IMM(l.out_bytes));
+#endif
     CMTF("write %d bytes", l.out_bytes);
 }
 
