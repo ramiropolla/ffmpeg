@@ -94,13 +94,11 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
  * this range can be determined from the read and write sizes alone,
  * without looking at the shuffle mask.
  *
- * At most SHUFFLE_MAX_BYTES (64 or 128) bytes are processed per iteration
- * by default. The `bytes` parameter overrides this for the lane mode (see
+ * At most SHUFFLE_MAX_BYTES bytes are processed per iteration by default.
+ * The `bytes` parameter overrides this for the lane mode (see
  * shuffle_lane_bytes()).
  */
-#ifndef SHUFFLE_MAX_BYTES
-#define SHUFFLE_MAX_BYTES 64
-#endif
+#define SHUFFLE_MAX_BYTES 128
 
 typedef struct SwsAArch64ShuffleLayout {
     int groups;     /* number of shuffle groups per iteration */

@@ -67,10 +67,9 @@ static int shuffle_lane_bytes(const SwsUOp *uop, int *period)
 
     /**
      * Least common multiple of 16 and the read size, repeated up to 64
-     * bytes (at most 4 vector registers are needed, and it keeps the same
-     * kernels for all values of SHUFFLE_MAX_BYTES >= 64).
+     * bytes (at most 4 vector registers are needed).
      */
-    const int max_bytes = SHUFFLE_MAX_BYTES < 64 ? SHUFFLE_MAX_BYTES : 64;
+    const int max_bytes = 64;
     int lcm = 16;
     while (lcm % size)
         lcm += 16;
