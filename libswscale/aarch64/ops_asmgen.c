@@ -108,8 +108,8 @@ static void asmgen_epilogue(SwsAArch64Context *s, const RasmOp *regs, unsigned n
 }
 
 /*********************************************************************/
-/* Callee-saved registers (r19-r28, fp, and lr). */
-#define MAX_SAVED_REGS 12
+/* Callee-saved registers (r19-r28, fp, lr, and d8-d15). */
+#define MAX_SAVED_REGS 20
 
 static void clobber_gpr(RasmOp regs[MAX_SAVED_REGS], unsigned *count,
                         RasmOp gpr)
@@ -133,6 +133,12 @@ static unsigned clobbered_gprs(const SwsAArch64Context *s,
     LOOP(omask, i) {
         clobber_gpr(regs, &count, s->out[i]);
         clobber_gpr(regs, &count, s->out_bump[i]);
+    }
+    if (s->save_d8_d15) {
+        /* Saved in pairs, so they must not be paired with a gpr. */
+        av_assert0(!(count & 1));
+        for (int i = 8; i < 16; i++)
+            regs[count++] = v_d(a64op_vec(i));
     }
     return count;
 }
