@@ -129,7 +129,8 @@ int ff_frame_get_video_buffer(AVFrame *frame, int align,
     }
 
     if ((ret = av_image_fill_pointers(frame->data, frame->format, padded_height,
-                                      frame->buf[0]->data, frame->linesize)) < 0)
+                                      (uint8_t *)FFALIGN((uintptr_t)frame->buf[0]->data, align),
+                                      frame->linesize)) < 0)
         goto fail;
 
     for (int i = 1; i < 4; i++) {
