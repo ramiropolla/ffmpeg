@@ -132,7 +132,7 @@ int ff_frame_get_video_buffer(AVFrame *frame, int align,
                                       frame->buf[0]->data, frame->linesize)) < 0)
         goto fail;
 
-    for (int i = 1; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
         if (frame->data[i])
             frame->data[i] += i * plane_padding;
         frame->data[i] = (uint8_t *)FFALIGN((uintptr_t)frame->data[i], align);
