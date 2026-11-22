@@ -64,6 +64,15 @@ static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
         /* par.lin.exact is currently unused by asmgen_op_linear(). */
         out->par.lin.exact = 0;
         break;
+    case SWS_UOP_RW_SHUFFLE:
+        /**
+         * The clear value is loaded from impl->priv, so the code only
+         * depends on whether there is anything to clear to. The block
+         * size is determined by shuffle_layout().
+         */
+        out->par.shuffle.clear_value = !!out->par.shuffle.clear_value;
+        out->block_size = 0;
+        break;
     default:
         break;
     }

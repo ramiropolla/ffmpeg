@@ -83,6 +83,72 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
 }
 
 /**
+ * Layout of the SWS_UOP_RW_SHUFFLE fast path. The shuffle pattern from
+ * the uop is repeated for as many groups as fit in SHUFFLE_MAX_BYTES of
+ * input and output, which are then loaded into (at most) 8 input vector
+ * registers and stored from (at most) 8 output vector registers. Each
+ * output vector register is computed with a single tbl instruction over
+ * the range of (at most 4) input vector registers it references.
+ *
+ * Since each output byte only references input bytes from its own group,
+ * this range can be determined from the read and write sizes alone,
+ * without looking at the shuffle mask.
+ *
+ * At most SHUFFLE_MAX_BYTES (64 or 128) bytes are processed per iteration.
+ */
+#ifndef SHUFFLE_MAX_BYTES
+#define SHUFFLE_MAX_BYTES 64
+#endif
+
+typedef struct SwsAArch64ShuffleLayout {
+    int groups;     /* number of shuffle groups per iteration */
+    int in_bytes;   /* input bytes per iteration */
+    int out_bytes;  /* output bytes per iteration */
+    int num_in;     /* number of input vector registers */
+    int num_out;    /* number of output vector registers */
+    int lo[8];      /* first input vector register used by each output */
+    int hi[8];      /* last input vector register used by each output */
+} SwsAArch64ShuffleLayout;
+
+static inline int shuffle_layout(int read_size, int write_size,
+                                 SwsAArch64ShuffleLayout *l)
+{
+    const int max_size = read_size > write_size ? read_size : write_size;
+    const int bytes = SHUFFLE_MAX_BYTES;
+    if (!read_size || !write_size || max_size > bytes)
+        return -1;
+    /**
+     * Prefer a number of groups for which the output is a whole number of
+     * vector registers. Otherwise, the last output vector register is
+     * stored partially (see shuffle_ldst()). The stores must never overlap
+     * between iterations, since that defeats the write streaming of whole
+     * cache lines and doubles the memory traffic for large images.
+     */
+    l->groups = bytes / max_size;
+    for (int g = l->groups; g > 0; g--) {
+        if ((g * write_size) % 16 == 0) {
+            l->groups = g;
+            break;
+        }
+    }
+    l->in_bytes  = l->groups * read_size;
+    l->out_bytes = l->groups * write_size;
+    l->num_in    = (l->in_bytes  + 15) >> 4;
+    l->num_out   = (l->out_bytes + 15) >> 4;
+    for (int k = 0; k < l->num_out; k++) {
+        const int out_start = 16 * k;
+        const int out_end   = 16 * (k + 1) < l->out_bytes ? 16 * (k + 1) : l->out_bytes;
+        const int g0 = out_start / write_size;
+        const int g1 = (out_end - 1) / write_size;
+        l->lo[k] = (g0 * read_size) >> 4;
+        l->hi[k] = ((g1 + 1) * read_size - 1) >> 4;
+        if (l->hi[k] - l->lo[k] >= 4)
+            return -1; /* tbl takes at most 4 table registers */
+    }
+    return 0;
+}
+
+/**
  * Number of bytes of private data consumed by each kernel; must match what
  * aarch64_setup() packs.
  */

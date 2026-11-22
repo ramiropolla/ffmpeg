@@ -542,6 +542,176 @@ static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
 }
 
 /*********************************************************************/
+/* SWS_UOP_RW_SHUFFLE: packed shuffle fast path (standalone function) */
+
+/**
+ * The input and output vector registers are loaded and stored with ldp/ldr
+ * (stp/str), and the pointers are incremented with:
+ *   0: post-increment on each load/store ("post"), best on in-order cores
+ *      (Cortex-A55)
+ *   1: offsets from the same base, then a single add ("off"), best on
+ *      out-of-order cores (Cortex-A76)
+ * There is no runtime selection between the two yet (see the dyncore branch),
+ * so a build uses one of them for all cores.
+ */
+#ifndef SHUFFLE_PTR_OFFSET
+#define SHUFFLE_PTR_OFFSET 0
+#endif
+
+static RasmOp veclist_n(const RasmOp *v, int n)
+{
+    switch (n) {
+    case 1: return vv_1(v[0]);
+    case 2: return vv_2(v[0], v[1]);
+    case 3: return vv_3(v[0], v[1], v[2]);
+    case 4: return vv_4(v[0], v[1], v[2], v[3]);
+    }
+    av_assert0(0);
+    return OPN;
+}
+
+/**
+ * Store the last `rem` (1-15) bytes of vector register v exactly, in
+ * pieces of 8, 4, 2, and 1 bytes. Pieces that are not at the start of the
+ * register are first moved to vtmp with dup.
+ */
+static void shuffle_store_partial(SwsAArch64Context *s, RasmOp ptr, RasmOp v,
+                                  RasmOp vtmp, int rem)
+{
+    RasmContext *r = s->rctx;
+    int offset = 0;
+    for (int size = 8; size > 0; size >>= 1) {
+        if (!(rem & size))
+            continue;
+        RasmOp src = v;
+        if (offset) {
+            RasmOp el = a64op_elem(a64op_make_vec(a64op_vec_n(v), 0, size), offset / size);
+            i_dup(r, a64op_make_vec(a64op_vec_n(vtmp), 16 / size, size), el);
+            src = vtmp;
+        }
+        i_str(r, a64op_make_vec(a64op_vec_n(src), 0, size), a64op_post(ptr, size));
+        offset += size;
+    }
+}
+
+static void shuffle_ldst(SwsAArch64Context *s, bool load, RasmOp ptr,
+                         const RasmOp *v, int n, int bytes)
+{
+    RasmContext *r = s->rctx;
+
+    if (!load && (bytes & 15)) {
+        /* Never store past the end of the output of this iteration. */
+        const int full = bytes >> 4;
+        av_assert0(full == n - 1);
+        if (full)
+            shuffle_ldst(s, false, ptr, v, full, 16 * full);
+        /* shuffle_tmp is an input vector register that is no longer needed. */
+        shuffle_store_partial(s, ptr, v[full], s->shuffle_tmp, bytes & 15);
+        return;
+    }
+
+#if SHUFFLE_PTR_OFFSET == 0
+    for (int i = 0; i < n; i += 2) {
+        const int left = bytes - 16 * i; /* remaining pointer increment */
+        if (i + 1 < n) {
+            /* ldp/stp post-index immediates must be multiples of 16 */
+            if (load) i_ldp(r, v_q(v[i]), v_q(v[i + 1]), a64op_post(ptr, 32));
+            else      i_stp(r, v_q(v[i]), v_q(v[i + 1]), a64op_post(ptr, 32));
+            if (i + 2 == n && left != 32)
+                i_add(r, ptr, ptr, IMM(left - 32));
+        } else {
+            if (load) i_ldr(r, v_q(v[i]), a64op_post(ptr, left));
+            else      i_str(r, v_q(v[i]), a64op_post(ptr, left));
+        }
+    }
+#else
+    for (int i = 0; i < n; i += 2) {
+        if (i + 1 < n) {
+            if (load) i_ldp(r, v_q(v[i]), v_q(v[i + 1]), a64op_off(ptr, 16 * i));
+            else      i_stp(r, v_q(v[i]), v_q(v[i + 1]), a64op_off(ptr, 16 * i));
+        } else {
+            if (load) i_ldr(r, v_q(v[i]), a64op_off(ptr, 16 * i));
+            else      i_str(r, v_q(v[i]), a64op_off(ptr, 16 * i));
+        }
+    }
+    i_add(r, ptr, ptr, IMM(bytes));
+#endif
+}
+
+static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
+{
+    const SwsAArch64OpImplParams *p = &entry->params;
+    const SwsShuffleUOp *par = &p->par.shuffle;
+    RasmContext *r = s->rctx;
+
+    SwsAArch64ShuffleLayout l;
+    av_assert0(shuffle_layout(par->read_size, par->write_size, &l) == 0);
+    const bool clear = par->clear_value;
+
+    /**
+     * Register assignment: inputs from v0, outputs from v4 (or from v8 if
+     * there are more than 4 inputs or outputs, which requires saving
+     * d8-d15), tbl indices from v16, and clear values at the end.
+     */
+    const int vout_base = (l.num_in <= 4 && l.num_out <= 4) ? 4 : 8;
+    const int vclr_base = 32 - (clear ? l.num_out : 0);
+    av_assert0(l.num_in <= 8 && l.num_out <= 8);
+    av_assert0(16 + l.num_out <= vclr_base);
+
+    RasmOp vin[8], vout[8], vidx[8], vclr[8];
+    for (int i = 0; i < l.num_in; i++)
+        vin[i] = a64op_vec16b(i);
+    for (int i = 0; i < l.num_out; i++) {
+        vout[i] = a64op_vec16b(vout_base + i);
+        vidx[i] = a64op_vec16b(16 + i);
+        vclr[i] = a64op_vec16b(vclr_base + i);
+    }
+
+    rasm_func_begin(r, entry->name, true, false);
+    asmgen_process_frame(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
+
+    s->leaf = true;
+    s->save_d8_d15 = (vout_base == 8);
+    asmgen_process(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
+    s->leaf = false;
+    s->save_d8_d15 = false;
+
+    /* Load tbl indices and clear values from priv. */
+    rasm_set_current_node(r, s->setup);
+    for (int i = 0; i < l.num_out; i += 4) {
+        const int n = FFMIN(l.num_out - i, 4);
+        const bool more = clear || i + n < l.num_out;
+        i_ld1(r, veclist_n(&vidx[i], n), more ? a64op_post(s->impl, 16 * n) : a64op_base(s->impl));
+        CMTF("vidx[%d..%d] = *priv%s;", i, i + n - 1, more ? "++" : "");
+    }
+    for (int i = 0; clear && i < l.num_out; i += 4) {
+        const int n = FFMIN(l.num_out - i, 4);
+        const bool more = i + n < l.num_out;
+        i_ld1(r, veclist_n(&vclr[i], n), more ? a64op_post(s->impl, 16 * n) : a64op_base(s->impl));
+        CMTF("vclr[%d..%d] = *priv%s;", i, i + n - 1, more ? "++" : "");
+    }
+
+    /* Shuffle one block. */
+    rasm_set_current_node(r, s->loop);
+    shuffle_ldst(s, true, s->in[0], vin, l.num_in, l.in_bytes);
+    CMTF("read %d bytes", l.in_bytes);
+    for (int k = 0; k < l.num_out; k++) {
+        const int n = l.hi[k] - l.lo[k] + 1;
+        i_tbl(r, vout[k], veclist_n(&vin[l.lo[k]], n), vidx[k]);
+        CMTF("vout[%d] = tbl(vin[%d..%d], vidx[%d]);", k, l.lo[k], l.hi[k], k);
+    }
+    if (clear) {
+        for (int k = 0; k < l.num_out; k++) {
+            i_orr(r, vout[k], vout[k], vclr[k]);
+            CMTF("vout[%d] |= vclr[%d];", k, k);
+        }
+    }
+    s->shuffle_tmp = vin[0]; /* all tbl instructions have been emitted */
+    shuffle_ldst(s, false, s->out[0], vout, l.num_out, l.out_bytes);
+    CMTF("write %d bytes", l.out_bytes);
+}
+
+/*********************************************************************/
 static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 {
     const SwsAArch64OpImplParams *p = &entry->params;
@@ -638,7 +808,6 @@ static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     case SWS_UOP_LINEAR:       asmgen_op_linear(s, p, &s->regs);       break;
     case SWS_UOP_LINEAR_FMA:   asmgen_op_linear(s, p, &s->regs);       break;
     case SWS_UOP_DITHER:       asmgen_op_dither(s, p, &s->regs);       break;
-    /* TODO implement SWS_UOP_SHUFFLE */
     default:
         break;
     }
@@ -682,7 +851,10 @@ static int asmgen(void)
     /* Generate all functions from ops_entries.c using rasm. */
     const SwsAArch64OpEntry *entries = ops_entries;
     while (entries->name) {
-        asmgen_op_cps(&s, entries++);
+        if (entries->params.uop == SWS_UOP_RW_SHUFFLE)
+            asmgen_shuffle(&s, entries++);
+        else
+            asmgen_op_cps(&s, entries++);
         if (rctx->error) {
             ret = rctx->error;
             goto error;

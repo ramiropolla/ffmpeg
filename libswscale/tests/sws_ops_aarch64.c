@@ -157,6 +157,14 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
             return (int) para->dither.size_log2 - parb->dither.size_log2;
         break;
     }
+    case SWS_UOP_RW_SHUFFLE:
+        if (para->shuffle.clear_value != parb->shuffle.clear_value)
+            return (int) para->shuffle.clear_value - parb->shuffle.clear_value;
+        if (para->shuffle.read_size != parb->shuffle.read_size)
+            return (int) para->shuffle.read_size - parb->shuffle.read_size;
+        if (para->shuffle.write_size != parb->shuffle.write_size)
+            return (int) para->shuffle.write_size - parb->shuffle.write_size;
+        break;
     }
 
     if (pa->block_size != pb->block_size)
@@ -305,6 +313,7 @@ static const char op_type_names[SWS_UOP_TYPE_NB][16] = {
     [SWS_UOP_LINEAR        ] = "linear",
     [SWS_UOP_LINEAR_FMA    ] = "linear_fma",
     [SWS_UOP_DITHER        ] = "dither",
+    [SWS_UOP_RW_SHUFFLE    ] = "rw_shuffle",
 };
 
 static const char pixel_type_names[SWS_PIXEL_TYPE_NB][4] = {
@@ -344,6 +353,7 @@ static const char uop_types[SWS_UOP_TYPE_NB][32] = {
     [SWS_UOP_LINEAR        ] = "SWS_UOP_LINEAR",
     [SWS_UOP_LINEAR_FMA    ] = "SWS_UOP_LINEAR_FMA",
     [SWS_UOP_DITHER        ] = "SWS_UOP_DITHER",
+    [SWS_UOP_RW_SHUFFLE    ] = "SWS_UOP_RW_SHUFFLE",
 };
 
 static const char pixel_types[SWS_PIXEL_TYPE_NB][32] = {
@@ -386,9 +396,18 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
     case SWS_UOP_DITHER:
         av_strlcatf(func_name, sizeof(func_name), "_%04x_%u", dither_to_mask(params, &par->dither), par->dither.size_log2);
         break;
+    case SWS_UOP_RW_SHUFFLE:
+        av_strlcatf(func_name, sizeof(func_name), "_%u_%u_%u", par->shuffle.clear_value,
+                    par->shuffle.read_size, par->shuffle.write_size);
+        break;
     }
-    av_strlcatf(func_name, sizeof(func_name), "_%u_%s_%04x_neon,",
-                params->block_size, pixel_type_names[params->type], nibble_mask(params->mask));
+    if (params->uop == SWS_UOP_RW_SHUFFLE) {
+        /* Type and mask are always the same. */
+        av_strlcatf(func_name, sizeof(func_name), "_neon,");
+    } else {
+        av_strlcatf(func_name, sizeof(func_name), "_%u_%s_%04x_neon,",
+                    params->block_size, pixel_type_names[params->type], nibble_mask(params->mask));
+    }
 
     char uop_name[UOP_NAME_WIDTH + 2];
     snprintf(uop_name, sizeof(uop_name), "%s,", uop_types[params->uop]);
@@ -431,6 +450,10 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
                    par->dither.y_offset[0], par->dither.y_offset[1],
                    par->dither.y_offset[2], par->dither.y_offset[3],
                    par->dither.size_log2);
+        break;
+    case SWS_UOP_RW_SHUFFLE:
+        av_bprintf(bp, ", .par.shuffle = { .clear_value = %u, .read_size = %u, .write_size = %u }",
+                   par->shuffle.clear_value, par->shuffle.read_size, par->shuffle.write_size);
         break;
     }
     av_bprintf(bp, " })");
