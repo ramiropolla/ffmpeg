@@ -160,6 +160,82 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
 }
 
 /*********************************************************************/
+/**
+ * Packed shuffle fast path. The entire conversion is performed by a
+ * standalone function (instead of a chain of kernels), which keeps the
+ * tbl indices (and the clear values) in vector registers for the whole
+ * call. See shuffle_layout() in ops_impl.h for more details.
+ */
+static int compile_shuffle_aarch64(SwsContext *ctx, const SwsUOp *uop,
+                                   SwsCompiledOp *out)
+{
+    const SwsShuffleUOp *par = &uop->par.shuffle;
+    const SwsShuffleMask *data = &uop->data.shuffle;
+
+    SwsAArch64OpImplParams params = { 0 };
+    convert_to_aarch64_impl(uop, 0, &params);
+    SwsOpFunc func = (SwsOpFunc) aarch64_lookup(&params);
+    if (!func)
+        return AVERROR(ENOTSUP);
+
+    SwsAArch64ShuffleLayout l;
+    if (shuffle_layout(par->read_size, par->write_size, &l) < 0)
+        return AVERROR(ENOTSUP);
+
+    /* Input byte index for each output byte (or -1 to clear). */
+    int shuffle[SHUFFLE_MAX_BYTES];
+    for (int n = 0; n < l.groups; n++) {
+        for (int i = 0; i < par->write_size; i++) {
+            const int m = data->mask[i];
+            shuffle[n * par->write_size + i] = m < 0 ? -1 : m + n * par->read_size;
+        }
+    }
+    const int pixels = l.groups * data->pixels;
+
+    /**
+     * There is one tbl index vector per output vector register, relative
+     * to the first input vector register it references, followed by the
+     * clear values per output vector register (if needed). Bytes that are
+     * to be cleared get an out of range index, so that tbl sets them to
+     * zero.
+     */
+    const bool clear = par->clear_value != 0;
+    uint8_t *priv = av_malloc(16 * l.num_out * (clear ? 2 : 1));
+    if (!priv)
+        return AVERROR(ENOMEM);
+    uint8_t *idx = priv;
+    uint8_t *clr = priv + 16 * l.num_out;
+    for (int k = 0; k < l.num_out; k++) {
+        for (int j = 0; j < 16; j++) {
+            const int pos = 16 * k + j;
+            const int val = pos < l.out_bytes ? shuffle[pos] : -1;
+            av_assert0(val < 0 || (val >= 16 * l.lo[k] && val < 16 * (l.hi[k] + 1)));
+            idx[16 * k + j] = val >= 0 ? val - 16 * l.lo[k] : 0xff;
+        }
+        if (clear) {
+            for (int j = 0; j < 16; j++) {
+                const int pos = 16 * k + j;
+                const int val = pos < l.out_bytes ? shuffle[pos] : -1;
+                clr[pos] = val < 0 ? par->clear_value : 0;
+            }
+        }
+    }
+
+    *out = (SwsCompiledOp) {
+        .func        = func,
+        .priv        = priv,
+        .free        = av_free,
+        .slice_align = 1,
+        .block_size  = pixels,
+        .over_read   = { 16 * l.num_in  - l.in_bytes  },
+        .over_write  = { 0 }, /* partial output vectors are stored exactly */
+        .cpu_flags   = AV_CPU_FLAG_NEON,
+    };
+
+    return 0;
+}
+
+/*********************************************************************/
 static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
                                 SwsCompiledOp *out)
 {
@@ -168,6 +244,16 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
     const int cpu_flags = av_get_cpu_flags();
     if (!(cpu_flags & AV_CPU_FLAG_NEON))
         return AVERROR(ENOTSUP);
+
+    if (uops->num_ops == 1 && uops->ops[0].uop == SWS_UOP_RW_SHUFFLE) {
+        ret = compile_shuffle_aarch64(ctx, &uops->ops[0], out);
+        if (ret >= 0) {
+            char name[SWS_UOP_NAME_MAX];
+            ff_sws_uop_name(&uops->ops[0], name);
+            av_log(ctx, AV_LOG_VERBOSE, "Using aarch64 packed shuffle fast path: %s\n", name);
+        }
+        return ret;
+    }
 
     /* Use at most two full vregs during the widest precision section */
     int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
@@ -235,7 +321,8 @@ static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,
     if (!uops)
         return AVERROR(ENOMEM);
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING | SWS_UOP_FLAG_ADD;
+    SwsUOpFlags flags = SWS_UOP_FLAG_PUNNING | SWS_UOP_FLAG_ADD |
+                        SWS_UOP_FLAG_PSHUFB;
     if (!(ctx->flags & SWS_BITEXACT))
         flags |= SWS_UOP_FLAG_FMA;
     int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
