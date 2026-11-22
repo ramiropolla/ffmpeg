@@ -91,6 +91,7 @@ ENTRY(ff_sws_rw_shuffle_0_15_15_neon,               { .uop = SWS_UOP_RW_SHUFFLE,
 ENTRY(ff_sws_rw_shuffle_0_16_8_neon,                { .uop = SWS_UOP_RW_SHUFFLE,   .block_size =  0, .type = SWS_PIXEL_U8,  .mask = 0x1, .par.shuffle = { .clear_value = 0, .read_size = 16, .write_size = 8 } })
 ENTRY(ff_sws_rw_shuffle_0_16_12_neon,               { .uop = SWS_UOP_RW_SHUFFLE,   .block_size =  0, .type = SWS_PIXEL_U8,  .mask = 0x1, .par.shuffle = { .clear_value = 0, .read_size = 16, .write_size = 12 } })
 ENTRY(ff_sws_rw_shuffle_0_16_16_neon,               { .uop = SWS_UOP_RW_SHUFFLE,   .block_size =  0, .type = SWS_PIXEL_U8,  .mask = 0x1, .par.shuffle = { .clear_value = 0, .read_size = 16, .write_size = 16 } })
+ENTRY(ff_sws_rw_shuffle_0_16_16_lane48_neon,        { .uop = SWS_UOP_RW_SHUFFLE,   .block_size = 48, .type = SWS_PIXEL_U8,  .mask = 0x1, .par.shuffle = { .clear_value = 0, .read_size = 16, .write_size = 16 } })
 ENTRY(ff_sws_rw_shuffle_1_2_16_neon,                { .uop = SWS_UOP_RW_SHUFFLE,   .block_size =  0, .type = SWS_PIXEL_U8,  .mask = 0x1, .par.shuffle = { .clear_value = 1, .read_size = 2, .write_size = 16 } })
 ENTRY(ff_sws_rw_shuffle_1_4_16_neon,                { .uop = SWS_UOP_RW_SHUFFLE,   .block_size =  0, .type = SWS_PIXEL_U8,  .mask = 0x1, .par.shuffle = { .clear_value = 1, .read_size = 4, .write_size = 16 } })
 ENTRY(ff_sws_rw_shuffle_1_6_16_neon,                { .uop = SWS_UOP_RW_SHUFFLE,   .block_size =  0, .type = SWS_PIXEL_U8,  .mask = 0x1, .par.shuffle = { .clear_value = 1, .read_size = 6, .write_size = 16 } })

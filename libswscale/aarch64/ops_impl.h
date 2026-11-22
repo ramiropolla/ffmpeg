@@ -94,7 +94,9 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
  * this range can be determined from the read and write sizes alone,
  * without looking at the shuffle mask.
  *
- * At most SHUFFLE_MAX_BYTES (64 or 128) bytes are processed per iteration.
+ * At most SHUFFLE_MAX_BYTES (64 or 128) bytes are processed per iteration
+ * by default. The `bytes` parameter overrides this for the lane mode (see
+ * shuffle_lane_bytes()).
  */
 #ifndef SHUFFLE_MAX_BYTES
 #define SHUFFLE_MAX_BYTES 64
@@ -110,11 +112,12 @@ typedef struct SwsAArch64ShuffleLayout {
     int hi[8];      /* last input vector register used by each output */
 } SwsAArch64ShuffleLayout;
 
-static inline int shuffle_layout(int read_size, int write_size,
+static inline int shuffle_layout(int read_size, int write_size, int bytes,
                                  SwsAArch64ShuffleLayout *l)
 {
     const int max_size = read_size > write_size ? read_size : write_size;
-    const int bytes = SHUFFLE_MAX_BYTES;
+    if (!bytes)
+        bytes = SHUFFLE_MAX_BYTES;
     if (!read_size || !write_size || max_size > bytes)
         return -1;
     /**

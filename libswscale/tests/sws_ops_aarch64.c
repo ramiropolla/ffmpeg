@@ -400,6 +400,8 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
     case SWS_UOP_RW_SHUFFLE:
         av_strlcatf(func_name, sizeof(func_name), "_%u_%u_%u", par->shuffle.clear_value,
                     par->shuffle.read_size, par->shuffle.write_size);
+        if (params->block_size) /* lane mode */
+            av_strlcatf(func_name, sizeof(func_name), "_lane%u", params->block_size);
         break;
     }
     if (params->uop == SWS_UOP_RW_SHUFFLE) {

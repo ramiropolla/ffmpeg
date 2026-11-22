@@ -645,7 +645,7 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     RasmContext *r = s->rctx;
 
     SwsAArch64ShuffleLayout l;
-    av_assert0(shuffle_layout(par->read_size, par->write_size, &l) == 0);
+    av_assert0(shuffle_layout(par->read_size, par->write_size, p->block_size, &l) == 0);
     const bool clear = par->clear_value;
 
     /**

@@ -178,19 +178,35 @@ static int compile_shuffle_aarch64(SwsContext *ctx, const SwsUOp *uop,
     if (!func)
         return AVERROR(ENOTSUP);
 
+    const SwsShuffleUOp *ipar = &params.par.shuffle;
     SwsAArch64ShuffleLayout l;
-    if (shuffle_layout(par->read_size, par->write_size, &l) < 0)
+    if (shuffle_layout(ipar->read_size, ipar->write_size, params.block_size, &l) < 0)
         return AVERROR(ENOTSUP);
 
     /* Input byte index for each output byte (or -1 to clear). */
     int shuffle[SHUFFLE_MAX_BYTES];
-    for (int n = 0; n < l.groups; n++) {
-        for (int i = 0; i < par->write_size; i++) {
-            const int m = data->mask[i];
-            shuffle[n * par->write_size + i] = m < 0 ? -1 : m + n * par->read_size;
+    int pixels;
+    if (params.block_size) {
+        /* Lane mode: repeat the pattern of a single period in every lane. */
+        int period;
+        shuffle_lane_bytes(uop, &period);
+        for (int pos = 0; pos < l.out_bytes; pos++) {
+            const int m = data->mask[pos % period];
+            shuffle[pos] = m < 0 ? -1 : m + pos - pos % period;
         }
+        const int pixel_size = par->read_size / data->pixels;
+        av_assert0(par->read_size % data->pixels == 0);
+        av_assert0(l.in_bytes % pixel_size == 0);
+        pixels = l.in_bytes / pixel_size;
+    } else {
+        for (int n = 0; n < l.groups; n++) {
+            for (int i = 0; i < par->write_size; i++) {
+                const int m = data->mask[i];
+                shuffle[n * par->write_size + i] = m < 0 ? -1 : m + n * par->read_size;
+            }
+        }
+        pixels = l.groups * data->pixels;
     }
-    const int pixels = l.groups * data->pixels;
 
     /**
      * There is one tbl index vector per output vector register, relative
