@@ -75,6 +75,15 @@ static void load_regs(SwsAArch64Context *s, int n, int size,
     }
 }
 
+static void load_regs_mask(SwsAArch64Context *s, SwsCompMask mask, int size,
+                           const char *dst_name, RasmOp *dst,
+                           const char *src_name, RasmOp base, int offset)
+{
+    int n = SWS_COMP_COUNT(mask);
+    av_assert0(mask == SWS_COMP_ELEMS(n)); /* mask must be contiguous */
+    load_regs(s, n, size, dst_name, dst, src_name, base, offset);
+}
+
 /*********************************************************************/
 /* Function frame */
 
@@ -170,18 +179,10 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
         asmgen_prologue(s, saved_regs, nsaved);
 
     /* Load values from exec. */
-    RasmOp exec_in[4];
-    RasmOp exec_in_bump[4];
-    RasmOp exec_out[4];
-    RasmOp exec_out_bump[4];
-    LOOP(imask, i) { exec_in      [i] = a64op_off(s->exec, offsetof_exec_in       + (i * sizeof(uint8_t *))); }
-    LOOP(imask, i) { exec_in_bump [i] = a64op_off(s->exec, offsetof_exec_in_bump  + (i * sizeof(uint8_t *))); }
-    LOOP(omask, i) { exec_out     [i] = a64op_off(s->exec, offsetof_exec_out      + (i * sizeof(uint8_t *))); }
-    LOOP(omask, i) { exec_out_bump[i] = a64op_off(s->exec, offsetof_exec_out_bump + (i * sizeof(uint8_t *))); }
-    LOOP(imask, i) { i_ldr(r, s->in[i],       exec_in [i]);         CMTF("in[%u] = exec->in[%u];", i, i); }
-    LOOP(omask, i) { i_ldr(r, s->out[i],      exec_out[i]);         CMTF("out[%u] = exec->out[%u];", i, i); }
-    LOOP(imask, i) { i_ldr(r, s->in_bump[i],  exec_in_bump[i]);     CMTF("in_bump[%u] = exec->in_bump[%u];", i, i); }
-    LOOP(omask, i) { i_ldr(r, s->out_bump[i], exec_out_bump[i]);    CMTF("out_bump[%u] = exec->out_bump[%u];", i, i); }
+    load_regs_mask(s, imask, sizeof(uint8_t *), "in",       s->in,       "exec->in",       s->exec, offsetof_exec_in);
+    load_regs_mask(s, omask, sizeof(uint8_t *), "out",      s->out,      "exec->out",      s->exec, offsetof_exec_out);
+    load_regs_mask(s, imask, sizeof(uint8_t *), "in_bump",  s->in_bump,  "exec->in_bump",  s->exec, offsetof_exec_in_bump);
+    load_regs_mask(s, omask, sizeof(uint8_t *), "out_bump", s->out_bump, "exec->out_bump", s->exec, offsetof_exec_out_bump);
 
     /* Setup. */
     s->setup = rasm_get_current_node(r);
