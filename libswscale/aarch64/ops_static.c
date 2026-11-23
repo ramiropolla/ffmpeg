@@ -255,7 +255,7 @@ static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams
     RasmOp priv_data = regs->vt[0];
     i_ldr(r, v_q(priv_data), IMPL_PRIV(s));                         CMTF("v128 %s_vec = impl->priv.v128;", name);
     asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(priv_data, i));    CMTF("v128 %s = %s_vec[%u];", VEC4_NAME(p, name, i), name, i); }
+    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(priv_data, i));    CMTF("%s = %s_vec[%u];", VEC4_NAME(p, name, i), name, i); }
 }
 
 static void asmgen_setup_add(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
@@ -311,7 +311,12 @@ static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplPara
     }
     i_add(r, ptr, s->impl, IMM(offsetof_impl_priv));        CMT("v128 *vcoeff_ptr = &impl->priv;");
     asmgen_set_load_cont_node(s);
-    i_ld1(r, coeff_veclist, a64op_base(ptr));               CMT("coeff_veclist = *vcoeff_ptr;");
+    i_ld1(r, coeff_veclist, a64op_base(ptr));
+    if (num_vregs == 1) {
+        CMT("vcoeff[0] = *vcoeff_ptr;");
+    } else {
+        CMTF("vcoeff[0..%u] = *vcoeff_ptr;", num_vregs);
+    }
 
     /**
      * Integer mul/mla by element does not exist for 8-bit elements, and
