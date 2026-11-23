@@ -434,6 +434,15 @@ static inline RasmOp v_s(RasmOp op) { return a64op_vecs(a64op_vec_n(op)); }
 static inline RasmOp v_d(RasmOp op) { return a64op_vecd(a64op_vec_n(op)); }
 static inline RasmOp v_q(RasmOp op) { return a64op_vecq(a64op_vec_n(op)); }
 
+static inline RasmOp a64op_scalar(RasmOp op, uint8_t size)
+{
+    switch (rasm_op_type(op)) {
+    case AARCH64_OP_VEC: return a64op_make_vec(a64op_vec_n(op), 0, size);
+    case AARCH64_OP_GPR: return a64op_make_gpr(a64op_gpr_n(op), size);
+    default:             return rasm_op_none();
+    }
+}
+
 /* arrangement specifier modifiers */
 static inline RasmOp v_8b (RasmOp op) { return a64op_vec8b (a64op_vec_n(op)); }
 static inline RasmOp v_16b(RasmOp op) { return a64op_vec16b(a64op_vec_n(op)); }
