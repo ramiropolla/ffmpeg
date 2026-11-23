@@ -75,34 +75,25 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
      */
     const int num_vregs = linear_num_vregs(p);
     av_assert0(num_vregs <= 4);
-    union {
-        uint8_t  u8[4 * 16];
-        uint16_t u16[4 * 8];
-        uint32_t u32[4 * 4];
-        float    f32[4 * 4];
-    } coeffs = { 0 };
+    uint8_t coeffs[4 * 16] = { 0 };
 
     /**
      * Copy non-zero coefficients, packed in sequential order, offset first.
      * The same order must be followed in asmgen_op_linear().
      */
     int i_coeff = 0;
+    const int size = ff_sws_pixel_type_size(p->type);
     LOOP_MASK(p, i) {
         for (int j = 0; j < 5; j++) {
             const int jj = (j == 0) ? 4 : (j - 1);
             if (!(p->par.lin.zero & SWS_MASK(i, jj))) {
-                const SwsPixel px = uop->data.mat4x5[i][jj];
-                switch (p->type) {
-                case SWS_PIXEL_U8:  coeffs.u8[i_coeff++]  = px.u8;  break;
-                case SWS_PIXEL_U16: coeffs.u16[i_coeff++] = px.u16; break;
-                case SWS_PIXEL_U32: coeffs.u32[i_coeff++] = px.u32; break;
-                case SWS_PIXEL_F32: coeffs.f32[i_coeff++] = px.f32; break;
-                }
+                memcpy(&coeffs[i_coeff++ * size],
+                       &uop->data.mat4x5[i][jj], size);
             }
         }
     }
 
-    ff_sws_op_priv_pack(res, &coeffs, num_vregs * 16);
+    ff_sws_op_priv_pack(res, coeffs, num_vregs * 16);
     return 0;
 }
 
