@@ -115,7 +115,7 @@ int ff_frame_get_video_buffer(AVFrame *frame, int align,
                                          padded_height, linesizes)) < 0)
         return ret;
 
-    total_size = 4 * plane_padding + 4 * align;
+    total_size = 4 * plane_padding + align;
     for (int i = 0; i < 4; i++) {
         if (sizes[i] > SIZE_MAX - total_size)
             return AVERROR(EINVAL);
