@@ -308,6 +308,20 @@ static int checked_sws_scale_frame(SwsContext *c, AVFrame *dst, const AVFrame *s
     return ret;
 }
 
+/* Convert into a newly allocated destination frame */
+static int scale_new_frame(SwsContext *sws, AVFrame *dst, const AVFrame *src,
+                           const struct options *opts)
+{
+    unref_buffers(dst);
+    if (opts->align_dst) {
+        int ret = get_buffer(dst, opts->align_dst);
+        if (ret < 0)
+            return ret;
+    }
+
+    return checked_sws_scale_frame(sws, dst, src);
+}
+
 static int scale_new(struct runner *runner, AVFrame *dst, const AVFrame *src,
                      const struct mode *mode, const struct options *opts,
                      int64_t *out_time)
@@ -327,16 +341,25 @@ static int scale_new(struct runner *runner, AVFrame *dst, const AVFrame *src,
         return ret;
     }
 
+    /**
+     * When benchmarking, run one untimed conversion so that the timed loop
+     * does not include the page faults from first touching the destination,
+     * and reuse that buffer. No-op conversions still need a destination
+     * without buffers, otherwise they can not just reference the source.
+     */
+    const int reuse_dst = opts->bench && !sws_is_noop(dst, src);
+    if (opts->bench) {
+        ret = scale_new_frame(sws_src_dst, dst, src, opts);
+        if (ret < 0)
+            return ret;
+    }
+
     int64_t time = av_gettime_relative();
     for (int i = 0; ret >= 0 && i < opts->iters; i++) {
-        unref_buffers(dst);
-        if (opts->align_dst) {
-            ret = get_buffer(dst, opts->align_dst);
-            if (ret < 0)
-                return ret;
-        }
-
-        ret = checked_sws_scale_frame(sws_src_dst, dst, src);
+        if (reuse_dst)
+            ret = checked_sws_scale_frame(sws_src_dst, dst, src);
+        else
+            ret = scale_new_frame(sws_src_dst, dst, src, opts);
     }
     *out_time = av_gettime_relative() - time;
 
@@ -377,6 +400,13 @@ static int scale_legacy(AVFrame *dst, const AVFrame *src,
     ret = sws_init_context(sws_legacy, NULL, NULL);
     if (ret < 0)
         goto error;
+
+    /* Do not include first touching the destination in the benchmark. */
+    if (opts->bench) {
+        ret = checked_sws_scale_frame(sws_legacy, dst, src);
+        if (ret < 0)
+            goto error;
+    }
 
     int64_t time = av_gettime_relative();
     for (int i = 0; ret >= 0 && i < opts->iters; i++)
