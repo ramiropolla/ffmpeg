@@ -255,7 +255,7 @@ static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams
     RasmOp priv_data = regs->vt[0];
     i_ldr(r, v_q(priv_data), IMPL_PRIV(s));                         CMTF("v128 %s_vec = impl->priv.v128;", name);
     asmgen_set_load_cont_node(s);
-    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(priv_data, i));    CMTF("v128 v%s%u = %s_vec[%u];", name, i, name, i); }
+    LOOP_MASK(p, i) { i_dup(r, vk[i], a64op_elem(priv_data, i));    CMTF("v128 %s = %s_vec[%u];", VEC4_NAME(p, name, i), name, i); }
 }
 
 static void asmgen_setup_add(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
