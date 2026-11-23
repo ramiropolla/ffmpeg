@@ -264,12 +264,12 @@ static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams
     /* Load priv data. */
     int count = ff_sws_vec4_count(&p->par.vec4, p->mask);
     if (count) {
-        RasmOp priv_data = regs->vt[0];
-        i_ldr(r, v_q(priv_data), IMPL_PRIV(s));                     CMTF("v128 %s_vec = impl->priv.v128;", name);
+        char vname[16];
+        snprintf(vname, sizeof(vname), "v%s", name);
+        load_regs(s, count, 16,
+                  vname, vk,
+                  "impl->priv", s->impl, AARCH64_IMPL_DATA_OFFSET);
         asmgen_set_load_cont_node(s);
-        for (int i = 0; i < count; i++) {
-            i_dup(r, vk[i], a64op_elem(priv_data, i));              CMTF("%s = %s_vec[%u];", VEC4_NAME(p, name, i), name, i);
-        }
     }
 
     /* Load zero vector. */

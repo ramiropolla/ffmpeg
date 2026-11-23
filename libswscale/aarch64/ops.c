@@ -98,6 +98,27 @@ static int aarch64_setup_linear(const SwsAArch64OpImplParams *p,
 }
 
 /*********************************************************************/
+static int aarch64_setup_vec4(const SwsAArch64OpImplParams *p,
+                              const SwsUOp *uop, SwsImplResult *res)
+{
+    const int count = ff_sws_vec4_count(&p->par.vec4, p->mask);
+    const int size = ff_sws_pixel_type_size(p->type);
+    const int el_count = 16 / size;
+    uint8_t vals[4 * 16] = { 0 };
+
+    /* Broadcast each value to a full vector register. */
+    for (int i = 0; i < count; i++) {
+        for (int j = 0; j < el_count; j++) {
+            memcpy(&vals[(i * el_count + j) * size],
+                   &uop->data.vec4[i], size);
+        }
+    }
+
+    ff_sws_op_priv_pack(res, vals, count * 16);
+    return 0;
+}
+
+/*********************************************************************/
 static int aarch64_setup_dither(const SwsUOp *uop, SwsImplResult *res)
 {
     ff_sws_op_priv_pack_refptr(res, av_refstruct_ref(uop->data.ptr));
@@ -128,10 +149,11 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
         break;
     }
     case SWS_UOP_CLEAR:
+        return ff_sws_setup_vec4(&(const SwsImplParams) { .uop = uop }, out);
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
-        return ff_sws_setup_vec4(&(const SwsImplParams) { .uop = uop }, out);
+        return aarch64_setup_vec4(p, uop, out);
     case SWS_UOP_SCALE:
         return ff_sws_setup_scalar(&(const SwsImplParams) { .uop = uop }, out);
     case SWS_UOP_LINEAR:

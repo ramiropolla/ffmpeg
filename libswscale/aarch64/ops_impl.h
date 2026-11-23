@@ -92,10 +92,11 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
     case SWS_UOP_READ_BIT:
     case SWS_UOP_WRITE_BIT:
     case SWS_UOP_CLEAR:
+        return 16; /* one full vector register */
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
-        return 16; /* one full vector register */
+        return 16 * ff_sws_vec4_count(&params->par.vec4, params->mask);
     case SWS_UOP_SCALE:
         return ff_sws_pixel_type_size(params->type);
     case SWS_UOP_LINEAR:
