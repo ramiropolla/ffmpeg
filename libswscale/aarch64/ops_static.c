@@ -255,6 +255,32 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
     }
 }
 
+static void asmgen_setup_vec4_by_element(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                         SwsAArch64OpRegs *regs, const char *name)
+{
+    RasmContext *r = s->rctx;
+    RasmOp *vk = regs->vk;
+
+    RasmOp vec = vk[0];
+
+    /* Load priv data. */
+    int count = ff_sws_vec4_count(&p->par.vec4, p->mask);
+    av_assert0(count && !p->par.vec4.zero);
+
+    size_t size = count * ff_sws_pixel_type_size(p->type);
+    size = size <= 1 ? 1 :
+           size <= 2 ? 2 :
+           size <= 4 ? 4 :
+           size <= 8 ? 8 : 16;
+    i_ldr(r, a64op_scalar(vec, size), IMPL_PRIV(s));                CMTF("v%s = impl->priv.v128;", name);
+    asmgen_set_load_cont_node(s);
+
+    /* Update vk for asmgen. */
+    LOOP_MASK(p, i) {
+        vk[i] = a64op_elem(vec, p->par.vec4.indices[i]);
+    }
+}
+
 static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                               SwsAArch64OpRegs *regs, const char *name)
 {
@@ -310,7 +336,11 @@ static void asmgen_setup_max(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 static void asmgen_setup_mul(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    asmgen_setup_vec4(s, p, regs, "mul");
+    if (p->type == SWS_PIXEL_F32 || p->type == SWS_PIXEL_U32) {
+        asmgen_setup_vec4_by_element(s, p, regs, "mul");
+    } else {
+        asmgen_setup_vec4(s, p, regs, "mul");
+    }
 }
 
 static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
