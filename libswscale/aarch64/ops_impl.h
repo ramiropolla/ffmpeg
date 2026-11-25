@@ -82,6 +82,19 @@ static inline int linear_num_vregs(const SwsAArch64OpImplParams *params)
     return (count + nelems - 1) / nelems;
 }
 
+/* Multiplication instructions have by-element variants for some types. */
+static inline bool mul_by_element(SwsPixelType type)
+{
+    switch (type) {
+    case SWS_PIXEL_U16:
+    case SWS_PIXEL_U32:
+    case SWS_PIXEL_F32:
+        return true;
+    default:
+        return false;
+    }
+}
+
 /**
  * Number of bytes of private data consumed by each kernel; must match what
  * aarch64_setup() packs.
@@ -93,12 +106,14 @@ static inline int aarch64_priv_size(const SwsAArch64OpImplParams *params)
     case SWS_UOP_WRITE_BIT:
     case SWS_UOP_CLEAR:
         return 16; /* one full vector register */
+    case SWS_UOP_MUL:
+        if (mul_by_element(params->type))
+            return 16;
+        av_fallthrough;
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
         return 16 * ff_sws_vec4_count(&params->par.vec4, params->mask);
-    case SWS_UOP_MUL:
-        return ff_sws_pixel_type_size(params->type);
     case SWS_UOP_LINEAR:
     case SWS_UOP_LINEAR_FMA:
         return 16 * linear_num_vregs(params); /* packed coefficients */

@@ -150,6 +150,14 @@ static void clobber_gpr(RasmOp regs[MAX_SAVED_REGS], unsigned *count,
         regs[(*count)++] = gpr;
 }
 
+static void clobber_vec(RasmOp regs[MAX_SAVED_REGS], unsigned *count,
+                        RasmOp vec)
+{
+    const int n = a64op_vec_n(vec);
+    if (n >= 8 && n <= 15)
+        regs[(*count)++] = vec;
+}
+
 /**
  * The regs array must be aligned to an even number for the frame asmgen
  * functions to work properly.
@@ -176,6 +184,10 @@ static unsigned clobbered_regs(const SwsAArch64Context *s,
         clobber_gpr(regs, &count, s->out[i]);
         clobber_gpr(regs, &count, s->out_bump[i]);
     }
+    clobber_align(regs, &count);
+
+    /* Vector registers */
+    clobber_vec(regs, &count, a64op_vecd(8));
     clobber_align(regs, &count);
 
     return count;
@@ -867,24 +879,24 @@ static void asmgen_op_max(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
 }
 
 /*********************************************************************/
-/* SWS_UOP_MUL: multiply masked components by scalar */
+/* SWS_UOP_MUL: multiply masked components by vec4 */
 
 static void asmgen_op_mul(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                           SwsAArch64OpRegs *regs)
 {
     RasmContext *r = s->rctx;
-    RasmOp *sl       = regs->sl;
-    RasmOp *sh       = regs->sh;
-    RasmOp *dl       = regs->dl;
-    RasmOp *dh       = regs->dh;
-    RasmOp scale_vec = regs->vk[0];
+    RasmOp *sl = regs->sl;
+    RasmOp *sh = regs->sh;
+    RasmOp *dl = regs->dl;
+    RasmOp *dh = regs->dh;
+    RasmOp *vk = regs->vk;
 
     if (p->type == SWS_PIXEL_F32) {
-        LOOP_MASK      (p, i) { i_fmul(r, dl[i], sl[i], scale_vec); CMTF("vl[%u] *= scale_vec;", i); }
-        LOOP_MASK_VH(s, p, i) { i_fmul(r, dh[i], sh[i], scale_vec); CMTF("vh[%u] *= scale_vec;", i); }
+        LOOP_MASK      (p, i) { i_fmul(r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] *= %s;", i, VEC4_NAME(p, "mul", i)); }
+        LOOP_MASK_VH(s, p, i) { i_fmul(r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] *= %s;", i, VEC4_NAME(p, "mul", i)); }
     } else {
-        LOOP_MASK      (p, i) { i_mul (r, dl[i], sl[i], scale_vec); CMTF("vl[%u] *= scale_vec;", i); }
-        LOOP_MASK_VH(s, p, i) { i_mul (r, dh[i], sh[i], scale_vec); CMTF("vh[%u] *= scale_vec;", i); }
+        LOOP_MASK      (p, i) { i_mul (r, dl[i], sl[i], vk[i]);     CMTF("vl[%u] *= %s;", i, VEC4_NAME(p, "mul", i)); }
+        LOOP_MASK_VH(s, p, i) { i_mul (r, dh[i], sh[i], vk[i]);     CMTF("vh[%u] *= %s;", i, VEC4_NAME(p, "mul", i)); }
     }
 }
 

@@ -255,6 +255,38 @@ static void asmgen_setup_clear(SwsAArch64Context *s, const SwsAArch64OpImplParam
     }
 }
 
+static void asmgen_setup_vec4_by_element(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
+                                         SwsAArch64OpRegs *regs, const char *name)
+{
+    RasmContext *r = s->rctx;
+    RasmOp *vk = regs->vk;
+
+    RasmOp vec = vk[0];
+
+    /**
+     * The second source register in the 16-bit by-element variants of multiplication
+     * instructions is restricted to v0-v15, so we use v8 instead of vk.
+     */
+    if (p->type == SWS_PIXEL_U16)
+        vec = a64op_make_vec(8, s->el_count, s->el_size);
+
+    /* Load priv data. */
+    int count = ff_sws_vec4_count(&p->par.vec4, p->mask);
+    av_assert0(count && !p->par.vec4.zero);
+
+    size_t size = count * ff_sws_pixel_type_size(p->type);
+    size = size <= 2 ? 2 :
+           size <= 4 ? 4 :
+           size <= 8 ? 8 : 16;
+    i_ldr(r, a64op_scalar(vec, size), IMPL_PRIV(s));                CMTF("v%s = impl->priv[0];", name);
+    asmgen_set_load_cont_node(s);
+
+    /* Update vk for asmgen. */
+    LOOP_MASK(p, i) {
+        vk[i] = a64op_elem(vec, p->par.vec4.indices[i]);
+    }
+}
+
 static void asmgen_setup_vec4(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                               SwsAArch64OpRegs *regs, const char *name)
 {
@@ -310,13 +342,11 @@ static void asmgen_setup_max(SwsAArch64Context *s, const SwsAArch64OpImplParams 
 static void asmgen_setup_mul(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,
                              SwsAArch64OpRegs *regs)
 {
-    RasmContext *r = s->rctx;
-    RasmOp scale_vec = regs->vk[0];
-
-    RasmOp priv_ptr = s->tmp0;
-    i_add (r, priv_ptr, s->impl, IMM(AARCH64_IMPL_DATA_OFFSET));    CMT("v128 *scale_vec_ptr = &impl->priv;");
-    asmgen_set_load_cont_node(s);
-    i_ld1r(r, vv_1(scale_vec), a64op_base(priv_ptr));               CMT("v128 scale_vec = broadcast(*scale_vec_ptr);");
+    if (mul_by_element(p->type)) {
+        asmgen_setup_vec4_by_element(s, p, regs, "mul");
+    } else {
+        asmgen_setup_vec4(s, p, regs, "mul");
+    }
 }
 
 static void asmgen_setup_linear(SwsAArch64Context *s, const SwsAArch64OpImplParams *p,

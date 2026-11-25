@@ -150,7 +150,8 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
         break;
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
-    case SWS_UOP_MAX: {
+    case SWS_UOP_MAX:
+    case SWS_UOP_MUL: {
         uint16_t ia = vec4_to_mask(pa, &para->vec4);
         uint16_t ib = vec4_to_mask(pb, &parb->vec4);
         if (ia != ib)
@@ -225,7 +226,9 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     if (!uops)
         return AVERROR(ENOMEM);
 
-    SwsUOpFlags flags = SWS_UOP_FLAG_VEC4 | SWS_UOP_FLAG_PUNNING;
+    SwsUOpFlags flags = SWS_UOP_FLAG_VEC4
+                      | SWS_UOP_FLAG_PUNNING
+                      | SWS_UOP_FLAG_MUL;
     if (!(ctx->flags & SWS_BITEXACT))
         flags |= SWS_UOP_FLAG_FMA;
     ret = ff_sws_ops_translate(ctx, ops, flags, uops);
@@ -403,6 +406,7 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
+    case SWS_UOP_MUL:
         av_strlcatf(func_name, sizeof(func_name), "_%04x", vec4_to_mask(params, &par->vec4));
         break;
     case SWS_UOP_CLEAR:
@@ -441,6 +445,7 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
+    case SWS_UOP_MUL:
         av_bprintf(bp, ", .par.vec4 = { .indices = {%d, %d, %d, %d}, .zero = 0x%0x }",
                    par->vec4.indices[0], par->vec4.indices[1],
                    par->vec4.indices[2], par->vec4.indices[3],
