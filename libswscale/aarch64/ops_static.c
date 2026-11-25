@@ -574,6 +574,10 @@ static void asmgen_process_cps(SwsAArch64Context *s, SwsCompMask mask)
     rasm_func_begin(r, func_name, true, false);
     asmgen_process_frame(s, mask, mask);
 
+    s->extra_regs_count = 0;
+    s->extra_regs[s->extra_regs_count++] = a64op_lr();
+    s->extra_regs[s->extra_regs_count++] = a64op_vecd(8);
+
     asmgen_process(s, mask, mask);
 
     /* Load values from impl. */

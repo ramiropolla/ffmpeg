@@ -175,7 +175,10 @@ static unsigned clobbered_regs(const SwsAArch64Context *s,
     unsigned count = 0;
 
     /* GPRs */
-    clobber_gpr(regs, &count, a64op_lr());
+    for (int i = 0; i < s->extra_regs_count; i++) {
+        if (rasm_op_type(s->extra_regs[i]) == AARCH64_OP_GPR)
+            clobber_gpr(regs, &count, s->extra_regs[i]);
+    }
     LOOP(imask, i) {
         clobber_gpr(regs, &count, s->in[i]);
         clobber_gpr(regs, &count, s->in_bump[i]);
@@ -187,7 +190,10 @@ static unsigned clobbered_regs(const SwsAArch64Context *s,
     clobber_align(regs, &count);
 
     /* Vector registers */
-    clobber_vec(regs, &count, a64op_vecd(8));
+    for (int i = 0; i < s->extra_regs_count; i++) {
+        if (rasm_op_type(s->extra_regs[i]) == AARCH64_OP_VEC)
+            clobber_vec(regs, &count, s->extra_regs[i]);
+    }
     clobber_align(regs, &count);
 
     return count;
