@@ -1050,12 +1050,24 @@ static bool is_scale(const SwsUOp *op, int64_t val)
     if (op->uop != SWS_UOP_MUL)
         return false;
 
-    switch (op->type) {
-    case SWS_PIXEL_U8:  return op->data.scalar.u8  == val;
-    case SWS_PIXEL_U16: return op->data.scalar.u16 == val;
-    case SWS_PIXEL_U32: return op->data.scalar.u32 == val;
-    default: return false;
+    for (int i = 0; i < 4; i++) {
+        if (!SWS_COMP_TEST(op->mask, i))
+            continue;
+        if (SWS_COMP_TEST(op->par.vec4.zero, i)) {
+            if (val != 0)
+                return false;
+        } else {
+            const SwsPixel px = op->data.vec4[op->par.vec4.indices[i]];
+            switch (op->type) {
+            case SWS_PIXEL_U8:  if (px.u8  != val) return false; break;
+            case SWS_PIXEL_U16: if (px.u16 != val) return false; break;
+            case SWS_PIXEL_U32: if (px.u32 != val) return false; break;
+            default: return false;
+            }
+        }
     }
+
+    return true;
 }
 
 int ff_sws_uop_list_optimize(SwsContext *ctx, SwsUOpFlags flags, SwsUOpList *uops)

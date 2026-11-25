@@ -188,7 +188,7 @@
 %endmacro
 
 %macro DECL_U8_MUL 1
-    DECL_OP %1, u8_mul_xyz                              , SWS_PIXEL_U8 , SWS_UOP_MUL             , 0x7
+    DECL_OP %1, u8_mul_xyz_aaa                          , SWS_PIXEL_U8 , SWS_UOP_MUL             , 0x7
 %endmacro
 
 %macro DECL_U8_ADD 1
@@ -387,8 +387,8 @@
 %endmacro
 
 %macro DECL_U16_MUL 1
-    DECL_OP %1, u16_mul_x                               , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x1
-    DECL_OP %1, u16_mul_xyz                             , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x7
+    DECL_OP %1, u16_mul_x_a                             , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x1
+    DECL_OP %1, u16_mul_xyz_aaa                         , SWS_PIXEL_U16, SWS_UOP_MUL             , 0x7
 %endmacro
 
 %macro DECL_U16_ADD 1
@@ -598,8 +598,8 @@
 %endmacro
 
 %macro DECL_U32_MUL 1
-    DECL_OP %1, u32_mul_x                               , SWS_PIXEL_U32, SWS_UOP_MUL             , 0x1
-    DECL_OP %1, u32_mul_xyz                             , SWS_PIXEL_U32, SWS_UOP_MUL             , 0x7
+    DECL_OP %1, u32_mul_x_a                             , SWS_PIXEL_U32, SWS_UOP_MUL             , 0x1
+    DECL_OP %1, u32_mul_xyz_aaa                         , SWS_PIXEL_U32, SWS_UOP_MUL             , 0x7
 %endmacro
 
 %macro DECL_U32_ADD 1
@@ -754,11 +754,11 @@
 %endmacro
 
 %macro DECL_F32_MUL 1
-    DECL_OP %1, f32_mul_x                               , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x1
-    DECL_OP %1, f32_mul_xy                              , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x3
-    DECL_OP %1, f32_mul_xyz                             , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x7
-    DECL_OP %1, f32_mul_yzw                             , SWS_PIXEL_F32, SWS_UOP_MUL             , 0xe
-    DECL_OP %1, f32_mul_xyzw                            , SWS_PIXEL_F32, SWS_UOP_MUL             , 0xf
+    DECL_OP %1, f32_mul_x_a                             , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x1
+    DECL_OP %1, f32_mul_xy_aa                           , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x3
+    DECL_OP %1, f32_mul_xyz_aaa                         , SWS_PIXEL_F32, SWS_UOP_MUL             , 0x7
+    DECL_OP %1, f32_mul_yzw_aaa                         , SWS_PIXEL_F32, SWS_UOP_MUL             , 0xe
+    DECL_OP %1, f32_mul_xyzw_aaaa                       , SWS_PIXEL_F32, SWS_UOP_MUL             , 0xf
 %endmacro
 
 %macro DECL_F32_ADD 1
