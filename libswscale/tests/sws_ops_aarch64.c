@@ -182,7 +182,10 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
             return (int) para->dither.size_log2 - parb->dither.size_log2;
         break;
     }
-    case SWS_UOP_RW_SHUFFLE:
+    case SWS_UOP_RW_SHUFFLE: {
+        const int cmp = memcmp(&pa->ldst, &pb->ldst, sizeof(pa->ldst));
+        if (cmp)
+            return cmp;
         if (para->shuffle.clear_value != parb->shuffle.clear_value)
             return (int) para->shuffle.clear_value - parb->shuffle.clear_value;
         if (para->shuffle.read_size != parb->shuffle.read_size)
@@ -190,6 +193,7 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
         if (para->shuffle.write_size != parb->shuffle.write_size)
             return (int) para->shuffle.write_size - parb->shuffle.write_size;
         break;
+    }
     }
 
     if (pa->block_size != pb->block_size)
@@ -261,6 +265,13 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
              * and do not use fmla (selected by SWS_BITEXACT).
              */
             params.uop = SWS_UOP_LINEAR;
+            ret = aarch64_collect_op(&params, root);
+            if (ret < 0)
+                goto end;
+        }
+        if (params.uop == SWS_UOP_RW_SHUFFLE &&
+            convert_to_aarch64_ldst(&uops->ops[i], &params)) {
+            /* Generate both variants (see SHUFFLE_LDST in aarch64/ops.c). */
             ret = aarch64_collect_op(&params, root);
             if (ret < 0)
                 goto end;
@@ -429,6 +440,15 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         av_strlcatf(func_name, sizeof(func_name), "_%04x_%u", dither_to_mask(params, &par->dither), par->dither.size_log2);
         break;
     case SWS_UOP_RW_SHUFFLE:
+        if (params->ldst.num_in) {
+            const SwsAArch64ShuffleLdSt *ldst = &params->ldst;
+            av_strlcatf(func_name, sizeof(func_name), "_%u_ld%u_st%u_%s_",
+                        par->shuffle.clear_value, ldst->num_in, ldst->num_out,
+                        pixel_type_names[params->type]);
+            for (int k = 0; k < ldst->num_out; k++)
+                av_strlcatf(func_name, sizeof(func_name), "%x", ldst->src[k] & 0xf);
+            break;
+        }
         av_strlcatf(func_name, sizeof(func_name), "_%u_%u_%u", par->shuffle.clear_value,
                     par->shuffle.read_size, par->shuffle.write_size);
         if (params->block_size) /* lane mode */
@@ -436,7 +456,7 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         break;
     }
     if (params->uop == SWS_UOP_RW_SHUFFLE) {
-        /* Type and mask are always the same. */
+        /* The mask is always the same, and the type is in the name if it varies. */
         av_strlcatf(func_name, sizeof(func_name), "_neon,");
     } else {
         av_strlcatf(func_name, sizeof(func_name), "_%u_%s_%04x_neon,",
@@ -497,6 +517,12 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
     case SWS_UOP_RW_SHUFFLE:
         av_bprintf(bp, ", .par.shuffle = { .clear_value = %u, .read_size = %u, .write_size = %u }",
                    par->shuffle.clear_value, par->shuffle.read_size, par->shuffle.write_size);
+        if (params->ldst.num_in) {
+            const SwsAArch64ShuffleLdSt *ldst = &params->ldst;
+            av_bprintf(bp, ", .ldst = { .num_in = %u, .num_out = %u, .src = {%d, %d, %d, %d} }",
+                       ldst->num_in, ldst->num_out,
+                       ldst->src[0], ldst->src[1], ldst->src[2], ldst->src[3]);
+        }
         break;
     }
     av_bprintf(bp, " })");

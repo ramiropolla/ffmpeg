@@ -23,7 +23,10 @@
  *       the sws_ops_aarch64 tool.
  */
 
+#include <string.h>
+
 #include "libavutil/error.h"
+#include "libavutil/macros.h"
 
 #include "ops_impl.h"
 
@@ -78,6 +81,100 @@ static int shuffle_lane_bytes(const SwsUOp *uop, int *period)
     if (period)
         *period = p;
     return max_bytes / lcm * lcm;
+}
+
+/**
+ * Structured load/store variant for SWS_UOP_RW_SHUFFLE: if every output
+ * pixel consists of whole elements (of 1, 2, or 4 bytes) of its input pixel
+ * or of cleared elements, with at most 4 elements per input and output
+ * pixel, then the shuffle can be performed with ldN and stN. This is only
+ * accepted if the register lists of ldN and stN can line up without any
+ * moves in between (see shuffle_ldst_offset()), so that the cleared
+ * elements can be set once outside of the loop.
+ *
+ * Returns the element type, or SWS_PIXEL_NONE if the variant does not
+ * apply.
+ */
+static SwsPixelType shuffle_ldst(const SwsUOp *uop, SwsAArch64ShuffleLdSt *ldst)
+{
+    static const SwsPixelType types[] = { SWS_PIXEL_U32, SWS_PIXEL_U16, SWS_PIXEL_U8 };
+    const SwsShuffleUOp *par = &uop->par.shuffle;
+    const SwsShuffleMask *data = &uop->data.shuffle;
+    if (!data->pixels || par->read_size % data->pixels || par->write_size % data->pixels)
+        return SWS_PIXEL_NONE;
+    const int in_size  = par->read_size  / data->pixels;
+    const int out_size = par->write_size / data->pixels;
+
+    for (int t = 0; t < FF_ARRAY_ELEMS(types); t++) {
+        const int size = ff_sws_pixel_type_size(types[t]);
+        if (in_size % size || out_size % size ||
+            in_size > 4 * size || out_size > 4 * size)
+            continue;
+
+        *ldst = (SwsAArch64ShuffleLdSt) {
+            .num_in  = in_size  / size,
+            .num_out = out_size / size,
+        };
+        bool ok = true;
+        for (int k = 0; k < ldst->num_out && ok; k++) {
+            const int first = data->mask[k * size];
+            ldst->src[k] = first < 0 ? -1 : first / size;
+            if (first >= 0 && first % size)
+                ok = false;
+            for (int p = 0; p < data->pixels && ok; p++) {
+                for (int i = 0; i < size && ok; i++) {
+                    const int m = data->mask[p * out_size + k * size + i];
+                    if (first < 0)
+                        ok = m < 0;
+                    else
+                        ok = m == p * in_size + first + i;
+                }
+            }
+        }
+        if (!ok)
+            continue;
+
+        const int offset = shuffle_ldst_offset(ldst);
+        for (int k = 0; k < ldst->num_out && ok; k++) {
+            const int j = k - offset;
+            if (ldst->src[k] >= 0)
+                ok = ldst->src[k] == j;
+            else
+                ok = j < 0 || j >= ldst->num_in;
+        }
+        if (ok)
+            return types[t];
+    }
+
+    return SWS_PIXEL_NONE;
+}
+
+/**
+ * Convert SWS_UOP_RW_SHUFFLE to the SwsAArch64OpImplParams of its structured
+ * load/store variant, if possible (see shuffle_ldst()). The clear value is
+ * loaded from impl->priv, so the code only depends on whether there are
+ * cleared elements, and whether they are cleared to a non-zero value.
+ */
+static bool convert_to_aarch64_ldst(const SwsUOp *uop, SwsAArch64OpImplParams *out)
+{
+    SwsAArch64ShuffleLdSt ldst;
+    const SwsPixelType type = shuffle_ldst(uop, &ldst);
+    if (type == SWS_PIXEL_NONE)
+        return false;
+
+    bool clear = false;
+    for (int k = 0; k < ldst.num_out; k++)
+        if (ldst.src[k] < 0)
+            clear = true;
+
+    /* aarch64_lookup() compares the whole structure, including padding. */
+    memset(out, 0, sizeof(*out));
+    out->uop  = SWS_UOP_RW_SHUFFLE;
+    out->mask = uop->mask;
+    out->type = type;
+    out->par.shuffle.clear_value = clear && uop->par.shuffle.clear_value;
+    out->ldst = ldst;
+    return true;
 }
 
 /**

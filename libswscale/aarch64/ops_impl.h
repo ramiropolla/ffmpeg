@@ -40,6 +40,18 @@ static inline uint16_t nibble_mask(SwsCompMask mask)
 }
 
 /**
+ * Parameters for the structured load/store variant of SWS_UOP_RW_SHUFFLE
+ * (see shuffle_ldst() in ops_impl_conv.c). Each pixel consists of elements
+ * of the size of SwsAArch64OpImplParams.type, which are deinterleaved with
+ * ldN, and interleaved back with stN.
+ */
+typedef struct SwsAArch64ShuffleLdSt {
+    uint8_t num_in;     /* elements per input pixel (0 if unused) */
+    uint8_t num_out;    /* elements per output pixel */
+    int8_t  src[4];     /* input element of each output element, or -1 */
+} SwsAArch64ShuffleLdSt;
+
+/**
  * SwsAArch64OpImplParams describes the parameters for an SwsUOpType
  * operation. It consists of simplified parameters from the SwsUOp structure,
  * with the purpose of being straight-forward to implement and execute.
@@ -50,6 +62,7 @@ typedef struct SwsAArch64OpImplParams {
     SwsPixelType        type;
     uint8_t block_size;
     SwsUOpParams par;
+    SwsAArch64ShuffleLdSt ldst;
 } SwsAArch64OpImplParams;
 
 /* SwsCompMask-related helpers. */
@@ -206,6 +219,28 @@ static inline int shuffle_layout(int read_size, int write_size, int bytes,
         l->clr[k] = i;
     }
     return 0;
+}
+
+/**
+ * Register offset between the input and output elements of a structured
+ * load/store shuffle: output element k is stored from the vector register
+ * that input element k - offset was loaded into. shuffle_ldst() only
+ * accepts shuffles with a single offset, and with cleared output elements
+ * in registers that are never loaded into.
+ */
+static inline int shuffle_ldst_offset(const SwsAArch64ShuffleLdSt *ldst)
+{
+    for (int k = 0; k < ldst->num_out; k++)
+        if (ldst->src[k] >= 0)
+            return k - ldst->src[k];
+    return 0;
+}
+
+/* Number of ldN/stN pairs per iteration of a structured load/store shuffle. */
+static inline int shuffle_ldst_count(const SwsAArch64ShuffleLdSt *ldst)
+{
+    const int n = ldst->num_in > ldst->num_out ? ldst->num_in : ldst->num_out;
+    return SHUFFLE_MAX_BYTES / (16 * n);
 }
 
 /**

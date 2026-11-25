@@ -783,6 +783,101 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 }
 
 /*********************************************************************/
+/* SWS_UOP_RW_SHUFFLE: structured load/store variant (see shuffle_ldst()) */
+
+static void shuffle_ldst_insn(SwsAArch64Context *s, bool load, const RasmOp *v,
+                              int n, RasmOp ptr)
+{
+    static const int ld[4] = { AARCH64_INSN_LD1, AARCH64_INSN_LD2, AARCH64_INSN_LD3, AARCH64_INSN_LD4 };
+    static const int st[4] = { AARCH64_INSN_ST1, AARCH64_INSN_ST2, AARCH64_INSN_ST3, AARCH64_INSN_ST4 };
+    RasmContext *r = s->rctx;
+    av_assert0(n >= 1 && n <= 4);
+    rasm_add_insn(r, load ? ld[n - 1] : st[n - 1], veclist_n(v, n),
+                  a64op_post(ptr, 16 * n), OPN, OPN);
+}
+
+static void asmgen_shuffle_ldst(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
+{
+    const SwsAArch64OpImplParams *p = &entry->params;
+    const SwsAArch64ShuffleLdSt *ldst = &p->ldst;
+    RasmContext *r = s->rctx;
+
+    const int size   = ff_sws_pixel_type_size(p->type);
+    const int ni     = ldst->num_in;
+    const int no     = ldst->num_out;
+    const int offset = shuffle_ldst_offset(ldst);
+    const int count  = shuffle_ldst_count(ldst);
+
+    /**
+     * Each ldN/stN pair uses a range of consecutive vector registers, with
+     * output element k at register base + k, and input element j at
+     * register base + j + offset. The ranges are placed in v0-v7 and
+     * v16-v31, so that d8-d15 never need to be saved.
+     */
+    const int lo   = FFMIN(0, offset);
+    const int hi   = FFMAX(no, ni + offset);
+    const int span = hi - lo;
+    RasmOp vin[8][4];
+    RasmOp vout[8][4];
+    int next = 0;
+    av_assert0(count <= 8);
+    for (int c = 0; c < count; c++) {
+        if (next < 16 && next + span > 8)
+            next = 16;
+        av_assert0(next + span <= 32);
+        const int base = next - lo;
+        for (int j = 0; j < ni; j++)
+            vin[c][j] = a64op_make_vec(base + j + offset, 16 / size, size);
+        for (int k = 0; k < no; k++)
+            vout[c][k] = a64op_make_vec(base + k, 16 / size, size);
+        next += span;
+    }
+
+    rasm_func_begin(r, entry->name, true, false);
+    asmgen_process_frame(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
+
+    s->extra_regs_count = 0;
+    asmgen_process(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
+
+    /**
+     * Set the cleared output elements, which are never loaded into, once
+     * per call. Both 16-byte halves of priv hold the clear value in every
+     * byte, so that two registers can be loaded at once with ldp.
+     */
+    rasm_set_current_node(r, s->setup);
+    RasmOp vclr[32];
+    int num_clr = 0;
+    for (int c = 0; c < count; c++) {
+        for (int k = 0; k < no; k++) {
+            if (ldst->src[k] < 0)
+                vclr[num_clr++] = vout[c][k];
+        }
+    }
+    for (int i = 0; i < num_clr; i++) {
+        const RasmOp v = a64op_vec16b(a64op_vec_n(vclr[i]));
+        if (!p->par.shuffle.clear_value) {
+            i_movi(r, v, IMM(0));                           CMTF("vclr[%d] = 0;", i);
+        } else if (i + 1 < num_clr) {
+            i_ldp(r, a64op_scalar(vclr[i], 16), a64op_scalar(vclr[i + 1], 16),
+                  a64op_base(s->impl));                     CMTF("vclr[%d..%d] = priv[0..1];", i, i + 1);
+            i++;
+        } else {
+            i_ldr(r, a64op_scalar(vclr[i], 16), a64op_base(s->impl));
+            CMTF("vclr[%d] = priv[0];", i);
+        }
+    }
+
+    /* Shuffle one block. */
+    rasm_set_current_node(r, s->loop);
+    for (int c = 0; c < count; c++)
+        shuffle_ldst_insn(s, true, vin[c], ni, s->in[0]);
+    CMTF("read %d bytes", 16 * ni * count);
+    for (int c = 0; c < count; c++)
+        shuffle_ldst_insn(s, false, vout[c], no, s->out[0]);
+    CMTF("write %d bytes", 16 * no * count);
+}
+
+/*********************************************************************/
 static void asmgen_op_cps(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 {
     const SwsAArch64OpImplParams *p = &entry->params;
@@ -922,7 +1017,9 @@ static int asmgen(void)
     /* Generate all functions from ops_entries.c using rasm. */
     const SwsAArch64OpEntry *entries = ops_entries;
     while (entries->name) {
-        if (entries->params.uop == SWS_UOP_RW_SHUFFLE)
+        if (entries->params.uop == SWS_UOP_RW_SHUFFLE && entries->params.ldst.num_in)
+            asmgen_shuffle_ldst(&s, entries++);
+        else if (entries->params.uop == SWS_UOP_RW_SHUFFLE)
             asmgen_shuffle(&s, entries++);
         else
             asmgen_op_cps(&s, entries++);

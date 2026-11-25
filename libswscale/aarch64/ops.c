@@ -185,6 +185,46 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
 
 /*********************************************************************/
 /**
+ * Use the structured load/store variant of the packed shuffle functions
+ * (see shuffle_ldst() in ops_impl_conv.c) where it applies. Both variants
+ * are always generated.
+ */
+#ifndef SHUFFLE_LDST
+#define SHUFFLE_LDST 1
+#endif
+
+static int compile_shuffle_ldst_aarch64(SwsContext *ctx, const SwsUOp *uop,
+                                        SwsCompiledOp *out)
+{
+    SwsAArch64OpImplParams params;
+    if (!convert_to_aarch64_ldst(uop, &params))
+        return AVERROR(ENOTSUP);
+    SwsOpFunc func = (SwsOpFunc) aarch64_lookup(&params);
+    if (!func)
+        return AVERROR(ENOTSUP);
+
+    /* The clear value is broadcast to all bytes of two vector registers. */
+    uint8_t *priv = av_malloc(32);
+    if (!priv)
+        return AVERROR(ENOMEM);
+    memset(priv, uop->par.shuffle.clear_value, 32);
+
+    const int elems = 16 / ff_sws_pixel_type_size(params.type);
+    *out = (SwsCompiledOp) {
+        .func        = func,
+        .priv        = priv,
+        .free        = av_free,
+        .slice_align = 1,
+        .block_size  = shuffle_ldst_count(&params.ldst) * elems,
+        .cpu_flags   = AV_CPU_FLAG_NEON,
+    };
+
+    av_log(ctx, AV_LOG_VERBOSE, "Using ld%d/st%d for the packed shuffle\n",
+           params.ldst.num_in, params.ldst.num_out);
+    return 0;
+}
+
+/**
  * Packed shuffle fast path. The entire conversion is performed by a single
  * standalone function, which keeps the tbl indices (and the clear values)
  * in vector registers for the whole call. See shuffle_layout() in
@@ -194,6 +234,12 @@ static int compile_shuffle_aarch64(SwsContext *ctx, const SwsUOp *uop,
                                    SwsCompiledOp *out)
 {
     const SwsShuffleUOp *par = &uop->par.shuffle;
+
+    if (SHUFFLE_LDST) {
+        int ret = compile_shuffle_ldst_aarch64(ctx, uop, out);
+        if (ret != AVERROR(ENOTSUP))
+            return ret;
+    }
 
     SwsAArch64OpImplParams params = { 0 };
     convert_to_aarch64_impl(uop, 0, &params);
