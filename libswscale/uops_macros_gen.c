@@ -59,14 +59,8 @@ static const struct {
     [SWS_PIXEL_F32]  = { "SWS_PIXEL_F32",  "F32_" },
 };
 
-typedef struct PrintCtx {
-    AVBPrint *bp;
-    SwsUOpFlags flags; /* union of all flag combinations used by the backend */
-} PrintCtx;
-
 /* Print uop params either as C struct designators, or as plain values */
-static void print_params(AVBPrint *bp, SwsUOpFlags flags, const SwsUOp *uop,
-                         bool designated)
+static void print_params(AVBPrint *bp, const SwsUOp *uop, bool designated)
 {
 #define FMT(FIELD, VALUE, ...)     av_bprintf(bp, designated ? ", ." FIELD " = " VALUE      : ", " VALUE, __VA_ARGS__)
 #define FMT_SUB(FIELD, VALUE, ...) av_bprintf(bp, designated ? ", ." FIELD " = {" VALUE "}" : ", " VALUE, __VA_ARGS__)
@@ -103,13 +97,10 @@ static void print_params(AVBPrint *bp, SwsUOpFlags flags, const SwsUOp *uop,
                 par->pack.pattern[0], par->pack.pattern[1],
                 par->pack.pattern[2], par->pack.pattern[3]);
         break;
-    case SWS_UOP_MUL:
-        if (!(flags & SWS_UOP_FLAG_MUL))
-            break;
-        av_fallthrough;
     case SWS_UOP_ADD:
     case SWS_UOP_MIN:
     case SWS_UOP_MAX:
+    case SWS_UOP_MUL:
         FMT_SUB("par.vec4.indices", "%d, %d, %d, %d",
                 par->vec4.indices[0], par->vec4.indices[1],
                 par->vec4.indices[2], par->vec4.indices[3]);
@@ -145,14 +136,13 @@ static int generate_entry_struct(void *opaque, void *key)
 {
     const SwsUOp *ref = opaque;
     const SwsUOp *uop = key;
-    const PrintCtx *p = ref->data.opaque;
-    AVBPrint *bp = p->bp;
+    AVBPrint *bp = ref->data.opaque;
     char name[SWS_UOP_NAME_MAX];
     ff_sws_uop_name(uop, name);
     av_bprintf(bp, " \\\n    MACRO(__VA_ARGS__, %-40s", name);
     av_bprintf(bp, ", .type = %-13s, .uop = %-24s, .mask = 0x%x",
                pixel_types[uop->type].full, uop_names[uop->uop].full, uop->mask);
-    print_params(bp, p->flags, uop, true);
+    print_params(bp, uop, true);
     av_bprintf(bp, ")");
     return 0;
 }
@@ -161,13 +151,12 @@ static int generate_entry_args(void *opaque, void *key)
 {
     const SwsUOp *ref = opaque;
     const SwsUOp *uop = key;
-    const PrintCtx *p = ref->data.opaque;
-    AVBPrint *bp = p->bp;
+    AVBPrint *bp = ref->data.opaque;
     char name[SWS_UOP_NAME_MAX];
     ff_sws_uop_name(uop, name);
     av_bprintf(bp, " \\\n    MACRO(__VA_ARGS__, %-40s, %-13s, %-24s, 0x%x",
                name, pixel_types[uop->type].full, uop_names[uop->uop].full, uop->mask);
-    print_params(bp, p->flags, uop, false);
+    print_params(bp, uop, false);
     av_bprintf(bp, ")");
     return 0;
 }
@@ -176,13 +165,12 @@ static int generate_entry_nasm(void *opaque, void *key)
 {
     const SwsUOp *ref = opaque;
     const SwsUOp *uop = key;
-    const PrintCtx *p = ref->data.opaque;
-    AVBPrint *bp = p->bp;
+    AVBPrint *bp = ref->data.opaque;
     char name[SWS_UOP_NAME_MAX];
     ff_sws_uop_name(uop, name);
     av_bprintf(bp, "\n    DECL_OP %%1, %-40s, %-13s, %-24s, 0x%x",
                name, pixel_types[uop->type].full, uop_names[uop->uop].full, uop->mask);
-    print_params(bp, p->flags, uop, false);
+    print_params(bp, uop, false);
     return 0;
 }
 
@@ -238,7 +226,7 @@ fail:
 
 enum {
     COMMON_FLAGS = SWS_UOP_FLAG_EXPAND_BIT | SWS_UOP_FLAG_READ_PALETTE |
-                   SWS_UOP_FLAG_VEC4 | SWS_UOP_FLAG_PUNNING | SWS_UOP_FLAG_MUL,
+                   SWS_UOP_FLAG_VEC4 | SWS_UOP_FLAG_PUNNING,
 };
 
 typedef struct Backend {
@@ -261,14 +249,6 @@ static const Backend backends[] = {
         },
     },
 };
-
-static SwsUOpFlags backend_flags(const Backend *backend)
-{
-    SwsUOpFlags flags = 0;
-    for (int i = 0; i < FF_ARRAY_ELEMS(backend->flags); i++)
-        flags |= backend->flags[i];
-    return flags;
-}
 
 static const Backend *find_backend(const char *name)
 {
@@ -452,8 +432,7 @@ static int print_macros(struct AVTreeNode *root, const Backend *backend,
 "    SWS_GLUE3(SWS_FOR_STRUCT, TYPE, UOP)(MACRO, __VA_ARGS__)\n"
 "\n");
 
-    PrintCtx p = { .bp = bp, .flags = backend_flags(backend) };
-    SwsUOp key = { .data.opaque = &p };
+    SwsUOp key = { .data.opaque = bp };
     for (key.type = SWS_PIXEL_NONE + 1; key.type < SWS_PIXEL_TYPE_NB; key.type++) {
         for (key.uop = SWS_UOP_INVALID + 1; key.uop < SWS_UOP_TYPE_NB; key.uop++) {
             const char *macro  = uop_names[key.uop].full + sizeof("SWS_UOP_") - 1;
@@ -475,8 +454,7 @@ static int print_macros(struct AVTreeNode *root, const Backend *backend,
  * Generate the equivalent NASM macros, as one DECL_<TYPE>_<UOP> macro per
  * uop group. Same return semantics as print_macros().
  */
-static int print_nasm_macros(struct AVTreeNode *root, const Backend *backend,
-                             char **out_str)
+static int print_nasm_macros(struct AVTreeNode *root, char **out_str)
 {
     AVBPrint bprint, *const bp = &bprint;
     av_bprint_init(bp, 0, AV_BPRINT_SIZE_UNLIMITED);
@@ -497,8 +475,7 @@ static int print_nasm_macros(struct AVTreeNode *root, const Backend *backend,
 "\n"
 "%define SWS_UOPS_MACROS 1");
 
-    PrintCtx p = { .bp = bp, .flags = backend_flags(backend) };
-    SwsUOp key = { .data.opaque = &p };
+    SwsUOp key = { .data.opaque = bp };
     for (key.type = SWS_PIXEL_NONE + 1; key.type < SWS_PIXEL_TYPE_NB; key.type++) {
         for (key.uop = SWS_UOP_INVALID + 1; key.uop < SWS_UOP_TYPE_NB; key.uop++) {
             const char *macro  = uop_names[key.uop].full + sizeof("SWS_UOP_") - 1;
@@ -571,7 +548,7 @@ int main(int argc, char **argv)
     av_free(macros);
 
     if (ret >= 0 && nasm_path) {
-        ret = print_nasm_macros(root, backend, &macros);
+        ret = print_nasm_macros(root, &macros);
         if (ret >= 0)
             ret = write_file(nasm_path, macros);
         av_free(macros);

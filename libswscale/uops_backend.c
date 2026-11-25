@@ -180,8 +180,7 @@ static int compile_ops_c(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp *o
     const SwsUOpFlags flags = SWS_UOP_FLAG_EXPAND_BIT
                             | SWS_UOP_FLAG_READ_PALETTE
                             | SWS_UOP_FLAG_VEC4
-                            | SWS_UOP_FLAG_PUNNING
-                            | SWS_UOP_FLAG_MUL;
+                            | SWS_UOP_FLAG_PUNNING;
     int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
     if (ret < 0)
         goto fail;

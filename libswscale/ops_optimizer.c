@@ -1044,7 +1044,8 @@ static int solve_shuffle(const SwsUOpList *const uops, SwsUOp *out)
     return AVERROR(EINVAL);
 }
 
-/* Only checks exact integer scale ops */
+/* Only checks exact integer multiplications, with the same value for all
+ * components */
 static bool is_scale(const SwsUOp *op, int64_t val)
 {
     if (op->uop != SWS_UOP_MUL)

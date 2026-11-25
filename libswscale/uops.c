@@ -657,10 +657,6 @@ static int translate_op(SwsContext *ctx, SwsUOpList *uops, SwsUOpFlags flags,
         break;
     case SWS_OP_SCALE: {
         uop.uop = SWS_UOP_MUL;
-        if (!(flags & SWS_UOP_FLAG_MUL)) {
-            uop.data.scalar = ff_sws_pixel_from_q64(uop.type, op->scale.factor);
-            break;
-        }
         int packed_i = 0;
         for (int i = 0; i < 4; i++) {
             if (SWS_COMP_TEST(uop.mask, i))
