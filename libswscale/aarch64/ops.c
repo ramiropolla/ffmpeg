@@ -201,18 +201,35 @@ static int compile_shuffle_aarch64(SwsContext *ctx, const SwsUOp *uop,
     if (!func)
         return AVERROR(ENOTSUP);
 
+    const SwsShuffleUOp *ipar = &params.par.shuffle;
     SwsAArch64ShuffleLayout l;
-    if (shuffle_layout(par->read_size, par->write_size, &l) < 0)
+    if (shuffle_layout(ipar->read_size, ipar->write_size, params.block_size, &l) < 0)
         return AVERROR(ENOTSUP);
 
     /* Input byte index for each output byte (or -1 to clear). */
     int8_t shuffle[SHUFFLE_MAX_BYTES];
-    const int max_size = FFMAX(par->read_size, par->write_size);
-    const int groups = ff_sws_shuffle_mask(uop, shuffle, l.groups * max_size);
-    if (groups < 0)
-        return groups;
-    av_assert0(groups == l.groups);
-    const int pixels = l.groups * uop->data.shuffle.pixels;
+    int pixels;
+    if (params.block_size) {
+        /* Lane mode: repeat the pattern of a single period in every lane. */
+        const SwsShuffleMask *data = &uop->data.shuffle;
+        int period;
+        shuffle_lane_bytes(uop, &period);
+        for (int pos = 0; pos < l.out_bytes; pos++) {
+            const int m = data->mask[pos % period];
+            shuffle[pos] = m < 0 ? -1 : m + pos - pos % period;
+        }
+        av_assert0(par->read_size % data->pixels == 0);
+        const int pixel_size = par->read_size / data->pixels;
+        av_assert0(l.in_bytes % pixel_size == 0);
+        pixels = l.in_bytes / pixel_size;
+    } else {
+        const int max_size = FFMAX(par->read_size, par->write_size);
+        const int groups = ff_sws_shuffle_mask(uop, shuffle, l.groups * max_size);
+        if (groups < 0)
+            return groups;
+        av_assert0(groups == l.groups);
+        pixels = l.groups * uop->data.shuffle.pixels;
+    }
 
     /**
      * There is one tbl index vector per distinct set of indices (relative

@@ -113,6 +113,9 @@ static inline bool mul_by_element(SwsPixelType type)
  * have the same tbl indices, and share a single index vector. Clear values
  * only depend on the number of bytes and the offset within the group, and
  * are shared likewise.
+ *
+ * The `bytes` parameter of shuffle_layout() overrides SHUFFLE_MAX_BYTES
+ * for the lane mode (see shuffle_lane_bytes()), if it is not 0.
  */
 #define SHUFFLE_MAX_BYTES 128
 
@@ -130,11 +133,12 @@ typedef struct SwsAArch64ShuffleLayout {
     int clr[8];     /* clear value vector used by each output */
 } SwsAArch64ShuffleLayout;
 
-static inline int shuffle_layout(int read_size, int write_size,
+static inline int shuffle_layout(int read_size, int write_size, int bytes,
                                  SwsAArch64ShuffleLayout *l)
 {
     const int max_size = read_size > write_size ? read_size : write_size;
-    const int bytes = SHUFFLE_MAX_BYTES;
+    if (!bytes)
+        bytes = SHUFFLE_MAX_BYTES;
     if (!read_size || !write_size || max_size > bytes)
         return -1;
     /**

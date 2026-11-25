@@ -28,6 +28,59 @@
 #include "ops_impl.h"
 
 /**
+ * Lane mode for SWS_UOP_RW_SHUFFLE: if the read and write sizes are equal
+ * and the shuffle mask repeats every `period` bytes, with `period` dividing
+ * both 16 and the read size, then each 16-byte vector register can be
+ * shuffled independently with the same single-register tbl. This is the
+ * case for byte swapping of formats with pixel sizes that do not divide 16
+ * (e.g. rgb48be <-> rgb48le).
+ *
+ * Returns the number of bytes per iteration (a multiple of both 16 and the
+ * read size), or 0 if the lane mode does not apply.
+ */
+static int shuffle_lane_bytes(const SwsUOp *uop, int *period)
+{
+    const SwsShuffleUOp *par = &uop->par.shuffle;
+    const int8_t *mask = uop->data.shuffle.mask;
+    const int size = par->read_size;
+    if (par->read_size != par->write_size || size >= 16)
+        return 0; /* only for R == W, and R == 16 already is a single lane */
+
+    int p;
+    for (p = 1; p < 16; p <<= 1) {
+        if (size % p)
+            continue;
+        bool ok = true;
+        for (int i = 0; i < size && ok; i++) {
+            const int m  = mask[i];
+            const int m0 = mask[i % p];
+            if ((m < 0) != (m0 < 0))
+                ok = false;
+            else if (m >= 0 && (m0 >= p || m != m0 + i - i % p))
+                ok = false;
+        }
+        if (ok)
+            break;
+    }
+    if (p == 16)
+        return 0;
+
+    /**
+     * Least common multiple of 16 and the read size, repeated up to 64
+     * bytes (at most 4 vector registers are needed).
+     */
+    const int max_bytes = 64;
+    int lcm = 16;
+    while (lcm % size)
+        lcm += 16;
+    if (lcm > max_bytes)
+        return 0;
+    if (period)
+        *period = p;
+    return max_bytes / lcm * lcm;
+}
+
+/**
  * Convert SwsUOp to a SwsAArch64OpImplParams. Read the comments regarding
  * SwsAArch64OpImplParams in ops_impl.h for more information.
  */
@@ -68,10 +121,16 @@ static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
         /**
          * The clear value is loaded from impl->priv, so the code only
          * depends on whether there is anything to clear to. The block
-         * size is determined by shuffle_layout().
+         * size field holds the number of bytes per iteration for the lane
+         * mode (and is 0 otherwise, which uses SHUFFLE_MAX_BYTES). In lane
+         * mode, each 16-byte vector register is its own group.
          */
         out->par.shuffle.clear_value = !!out->par.shuffle.clear_value;
-        out->block_size = 0;
+        out->block_size = shuffle_lane_bytes(uop, NULL);
+        if (out->block_size) {
+            out->par.shuffle.read_size  = 16;
+            out->par.shuffle.write_size = 16;
+        }
         break;
     default:
         break;
