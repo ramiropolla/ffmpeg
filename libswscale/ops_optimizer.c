@@ -890,7 +890,7 @@ int ff_sws_shuffle_mask(const SwsUOp *uop, int8_t shuffle[], int size)
     const SwsShuffleUOp *par = &uop->par.shuffle;
     av_assert1(uop->uop == SWS_UOP_RW_SHUFFLE);
     av_assert1(par->write_size <= sizeof(uop->data.shuffle.mask));
-    av_assert1(size <= INT8_MAX);
+    av_assert1(size <= INT8_MAX + 1); /* highest index is size - 1 */
 
     const int num_groups = size / FFMAX(par->read_size, par->write_size);
     if (!num_groups)
