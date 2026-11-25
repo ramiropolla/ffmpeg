@@ -707,58 +707,69 @@ IF W,   psrlx mw2, %1
 ;---------------------------------------------------------
 ; Arithmetic operations
 
-%macro pmull4 6 ; suffix, x, y, z, w, k
-IF X,   pmull%1 %2, %6
-IF Y,   pmull%1 %3, %6
-IF Z,   pmull%1 %4, %6
-IF W,   pmull%1 %5, %6
+%macro mullb 3 ; dst, k, tmp
+        punpckhbw %3, %1, m15
+        punpcklbw %1, m15
+        pmullw    %1, %2
+        pmullw    %3, %2
+        packuswb  %1, %3
 %endmacro
 
-%macro scale8 5 ; mx, my, mz, mw, k
-IF X,   mova m8,  %1
-IF Y,   mova m9,  %2
-IF Z,   mova m10, %3
-IF W,   mova m11, %4
-IF X,   punpcklbw %1,  m15
-IF Y,   punpcklbw %2,  m15
-IF Z,   punpcklbw %3,  m15
-IF W,   punpcklbw %4,  m15
-IF X,   punpckhbw m8,  m15
-IF Y,   punpckhbw m9,  m15
-IF Z,   punpckhbw m10, m15
-IF W,   punpckhbw m11, m15
-        pmull4 w, %1, %2, %3,  %4,  m12
-        pmull4 w, m8, m9, m10, m11, m12
-IF X,   packuswb %1, m8
-IF Y,   packuswb %2, m9
-IF Z,   packuswb %3, m10
-IF W,   packuswb %4, m11
-%endmacro
-
-%macro MUL_OP 0
-%if BITS == 8
-    %assign PRIV_SIZE 4 ; packed as dword
-%else
-    %assign PRIV_SIZE BYTES
-%endif
-
-        LOAD_CONT tmp0q
+%macro SPLAT_VEC4 2 ; dst, idx
 %if BITS == 8
 %if cpuflag(avx2)
-        vpbroadcastw m12, [implq + SwsOpImpl.priv]
+        vpbroadcastw %1, [implq + SwsOpImpl.priv + 2 * %2]
 %else
-        movd xm12, [implq + SwsOpImpl.priv]
-        SPLATW m12, xm12, 0
+        SPLATW %1, m8, %2
 %endif
-        pxor m15, m15
-        scale8 mx,  my,  mz,  mw,  m12
-IF1 V2, scale8 mx2, my2, mz2, mw2, m12
 %else
-        vpbroadcastx m12, [implq + SwsOpImpl.priv]
-        pmull4 x, mx,  my,  mz,  mw,  m12
-IF1 V2, pmull4 x, mx2, my2, mz2, mw2, m12
+        vpbroadcastx %1, [implq + SwsOpImpl.priv + %2 * BYTES]
+%endif
+%endmacro
+
+%macro MUL_OP 5
+%if BITS == 8
+    %assign PRIV_SIZE 4 * 2 ; packed as words
+%else
+    %assign PRIV_SIZE 4 * BYTES
+%endif
+%assign ZERO_MASK %5
+%assign VEC4_M 9
+
+        LOAD_CONT tmp0q
+%if BITS == 8 && notcpuflag(avx2)
+        movq m8, [implq + SwsOpImpl.priv]
+%endif
+IF X,   LOAD_VEC4 MX, %1, 0
+IF Y,   LOAD_VEC4 MY, %2, 1
+IF Z,   LOAD_VEC4 MZ, %3, 2
+IF W,   LOAD_VEC4 MW, %4, 3
+%if BITS == 8
+        pxor m15, m15
+IF X,   mullb mx,  MX, m8
+IF Y,   mullb my,  MY, m8
+IF Z,   mullb mz,  MZ, m8
+IF W,   mullb mw,  MW, m8
+%if V2
+IF X,   mullb mx2, MX, m8
+IF Y,   mullb my2, MY, m8
+IF Z,   mullb mz2, MZ, m8
+IF W,   mullb mw2, MW, m8
+%endif
+%else
+IF X,   pmullx mx,  MX
+IF Y,   pmullx my,  MY
+IF Z,   pmullx mz,  MZ
+IF W,   pmullx mw,  MW
+%if V2
+IF X,   pmullx mx2, MX
+IF Y,   pmullx my2, MY
+IF Z,   pmullx mz2, MZ
+IF W,   pmullx mw2, MW
+%endif
 %endif
         CONTINUE tmp0q
+        UNDEF_VEC4
 %endmacro
 
 %macro ADD 0

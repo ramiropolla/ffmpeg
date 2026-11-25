@@ -473,19 +473,25 @@ IF W,   mulps mw2, m10
         vbroadcastss %1, [implq + SwsOpImpl.priv + %2 * BYTES]
 %endmacro
 
-%macro MUL_OP 0
-%assign PRIV_SIZE BYTES
-        vbroadcastss m8, [implq + SwsOpImpl.priv]
+%macro MUL_OP 5
+%assign PRIV_SIZE 4 * BYTES
+%assign ZERO_MASK %5
+%assign VEC4_M 8
+IF X,   LOAD_VEC4 MX, %1, 0
+IF Y,   LOAD_VEC4 MY, %2, 1
+IF Z,   LOAD_VEC4 MZ, %3, 2
+IF W,   LOAD_VEC4 MW, %4, 3
         LOAD_CONT tmp0q
-IF X,   mulps mx, m8
-IF Y,   mulps my, m8
-IF Z,   mulps mz, m8
-IF W,   mulps mw, m8
-IF X,   mulps mx2, m8
-IF Y,   mulps my2, m8
-IF Z,   mulps mz2, m8
-IF W,   mulps mw2, m8
+IF X,   mulps mx, MX
+IF Y,   mulps my, MY
+IF Z,   mulps mz, MZ
+IF W,   mulps mw, MW
+IF X,   mulps mx2, MX
+IF Y,   mulps my2, MY
+IF Z,   mulps mz2, MZ
+IF W,   mulps mw2, MW
         CONTINUE tmp0q
+        UNDEF_VEC4
 %endmacro
 
 %macro ADD 5

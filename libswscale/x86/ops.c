@@ -275,19 +275,14 @@ static int setup_filter_h_4x4(const SwsImplParams *params, SwsImplResult *out)
 
 static int setup_mul(const SwsImplParams *params, SwsImplResult *out)
 {
-    const SwsPixel scalar = params->uop->data.scalar;
-    switch (params->uop->type) {
-    case SWS_PIXEL_U8: {
-        const uint32_t u32 = scalar.u8; /* for movd */
-        SWS_OP_PRIV_PACK(out, u32);
-        break;
-    }
-    case SWS_PIXEL_U16: SWS_OP_PRIV_PACK(out, scalar.u16); break;
-    case SWS_PIXEL_U32: SWS_OP_PRIV_PACK(out, scalar.u32); break;
-    case SWS_PIXEL_F32: SWS_OP_PRIV_PACK(out, scalar.f32); break;
-    default: return AVERROR(EINVAL);
-    }
+    const SwsUOp *uop = params->uop;
+    if (uop->type != SWS_PIXEL_U8)
+        return ff_sws_setup_vec4(params, out);
 
+    for (int i = 0; i < 4; i++) {
+        const uint16_t u16 = uop->data.vec4[i].u8; /* for pmullw */
+        SWS_OP_PRIV_PACK(out, u16);
+    }
     return 0;
 }
 
@@ -720,7 +715,8 @@ static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp 
                       | SWS_UOP_FLAG_EXPAND_BIT
                       | SWS_UOP_FLAG_READ_PALETTE
                       | SWS_UOP_FLAG_VEC4
-                      | SWS_UOP_FLAG_PUNNING;
+                      | SWS_UOP_FLAG_PUNNING
+                      | SWS_UOP_FLAG_MUL;
     if (EXTERNAL_FMA3(cpu_flags))
         flags |= SWS_UOP_FLAG_FMA;
 
