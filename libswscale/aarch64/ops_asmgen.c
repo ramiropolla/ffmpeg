@@ -94,49 +94,53 @@ static unsigned clobbered_frame_size(unsigned n)
 
 static void asmgen_prologue(SwsAArch64Context *s, const RasmOp *regs, unsigned n)
 {
+    av_assert0(!(n & 1));
     RasmContext *r = s->rctx;
     RasmOp sp = a64op_sp();
     unsigned frame_size = clobbered_frame_size(n);
     RasmOp sp_pre = a64op_pre(sp, -frame_size);
 
     rasm_add_comment(r, "prologue");
-    if (n == 0) {
-        /* no-op */
-    } else if (n == 1) {
+    if (rasm_op_type(regs[1]) == RASM_OP_NONE) {
         i_str(r, regs[0], sp_pre);
     } else {
         i_stp(r, regs[0], regs[1], sp_pre);
-        for (unsigned i = 2; i + 1 < n; i += 2)
-            i_stp(r, regs[i],     regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
-        if (n & 1)
-            i_str(r, regs[n - 1],              a64op_off(sp, (n - 1) * sizeof(uint64_t)));
+    }
+    for (unsigned i = 2; i < n; i += 2) {
+        if (rasm_op_type(regs[i + 1]) == RASM_OP_NONE) {
+            i_str(r, regs[i],              a64op_off(sp, i * sizeof(uint64_t)));
+        } else {
+            i_stp(r, regs[i], regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
+        }
     }
 }
 
 static void asmgen_epilogue(SwsAArch64Context *s, const RasmOp *regs, unsigned n)
 {
+    av_assert0(!(n & 1));
     RasmContext *r = s->rctx;
     RasmOp sp = a64op_sp();
     unsigned frame_size = clobbered_frame_size(n);
     RasmOp sp_post = a64op_post(sp, frame_size);
 
     rasm_add_comment(r, "epilogue");
-    if (n == 0) {
-        /* no-op */
-    } else if (n == 1) {
-        i_ldr(r, regs[0], sp_post);
+    for (unsigned i = n - 2; i >= 2; i -= 2) {
+        if (rasm_op_type(regs[i + 1]) == RASM_OP_NONE) {
+            i_ldr(r, regs[i],              a64op_off(sp, i * sizeof(uint64_t)));
+        } else {
+            i_ldp(r, regs[i], regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
+        }
+    }
+    if (rasm_op_type(regs[1]) == RASM_OP_NONE) {
+        i_ldr(r, regs[0],          sp_post);
     } else {
-        if (n & 1)
-            i_ldr(r, regs[n - 1],              a64op_off(sp, (n - 1) * sizeof(uint64_t)));
-        for (unsigned i = (n & ~1u) - 2; i >= 2; i -= 2)
-            i_ldp(r, regs[i],     regs[i + 1], a64op_off(sp, i * sizeof(uint64_t)));
         i_ldp(r, regs[0], regs[1], sp_post);
     }
 }
 
 /*********************************************************************/
-/* Callee-saved registers (r19-r28, fp, and lr). */
-#define MAX_SAVED_REGS 12
+/* Callee-saved registers (r19-r28, fp, lr, and d8-d15). */
+#define MAX_SAVED_REGS 20
 
 static void clobber_gpr(RasmOp regs[MAX_SAVED_REGS], unsigned *count,
                         RasmOp gpr)
@@ -146,11 +150,23 @@ static void clobber_gpr(RasmOp regs[MAX_SAVED_REGS], unsigned *count,
         regs[(*count)++] = gpr;
 }
 
-static unsigned clobbered_gprs(const SwsAArch64Context *s,
+/**
+ * The regs array must be aligned to an even number for the frame asmgen
+ * functions to work properly.
+ */
+static void clobber_align(RasmOp regs[MAX_SAVED_REGS], unsigned *count)
+{
+    if ((*count) & 1)
+        regs[(*count)++] = rasm_op_none();
+}
+
+static unsigned clobbered_regs(const SwsAArch64Context *s,
                                SwsCompMask imask, SwsCompMask omask,
                                RasmOp regs[MAX_SAVED_REGS])
 {
     unsigned count = 0;
+
+    /* GPRs */
     clobber_gpr(regs, &count, a64op_lr());
     LOOP(imask, i) {
         clobber_gpr(regs, &count, s->in[i]);
@@ -160,6 +176,8 @@ static unsigned clobbered_gprs(const SwsAArch64Context *s,
         clobber_gpr(regs, &count, s->out[i]);
         clobber_gpr(regs, &count, s->out_bump[i]);
     }
+    clobber_align(regs, &count);
+
     return count;
 }
 
@@ -174,7 +192,7 @@ static void asmgen_process(SwsAArch64Context *s, SwsCompMask imask, SwsCompMask 
 
     /* Function prologue */
     RasmOp saved_regs[MAX_SAVED_REGS];
-    unsigned nsaved = clobbered_gprs(s, imask, omask, saved_regs);
+    unsigned nsaved = clobbered_regs(s, imask, omask, saved_regs);
     if (nsaved)
         asmgen_prologue(s, saved_regs, nsaved);
 
