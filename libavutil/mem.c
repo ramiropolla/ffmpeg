@@ -120,7 +120,7 @@ static void *asan_aligned_malloc(size_t size)
     base  = malloc(total);
     if (!base)
         return NULL;
-    ptr = (uint8_t *)FFALIGN((uintptr_t)base + sizeof(*hdr), ALIGN);
+    ptr = FF_PTR_ALIGN(base + sizeof(*hdr), ALIGN);
     hdr = (AsanAlignedHeader *)ptr - 1;
     hdr->base = base;
     hdr->size = size;

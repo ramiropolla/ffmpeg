@@ -129,14 +129,14 @@ int ff_frame_get_video_buffer(AVFrame *frame, int align,
     }
 
     if ((ret = av_image_fill_pointers(frame->data, frame->format, padded_height,
-                                      (uint8_t *)FFALIGN((uintptr_t)frame->buf[0]->data, align),
+                                      FF_PTR_ALIGN(frame->buf[0]->data, align),
                                       frame->linesize)) < 0)
         goto fail;
 
     for (int i = 1; i < 4; i++) {
         if (frame->data[i])
             frame->data[i] += i * plane_padding;
-        frame->data[i] = (uint8_t *)FFALIGN((uintptr_t)frame->data[i], align);
+        frame->data[i] = FF_PTR_ALIGN(frame->data[i], align);
     }
 
     frame->extended_data = frame->data;
@@ -192,7 +192,7 @@ static int get_audio_buffer(AVFrame *frame, int align)
             return AVERROR(ENOMEM);
         }
         frame->extended_data[i] = frame->data[i] =
-            (uint8_t *)FFALIGN((uintptr_t)frame->buf[i]->data, align);
+            FF_PTR_ALIGN(frame->buf[i]->data, align);
     }
     for (int i = 0; i < planes - AV_NUM_DATA_POINTERS; i++) {
         frame->extended_buf[i] = av_buffer_alloc(size);
@@ -201,7 +201,7 @@ static int get_audio_buffer(AVFrame *frame, int align)
             return AVERROR(ENOMEM);
         }
         frame->extended_data[i + AV_NUM_DATA_POINTERS] =
-            (uint8_t *)FFALIGN((uintptr_t)frame->extended_buf[i]->data, align);
+            FF_PTR_ALIGN(frame->extended_buf[i]->data, align);
     }
     return 0;
 

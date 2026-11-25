@@ -81,6 +81,7 @@
 #define FF_ALLOCZ_TYPED_ARRAY(p, nelem) (p = av_calloc(nelem, sizeof(*p)))
 
 #define FF_PTR_ADD(ptr, off) ((off) ? (ptr) + (off) : (ptr))
+#define FF_PTR_ALIGN(ptr, align) ((uint8_t *)FFALIGN((uintptr_t)(ptr), align))
 
 /**
  * Access a field in a structure by its offset.

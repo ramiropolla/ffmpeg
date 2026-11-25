@@ -152,7 +152,7 @@ AVFrame *ff_frame_pool_get(FFFramePool *pool)
             if (!frame->buf[i])
                 goto fail;
 
-            frame->data[i] = (uint8_t *)FFALIGN((uintptr_t)frame->buf[i]->data, pool->align);
+            frame->data[i] = FF_PTR_ALIGN(frame->buf[i]->data, pool->align);
         }
 
         if (desc->flags & AV_PIX_FMT_FLAG_PAL) {
@@ -191,14 +191,14 @@ AVFrame *ff_frame_pool_get(FFFramePool *pool)
             if (!frame->buf[i])
                 goto fail;
             frame->extended_data[i] = frame->data[i] =
-                (uint8_t *)FFALIGN((uintptr_t)frame->buf[i]->data, pool->align);
+                FF_PTR_ALIGN(frame->buf[i]->data, pool->align);
         }
         for (int i = 0; i < frame->nb_extended_buf; i++) {
             frame->extended_buf[i] = av_buffer_pool_get(pool->pools[0]);
             if (!frame->extended_buf[i])
                 goto fail;
             frame->extended_data[i + AV_NUM_DATA_POINTERS] =
-                (uint8_t *)FFALIGN((uintptr_t)frame->extended_buf[i]->data, pool->align);
+                FF_PTR_ALIGN(frame->extended_buf[i]->data, pool->align);
         }
 
         break;
