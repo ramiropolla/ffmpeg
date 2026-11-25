@@ -867,13 +867,32 @@ static void asmgen_shuffle_ldst(SwsAArch64Context *s, const SwsAArch64OpEntry *e
         }
     }
 
-    /* Shuffle one block. */
+    /**
+     * Shuffle one block. Pixels with a single element are loaded and
+     * stored with ldp/stp instead of ld1/st1.
+     */
     rasm_set_current_node(r, s->loop);
-    for (int c = 0; c < count; c++)
-        shuffle_ldst_insn(s, true, vin[c], ni, s->in[0]);
+    if (ni == 1) {
+        RasmOp v[8];
+        for (int c = 0; c < count; c++)
+            v[c] = vin[c][0];
+        load_regs(s, count, 16, "vin", v, "in", s->in[0], 0);
+        i_add(r, s->in[0], s->in[0], IMM(16 * count));
+    } else {
+        for (int c = 0; c < count; c++)
+            shuffle_ldst_insn(s, true, vin[c], ni, s->in[0]);
+    }
     CMTF("read %d bytes", 16 * ni * count);
-    for (int c = 0; c < count; c++)
-        shuffle_ldst_insn(s, false, vout[c], no, s->out[0]);
+    if (no == 1) {
+        RasmOp v[8];
+        for (int c = 0; c < count; c++)
+            v[c] = vout[c][0];
+        store_regs(s, count, 16, "out", s->out[0], 0, "vout", v);
+        i_add(r, s->out[0], s->out[0], IMM(16 * count));
+    } else {
+        for (int c = 0; c < count; c++)
+            shuffle_ldst_insn(s, false, vout[c], no, s->out[0]);
+    }
     CMTF("write %d bytes", 16 * no * count);
 }
 

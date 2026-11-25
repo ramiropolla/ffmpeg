@@ -75,6 +75,23 @@ static void load_regs(SwsAArch64Context *s, int n, int size,
     }
 }
 
+static void store_regs(SwsAArch64Context *s, int n, int size,
+                       const char *dst_name, RasmOp base, int offset,
+                       const char *src_name, const RasmOp *src)
+{
+    RasmContext *r = s->rctx;
+    for (int i = 0; i < n; i += 2) {
+        RasmOp addr = a64op_off(base, offset + i * size);
+        RasmOp src1 = a64op_scalar(src[i], size);
+        if (i + 1 < n) {
+            RasmOp src2 = a64op_scalar(src[i + 1], size);
+            i_stp(r, src1, src2, addr);                     CMTF("%s[%d..%d] = %s[%d..%d];", dst_name, i, i + 1, src_name, i, i + 1);
+        } else {
+            i_str(r, src1,       addr);                     CMTF("%s[%d] = %s[%d];", dst_name, i, src_name, i);
+        }
+    }
+}
+
 static void load_regs_mask(SwsAArch64Context *s, SwsCompMask mask, int size,
                            const char *dst_name, RasmOp *dst,
                            const char *src_name, RasmOp base, int offset)
