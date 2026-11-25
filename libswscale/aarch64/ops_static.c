@@ -876,8 +876,7 @@ static void asmgen_shuffle_ldst(SwsAArch64Context *s, const SwsAArch64OpEntry *e
         RasmOp v[8];
         for (int c = 0; c < count; c++)
             v[c] = vin[c][0];
-        load_regs(s, count, 16, "vin", v, "in", s->in[0], 0);
-        i_add(r, s->in[0], s->in[0], IMM(16 * count));
+        shuffle_load(s, s->in[0], v, count, 16 * count);
     } else {
         for (int c = 0; c < count; c++)
             shuffle_ldst_insn(s, true, vin[c], ni, s->in[0]);
@@ -887,8 +886,11 @@ static void asmgen_shuffle_ldst(SwsAArch64Context *s, const SwsAArch64OpEntry *e
         RasmOp v[8];
         for (int c = 0; c < count; c++)
             v[c] = vout[c][0];
-        store_regs(s, count, 16, "out", s->out[0], 0, "vout", v);
+        for (int c = 0; c < count; c += 2)
+            shuffle_store(s, s->out[0], &v[c], FFMIN(2, count - c), 16 * c);
+#if !IN_ORDER_CORE
         i_add(r, s->out[0], s->out[0], IMM(16 * count));
+#endif
     } else {
         for (int c = 0; c < count; c++)
             shuffle_ldst_insn(s, false, vout[c], no, s->out[0]);
