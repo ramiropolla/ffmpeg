@@ -18,11 +18,29 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config.h"
+
+/* __GLIBC__ is only defined after including a libc header. */
+#if defined(__linux__)
+#include <features.h>
+#if defined(__GLIBC__)
+#if __GLIBC_PREREQ(2, 35)
+#include <sys/rseq.h>
+#define HAVE_RSEQ_ABI 1
+#endif
+#endif
+#endif
+#ifndef HAVE_RSEQ_ABI
+#define HAVE_RSEQ_ABI 0
+#endif
+
 #include "../ops_chain.h"
 
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
+#include "libavutil/thread.h"
 #include "libavutil/tree.h"
+#include "libavutil/aarch64/cpu.h"
 
 #include "ops_impl_conv.c"
 
@@ -185,13 +203,108 @@ static int aarch64_setup(const SwsUOp *uop, const SwsAArch64OpImplParams *p,
 
 /*********************************************************************/
 /**
- * Use the structured load/store variant of the packed shuffle functions
- * (see shuffle_ldst() in ops_impl_conv.c) where it applies. Both variants
- * are always generated.
+ * Selection between the tbl and the structured load/store variants of the
+ * packed shuffle functions (see shuffle_ldst() in ops_impl_conv.c), which
+ * are both always generated. The structured variant is faster on in-order
+ * cores, and the tbl variant on out-of-order cores.
+ *  0: always use the tbl variant
+ *  1: use the structured variant where it applies
+ *  2: choose by core kind; on systems with both kinds of cores, on each
+ *     call (see shuffle_dyn())
  */
 #ifndef SHUFFLE_LDST
-#define SHUFFLE_LDST 1
+#define SHUFFLE_LDST 2
 #endif
+
+/**
+ * Choosing the variant on each call needs the number of the current CPU,
+ * which glibc keeps up to date in the rseq area of each thread that it has
+ * registered with the kernel, and a system with both kinds of cores.
+ */
+typedef struct AArch64DynInfo {
+    bool     enabled;
+    int64_t  rseq_cpu_id;   /* offset of rseq.cpu_id from the thread pointer */
+    uint64_t inorder_mask;  /* in-order cores */
+} AArch64DynInfo;
+
+static AArch64DynInfo dyn_info;
+static AVOnce dyn_once = AV_ONCE_INIT;
+
+static av_cold void dyn_init(void)
+{
+#if HAVE_RSEQ_ABI
+    /* __rseq_size is 0 if glibc didn't register the rseq area. */
+    if (__rseq_size < offsetof(struct rseq, cpu_id) + sizeof(uint32_t))
+        return;
+    uint64_t inorder;
+    uint64_t ooo;
+    if (avpriv_aarch64_get_core_kinds(&inorder, &ooo) < 0 || !inorder || !ooo)
+        return;
+    dyn_info.rseq_cpu_id  = __rseq_offset + offsetof(struct rseq, cpu_id);
+    dyn_info.inorder_mask = inorder;
+    dyn_info.enabled      = true;
+#endif
+}
+
+typedef struct ShuffleDynPriv {
+    int64_t       rseq_cpu_id;
+    uint64_t      inorder_mask;
+    SwsCompiledOp comp[2]; /* for out-of-order and in-order cores */
+} ShuffleDynPriv;
+
+/**
+ * Run the variant for the kind of the current core. A thread that is
+ * migrated during the call keeps running the variant it started with,
+ * which only affects the speed.
+ */
+static void shuffle_dyn(const SwsOpExec *exec, const void *priv,
+                        int bx_start, int y_start, int bx_end, int y_end)
+{
+    const ShuffleDynPriv *p = priv;
+    const char *tp = __builtin_thread_pointer();
+    const uint32_t cpu = *(const volatile uint32_t *) (tp + p->rseq_cpu_id);
+    const SwsCompiledOp *comp = &p->comp[(p->inorder_mask >> cpu) & 1];
+    comp->func(exec, comp->priv, bx_start, y_start, bx_end, y_end);
+}
+
+static void shuffle_dyn_free(void *priv)
+{
+    ShuffleDynPriv *p = priv;
+    for (int i = 0; i < 2; i++)
+        ff_sws_compiled_op_unref(&p->comp[i]);
+    av_free(p);
+}
+
+static int compile_shuffle_dyn(SwsContext *ctx, const SwsCompiledOp *ooo,
+                               const SwsCompiledOp *inorder, SwsCompiledOp *out)
+{
+    if (ooo->block_size != inorder->block_size)
+        return AVERROR(ENOTSUP);
+
+    ShuffleDynPriv *p = av_mallocz(sizeof(*p));
+    if (!p)
+        return AVERROR(ENOMEM);
+    p->rseq_cpu_id  = dyn_info.rseq_cpu_id;
+    p->inorder_mask = dyn_info.inorder_mask;
+    p->comp[0]      = *ooo;
+    p->comp[1]      = *inorder;
+
+    *out = (SwsCompiledOp) {
+        .func        = shuffle_dyn,
+        .priv        = p,
+        .free        = shuffle_dyn_free,
+        .slice_align = FFMAX(ooo->slice_align, inorder->slice_align),
+        .block_size  = ooo->block_size,
+        .cpu_flags   = AV_CPU_FLAG_NEON,
+    };
+    for (int i = 0; i < 4; i++) {
+        out->over_read[i]  = FFMAX(ooo->over_read[i],  inorder->over_read[i]);
+        out->over_write[i] = FFMAX(ooo->over_write[i], inorder->over_write[i]);
+    }
+
+    av_log(ctx, AV_LOG_VERBOSE, "Choosing the packed shuffle variant per core\n");
+    return 0;
+}
 
 static int compile_shuffle_ldst_aarch64(SwsContext *ctx, const SwsUOp *uop,
                                         SwsCompiledOp *out)
@@ -225,21 +338,14 @@ static int compile_shuffle_ldst_aarch64(SwsContext *ctx, const SwsUOp *uop,
 }
 
 /**
- * Packed shuffle fast path. The entire conversion is performed by a single
- * standalone function, which keeps the tbl indices (and the clear values)
- * in vector registers for the whole call. See shuffle_layout() in
- * ops_impl.h for more details.
+ * tbl variant of the packed shuffle functions. The tbl indices (and the
+ * clear values) are kept in vector registers for the whole call. See
+ * shuffle_layout() in ops_impl.h for more details.
  */
-static int compile_shuffle_aarch64(SwsContext *ctx, const SwsUOp *uop,
-                                   SwsCompiledOp *out)
+static int compile_shuffle_tbl_aarch64(SwsContext *ctx, const SwsUOp *uop,
+                                       SwsCompiledOp *out)
 {
     const SwsShuffleUOp *par = &uop->par.shuffle;
-
-    if (SHUFFLE_LDST) {
-        int ret = compile_shuffle_ldst_aarch64(ctx, uop, out);
-        if (ret != AVERROR(ENOTSUP))
-            return ret;
-    }
 
     SwsAArch64OpImplParams params = { 0 };
     convert_to_aarch64_impl(uop, 0, &params);
@@ -313,6 +419,65 @@ static int compile_shuffle_aarch64(SwsContext *ctx, const SwsUOp *uop,
     };
 
     return 0;
+}
+
+/**
+ * Compile both variants and choose between them on each call, or return
+ * AVERROR(ENOTSUP) if there is no structured variant.
+ */
+static int compile_shuffle_per_core(SwsContext *ctx, const SwsUOp *uop,
+                                    SwsCompiledOp *out)
+{
+    SwsCompiledOp inorder;
+    int ret = compile_shuffle_ldst_aarch64(ctx, uop, &inorder);
+    if (ret < 0)
+        return ret;
+
+    SwsCompiledOp ooo;
+    ret = compile_shuffle_tbl_aarch64(ctx, uop, &ooo);
+    if (ret < 0) {
+        ff_sws_compiled_op_unref(&inorder);
+        return ret;
+    }
+
+    ret = compile_shuffle_dyn(ctx, &ooo, &inorder, out);
+    if (ret < 0) {
+        ff_sws_compiled_op_unref(&inorder);
+        if (ret != AVERROR(ENOTSUP)) {
+            ff_sws_compiled_op_unref(&ooo);
+            return ret;
+        }
+        *out = ooo; /* the variants process different block sizes */
+    }
+    return 0;
+}
+
+/**
+ * Packed shuffle fast path. The entire conversion is performed by a single
+ * standalone function (see SHUFFLE_LDST for which one).
+ */
+static int compile_shuffle_aarch64(SwsContext *ctx, const SwsUOp *uop,
+                                   SwsCompiledOp *out)
+{
+    int ret;
+
+    bool ldst = SHUFFLE_LDST == 1;
+    if (SHUFFLE_LDST == 2) {
+        ff_thread_once(&dyn_once, dyn_init);
+        if (dyn_info.enabled) {
+            ret = compile_shuffle_per_core(ctx, uop, out);
+            if (ret != AVERROR(ENOTSUP))
+                return ret;
+        }
+        ldst = av_get_cpu_flags() & AV_CPU_FLAG_INORDER;
+    }
+
+    if (ldst) {
+        ret = compile_shuffle_ldst_aarch64(ctx, uop, out);
+        if (ret != AVERROR(ENOTSUP))
+            return ret;
+    }
+    return compile_shuffle_tbl_aarch64(ctx, uop, out);
 }
 
 /*********************************************************************/
