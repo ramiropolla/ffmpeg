@@ -413,7 +413,7 @@ static int compile_shuffle_tbl_aarch64(SwsContext *ctx, const SwsUOp *uop,
         .free        = av_free,
         .slice_align = 1,
         .block_size  = pixels,
-        .over_read   = { 16 * l.num_in - l.in_bytes },
+        .over_read   = { 0 }, /* partial input vectors are loaded exactly */
         .over_write  = { 0 }, /* partial output vectors are stored exactly */
         .cpu_flags   = AV_CPU_FLAG_NEON,
     };

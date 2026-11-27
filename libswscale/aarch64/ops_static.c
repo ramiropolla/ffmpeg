@@ -646,25 +646,34 @@ static void shuffle_load(SwsAArch64Context *s, RasmOp ptr, const RasmOp *v,
                          int n, int bytes)
 {
     RasmContext *r = s->rctx;
+    const int rem = bytes & 15;
+    av_assert0(!(rem & (rem - 1))); /* see shuffle_layout() */
+    const int last_size = rem ? rem : 16;
+    const RasmOp vlast = a64op_make_vec(a64op_vec_n(v[n - 1]), 0, last_size);
 
 #if IN_ORDER_CORE
     for (int i = 0; i < n; i += 2) {
         const int left = bytes - 16 * i; /* remaining pointer increment */
-        if (i + 1 < n) {
+        if (i + 1 < n && (i + 2 < n || last_size == 16)) {
             /* ldp post-index immediates must be multiples of 16 */
             i_ldp(r, v_q(v[i]), v_q(v[i + 1]), a64op_post(ptr, 32));
-            if (i + 2 == n && left != 32)
-                i_add(r, ptr, ptr, IMM(left - 32));
+        } else if (i + 1 < n) {
+            i_ldr(r, v_q(v[i]), a64op_post(ptr, 16));
+            i_ldr(r, vlast, a64op_post(ptr, left - 16));
         } else {
-            i_ldr(r, v_q(v[i]), a64op_post(ptr, left));
+            i_ldr(r, vlast, a64op_post(ptr, left));
         }
     }
 #else
     for (int i = 0; i < n; i += 2) {
-        if (i + 1 < n)
+        if (i + 1 < n && (i + 2 < n || last_size == 16)) {
             i_ldp(r, v_q(v[i]), v_q(v[i + 1]), a64op_off(ptr, 16 * i));
-        else
+        } else if (i + 1 < n) {
             i_ldr(r, v_q(v[i]), a64op_off(ptr, 16 * i));
+            i_ldr(r, vlast, a64op_off(ptr, 16 * (i + 1)));
+        } else {
+            i_ldr(r, vlast, a64op_off(ptr, 16 * i));
+        }
     }
     i_add(r, ptr, ptr, IMM(bytes));
 #endif

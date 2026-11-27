@@ -160,14 +160,30 @@ static inline int shuffle_layout(int read_size, int write_size, int bytes,
      * stored partially (see asmgen_shuffle()). The stores must never overlap
      * between iterations, since that defeats the write streaming of whole
      * cache lines and doubles the memory traffic for large images.
+     *
+     * The input must leave a remainder of 0 bytes or a power of two after
+     * the whole vector registers, so that the last input vector register is
+     * loaded exactly with a single scalar load (see shuffle_load()), and
+     * nothing is read past the end of the input. 8 groups always satisfy
+     * this, since max_size is at most 16.
      */
-    l->groups = bytes / max_size;
-    for (int g = l->groups; g > 0; g--) {
+    int fallback = 0;
+    l->groups = 0;
+    for (int g = bytes / max_size; g > 0; g--) {
+        const int tail = (g * read_size) & 15;
+        if (tail & (tail - 1))
+            continue;
+        if (!fallback)
+            fallback = g;
         if ((g * write_size) % 16 == 0) {
             l->groups = g;
             break;
         }
     }
+    if (!l->groups)
+        l->groups = fallback;
+    if (!l->groups)
+        return -1;
     l->in_bytes  = l->groups * read_size;
     l->out_bytes = l->groups * write_size;
     l->num_in    = (l->in_bytes  + 15) >> 4;
