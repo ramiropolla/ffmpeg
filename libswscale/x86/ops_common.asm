@@ -107,41 +107,47 @@ process_fn 4
 ; about when this works, refer to `solve_shuffle_ext()` in ops_optimizer.c.
 ;
 ; This macro gets instantiated for every parameter combination of
-; SWS_UOP_RW_SHUFFLE, which embeds the clear value and read and write sizes.
-; The clear values of each byte are stored after the shuffle mask, and are
-; only applied if CLEAR_VALUE is not zero.
+; SWS_UOP_RW_SHUFFLE, which embeds the clear value, the read and write sizes
+; and the number of planes.
+;
+; The private data holds one shuffle mask of mmsize bytes for each pair of
+; output plane q and input plane p, at index q * IN_PLANES + p, followed by
+; the clear values of each output plane. Each mask only selects bytes from
+; its input plane and zeroes all others, and the masks of an output plane
+; are combined with por. The clear values are only applied if CLEAR_VALUE
+; is not zero.
 ;
 ; Since pshufb can't shuffle across lanes, we only call SSE4 versions for
 ; all shuffles that are not a clean multiple of 128 bits (e.g. rgb24 -> rgb0),
-; unless we have access to AVX-512 vpermb, or if the lanes are all independent,
-; in which case we can also use `pshufb` on mmsize == 32/64. This is detected
-; by the `LANE_ALIGNED` condition.
+; unless we have access to AVX-512 vpermb (with a single input plane), or if
+; the lanes are all independent, in which case we can also use `pshufb` on
+; mmsize == 32/64. This is detected by the `LANE_ALIGNED` condition.
 
 %macro READ 2 ; dst, src
     %if READ_SIZE <= 4
-        movd xmm%1, %2
+        movd xm %+ %1, %2
     %elif READ_SIZE <= 8
-        movq xmm%1, %2
+        movq xm %+ %1, %2
     %elif READ_SIZE <= 16
-        movu xmm%1, %2
+        movu xm %+ %1, %2
     %elif READ_SIZE <= 32
-        movu ymm%1, %2
+        movu ym %+ %1, %2
     %else
-        movu zmm%1, %2
+        movu zm %+ %1, %2
     %endif
 %endmacro
 
 %macro WRITE 2 ; dst, src
     %if WRITE_SIZE <= 4
-        movd %1, xmm%2
+        movd %1, xm %+ %2
     %elif WRITE_SIZE <= 8
-        movq %1, xmm%2
+        movq %1, xm %+ %2
     %elif WRITE_SIZE <= 16
-        movu %1, xmm%2
+        movu %1, xm %+ %2
     %elif WRITE_SIZE <= 32
-        movu %1, ymm%2
+        movu %1, ym %+ %2
     %else
-        movu %1, zmm%2
+        movu %1, zm %+ %2
     %endif
 %endmacro
 
@@ -149,81 +155,131 @@ process_fn 4
 %assign CLEAR_VALUE %1
 %assign READ_SIZE   %2
 %assign WRITE_SIZE  %3
+%assign IN_PLANES   (%4 ? %4 : 1)
+%assign OUT_PLANES  (%5 ? %5 : 1)
 
 %assign LANE_ALIGNED (READ_SIZE == WRITE_SIZE && 16 % READ_SIZE == 0)
 %assign MAX_SIZE     (READ_SIZE > WRITE_SIZE ? READ_SIZE : WRITE_SIZE)
+%assign VPERMB       !(LANE_ALIGNED || mmsize == 16)
 
 ; Expand read/write sizes to the true number of groups, this matches
-; logic on the C side in `translate_shuffle` / `ff_sws_shuffle_mask`
+; logic on the C side in `translate_shuffle`
 %assign GROUPS       (mmsize / MAX_SIZE)
 %assign READ_SIZE    (READ_SIZE * GROUPS)
 %assign WRITE_SIZE   (WRITE_SIZE * GROUPS)
 
-cglobal NAME, 6, 10, 3, exec, shuffle, bx, y, bxend, yend, src, dst, src_stride, dst_stride
-%if mmsize > 16 && !LANE_ALIGNED && !cpuflag(avx512icl)
+; Vector registers: inputs in m0-m3, the output in m4, a temporary in m5,
+; and the vpermb masks in m6-m9. SH_I and SH_O iterate over the input and
+; output planes, and SH_R and SH_K hold register numbers.
+%assign IN_REG   0
+%assign OUT_REG  4
+%assign TMP_REG  5
+%assign MASK_REG 6
+
+cglobal NAME, 6, 14, 10, exec, shuffle, bx, row, bxend, rowend, src0, src1, src2, src3, dst0, dst1, dst2, dst3
+%if VPERMB && (!cpuflag(avx512icl) || IN_PLANES > 1)
             ud2 ; runtime checks should prevent this variant from being called
 %else
-            mov srcq, [execq + SwsOpExec.in0]
-            mov dstq, [execq + SwsOpExec.out0]
-            mov src_strideq, [execq + SwsOpExec.in_stride0]
-            mov dst_strideq, [execq + SwsOpExec.out_stride0]
+    %assign SH_I 0
+    %rep IN_PLANES
+            mov src %+ SH_I %+ q, [execq + SwsOpExec.in0 + 8 * SH_I]
+        %assign SH_I SH_I + 1
+    %endrep
+    %assign SH_O 0
+    %rep OUT_PLANES
+            mov dst %+ SH_O %+ q, [execq + SwsOpExec.out0 + 8 * SH_O]
+        %assign SH_O SH_O + 1
+    %endrep
 
-            ; setup shuffle mask and clear values
-    %if LANE_ALIGNED
-            VBROADCASTI128 m0, [shuffleq]
-        %if CLEAR_VALUE != 0
-            VBROADCASTI128 m2, [shuffleq + 16]
-        %endif
-    %else
-            mova m0, [shuffleq]
-        %if CLEAR_VALUE != 0
-            mova m2, [shuffleq + mmsize]
-        %endif
-    %endif
-    %if !(LANE_ALIGNED || mmsize == 16)
-            vpmovb2m k1, m0 ; zero the cleared bytes in vpermb
-            knotq k1, k1
+    %if VPERMB
+            ; setup the masks, and zero the cleared bytes in vpermb
+        %assign SH_O 0
+        %rep OUT_PLANES
+            %assign SH_R MASK_REG + SH_O
+            %assign SH_K SH_O + 1
+            mova m %+ SH_R, [shuffleq + SH_O * mmsize]
+            vpmovb2m k %+ SH_K, m %+ SH_R
+            knotq k %+ SH_K, k %+ SH_K
+            %assign SH_O SH_O + 1
+        %endrep
     %endif
 
             ; setup loop bounds and variables
             sub bxendd, bxd
-            sub yendd, yd
+            sub rowendd, rowd
             ; reuse now-unneeded regs
-            %define srcidxq execq
+            %define srcidxq bxq
             imul srcidxq, bxendq, -READ_SIZE
     %if READ_SIZE == WRITE_SIZE
             %define dstidxq srcidxq
     %else
-            %define dstidxq shuffleq ; no longer needed reg
+            %define dstidxq rowq
             imul dstidxq, bxendq, -WRITE_SIZE
     %endif
-            sub srcq, srcidxq
-            sub dstq, dstidxq
+    %assign SH_I 0
+    %rep IN_PLANES
+            sub src %+ SH_I %+ q, srcidxq
+        %assign SH_I SH_I + 1
+    %endrep
+    %assign SH_O 0
+    %rep OUT_PLANES
+            sub dst %+ SH_O %+ q, dstidxq
+        %assign SH_O SH_O + 1
+    %endrep
 
 .loop:
-            READ m1, [srcq + srcidxq]
-    %if LANE_ALIGNED || mmsize == 16
-            pshufb m1, m0
-    %else
-            vpermb m1{k1}{z}, m0, m1
-    %endif
-    %if CLEAR_VALUE != 0 ; the cleared bytes are zero after the shuffle
-            por m1, m2
-    %endif
+    %assign SH_I 0
+    %rep IN_PLANES
+        %assign SH_R IN_REG + SH_I
+            READ SH_R, [src %+ SH_I %+ q + srcidxq]
+        %assign SH_I SH_I + 1
+    %endrep
+    %assign SH_O 0
+    %rep OUT_PLANES
+        %if VPERMB
+            %assign SH_R MASK_REG + SH_O
+            %assign SH_K SH_O + 1
+            vpermb m %+ OUT_REG {k %+ SH_K}{z}, m %+ SH_R, m %+ IN_REG
+        %else
+            %assign SH_I 0
+            %rep IN_PLANES
+                %assign SH_R IN_REG + SH_I
+                %if SH_I == 0
+            pshufb m %+ OUT_REG, m %+ SH_R, [shuffleq + (SH_O * IN_PLANES + SH_I) * mmsize]
+                %else
+            pshufb m %+ TMP_REG, m %+ SH_R, [shuffleq + (SH_O * IN_PLANES + SH_I) * mmsize]
+            por m %+ OUT_REG, m %+ TMP_REG
+                %endif
+                %assign SH_I SH_I + 1
+            %endrep
+        %endif
+        %if CLEAR_VALUE != 0 ; the cleared bytes are zero after the shuffle
+            por m %+ OUT_REG, [shuffleq + (OUT_PLANES * IN_PLANES + SH_O) * mmsize]
+        %endif
+            WRITE [dst %+ SH_O %+ q + dstidxq], OUT_REG
+        %assign SH_O SH_O + 1
+    %endrep
 
-            WRITE [dstq + dstidxq], m1
             add srcidxq, READ_SIZE
     %if READ_SIZE != WRITE_SIZE
             add dstidxq, WRITE_SIZE
     %endif
             jnz .loop
-            add srcq, src_strideq
-            add dstq, dst_strideq
+    %assign SH_I 0
+    %rep IN_PLANES
+            add src %+ SH_I %+ q, [execq + SwsOpExec.in_stride0 + 8 * SH_I]
+        %assign SH_I SH_I + 1
+    %endrep
+    %assign SH_O 0
+    %rep OUT_PLANES
+            add dst %+ SH_O %+ q, [execq + SwsOpExec.out_stride0 + 8 * SH_O]
+        %assign SH_O SH_O + 1
+    %endrep
             imul srcidxq, bxendq, -READ_SIZE
     %if READ_SIZE != WRITE_SIZE
             imul dstidxq, bxendq, -WRITE_SIZE
     %endif
-            dec yendd
+            dec rowendd
             jnz .loop
             RET
 %endif

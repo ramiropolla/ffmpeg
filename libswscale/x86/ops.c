@@ -584,45 +584,63 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
 {
     /* We can't shuffle across lanes, so restrict the vector size to XMM
      * whenever the read/write size would be a subset of the full vector,
-     * unless we have access to AVX-512 ICL vpermb */
+     * unless we have access to AVX-512 ICL vpermb (which only shuffles a
+     * single input plane) */
     const SwsShuffleUOp *par = &uop->par.shuffle;
+    const SwsShuffleMask *data = &uop->data.shuffle;
+    const int in_planes  = ff_sws_shuffle_planes(par->in_planes);
+    const int out_planes = ff_sws_shuffle_planes(par->out_planes);
     const int lane_aligned = par->read_size == par->write_size &&
                              16 % par->read_size == 0;
-    if (!lane_aligned && !EXTERNAL_AVX512ICL(av_get_cpu_flags()))
+    if (!lane_aligned && (in_planes > 1 || !EXTERNAL_AVX512ICL(av_get_cpu_flags())))
         mmsize = 16;
 
-    /* Generate the shuffle mask, followed by the clear values */
-    const int mask_size = lane_aligned ? 16 : mmsize;
-    int8_t *mask = av_malloc(2 * mask_size);
-    if (!mask)
+    /**
+     * Generate one shuffle mask per pair of output and input plane, followed
+     * by the clear values of each output plane, all repeated for every lane.
+     * Each mask zeroes the bytes that come from other input planes.
+     */
+    const int lane_size = lane_aligned ? 16 : mmsize;
+    const int groups = lane_size / FFMAX(par->read_size, par->write_size);
+    if (!groups)
+        return AVERROR(EINVAL);
+
+    const int num_masks = out_planes * (in_planes + 1);
+    uint8_t *priv = av_malloc(num_masks * mmsize);
+    if (!priv)
         return AVERROR(ENOMEM);
 
-    const int groups = ff_sws_shuffle_mask(uop, mask, mask_size);
-    if (groups < 0) {
-        av_free(mask);
-        return groups;
+    for (int q = 0; q < out_planes; q++) {
+        uint8_t *clear = &priv[(out_planes * in_planes + q) * mmsize];
+        for (int pos = 0; pos < mmsize; pos++) {
+            const int n = (pos % lane_size) / par->write_size;
+            const int k = q * par->write_size + (pos % lane_size) % par->write_size;
+            const bool used = n < groups;
+            clear[pos] = used && data->mask[k] < 0 ? data->clear[k] : 0;
+            for (int p = 0; p < in_planes; p++) {
+                uint8_t *mask = &priv[(q * in_planes + p) * mmsize];
+                const int m = data->mask[k];
+                if (used && m >= 0 && m / par->read_size == p)
+                    mask[pos] = n * par->read_size + m % par->read_size;
+                else
+                    mask[pos] = 0x80;
+            }
+        }
     }
 
-    uint8_t *clear = (uint8_t *) &mask[mask_size];
-    memset(clear, 0, mask_size);
-    for (int n = 0; n < groups; n++) {
-        for (int i = 0; i < par->write_size; i++)
-            clear[n * par->write_size + i] = uop->data.shuffle.clear[i];
-    }
-
-    const int read_chunk  = groups * par->read_size;
-    const int write_chunk = groups * par->write_size;
-    const int num_lanes   = lane_aligned ? mmsize / 16 : 1;
-    const int in_total    = num_lanes * read_chunk;
-    const int out_total   = num_lanes * write_chunk;
+    const int num_lanes = mmsize / lane_size;
+    const int in_total  = num_lanes * groups * par->read_size;
+    const int out_total = num_lanes * groups * par->write_size;
     *out = (SwsCompiledOp) {
-        .priv        = mask,
+        .priv        = priv,
         .free        = av_free,
         .slice_align = 1,
-        .block_size  = groups * uop->data.shuffle.pixels * num_lanes,
-        .over_read   = { movsize(in_total,  mmsize) - in_total },
-        .over_write  = { movsize(out_total, mmsize) - out_total },
+        .block_size  = groups * data->pixels * num_lanes,
     };
+    for (int p = 0; p < in_planes; p++)
+        out->over_read[p] = movsize(in_total, mmsize) - in_total;
+    for (int q = 0; q < out_planes; q++)
+        out->over_write[q] = movsize(out_total, mmsize) - out_total;
 
 #define ASSIGN_SHUFFLE_FUNC(CPU, EXT, NAME, ...)                                \
 do {                                                                            \
@@ -646,7 +664,7 @@ do {                                                                            
     }
 
     if (!out->func) {
-        av_free(mask);
+        av_free(priv);
         return AVERROR(ENOTSUP);
     }
 
