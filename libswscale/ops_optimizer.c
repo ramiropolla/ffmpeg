@@ -1046,6 +1046,225 @@ static int solve_shuffle(const SwsUOpList *const uops, SwsUOp *out)
     return AVERROR(EINVAL);
 }
 
+/**
+ * Byte-level description of a component for solve_shuffle_ext(): each of
+ * its `size` bytes (in little-endian order) is either a byte of the input
+ * pixel (`src` >= 0) or the constant `val`.
+ */
+typedef struct ShuffleComp {
+    int size;
+    int8_t src[4];
+    uint8_t val[4];
+} ShuffleComp;
+
+static bool shuffle_int_type(SwsPixelType type)
+{
+    return type == SWS_PIXEL_U8 || type == SWS_PIXEL_U16 || type == SWS_PIXEL_U32;
+}
+
+/**
+ * More complete version of solve_shuffle() for SWS_UOP_FLAG_SHUFFLE_EXT,
+ * which tracks every byte of every component as either an input byte or a
+ * constant. In addition to what solve_shuffle() supports, this allows:
+ *  - clear values that are not a single repeated byte, and different clear
+ *    values for different components (SwsShuffleMask.clear),
+ *  - casts that widen integers (zero-extension),
+ *  - shifts by multiples of 8 bits.
+ */
+static int solve_shuffle_ext(const SwsUOpList *const uops, SwsUOp *out)
+{
+    if (!uops->num_ops)
+        return AVERROR(EINVAL);
+    const SwsUOp *read = &uops->ops[0];
+    switch (read->uop) {
+    case SWS_UOP_READ_PACKED:
+        break;
+    case SWS_UOP_READ_PLANAR:
+        if (read->mask != SWS_COMP_ELEMS(1))
+             return AVERROR(ENOTSUP);
+        break;
+    default:
+        return AVERROR(ENOTSUP);
+    }
+    if (!shuffle_int_type(read->type))
+        return AVERROR(ENOTSUP);
+
+    const int read_size = ff_sws_pixel_type_size(read->type);
+    ShuffleComp comp[4] = {0};
+    int read_elems = 0;
+    for (int i = 0; i < 4; i++) {
+        comp[i].size = read_size;
+        if (SWS_COMP_TEST(read->mask, i)) {
+            for (int b = 0; b < read_size; b++)
+                comp[i].src[b] = i * read_size + b;
+            read_elems++;
+        } else {
+            for (int b = 0; b < read_size; b++)
+                comp[i].src[b] = -1; /* undefined, never written */
+        }
+    }
+
+    for (int opidx = 1; opidx < uops->num_ops; opidx++) {
+        const SwsUOp *uop = &uops->ops[opidx];
+        const SwsUOpParams *par = &uop->par;
+        const int size = ff_sws_pixel_type_size(uop->type);
+        switch (uop->uop) {
+        case SWS_UOP_COPY:
+        case SWS_UOP_PERMUTE: {
+            ShuffleComp tmp;
+            for (int i = 0; i < par->move.num_moves; i++) {
+                const int dst_idx = par->move.dst[i];
+                const int src_idx = par->move.src[i];
+                ShuffleComp *src = src_idx < 0 ? &tmp : &comp[src_idx];
+                ShuffleComp *dst = dst_idx < 0 ? &tmp : &comp[dst_idx];
+                *dst = *src;
+            }
+            break;
+        }
+
+        case SWS_UOP_SWAP_BYTES:
+            for (int i = 0; i < 4; i++) {
+                if (!SWS_COMP_TEST(uop->mask, i))
+                    continue;
+                const ShuffleComp c = comp[i];
+                av_assert1(c.size == size);
+                for (int b = 0; b < size; b++) {
+                    comp[i].src[b] = c.src[size - 1 - b];
+                    comp[i].val[b] = c.val[size - 1 - b];
+                }
+            }
+            break;
+
+        case SWS_UOP_CLEAR:
+            for (int i = 0; i < 4; i++) {
+                if (!SWS_COMP_TEST(uop->mask, i))
+                    continue;
+                /* The clear values are expanded to repeating 32-bit patterns */
+                const uint32_t val = uop->data.vec4[i].u32;
+                comp[i].size = size;
+                for (int b = 0; b < size; b++) {
+                    comp[i].src[b] = -1;
+                    comp[i].val[b] = val >> (8 * b);
+                }
+            }
+            break;
+
+        case SWS_UOP_EXPAND_PAIR:
+        case SWS_UOP_EXPAND_QUAD: {
+            const int n = uop->uop == SWS_UOP_EXPAND_PAIR ? 2 : 4;
+            for (int i = 0; i < 4; i++) {
+                if (!SWS_COMP_TEST(uop->mask, i))
+                    continue;
+                for (int b = 1; b < n; b++) {
+                    comp[i].src[b] = comp[i].src[0];
+                    comp[i].val[b] = comp[i].val[0];
+                }
+                comp[i].size = n;
+            }
+            break;
+        }
+
+        case SWS_UOP_TO_U8:
+        case SWS_UOP_TO_U16:
+        case SWS_UOP_TO_U32: {
+            const int to = uop->uop == SWS_UOP_TO_U8  ? 1 :
+                           uop->uop == SWS_UOP_TO_U16 ? 2 : 4;
+            if (!shuffle_int_type(uop->type) || to < size)
+                return AVERROR(ENOTSUP); /* only zero-extension */
+            for (int i = 0; i < 4; i++) {
+                if (!SWS_COMP_TEST(uop->mask, i))
+                    continue;
+                for (int b = size; b < to; b++) {
+                    comp[i].src[b] = -1;
+                    comp[i].val[b] = 0;
+                }
+                comp[i].size = to;
+            }
+            break;
+        }
+
+        case SWS_UOP_LSHIFT:
+        case SWS_UOP_RSHIFT: {
+            const int amount = par->shift.amount;
+            if (amount % 8 || amount >= 8 * size)
+                return AVERROR(ENOTSUP);
+            const int n = amount / 8;
+            for (int i = 0; i < 4; i++) {
+                if (!SWS_COMP_TEST(uop->mask, i))
+                    continue;
+                const ShuffleComp c = comp[i];
+                for (int b = 0; b < size; b++) {
+                    const int from = uop->uop == SWS_UOP_LSHIFT ? b - n : b + n;
+                    const bool in = from >= 0 && from < size;
+                    comp[i].src[b] = in ? c.src[from] : -1;
+                    comp[i].val[b] = in ? c.val[from] : 0;
+                }
+            }
+            break;
+        }
+
+        case SWS_UOP_WRITE_PLANAR:
+            if (uop->mask != SWS_COMP_ELEMS(1))
+                return AVERROR(ENOTSUP);
+            av_fallthrough;
+        case SWS_UOP_WRITE_PACKED: {
+            const int write_elems = av_popcount(uop->mask);
+            const int write_size  = ff_sws_pixel_type_size(uop->type);
+            if (!shuffle_int_type(uop->type))
+                return AVERROR(ENOTSUP);
+            *out = (SwsUOp) {
+                .uop  = SWS_UOP_RW_SHUFFLE,
+                .type = SWS_PIXEL_U8,
+                .mask = SWS_COMP_ELEMS(1), /* single plane for now */
+            };
+
+            SwsShuffleUOp *spar = &out->par.shuffle;
+            SwsShuffleMask *data = &out->data.shuffle;
+            *spar = (SwsShuffleUOp) {
+                .read_size  = read_elems * read_size,
+                .write_size = write_elems * write_size,
+            };
+
+            /* Generate baseline shuffle for a single pixel */
+            uint8_t clear[FF_ARRAY_ELEMS(data->clear)] = {0};
+            data->pixels = 1;
+            for (int i = 0; i < write_elems; i++) {
+                const int offset = i * write_size;
+                if (comp[i].size != write_size)
+                    return AVERROR(ENOTSUP);
+                for (int b = 0; b < write_size; b++) {
+                    data->mask[offset + b] = comp[i].src[b];
+                    clear[offset + b] = comp[i].src[b] < 0 ? comp[i].val[b] : 0;
+                    if (clear[offset + b] && !spar->clear_value)
+                        spar->clear_value = clear[offset + b];
+                }
+            }
+
+            /* Expand as many times as needed to round up to the size of the
+             * shuffle uop data mask */
+            int8_t tmp[FF_ARRAY_ELEMS(data->mask)];
+            const int num_groups = ff_sws_shuffle_mask(out, tmp, sizeof(tmp));
+            if (num_groups < 0)
+                return num_groups;
+            memcpy(data->mask, tmp, sizeof(tmp));
+            for (int i = 0; i < FF_ARRAY_ELEMS(data->clear); i++) {
+                const int b = i % spar->write_size;
+                data->clear[i] = i < num_groups * spar->write_size ? clear[b] : 0;
+            }
+            spar->read_size  *= num_groups;
+            spar->write_size *= num_groups;
+            data->pixels = num_groups;
+            return 0;
+        }
+
+        default:
+            return AVERROR(ENOTSUP);
+        }
+    }
+
+    return AVERROR(EINVAL);
+}
+
 /* Only checks exact integer multiplications, with the same value for all
  * components */
 static bool is_scale(const SwsUOp *op, int64_t val)
@@ -1115,7 +1334,8 @@ retry:
     /* Try promoting the entire uop list to a packed shuffle operation */
     if (flags & SWS_UOP_FLAG_PSHUFB) {
         SwsUOp shuffle;
-        int ret = solve_shuffle(uops, &shuffle);
+        int ret = (flags & SWS_UOP_FLAG_SHUFFLE_EXT) ? solve_shuffle_ext(uops, &shuffle)
+                                                     : solve_shuffle(uops, &shuffle);
         if (ret >= 0) {
             ff_sws_uop_list_remove_at(uops, 0, uops->num_ops);
             return ff_sws_uop_list_append(uops, &shuffle);

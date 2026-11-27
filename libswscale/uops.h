@@ -164,6 +164,8 @@ typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_READ_PALETTE = (1 << 3), /* backend implements SWS_UOP_READ_PALETTE */
     SWS_UOP_FLAG_VEC4         = (1 << 4), /* backend uses vec4 SWS_UOP_ADD/MIN/MAX/MUL */
     SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
+    SWS_UOP_FLAG_SHUFFLE_EXT  = (1 << 6), /* SWS_UOP_RW_SHUFFLE supports per-byte clear
+                                           * values, casts and byte shifts (with PSHUFB) */
 } SwsUOpFlagBits;
 
 typedef enum SwsUOpType {
