@@ -491,10 +491,11 @@ static int compile_uops_aarch64(SwsContext *ctx, const SwsUOpList *uops,
         return AVERROR(ENOTSUP);
 
     if (uops->num_ops == 1 && uops->ops[0].uop == SWS_UOP_RW_SHUFFLE) {
-        ret = compile_shuffle_aarch64(ctx, &uops->ops[0], out);
+        const SwsUOp *uop = &uops->ops[0];
+        ret = compile_shuffle_aarch64(ctx, uop, out);
         if (ret >= 0) {
             char name[SWS_UOP_NAME_MAX];
-            ff_sws_uop_name(&uops->ops[0], name);
+            ff_sws_uop_name(uop, name);
             av_log(ctx, AV_LOG_VERBOSE, "Using aarch64 packed shuffle fast path: %s\n", name);
         }
         return ret;
