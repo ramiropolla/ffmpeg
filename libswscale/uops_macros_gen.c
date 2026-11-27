@@ -244,8 +244,9 @@ static const Backend backends[] = {
         .name  = "x86",
         .guard = "SWSCALE_X86_UOPS_MACROS_H",
         .flags = {
-            COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB,
-            COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_FMA, /* FMA3 */
+            COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_SHUFFLE_EXT,
+            COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_SHUFFLE_EXT |
+            SWS_UOP_FLAG_FMA, /* FMA3 */
         },
     },
 };

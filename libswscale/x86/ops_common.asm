@@ -104,7 +104,7 @@ process_fn 4
 
 ; This is a special entry point for handling a subset of operation chains
 ; that can be reduced down to a single `pshufb` shuffle mask. For more details
-; about when this works, refer to `solve_shuffle()` in ops_optimizer.c.
+; about when this works, refer to `solve_shuffle_ext()` in ops_optimizer.c.
 ;
 ; This macro gets instantiated for every parameter combination of
 ; SWS_UOP_RW_SHUFFLE, which embeds the clear value and read and write sizes.
