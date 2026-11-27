@@ -145,7 +145,7 @@ process_fn 4
     %endif
 %endmacro
 
-%macro RW_SHUFFLE 3
+%macro RW_SHUFFLE 5
 %assign CLEAR_VALUE %1
 %assign READ_SIZE   %2
 %assign WRITE_SIZE  %3

@@ -76,6 +76,8 @@ static void print_params(AVBPrint *bp, const SwsUOp *uop, bool designated)
         FMT("par.shuffle.clear_value", "0x%x", par->shuffle.clear_value);
         FMT("par.shuffle.read_size",   "%u",   par->shuffle.read_size);
         FMT("par.shuffle.write_size",  "%u",   par->shuffle.write_size);
+        FMT("par.shuffle.in_planes",   "%u",   par->shuffle.in_planes);
+        FMT("par.shuffle.out_planes",  "%u",   par->shuffle.out_planes);
         break;
     case SWS_UOP_LSHIFT:
     case SWS_UOP_RSHIFT:

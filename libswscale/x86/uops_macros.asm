@@ -81,29 +81,29 @@
 %endmacro
 
 %macro DECL_U8_RW_SHUFFLE 1
-    DECL_OP %1, u8_rw_shuffle_x_0_2_12                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 2, 12
-    DECL_OP %1, u8_rw_shuffle_x_0_4_12                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 4, 12
-    DECL_OP %1, u8_rw_shuffle_x_0_4_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 4, 16
-    DECL_OP %1, u8_rw_shuffle_x_0_5_15                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 5, 15
-    DECL_OP %1, u8_rw_shuffle_x_0_6_12                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 6, 12
-    DECL_OP %1, u8_rw_shuffle_x_0_6_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 6, 16
-    DECL_OP %1, u8_rw_shuffle_x_0_8_12                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 8, 12
-    DECL_OP %1, u8_rw_shuffle_x_0_8_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 8, 16
-    DECL_OP %1, u8_rw_shuffle_x_0_10_15                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 10, 15
-    DECL_OP %1, u8_rw_shuffle_x_0_12_12                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 12, 12
-    DECL_OP %1, u8_rw_shuffle_x_0_12_16                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 12, 16
-    DECL_OP %1, u8_rw_shuffle_x_0_15_5                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 15, 5
-    DECL_OP %1, u8_rw_shuffle_x_0_15_15                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 15, 15
-    DECL_OP %1, u8_rw_shuffle_x_0_16_4                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 16, 4
-    DECL_OP %1, u8_rw_shuffle_x_0_16_8                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 16, 8
-    DECL_OP %1, u8_rw_shuffle_x_0_16_12                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 16, 12
-    DECL_OP %1, u8_rw_shuffle_x_0_16_16                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 16, 16
-    DECL_OP %1, u8_rw_shuffle_x_1_2_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 2, 16
-    DECL_OP %1, u8_rw_shuffle_x_1_4_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 4, 16
-    DECL_OP %1, u8_rw_shuffle_x_1_6_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 6, 16
-    DECL_OP %1, u8_rw_shuffle_x_1_8_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 8, 16
-    DECL_OP %1, u8_rw_shuffle_x_1_12_16                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 12, 16
-    DECL_OP %1, u8_rw_shuffle_x_1_16_16                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 16, 16
+    DECL_OP %1, u8_rw_shuffle_x_0_2_12                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 2, 12, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_4_12                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 4, 12, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_4_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 4, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_5_15                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 5, 15, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_6_12                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 6, 12, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_6_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 6, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_8_12                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 8, 12, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_8_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 8, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_10_15                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 10, 15, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_12_12                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 12, 12, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_12_16                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 12, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_15_5                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 15, 5, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_15_15                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 15, 15, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_16_4                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 16, 4, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_16_8                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 16, 8, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_16_12                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 16, 12, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_0_16_16                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x0, 16, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_1_2_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 2, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_1_4_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 4, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_1_6_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 6, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_1_8_16                  , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 8, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_1_12_16                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 12, 16, 0, 0
+    DECL_OP %1, u8_rw_shuffle_x_1_16_16                 , SWS_PIXEL_U8 , SWS_UOP_RW_SHUFFLE      , 0x1, 0x1, 16, 16, 0, 0
 %endmacro
 
 %macro DECL_U8_PERMUTE 1
