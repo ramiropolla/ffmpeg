@@ -236,6 +236,8 @@ error:
     return ret;
 }
 
+static int collect_uops(const SwsUOpList *uops, struct AVTreeNode **root);
+
 static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
                                SwsCompiledOp *out)
 {
@@ -259,6 +261,36 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
     if (ret < 0)
         goto end;
 
+    /* In-order cores may use the regular translation instead of the shuffle. */
+    if (shuffle_chain_on_inorder(uops)) {
+        SwsUOpList *chain = ff_sws_uop_list_alloc();
+        if (!chain) {
+            ret = AVERROR(ENOMEM);
+            goto end;
+        }
+        ret = ff_sws_ops_translate(ctx, ops, flags & ~SWS_UOP_FLAG_SHUFFLE_EXT, chain);
+        if (ret >= 0)
+            ret = collect_uops(chain, root);
+        ff_sws_uop_list_free(&chain);
+        if (ret < 0)
+            goto end;
+    }
+    ret = collect_uops(uops, root);
+    if (ret < 0)
+        goto end;
+
+    *out = (SwsCompiledOp) { 0 };
+    ret = 0;
+
+end:
+    ff_sws_uop_list_free(&uops);
+    return ret;
+}
+
+static int collect_uops(const SwsUOpList *uops, struct AVTreeNode **root)
+{
+    int ret = 0;
+
     /* Use at most two full vregs during the widest precision section */
     int block_size = (uops->pixel_size_max == 4) ? 8 : 16;
 
@@ -267,7 +299,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
         convert_to_aarch64_impl(&uops->ops[i], block_size, &params);
         ret = aarch64_collect_op(&params, root);
         if (ret < 0)
-            goto end;
+            return ret;
         if (params.uop == SWS_UOP_LINEAR_FMA && params.type == SWS_PIXEL_F32) {
             /**
              * Generate both sets of linear op functions that do use
@@ -276,23 +308,18 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
             params.uop = SWS_UOP_LINEAR;
             ret = aarch64_collect_op(&params, root);
             if (ret < 0)
-                goto end;
+                return ret;
         }
         if (params.uop == SWS_UOP_RW_SHUFFLE &&
             convert_to_aarch64_ldst(&uops->ops[i], &params)) {
             /* Generate both variants (see SHUFFLE_LDST in aarch64/ops.c). */
             ret = aarch64_collect_op(&params, root);
             if (ret < 0)
-                goto end;
+                return ret;
         }
     }
 
-    *out = (SwsCompiledOp) { 0 };
-    ret = 0;
-
-end:
-    ff_sws_uop_list_free(&uops);
-    return ret;
+    return 0;
 }
 
 static const SwsOpBackend backend_collect = {

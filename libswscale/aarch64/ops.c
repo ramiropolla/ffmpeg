@@ -38,6 +38,7 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
+#include "libavutil/mathematics.h"
 #include "libavutil/thread.h"
 #include "libavutil/tree.h"
 #include "libavutil/aarch64/cpu.h"
@@ -250,6 +251,7 @@ typedef struct ShuffleDynPriv {
     int64_t       rseq_cpu_id;
     uint64_t      inorder_mask;
     SwsCompiledOp comp[2]; /* for out-of-order and in-order cores */
+    int           mult[2]; /* blocks of each variant per block */
 } ShuffleDynPriv;
 
 /**
@@ -263,8 +265,10 @@ static void shuffle_dyn(const SwsOpExec *exec, const void *priv,
     const ShuffleDynPriv *p = priv;
     const char *tp = __builtin_thread_pointer();
     const uint32_t cpu = *(const volatile uint32_t *) (tp + p->rseq_cpu_id);
-    const SwsCompiledOp *comp = &p->comp[(p->inorder_mask >> cpu) & 1];
-    comp->func(exec, comp->priv, bx_start, y_start, bx_end, y_end);
+    const int i = (p->inorder_mask >> cpu) & 1;
+    const SwsCompiledOp *comp = &p->comp[i];
+    comp->func(exec, comp->priv, bx_start * p->mult[i], y_start,
+               bx_end * p->mult[i], y_end);
 }
 
 static void shuffle_dyn_free(void *priv)
@@ -275,11 +279,19 @@ static void shuffle_dyn_free(void *priv)
     av_free(p);
 }
 
+/**
+ * Combine the variants for out-of-order and in-order cores. With `scale`,
+ * the variants may process different block sizes, and the combined block
+ * size is their least common multiple.
+ */
 static int compile_shuffle_dyn(SwsContext *ctx, const SwsCompiledOp *ooo,
-                               const SwsCompiledOp *inorder, SwsCompiledOp *out)
+                               const SwsCompiledOp *inorder, bool scale,
+                               SwsCompiledOp *out)
 {
-    if (ooo->block_size != inorder->block_size)
+    if (ooo->block_size != inorder->block_size && !scale)
         return AVERROR(ENOTSUP);
+    const int block_size = ooo->block_size / av_gcd(ooo->block_size, inorder->block_size) *
+                           inorder->block_size;
 
     ShuffleDynPriv *p = av_mallocz(sizeof(*p));
     if (!p)
@@ -288,13 +300,15 @@ static int compile_shuffle_dyn(SwsContext *ctx, const SwsCompiledOp *ooo,
     p->inorder_mask = dyn_info.inorder_mask;
     p->comp[0]      = *ooo;
     p->comp[1]      = *inorder;
+    p->mult[0]      = block_size / ooo->block_size;
+    p->mult[1]      = block_size / inorder->block_size;
 
     *out = (SwsCompiledOp) {
         .func        = shuffle_dyn,
         .priv        = p,
         .free        = shuffle_dyn_free,
         .slice_align = FFMAX(ooo->slice_align, inorder->slice_align),
-        .block_size  = ooo->block_size,
+        .block_size  = block_size,
         .cpu_flags   = AV_CPU_FLAG_NEON,
     };
     for (int i = 0; i < 4; i++) {
@@ -442,6 +456,21 @@ static int compile_shuffle_tbl_aarch64(SwsContext *ctx, const SwsUOp *uop,
 }
 
 /**
+ * Whether out-of-order cores should also use the structured variant: with
+ * a planar input or output, it is faster on Cortex-A76 than a tbl variant
+ * that needs 3 or 4 table registers.
+ */
+static bool shuffle_ldst_on_ooo(const SwsUOp *uop)
+{
+    SwsAArch64OpImplParams params;
+    if (!convert_to_aarch64_ldst(uop, &params))
+        return false;
+    if (!params.ldst.in_planar && !params.ldst.out_planar)
+        return false;
+    return aarch64_shuffle_max_table(uop) >= 3;
+}
+
+/**
  * Compile both variants and choose between them on each call, or return
  * AVERROR(ENOTSUP) if there is no structured variant.
  */
@@ -452,6 +481,10 @@ static int compile_shuffle_per_core(SwsContext *ctx, const SwsUOp *uop,
     int ret = compile_shuffle_ldst_aarch64(ctx, uop, &inorder);
     if (ret < 0)
         return ret;
+    if (shuffle_ldst_on_ooo(uop)) {
+        *out = inorder;
+        return 0;
+    }
 
     SwsCompiledOp ooo;
     ret = compile_shuffle_tbl_aarch64(ctx, uop, &ooo);
@@ -460,7 +493,7 @@ static int compile_shuffle_per_core(SwsContext *ctx, const SwsUOp *uop,
         return ret;
     }
 
-    ret = compile_shuffle_dyn(ctx, &ooo, &inorder, out);
+    ret = compile_shuffle_dyn(ctx, &ooo, &inorder, false, out);
     if (ret < 0) {
         ff_sws_compiled_op_unref(&inorder);
         if (ret != AVERROR(ENOTSUP)) {
@@ -489,7 +522,7 @@ static int compile_shuffle_aarch64(SwsContext *ctx, const SwsUOp *uop,
             if (ret != AVERROR(ENOTSUP))
                 return ret;
         }
-        ldst = av_get_cpu_flags() & AV_CPU_FLAG_INORDER;
+        ldst = (av_get_cpu_flags() & AV_CPU_FLAG_INORDER) || shuffle_ldst_on_ooo(uop);
     }
 
     if (ldst) {
@@ -580,6 +613,54 @@ error:
 }
 
 /*********************************************************************/
+/**
+ * Compile the regular translation of the op list (with `flags`) for in-order
+ * cores and the shuffle in `uops` for out-of-order cores.
+ */
+static int compile_shuffle_or_chain(SwsContext *ctx, const SwsOpList *ops,
+                                    SwsUOpFlags flags, const SwsUOpList *uops,
+                                    SwsCompiledOp *out)
+{
+    ff_thread_once(&dyn_once, dyn_init);
+    const bool inorder = av_get_cpu_flags() & AV_CPU_FLAG_INORDER;
+    char name[SWS_UOP_NAME_MAX];
+    ff_sws_uop_name(&uops->ops[0], name);
+    if (!dyn_info.enabled && !inorder) {
+        av_log(ctx, AV_LOG_VERBOSE, "Using aarch64 packed shuffle fast path: %s\n", name);
+        return compile_shuffle_tbl_aarch64(ctx, &uops->ops[0], out);
+    }
+    av_log(ctx, AV_LOG_VERBOSE, "Using the regular translation on in-order cores%s: %s\n",
+           dyn_info.enabled ? ", packed shuffle fast path on the others" : "", name);
+
+    SwsCompiledOp chain_op;
+    SwsUOpList *chain = ff_sws_uop_list_alloc();
+    if (!chain)
+        return AVERROR(ENOMEM);
+    int ret = ff_sws_ops_translate(ctx, ops, flags, chain);
+    if (ret >= 0)
+        ret = compile_uops_aarch64(ctx, chain, &chain_op);
+    ff_sws_uop_list_free(&chain);
+    if (ret < 0)
+        return ret;
+    if (!dyn_info.enabled) {
+        *out = chain_op;
+        return 0;
+    }
+
+    SwsCompiledOp tbl;
+    ret = compile_shuffle_tbl_aarch64(ctx, &uops->ops[0], &tbl);
+    if (ret < 0) {
+        ff_sws_compiled_op_unref(&chain_op);
+        return ret;
+    }
+    ret = compile_shuffle_dyn(ctx, &tbl, &chain_op, true, out);
+    if (ret < 0) {
+        ff_sws_compiled_op_unref(&tbl);
+        ff_sws_compiled_op_unref(&chain_op);
+    }
+    return ret;
+}
+
 static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,
                                SwsCompiledOp *out)
 {
@@ -595,6 +676,12 @@ static int compile_ops_aarch64(SwsContext *ctx, const SwsOpList *ops,
     int ret = aarch64_translate(ctx, ops, flags, uops);
     if (ret < 0)
         goto error;
+
+    if (SHUFFLE_LDST == 2 && shuffle_chain_on_inorder(uops)) {
+        ret = compile_shuffle_or_chain(ctx, ops, flags & ~SWS_UOP_FLAG_SHUFFLE_EXT,
+                                       uops, out);
+        goto error;
+    }
 
     ret = compile_uops_aarch64(ctx, uops, out);
 

@@ -224,6 +224,8 @@ static bool convert_to_aarch64_ldst(const SwsUOp *uop, SwsAArch64OpImplParams *o
 static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
                                     SwsAArch64OpImplParams *out)
 {
+    /* aarch64_lookup() compares the whole structure, including padding. */
+    memset(out, 0, sizeof(*out));
     out->uop = uop->uop;
     out->mask = uop->mask;
     out->type = uop->type;
@@ -303,6 +305,26 @@ static bool aarch64_shuffle_supported(const SwsUOp *uop)
 }
 
 /**
+ * Largest number of table registers of the tbl instructions of the tbl
+ * variant of a packed shuffle, or 0 if it is not supported.
+ */
+static int aarch64_shuffle_max_table(const SwsUOp *uop)
+{
+    SwsAArch64OpImplParams params;
+    convert_to_aarch64_impl(uop, 0, &params);
+    const SwsShuffleUOp *par = &params.par.shuffle;
+    SwsAArch64ShuffleLayout l;
+    if (shuffle_layout(par->read_size, par->write_size, par->in_planes,
+                       par->out_planes, params.shuffle_planes, params.block_size,
+                       par->clear_value, &l) < 0)
+        return 0;
+    int max = 0;
+    for (int k = 0; k < l.out_planes * l.num_out; k++)
+        max = l.tnum[k] > max ? l.tnum[k] : max;
+    return max;
+}
+
+/**
  * Translate the op list to uops, using SWS_UOP_FLAG_SHUFFLE_EXT only if
  * the resulting shuffle is supported (see aarch64_shuffle_supported()).
  */
@@ -318,4 +340,23 @@ static int aarch64_translate(SwsContext *ctx, const SwsOpList *ops,
 
     ff_sws_uop_list_remove_at(uops, 0, uops->num_ops);
     return ff_sws_ops_translate(ctx, ops, flags & ~SWS_UOP_FLAG_SHUFFLE_EXT, uops);
+}
+
+/**
+ * Whether in-order cores should use the regular translation of the op list
+ * instead of a shuffle with several planes: without a structured variant,
+ * tbl instructions with 4 table registers are slower on Cortex-A55 than the
+ * uop chain.
+ */
+static bool shuffle_chain_on_inorder(const SwsUOpList *uops)
+{
+    if (uops->num_ops != 1 || uops->ops[0].uop != SWS_UOP_RW_SHUFFLE)
+        return false;
+    const SwsUOp *uop = &uops->ops[0];
+    if (!uop->par.shuffle.in_planes && !uop->par.shuffle.out_planes)
+        return false;
+    SwsAArch64OpImplParams params;
+    if (convert_to_aarch64_ldst(uop, &params))
+        return false;
+    return aarch64_shuffle_max_table(uop) >= 4;
 }
