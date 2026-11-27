@@ -738,6 +738,7 @@ static int compile_ops_x86(SwsContext *ctx, const SwsOpList *ops, SwsCompiledOp 
 
     SwsUOpFlags flags = SWS_UOP_FLAG_PSHUFB
                       | SWS_UOP_FLAG_SHUFFLE_EXT
+                      | SWS_UOP_FLAG_SHUFFLE_PLANES
                       | SWS_UOP_FLAG_EXPAND_BIT
                       | SWS_UOP_FLAG_READ_PALETTE
                       | SWS_UOP_FLAG_VEC4

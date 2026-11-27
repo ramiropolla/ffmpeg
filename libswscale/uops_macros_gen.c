@@ -229,6 +229,8 @@ fail:
 enum {
     COMMON_FLAGS = SWS_UOP_FLAG_EXPAND_BIT | SWS_UOP_FLAG_READ_PALETTE |
                    SWS_UOP_FLAG_VEC4 | SWS_UOP_FLAG_PUNNING,
+    X86_SHUFFLE_FLAGS = SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_SHUFFLE_EXT |
+                        SWS_UOP_FLAG_SHUFFLE_PLANES,
 };
 
 typedef struct Backend {
@@ -246,9 +248,8 @@ static const Backend backends[] = {
         .name  = "x86",
         .guard = "SWSCALE_X86_UOPS_MACROS_H",
         .flags = {
-            COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_SHUFFLE_EXT,
-            COMMON_FLAGS | SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_SHUFFLE_EXT |
-            SWS_UOP_FLAG_FMA, /* FMA3 */
+            COMMON_FLAGS | X86_SHUFFLE_FLAGS,
+            COMMON_FLAGS | X86_SHUFFLE_FLAGS | SWS_UOP_FLAG_FMA, /* FMA3 */
         },
     },
 };
