@@ -344,19 +344,31 @@ static int aarch64_translate(SwsContext *ctx, const SwsOpList *ops,
 
 /**
  * Whether in-order cores should use the regular translation of the op list
- * instead of a shuffle with several planes: without a structured variant,
- * tbl instructions with 4 table registers are slower on Cortex-A55 than the
- * uop chain.
+ * instead of a shuffle with several planes. Without a structured variant,
+ * tbl instructions cost one cycle per table register on Cortex-A55, which is
+ * slower than the uop chain with 4 table registers, and with 3 table
+ * registers if the planar elements have 2 or 4 bytes (the uop chain handles
+ * several bytes per lane, while it needs to widen 1-byte elements).
  */
 static bool shuffle_chain_on_inorder(const SwsUOpList *uops)
 {
     if (uops->num_ops != 1 || uops->ops[0].uop != SWS_UOP_RW_SHUFFLE)
         return false;
     const SwsUOp *uop = &uops->ops[0];
-    if (!uop->par.shuffle.in_planes && !uop->par.shuffle.out_planes)
+    const SwsShuffleUOp *par = &uop->par.shuffle;
+    if (!par->in_planes && !par->out_planes)
         return false;
     SwsAArch64OpImplParams params;
     if (convert_to_aarch64_ldst(uop, &params))
         return false;
-    return aarch64_shuffle_max_table(uop) >= 4;
+
+    /* Bytes of each planar element (multi-plane shuffles describe a pixel). */
+    int elem = 4;
+    if (par->in_planes > 1)
+        elem = FFMIN(elem, par->read_size / uop->data.shuffle.pixels);
+    if (par->out_planes > 1)
+        elem = FFMIN(elem, par->write_size / uop->data.shuffle.pixels);
+
+    const int max_table = aarch64_shuffle_max_table(uop);
+    return max_table >= 4 || (max_table == 3 && elem >= 2);
 }

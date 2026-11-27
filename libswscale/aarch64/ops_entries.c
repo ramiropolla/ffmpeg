@@ -31,6 +31,7 @@ ENTRY(ff_sws_read_packed_8_u32_0111_neon,           { .uop = SWS_UOP_READ_PACKED
 ENTRY(ff_sws_read_packed_8_u32_1111_neon,           { .uop = SWS_UOP_READ_PACKED,  .block_size =  8, .type = SWS_PIXEL_U32, .mask = 0xf })
 ENTRY(ff_sws_read_packed_16_u8_0111_neon,           { .uop = SWS_UOP_READ_PACKED,  .block_size = 16, .type = SWS_PIXEL_U8,  .mask = 0x7 })
 ENTRY(ff_sws_read_packed_16_u8_1111_neon,           { .uop = SWS_UOP_READ_PACKED,  .block_size = 16, .type = SWS_PIXEL_U8,  .mask = 0xf })
+ENTRY(ff_sws_read_packed_16_u16_0111_neon,          { .uop = SWS_UOP_READ_PACKED,  .block_size = 16, .type = SWS_PIXEL_U16, .mask = 0x7 })
 ENTRY(ff_sws_read_packed_16_u16_1111_neon,          { .uop = SWS_UOP_READ_PACKED,  .block_size = 16, .type = SWS_PIXEL_U16, .mask = 0xf })
 ENTRY(ff_sws_read_nibble_8_u8_0001_neon,            { .uop = SWS_UOP_READ_NIBBLE,  .block_size =  8, .type = SWS_PIXEL_U8,  .mask = 0x1 })
 ENTRY(ff_sws_read_nibble_16_u8_0001_neon,           { .uop = SWS_UOP_READ_NIBBLE,  .block_size = 16, .type = SWS_PIXEL_U8,  .mask = 0x1 })
