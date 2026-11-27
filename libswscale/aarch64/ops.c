@@ -319,7 +319,7 @@ static int compile_shuffle_ldst_aarch64(SwsContext *ctx, const SwsUOp *uop,
     /* The clear value is broadcast to all elements of two vector registers. */
     const SwsShuffleMask *data = &uop->data.shuffle;
     const int size = ff_sws_pixel_type_size(params.type);
-    const int64_t clear = shuffle_ldst_clear(data, uop->par.shuffle.write_size / data->pixels, size);
+    const int64_t clear = shuffle_ldst_clear(data, shuffle_ldst_out_size(uop), size);
     uint8_t *priv = av_malloc(32);
     if (!priv)
         return AVERROR(ENOMEM);

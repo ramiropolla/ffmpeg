@@ -450,8 +450,9 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
     case SWS_UOP_RW_SHUFFLE:
         if (params->ldst.num_in) {
             const SwsAArch64ShuffleLdSt *ldst = &params->ldst;
-            av_strlcatf(func_name, sizeof(func_name), "_%u_ld%u_st%u_%s_",
-                        par->shuffle.clear_value, ldst->num_in, ldst->num_out,
+            av_strlcatf(func_name, sizeof(func_name), "_%u_ld%u%s_st%u%s_%s_",
+                        par->shuffle.clear_value, ldst->num_in, ldst->in_planar ? "p" : "",
+                        ldst->num_out, ldst->out_planar ? "p" : "",
                         pixel_type_names[params->type]);
             for (int k = 0; k < ldst->num_out; k++)
                 av_strlcatf(func_name, sizeof(func_name), "%x", ldst->src[k] & 0xf);
@@ -545,9 +546,13 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
                        params->shuffle_planes[2], params->shuffle_planes[3]);
         if (params->ldst.num_in) {
             const SwsAArch64ShuffleLdSt *ldst = &params->ldst;
-            av_bprintf(bp, ", .ldst = { .num_in = %u, .num_out = %u, .src = {%d, %d, %d, %d} }",
+            av_bprintf(bp, ", .ldst = { .num_in = %u, .num_out = %u, .src = {%d, %d, %d, %d}",
                        ldst->num_in, ldst->num_out,
                        ldst->src[0], ldst->src[1], ldst->src[2], ldst->src[3]);
+            if (ldst->in_planar || ldst->out_planar)
+                av_bprintf(bp, ", .in_planar = %u, .out_planar = %u",
+                           ldst->in_planar, ldst->out_planar);
+            av_bprintf(bp, " }");
         }
         break;
     }

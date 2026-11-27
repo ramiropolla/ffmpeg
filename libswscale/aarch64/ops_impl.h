@@ -49,6 +49,8 @@ typedef struct SwsAArch64ShuffleLdSt {
     uint8_t num_in;     /* elements per input pixel (0 if unused) */
     uint8_t num_out;    /* elements per output pixel */
     int8_t  src[4];     /* input element of each output element, or -1 */
+    uint8_t in_planar;  /* each input element is in its own plane */
+    uint8_t out_planar; /* each output element is in its own plane */
 } SwsAArch64ShuffleLdSt;
 
 /**

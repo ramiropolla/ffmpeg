@@ -897,11 +897,13 @@ static void asmgen_shuffle_ldst(SwsAArch64Context *s, const SwsAArch64OpEntry *e
         next += span;
     }
 
+    const SwsCompMask imask = SWS_COMP_ELEMS(ldst->in_planar  ? ni : 1);
+    const SwsCompMask omask = SWS_COMP_ELEMS(ldst->out_planar ? no : 1);
     rasm_func_begin(r, entry->name, true, false);
-    asmgen_process_frame(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
+    asmgen_process_frame(s, imask, omask);
 
     s->extra_regs_count = 0;
-    asmgen_process(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
+    asmgen_process(s, imask, omask);
 
     /**
      * Set the cleared output elements, which are never loaded into, once
@@ -932,34 +934,46 @@ static void asmgen_shuffle_ldst(SwsAArch64Context *s, const SwsAArch64OpEntry *e
     }
 
     /**
-     * Shuffle one block. Pixels with a single element are loaded and
-     * stored with ldp/stp instead of ld1/st1.
+     * Shuffle one block. Pixels with a single element, and planar inputs and
+     * outputs (one element per plane), are loaded and stored with ldp/stp
+     * instead of ld1/st1.
      */
     rasm_set_current_node(r, s->loop);
-    if (ni == 1) {
-        RasmOp v[8];
-        for (int c = 0; c < count; c++)
-            v[c] = vin[c][0];
-        shuffle_load(s, s->in[0], v, count, 16 * count);
+    if (ni == 1 || ldst->in_planar) {
+        for (int j = 0; j < ni; j++) {
+            RasmOp v[8];
+            for (int c = 0; c < count; c++)
+                v[c] = vin[c][j];
+            shuffle_load(s, s->in[ldst->in_planar ? j : 0], v, count, 16 * count);
+            if (ldst->in_planar)
+                CMTF("read %d bytes from plane %d", 16 * count, j);
+        }
     } else {
         for (int c = 0; c < count; c++)
             shuffle_ldst_insn(s, true, vin[c], ni, s->in[0]);
     }
-    CMTF("read %d bytes", 16 * ni * count);
-    if (no == 1) {
-        RasmOp v[8];
-        for (int c = 0; c < count; c++)
-            v[c] = vout[c][0];
-        for (int c = 0; c < count; c += 2)
-            shuffle_store(s, s->out[0], &v[c], FFMIN(2, count - c), 16 * c);
+    if (!ldst->in_planar)
+        CMTF("read %d bytes", 16 * ni * count);
+    if (no == 1 || ldst->out_planar) {
+        for (int k = 0; k < no; k++) {
+            const RasmOp ptr = s->out[ldst->out_planar ? k : 0];
+            RasmOp v[8];
+            for (int c = 0; c < count; c++)
+                v[c] = vout[c][k];
+            for (int c = 0; c < count; c += 2)
+                shuffle_store(s, ptr, &v[c], FFMIN(2, count - c), 16 * c);
 #if !IN_ORDER_CORE
-        i_add(r, s->out[0], s->out[0], IMM(16 * count));
+            i_add(r, ptr, ptr, IMM(16 * count));
 #endif
+            if (ldst->out_planar)
+                CMTF("write %d bytes to plane %d", 16 * count, k);
+        }
     } else {
         for (int c = 0; c < count; c++)
             shuffle_ldst_insn(s, false, vout[c], no, s->out[0]);
     }
-    CMTF("write %d bytes", 16 * no * count);
+    if (!ldst->out_planar)
+        CMTF("write %d bytes", 16 * no * count);
 }
 
 /*********************************************************************/

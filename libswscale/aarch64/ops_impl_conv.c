@@ -85,6 +85,13 @@ static int shuffle_lane_bytes(const SwsUOp *uop, int *period)
     return max_bytes / lcm * lcm;
 }
 
+/* Output bytes per pixel of a shuffle, over all planes. */
+static int shuffle_ldst_out_size(const SwsUOp *uop)
+{
+    const SwsShuffleUOp *par = &uop->par.shuffle;
+    return ff_sws_shuffle_planes(par->out_planes) * par->write_size / uop->data.shuffle.pixels;
+}
+
 /**
  * Clear value of the cleared elements of a structured load/store shuffle
  * (see shuffle_ldst()), as an element of `size` bytes, or -1 if there are
@@ -127,20 +134,27 @@ static SwsPixelType shuffle_ldst(const SwsUOp *uop, SwsAArch64ShuffleLdSt *ldst)
     const SwsShuffleMask *data = &uop->data.shuffle;
     if (!data->pixels || par->read_size % data->pixels || par->write_size % data->pixels)
         return SWS_PIXEL_NONE;
-    if (par->in_planes || par->out_planes)
-        return SWS_PIXEL_NONE;
-    const int in_size  = par->read_size  / data->pixels;
-    const int out_size = par->write_size / data->pixels;
+    /* With several planes, the pixel bytes of all planes are concatenated. */
+    const int in_planes  = ff_sws_shuffle_planes(par->in_planes);
+    const int out_planes = ff_sws_shuffle_planes(par->out_planes);
+    const int in_size  = in_planes  * par->read_size  / data->pixels;
+    const int out_size = out_planes * par->write_size / data->pixels;
 
     for (int t = 0; t < FF_ARRAY_ELEMS(types); t++) {
         const int size = ff_sws_pixel_type_size(types[t]);
         if (in_size % size || out_size % size ||
             in_size > 4 * size || out_size > 4 * size)
             continue;
+        /* Each plane must hold a single element. */
+        if ((in_planes > 1 && in_size != in_planes * size) ||
+            (out_planes > 1 && out_size != out_planes * size))
+            continue;
 
         *ldst = (SwsAArch64ShuffleLdSt) {
-            .num_in  = in_size  / size,
-            .num_out = out_size / size,
+            .num_in     = in_size  / size,
+            .num_out    = out_size / size,
+            .in_planar  = in_planes  > 1,
+            .out_planar = out_planes > 1,
         };
         bool ok = true;
         for (int k = 0; k < ldst->num_out && ok; k++) {
@@ -191,8 +205,7 @@ static bool convert_to_aarch64_ldst(const SwsUOp *uop, SwsAArch64OpImplParams *o
 
     const SwsShuffleMask *data = &uop->data.shuffle;
     const int size = ff_sws_pixel_type_size(type);
-    const int out_size = uop->par.shuffle.write_size / data->pixels;
-    const bool clear = shuffle_ldst_clear(data, out_size, size) > 0;
+    const bool clear = shuffle_ldst_clear(data, shuffle_ldst_out_size(uop), size) > 0;
 
     /* aarch64_lookup() compares the whole structure, including padding. */
     memset(out, 0, sizeof(*out));
