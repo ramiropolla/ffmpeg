@@ -234,7 +234,9 @@ typedef enum SwsUOpType {
  * starts at position q * write_size).
  */
 typedef struct SwsShuffleUOp {
-    uint8_t clear_value; /* value to clear elements with negative indices to */
+    uint8_t clear_value; /* value to clear elements with negative indices to, or
+                          * with SWS_UOP_FLAG_SHUFFLE_EXT, 1 if any of them is
+                          * nonzero (SwsShuffleMask.clear) */
     uint8_t read_size;   /* input bytes per iteration (and plane) */
     uint8_t write_size;  /* output bytes per iteration (and plane) */
     uint8_t in_planes;   /* number of input planes, or 0 for a single plane */

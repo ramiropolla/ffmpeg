@@ -1265,8 +1265,8 @@ static int solve_shuffle_ext(const SwsUOpList *const uops, SwsUOpFlags flags,
                         } else {
                             data->mask[pos]  = -1;
                             data->clear[pos] = comp[i].val[b];
-                            if (comp[i].val[b] && !spar->clear_value)
-                                spar->clear_value = comp[i].val[b];
+                            if (comp[i].val[b])
+                                spar->clear_value = 1;
                         }
                     }
                 }
