@@ -108,6 +108,8 @@ process_fn 4
 ;
 ; This macro gets instantiated for every parameter combination of
 ; SWS_UOP_RW_SHUFFLE, which embeds the clear value and read and write sizes.
+; The clear values of each byte are stored after the shuffle mask, and are
+; only applied if CLEAR_VALUE is not zero.
 ;
 ; Since pshufb can't shuffle across lanes, we only call SSE4 versions for
 ; all shuffles that are not a clean multiple of 128 bits (e.g. rgb24 -> rgb0),
@@ -166,30 +168,21 @@ cglobal NAME, 6, 10, 3, exec, shuffle, bx, y, bxend, yend, src, dst, src_stride,
             mov src_strideq, [execq + SwsOpExec.in_stride0]
             mov dst_strideq, [execq + SwsOpExec.out_stride0]
 
-            ; setup shuffle mask
+            ; setup shuffle mask and clear values
     %if LANE_ALIGNED
             VBROADCASTI128 m0, [shuffleq]
+        %if CLEAR_VALUE != 0
+            VBROADCASTI128 m2, [shuffleq + 16]
+        %endif
     %else
             mova m0, [shuffleq]
+        %if CLEAR_VALUE != 0
+            mova m2, [shuffleq + mmsize]
+        %endif
     %endif
-    %if cpuflag(avx512)
-            vpmovb2m k1, m0 ; needed for vpblendmb / vpermb
-        %if CLEAR_VALUE == 0
+    %if !(LANE_ALIGNED || mmsize == 16)
+            vpmovb2m k1, m0 ; zero the cleared bytes in vpermb
             knotq k1, k1
-        %endif
-    %endif
-
-            ; setup clear value register if needed
-    %if CLEAR_VALUE == 0xFF
-        %if cpuflag(avx512)
-            vpternlogd m2, m2, m2, 0xff
-        %else
-            pcmpeqb m2, m2
-        %endif
-    %elif CLEAR_VALUE != 0 ; clear-to-0 is implicitly handled by pshufb / vpermb
-            mov shuffled, CLEAR_VALUE * 0x1010101
-            movd xm2, shuffled
-            VPBROADCASTD m2, xm2
     %endif
 
             ; setup loop bounds and variables
@@ -211,20 +204,11 @@ cglobal NAME, 6, 10, 3, exec, shuffle, bx, y, bxend, yend, src, dst, src_stride,
             READ m1, [srcq + srcidxq]
     %if LANE_ALIGNED || mmsize == 16
             pshufb m1, m0
-    %elif CLEAR_VALUE == 0
-            vpermb m1{k1}{z}, m0, m1
     %else
-            vpermb m1, m0, m1
+            vpermb m1{k1}{z}, m0, m1
     %endif
-
-    %if CLEAR_VALUE != 0
-        %if cpuflag(avx512)
-            vpblendmb m1{k1}, m1, m2
-        %elif avx_enabled
-            vpblendvb m1, m1, m2, m0
-        %else
-            pblendvb m1, m2
-        %endif
+    %if CLEAR_VALUE != 0 ; the cleared bytes are zero after the shuffle
+            por m1, m2
     %endif
 
             WRITE [dstq + dstidxq], m1

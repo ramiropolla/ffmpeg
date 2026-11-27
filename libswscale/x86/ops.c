@@ -591,9 +591,9 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
     if (!lane_aligned && !EXTERNAL_AVX512ICL(av_get_cpu_flags()))
         mmsize = 16;
 
-    /* Generate the shuffle mask */
+    /* Generate the shuffle mask, followed by the clear values */
     const int mask_size = lane_aligned ? 16 : mmsize;
-    int8_t *mask = av_malloc(mask_size);
+    int8_t *mask = av_malloc(2 * mask_size);
     if (!mask)
         return AVERROR(ENOMEM);
 
@@ -601,6 +601,13 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
     if (groups < 0) {
         av_free(mask);
         return groups;
+    }
+
+    uint8_t *clear = (uint8_t *) &mask[mask_size];
+    memset(clear, 0, mask_size);
+    for (int n = 0; n < groups; n++) {
+        for (int i = 0; i < par->write_size; i++)
+            clear[n * par->write_size + i] = uop->data.shuffle.clear[i];
     }
 
     const int read_chunk  = groups * par->read_size;
