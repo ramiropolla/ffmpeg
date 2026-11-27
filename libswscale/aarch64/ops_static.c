@@ -705,33 +705,63 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     RasmContext *r = s->rctx;
 
     SwsAArch64ShuffleLayout l;
-    av_assert0(shuffle_layout(par->read_size, par->write_size, p->block_size, &l) == 0);
     const bool clear = par->clear_value;
+    av_assert0(shuffle_layout(par->read_size, par->write_size, p->block_size,
+                              clear, &l) == 0);
 
     /**
-     * Register assignment: inputs from v0 (tbl needs consecutive table
-     * registers), tbl indices followed by clear values from v16 (in the
+     * Register assignment: without a clear value, inputs from v0 (tbl
+     * needs consecutive table registers), tbl indices from v16 (in the
      * same order as in priv), and outputs in the remaining registers of
-     * v0-v7 and v16-v31, so that d8-d15 never need to be saved.
+     * v0-v7 and v16-v31. With a clear value, the table slots (inputs and
+     * clear value copies) from v16, followed by the tbl indices (in the
+     * same order as in priv) and the outputs in the remaining registers of
+     * v16-v31 and v0-v7. The clear value is loaded from priv into the
+     * first clear value slot. Either way, d8-d15 never need to be saved.
      */
-    const int num_const = l.num_idx + (clear ? l.num_clr : 0);
     av_assert0(l.num_in <= 8 && l.num_out <= 8);
-    av_assert0(l.num_in + num_const + l.num_out <= 24);
+    av_assert0(l.num_slots + l.num_idx + l.num_out <= 24);
 
+    int free_regs[24];
+    int num_free = 0;
+    if (!clear) {
+        for (int i = l.num_in; i < 8; i++)
+            free_regs[num_free++] = i;
+        for (int i = 16 + l.num_idx; i < 32; i++)
+            free_regs[num_free++] = i;
+    } else {
+        for (int i = 16 + l.num_slots; i < 32; i++)
+            free_regs[num_free++] = i;
+        for (int i = 0; i < 8; i++)
+            free_regs[num_free++] = i;
+    }
+
+    RasmOp vslot[16];
     RasmOp vin[8];
     RasmOp vout[8];
-    RasmOp vconst[16];
+    RasmOp vconst[9];
+    const int slot_base = clear ? 16 : 0;
+    for (int i = 0; i < l.num_slots; i++)
+        vslot[i] = a64op_vec16b(slot_base + i);
     for (int i = 0; i < l.num_in; i++)
-        vin[i] = a64op_vec16b(i);
-    for (int i = 0; i < num_const; i++)
-        vconst[i] = a64op_vec16b(16 + i);
-    for (int i = 0, n = l.num_in; i < l.num_out; i++, n++) {
-        if (n == 8)
-            n = 16 + num_const;
-        vout[i] = a64op_vec16b(n);
-    }
+        vin[i] = vslot[shuffle_slot(l.clr_tbl, i)];
+    int next = 0;
+    for (int i = 0; i < l.num_idx; i++)
+        vconst[i] = clear ? a64op_vec16b(free_regs[next++]) : a64op_vec16b(16 + i);
+    for (int i = 0; i < l.num_out; i++)
+        vout[i] = a64op_vec16b(free_regs[next++]);
     const RasmOp *vidx = vconst;
-    const RasmOp *vclr = vconst + l.num_idx;
+
+    int first_clr = -1;
+    for (int n = 0; clear && n < l.num_slots; n++) {
+        if (shuffle_slot_is_clr(l.clr_tbl, n)) {
+            first_clr = n;
+            break;
+        }
+    }
+    if (clear)
+        vconst[l.num_idx] = vslot[first_clr];
+    const int num_load = l.num_idx + clear;
 
     rasm_func_begin(r, entry->name, true, false);
     asmgen_process_frame(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
@@ -739,11 +769,17 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     s->extra_regs_count = 0;
     asmgen_process(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
 
-    /* Load tbl indices and clear values from priv. */
+    /* Load tbl indices and the clear value from priv. */
     rasm_set_current_node(r, s->setup);
-    load_regs(s, num_const, 16,
+    load_regs(s, num_load, 16,
               "vconst", vconst,
               "priv", s->impl, 0);
+    for (int n = first_clr + 1; clear && n < l.num_slots; n++) {
+        if (shuffle_slot_is_clr(l.clr_tbl, n)) {
+            i_mov(r, vslot[n], vslot[first_clr]);
+            CMTF("vslot[%d] = vslot[%d];", n, first_clr);
+        }
+    }
 
     /* Shuffle one block. */
     rasm_set_current_node(r, s->loop);
@@ -760,13 +796,14 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     for (int k = 0; k < l.num_out; k += 2) {
         const int n = FFMIN(2, l.num_out - k);
         for (int j = k; j < k + n; j++) {
-            const int nr = l.hi[j] - l.lo[j] + 1;
-            i_tbl(r, vout[j], veclist_n(&vin[l.lo[j]], nr), vidx[l.idx[j]]);
-            CMTF("vout[%d] = tbl(vin[%d..%d], vidx[%d]);", j, l.lo[j], l.hi[j], l.idx[j]);
-        }
-        for (int j = k; clear && j < k + n; j++) {
-            i_orr(r, vout[j], vout[j], vclr[l.clr[j]]);
-            CMTF("vout[%d] |= vclr[%d];", j, l.clr[j]);
+            if (!clear) {
+                i_tbl(r, vout[j], veclist_n(&vin[l.lo[j]], l.tnum[j]), vidx[l.idx[j]]);
+                CMTF("vout[%d] = tbl(vin[%d..%d], vidx[%d]);", j, l.lo[j], l.hi[j], l.idx[j]);
+            } else {
+                i_tbl(r, vout[j], veclist_n(&vslot[l.tlo[j]], l.tnum[j]), vidx[l.idx[j]]);
+                CMTF("vout[%d] = tbl(vslot[%d..%d], vidx[%d]);", j, l.tlo[j],
+                     l.tlo[j] + l.tnum[j] - 1, l.idx[j]);
+            }
         }
 
         const int num_full = FFMIN(n, full - k);

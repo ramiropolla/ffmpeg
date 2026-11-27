@@ -339,7 +339,7 @@ static int compile_shuffle_ldst_aarch64(SwsContext *ctx, const SwsUOp *uop,
 
 /**
  * tbl variant of the packed shuffle functions. The tbl indices (and the
- * clear values) are kept in vector registers for the whole call. See
+ * clear value) are kept in vector registers for the whole call. See
  * shuffle_layout() in ops_impl.h for more details.
  */
 static int compile_shuffle_tbl_aarch64(SwsContext *ctx, const SwsUOp *uop,
@@ -355,7 +355,8 @@ static int compile_shuffle_tbl_aarch64(SwsContext *ctx, const SwsUOp *uop,
 
     const SwsShuffleUOp *ipar = &params.par.shuffle;
     SwsAArch64ShuffleLayout l;
-    if (shuffle_layout(ipar->read_size, ipar->write_size, params.block_size, &l) < 0)
+    if (shuffle_layout(ipar->read_size, ipar->write_size, params.block_size,
+                       ipar->clear_value, &l) < 0)
         return AVERROR(ENOTSUP);
 
     /* Input byte index for each output byte (or -1 to clear). */
@@ -385,25 +386,29 @@ static int compile_shuffle_tbl_aarch64(SwsContext *ctx, const SwsUOp *uop,
 
     /**
      * There is one tbl index vector per distinct set of indices (relative
-     * to the first input vector register they reference), followed by the
-     * distinct clear value vectors (if needed). See shuffle_layout() for
+     * to the first table slot they reference), followed by a vector with
+     * the clear value in every byte (if needed). See shuffle_layout() for
      * which output vector registers share them. Bytes that are to be
-     * cleared get an out of range index, so that tbl sets them to zero.
+     * cleared get the index of the clear value register in the table, or
+     * an out of range index without a clear value, so that tbl sets them
+     * to zero.
      */
     const bool clear = par->clear_value != 0;
-    uint8_t *priv = av_malloc(16 * (l.num_idx + (clear ? l.num_clr : 0)));
+    uint8_t *priv = av_malloc(16 * (l.num_idx + clear));
     if (!priv)
         return AVERROR(ENOMEM);
+    if (clear)
+        memset(priv + 16 * l.num_idx, par->clear_value, 16);
     for (int k = 0; k < l.num_out; k++) {
         uint8_t *idx = priv + 16 * l.idx[k];
-        uint8_t *clr = priv + 16 * (l.num_idx + l.clr[k]);
+        const int clr_idx = clear ? 16 * (shuffle_clr_slot(&l, k) - l.tlo[k]) : 0xff;
         for (int j = 0; j < 16; j++) {
             const int pos = 16 * k + j;
             const int val = pos < l.out_bytes ? shuffle[pos] : -1;
             av_assert0(val < 0 || (val >= 16 * l.lo[k] && val < 16 * (l.hi[k] + 1)));
-            idx[j] = val >= 0 ? val - 16 * l.lo[k] : 0xff;
-            if (clear)
-                clr[j] = val < 0 ? par->clear_value : 0;
+            const int slot = val >= 0 ? shuffle_slot(l.clr_tbl, val >> 4) - l.tlo[k] : 0;
+            av_assert0(slot >= 0 && slot < l.tnum[k]);
+            idx[j] = val >= 0 ? 16 * slot + (val & 15) : clr_idx;
         }
     }
 

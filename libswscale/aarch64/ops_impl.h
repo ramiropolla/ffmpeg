@@ -123,12 +123,25 @@ static inline bool mul_by_element(SwsPixelType type)
  * For the same reason, output vector registers with the same number of
  * bytes, which start at the same offset within their group and reference
  * the same input offsets relative to their first input vector register,
- * have the same tbl indices, and share a single index vector. Clear values
- * only depend on the number of bytes and the offset within the group, and
- * are shared likewise.
+ * have the same tbl indices, and share a single index vector.
  *
  * The `bytes` parameter of shuffle_layout() overrides SHUFFLE_MAX_BYTES
  * for the lane mode (see shuffle_lane_bytes()), if it is not 0.
+ *
+ * Without a clear value, the cleared bytes get an out of range index, so
+ * that tbl sets them to zero, and the table slots are the input vector
+ * registers (clr_tbl 0). A non-zero clear value is taken by the tbl from a
+ * vector register that holds the clear value in every byte, and which is
+ * part of the table of each output vector register. Since the table
+ * registers must be consecutive, copies of that register are placed
+ * between the input vector registers, in one of two arrangements of the
+ * table slots:
+ *  clr_tbl 1: in0 c in1 c in2 c in3 c ...
+ *  clr_tbl 2: in0 c in1 in2 c in3 in4 c ...
+ * The second one needs fewer copies, but the table position of the inputs
+ * depends on the parity of the first input of each output, which may need
+ * more distinct tbl index vectors. The first arrangement that fits in the
+ * vector registers is used. If neither fits, the shuffle is not supported.
  */
 #define SHUFFLE_MAX_BYTES 128
 
@@ -141,13 +154,98 @@ typedef struct SwsAArch64ShuffleLayout {
     int lo[8];      /* first input vector register used by each output */
     int hi[8];      /* last input vector register used by each output */
     int num_idx;    /* number of distinct tbl index vectors */
-    int num_clr;    /* number of distinct clear value vectors */
     int idx[8];     /* tbl index vector used by each output */
-    int clr[8];     /* clear value vector used by each output */
+    int clr_tbl;    /* arrangement of the table slots (see above) */
+    int num_slots;  /* number of table slots (inputs and clear value copies) */
+    int tlo[8];     /* first table slot of each output */
+    int tnum[8];    /* number of table slots of each output */
 } SwsAArch64ShuffleLayout;
 
-static inline int shuffle_layout(int read_size, int write_size, int bytes,
+/* Table slot of input vector register i. */
+static inline int shuffle_slot(int clr_tbl, int i)
+{
+    switch (clr_tbl) {
+    case 1:  return 2 * i;
+    case 2:  return 3 * (i >> 1) + 2 * (i & 1);
+    default: return i;
+    }
+}
+
+/* Whether table slot n holds a copy of the clear value register. */
+static inline int shuffle_slot_is_clr(int clr_tbl, int n)
+{
+    return clr_tbl == 1 ? n & 1 : clr_tbl == 2 ? n % 3 == 1 : 0;
+}
+
+/* Table slot of the clear value register used by output k (clr_tbl != 0). */
+static inline int shuffle_clr_slot(const SwsAArch64ShuffleLayout *l, int k)
+{
+    const int n = shuffle_slot(l->clr_tbl, l->lo[k]);
+    return l->clr_tbl == 2 && (l->lo[k] & 1) ? n - 1 : n + 1;
+}
+
+/**
+ * Determine the tables and the shared tbl index vectors for the
+ * arrangement clr_tbl. Returns -1 if it doesn't fit.
+ */
+static inline int shuffle_tables(int read_size, int write_size, int clr_tbl,
                                  SwsAArch64ShuffleLayout *l)
+{
+    l->clr_tbl   = clr_tbl;
+    l->num_slots = shuffle_slot(clr_tbl, l->num_in - 1) + 1;
+    for (int k = 0; k < l->num_out; k++) {
+        int t0 = shuffle_slot(clr_tbl, l->lo[k]);
+        int t1 = shuffle_slot(clr_tbl, l->hi[k]);
+        if (clr_tbl) {
+            const int c = shuffle_clr_slot(l, k);
+            t0 = c < t0 ? c : t0;
+            t1 = c > t1 ? c : t1;
+        }
+        if (t1 - t0 >= 4)
+            return -1; /* tbl takes at most 4 table registers */
+        l->tlo[k]  = t0;
+        l->tnum[k] = t1 - t0 + 1;
+        if (t1 + 1 > l->num_slots)
+            l->num_slots = t1 + 1;
+    }
+
+    int idx_key[8][4];
+    l->num_idx = 0;
+    for (int k = 0; k < l->num_out; k++) {
+        const int out_start = 16 * k;
+        const int len = l->out_bytes - out_start < 16 ? l->out_bytes - out_start : 16;
+        const int offset = out_start % write_size;
+        const int in_shift = (out_start / write_size) * read_size - 16 * l->lo[k];
+        const int parity = clr_tbl == 2 ? l->lo[k] & 1 : 0;
+
+        int i;
+        for (i = 0; i < l->num_idx; i++) {
+            if (idx_key[i][0] == offset && idx_key[i][1] == in_shift &&
+                idx_key[i][2] == len && idx_key[i][3] == parity)
+                break;
+        }
+        if (i == l->num_idx) {
+            idx_key[i][0] = offset;
+            idx_key[i][1] = in_shift;
+            idx_key[i][2] = len;
+            idx_key[i][3] = parity;
+            l->num_idx++;
+        }
+        l->idx[k] = i;
+    }
+
+    /**
+     * The table slots are placed in v16-v31, and the tbl index vectors and
+     * output vector registers in the remaining registers of v16-v31 and
+     * v0-v7 (see asmgen_shuffle()).
+     */
+    if (clr_tbl && (l->num_slots > 16 || l->num_slots + l->num_idx + l->num_out > 24))
+        return -1;
+    return 0;
+}
+
+static inline int shuffle_layout(int read_size, int write_size, int bytes,
+                                 int clear, SwsAArch64ShuffleLayout *l)
 {
     const int max_size = read_size > write_size ? read_size : write_size;
     if (!bytes)
@@ -199,42 +297,12 @@ static inline int shuffle_layout(int read_size, int write_size, int bytes,
             return -1; /* tbl takes at most 4 table registers */
     }
 
-    int idx_key[8][3];
-    int clr_key[8][2];
-    l->num_idx = 0;
-    l->num_clr = 0;
-    for (int k = 0; k < l->num_out; k++) {
-        const int out_start = 16 * k;
-        const int len = l->out_bytes - out_start < 16 ? l->out_bytes - out_start : 16;
-        const int offset = out_start % write_size;
-        const int in_shift = (out_start / write_size) * read_size - 16 * l->lo[k];
-
-        int i;
-        for (i = 0; i < l->num_idx; i++) {
-            if (idx_key[i][0] == offset && idx_key[i][1] == in_shift &&
-                idx_key[i][2] == len)
-                break;
-        }
-        if (i == l->num_idx) {
-            idx_key[i][0] = offset;
-            idx_key[i][1] = in_shift;
-            idx_key[i][2] = len;
-            l->num_idx++;
-        }
-        l->idx[k] = i;
-
-        for (i = 0; i < l->num_clr; i++) {
-            if (clr_key[i][0] == offset && clr_key[i][1] == len)
-                break;
-        }
-        if (i == l->num_clr) {
-            clr_key[i][0] = offset;
-            clr_key[i][1] = len;
-            l->num_clr++;
-        }
-        l->clr[k] = i;
-    }
-    return 0;
+    if (!clear)
+        return shuffle_tables(read_size, write_size, 0, l);
+    for (int clr_tbl = 1; clr_tbl <= 2; clr_tbl++)
+        if (!shuffle_tables(read_size, write_size, clr_tbl, l))
+            return 0;
+    return -1;
 }
 
 /**
