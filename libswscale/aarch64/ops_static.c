@@ -706,26 +706,30 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 
     SwsAArch64ShuffleLayout l;
     const bool clear = par->clear_value;
-    av_assert0(shuffle_layout(par->read_size, par->write_size, p->block_size,
+    av_assert0(shuffle_layout(par->read_size, par->write_size, par->in_planes,
+                              par->out_planes, p->shuffle_planes, p->block_size,
                               clear, &l) == 0);
+    const int num_in  = l.in_planes  * l.num_in;
+    const int num_out = l.out_planes * l.num_out;
 
     /**
-     * Register assignment: without a clear value, inputs from v0 (tbl
-     * needs consecutive table registers), tbl indices from v16 (in the
-     * same order as in priv), and outputs in the remaining registers of
-     * v0-v7 and v16-v31. With a clear value, the table slots (inputs and
-     * clear value copies) from v16, followed by the tbl indices (in the
-     * same order as in priv) and the outputs in the remaining registers of
-     * v16-v31 and v0-v7. The clear value is loaded from priv into the
-     * first clear value slot. Either way, d8-d15 never need to be saved.
+     * Register assignment: without a clear value, the table slots (the
+     * inputs, see shuffle_slots()) from v0 (tbl needs consecutive table
+     * registers), tbl indices from v16 (in the same order as in priv), and
+     * outputs in the remaining registers of v0-v7 and v16-v31. With a clear
+     * value, the table slots (inputs and clear value copies) from v16,
+     * followed by the tbl indices (in the same order as in priv) and the
+     * outputs in the remaining registers of v16-v31 and v0-v7. The clear
+     * value is loaded from priv into the first clear value slot. Either
+     * way, d8-d15 never need to be saved.
      */
-    av_assert0(l.num_in <= 8 && l.num_out <= 8);
-    av_assert0(l.num_slots + l.num_idx + l.num_out <= 24);
+    av_assert0(num_in <= 8 && num_out <= 8);
+    av_assert0(l.num_slots + l.num_idx + num_out + l.need_tmp <= 24);
 
     int free_regs[24];
     int num_free = 0;
     if (!clear) {
-        for (int i = l.num_in; i < 8; i++)
+        for (int i = l.num_slots; i < 8; i++)
             free_regs[num_free++] = i;
         for (int i = 16 + l.num_idx; i < 32; i++)
             free_regs[num_free++] = i;
@@ -743,18 +747,19 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     const int slot_base = clear ? 16 : 0;
     for (int i = 0; i < l.num_slots; i++)
         vslot[i] = a64op_vec16b(slot_base + i);
-    for (int i = 0; i < l.num_in; i++)
-        vin[i] = vslot[shuffle_slot(l.clr_tbl, i)];
+    for (int i = 0; i < num_in; i++)
+        vin[i] = vslot[l.in_slot[i]];
     int next = 0;
     for (int i = 0; i < l.num_idx; i++)
         vconst[i] = clear ? a64op_vec16b(free_regs[next++]) : a64op_vec16b(16 + i);
-    for (int i = 0; i < l.num_out; i++)
+    for (int i = 0; i < num_out; i++)
         vout[i] = a64op_vec16b(free_regs[next++]);
+    const RasmOp vtmp = l.need_tmp ? a64op_vec16b(free_regs[next++]) : vin[0];
     const RasmOp *vidx = vconst;
 
     int first_clr = -1;
     for (int n = 0; clear && n < l.num_slots; n++) {
-        if (shuffle_slot_is_clr(l.clr_tbl, n)) {
+        if (l.slot_in[n] < 0) {
             first_clr = n;
             break;
         }
@@ -764,10 +769,10 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
     const int num_load = l.num_idx + clear;
 
     rasm_func_begin(r, entry->name, true, false);
-    asmgen_process_frame(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
+    asmgen_process_frame(s, SWS_COMP_ELEMS(l.in_planes), SWS_COMP_ELEMS(l.out_planes));
 
     s->extra_regs_count = 0;
-    asmgen_process(s, SWS_COMP_ELEMS(1), SWS_COMP_ELEMS(1));
+    asmgen_process(s, SWS_COMP_ELEMS(l.in_planes), SWS_COMP_ELEMS(l.out_planes));
 
     /* Load tbl indices and the clear value from priv. */
     rasm_set_current_node(r, s->setup);
@@ -775,7 +780,7 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
               "vconst", vconst,
               "priv", s->impl, 0);
     for (int n = first_clr + 1; clear && n < l.num_slots; n++) {
-        if (shuffle_slot_is_clr(l.clr_tbl, n)) {
+        if (l.slot_in[n] < 0) {
             i_mov(r, vslot[n], vslot[first_clr]);
             CMTF("vslot[%d] = vslot[%d];", n, first_clr);
         }
@@ -783,8 +788,13 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
 
     /* Shuffle one block. */
     rasm_set_current_node(r, s->loop);
-    shuffle_load(s, s->in[0], vin, l.num_in, l.in_bytes);
-    CMTF("read %d bytes", l.in_bytes);
+    for (int pl = 0; pl < l.in_planes; pl++) {
+        shuffle_load(s, s->in[pl], &vin[pl * l.num_in], l.num_in, l.in_bytes);
+        if (l.in_planes > 1)
+            CMTF("read %d bytes from plane %d", l.in_bytes, pl);
+        else
+            CMTF("read %d bytes", l.in_bytes);
+    }
 
     /**
      * Store each pair of output vector registers right after computing it.
@@ -792,40 +802,48 @@ static void asmgen_shuffle(SwsAArch64Context *s, const SwsAArch64OpEntry *entry)
      * out of write streaming mode, depending on the output alignment.
      */
     const int full = l.out_bytes >> 4;
-    RasmOp ptr = s->out[0];
-    for (int k = 0; k < l.num_out; k += 2) {
-        const int n = FFMIN(2, l.num_out - k);
-        for (int j = k; j < k + n; j++) {
-            if (!clear) {
-                i_tbl(r, vout[j], veclist_n(&vin[l.lo[j]], l.tnum[j]), vidx[l.idx[j]]);
-                CMTF("vout[%d] = tbl(vin[%d..%d], vidx[%d]);", j, l.lo[j], l.hi[j], l.idx[j]);
-            } else {
-                i_tbl(r, vout[j], veclist_n(&vslot[l.tlo[j]], l.tnum[j]), vidx[l.idx[j]]);
-                CMTF("vout[%d] = tbl(vslot[%d..%d], vidx[%d]);", j, l.tlo[j],
-                     l.tlo[j] + l.tnum[j] - 1, l.idx[j]);
+    for (int q = 0; q < l.out_planes; q++) {
+        RasmOp ptr = s->out[q];
+        RasmOp *vo = &vout[q * l.num_out];
+        for (int k = 0; k < l.num_out; k += 2) {
+            const int n = FFMIN(2, l.num_out - k);
+            for (int j = k; j < k + n; j++) {
+                const int o = q * l.num_out + j;
+                if (!clear && l.in_planes == 1) {
+                    i_tbl(r, vo[j], veclist_n(&vin[l.lo[j]], l.tnum[o]), vidx[l.idx[o]]);
+                    CMTF("vout[%d] = tbl(vin[%d..%d], vidx[%d]);", o, l.lo[j], l.hi[j], l.idx[o]);
+                } else {
+                    i_tbl(r, vo[j], veclist_n(&vslot[l.tlo[o]], l.tnum[o]), vidx[l.idx[o]]);
+                    CMTF("vout[%d] = tbl(vslot[%d..%d], vidx[%d]);", o, l.tlo[o],
+                         l.tlo[o] + l.tnum[o] - 1, l.idx[o]);
+                }
+            }
+
+            const int num_full = FFMIN(n, full - k);
+            if (num_full)
+                shuffle_store(s, ptr, &vo[k], num_full, 16 * k);
+            if (num_full < n) {
+                /**
+                 * Never store past the end of the output of this iteration.
+                 * With a single output plane, all tbl instructions have been
+                 * emitted, so an input vector register can be used as a
+                 * temporary.
+                 */
+#if !IN_ORDER_CORE
+                i_add(r, ptr, ptr, IMM(16 * full));
+#endif
+                shuffle_store_partial(s, ptr, vo[full], vtmp, l.out_bytes & 15);
             }
         }
-
-        const int num_full = FFMIN(n, full - k);
-        if (num_full)
-            shuffle_store(s, ptr, &vout[k], num_full, 16 * k);
-        if (num_full < n) {
-            /**
-             * Never store past the end of the output of this iteration.
-             * All tbl instructions have been emitted, so an input vector
-             * register can be used as a temporary.
-             */
 #if !IN_ORDER_CORE
-            i_add(r, ptr, ptr, IMM(16 * full));
+        if (!(l.out_bytes & 15))
+            i_add(r, ptr, ptr, IMM(l.out_bytes));
 #endif
-            shuffle_store_partial(s, ptr, vout[full], vin[0], l.out_bytes & 15);
-        }
+        if (l.out_planes > 1)
+            CMTF("write %d bytes to plane %d", l.out_bytes, q);
+        else
+            CMTF("write %d bytes", l.out_bytes);
     }
-#if !IN_ORDER_CORE
-    if (!(l.out_bytes & 15))
-        i_add(r, ptr, ptr, IMM(l.out_bytes));
-#endif
-    CMTF("write %d bytes", l.out_bytes);
 }
 
 /*********************************************************************/

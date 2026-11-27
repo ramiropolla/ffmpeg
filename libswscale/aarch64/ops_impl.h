@@ -63,6 +63,8 @@ typedef struct SwsAArch64OpImplParams {
     uint8_t block_size;
     SwsUOpParams par;
     SwsAArch64ShuffleLdSt ldst;
+    uint8_t shuffle_planes[4]; /* input planes used by each output plane, for
+                                * shuffles with several input planes */
 } SwsAArch64OpImplParams;
 
 /* SwsCompMask-related helpers. */
@@ -147,107 +149,219 @@ static inline bool mul_by_element(SwsPixelType type)
 
 typedef struct SwsAArch64ShuffleLayout {
     int groups;     /* number of shuffle groups per iteration */
-    int in_bytes;   /* input bytes per iteration */
-    int out_bytes;  /* output bytes per iteration */
-    int num_in;     /* number of input vector registers */
-    int num_out;    /* number of output vector registers */
-    int lo[8];      /* first input vector register used by each output */
-    int hi[8];      /* last input vector register used by each output */
+    int in_bytes;   /* input bytes per iteration (and plane) */
+    int out_bytes;  /* output bytes per iteration (and plane) */
+    int in_planes;  /* number of input planes */
+    int out_planes; /* number of output planes */
+    int num_in;     /* number of input vector registers (per plane) */
+    int num_out;    /* number of output vector registers (per plane) */
+    int lo[8];      /* first input vector register used by each output (per plane) */
+    int hi[8];      /* last input vector register used by each output (per plane) */
     int num_idx;    /* number of distinct tbl index vectors */
-    int idx[8];     /* tbl index vector used by each output */
+    int idx[8];     /* tbl index vector used by each output (q * num_out + j) */
     int clr_tbl;    /* arrangement of the table slots (see above) */
     int num_slots;  /* number of table slots (inputs and clear value copies) */
+    int slot_in[16];/* input vector register (p * num_in + r) of each slot, or -1 */
+    int in_slot[8]; /* table slot of each input vector register */
     int tlo[8];     /* first table slot of each output */
     int tnum[8];    /* number of table slots of each output */
+    int clr_pos[8]; /* position of the clear value register in the table of each
+                     * output, or -1 */
+    int need_tmp;   /* a temporary register is needed for partial stores */
 } SwsAArch64ShuffleLayout;
 
-/* Table slot of input vector register i. */
-static inline int shuffle_slot(int clr_tbl, int i)
+/**
+ * Table slot arrangements. 0 to 2 are for a single input plane (see above),
+ * the others for several input planes, with the input vector registers
+ * either in plane order (p0r0 p0r1 ... p1r0 ...) or interleaved by register
+ * (p0r0 p1r0 ... p0r1 p1r1 ...):
+ *  3: plane order
+ *  4: interleaved
+ *  5: interleaved, with a clear value copy after the registers of each r
+ *  6: plane order, with a clear value copy after each register
+ *  7: plane order, with a clear value copy after every other register
+ */
+#define SHUFFLE_ARRANGEMENTS 8
+
+static inline int shuffle_slots(SwsAArch64ShuffleLayout *l, int clr_tbl)
 {
+    const int P = l->in_planes, n = l->num_in;
+    int ns = 0;
+#define IN(p, r) do { l->slot_in[ns++] = (p) * n + (r); } while (0)
+#define CLR()    do { l->slot_in[ns++] = -1; } while (0)
+    if (P * n > 8)
+        return -1; /* at most 2 * 8 slots */
     switch (clr_tbl) {
-    case 1:  return 2 * i;
-    case 2:  return 3 * (i >> 1) + 2 * (i & 1);
-    default: return i;
+    case 0: for (int r = 0; r < n; r++) IN(0, r); break;
+    case 1: for (int r = 0; r < n; r++) { IN(0, r); CLR(); } break;
+    case 2:
+        for (int r = 0; r < n; r++) {
+            IN(0, r);
+            if (!(r & 1))
+                CLR();
+        }
+        break;
+    case 3: for (int p = 0; p < P; p++) for (int r = 0; r < n; r++) IN(p, r); break;
+    case 4: for (int r = 0; r < n; r++) for (int p = 0; p < P; p++) IN(p, r); break;
+    case 5:
+        for (int r = 0; r < n; r++) {
+            for (int p = 0; p < P; p++)
+                IN(p, r);
+            CLR();
+        }
+        break;
+    case 6: for (int p = 0; p < P; p++) for (int r = 0; r < n; r++) { IN(p, r); CLR(); } break;
+    case 7:
+        for (int p = 0, i = 0; p < P; p++) {
+            for (int r = 0; r < n; r++, i++) {
+                IN(p, r);
+                if (!(i & 1))
+                    CLR();
+            }
+        }
+        break;
+    default:
+        return -1;
     }
-}
-
-/* Whether table slot n holds a copy of the clear value register. */
-static inline int shuffle_slot_is_clr(int clr_tbl, int n)
-{
-    return clr_tbl == 1 ? n & 1 : clr_tbl == 2 ? n % 3 == 1 : 0;
-}
-
-/* Table slot of the clear value register used by output k (clr_tbl != 0). */
-static inline int shuffle_clr_slot(const SwsAArch64ShuffleLayout *l, int k)
-{
-    const int n = shuffle_slot(l->clr_tbl, l->lo[k]);
-    return l->clr_tbl == 2 && (l->lo[k] & 1) ? n - 1 : n + 1;
+#undef IN
+#undef CLR
+    l->num_slots = ns;
+    for (int i = 0; i < ns; i++)
+        if (l->slot_in[i] >= 0)
+            l->in_slot[l->slot_in[i]] = i;
+    return 0;
 }
 
 /**
  * Determine the tables and the shared tbl index vectors for the
- * arrangement clr_tbl. Returns -1 if it doesn't fit.
+ * arrangement clr_tbl. plane_map[q] is the mask of input planes used by
+ * output plane q. Returns -1 if it doesn't fit.
  */
-static inline int shuffle_tables(int read_size, int write_size, int clr_tbl,
-                                 SwsAArch64ShuffleLayout *l)
+static inline int shuffle_tables(int read_size, int write_size, int clear, int clr_tbl,
+                                 const uint8_t *plane_map, SwsAArch64ShuffleLayout *l)
 {
-    l->clr_tbl   = clr_tbl;
-    l->num_slots = shuffle_slot(clr_tbl, l->num_in - 1) + 1;
-    for (int k = 0; k < l->num_out; k++) {
-        int t0 = shuffle_slot(clr_tbl, l->lo[k]);
-        int t1 = shuffle_slot(clr_tbl, l->hi[k]);
-        if (clr_tbl) {
-            const int c = shuffle_clr_slot(l, k);
-            t0 = c < t0 ? c : t0;
-            t1 = c > t1 ? c : t1;
-        }
-        if (t1 - t0 >= 4)
-            return -1; /* tbl takes at most 4 table registers */
-        l->tlo[k]  = t0;
-        l->tnum[k] = t1 - t0 + 1;
-        if (t1 + 1 > l->num_slots)
-            l->num_slots = t1 + 1;
-    }
+    l->clr_tbl = clr_tbl;
+    if (shuffle_slots(l, clr_tbl) < 0)
+        return -1;
 
-    int idx_key[8][4];
+    int max_slot = 0;
+    int keys[8][24];
     l->num_idx = 0;
-    for (int k = 0; k < l->num_out; k++) {
-        const int out_start = 16 * k;
-        const int len = l->out_bytes - out_start < 16 ? l->out_bytes - out_start : 16;
-        const int offset = out_start % write_size;
-        const int in_shift = (out_start / write_size) * read_size - 16 * l->lo[k];
-        const int parity = clr_tbl == 2 ? l->lo[k] & 1 : 0;
+    for (int q = 0; q < l->out_planes; q++) {
+        const int map = l->in_planes > 1 ? plane_map[q] : 1;
+        for (int j = 0; j < l->num_out; j++) {
+            const int k = q * l->num_out + j;
+            int t0 = 16, t1 = -1;
+            for (int p = 0; p < l->in_planes; p++) {
+                if (!(map >> p & 1))
+                    continue;
+                for (int r = l->lo[j]; r <= l->hi[j]; r++) {
+                    const int t = l->in_slot[p * l->num_in + r];
+                    t0 = t < t0 ? t : t0;
+                    t1 = t > t1 ? t : t1;
+                }
+            }
+            int c = -1;
+            if (clear) {
+                if ((clr_tbl == 1 || clr_tbl == 2) && t1 >= 0) {
+                    /* the copy right after the first input, or right before it */
+                    c = t0 + 1 < l->num_slots && l->slot_in[t0 + 1] < 0 ? t0 + 1 : t0 - 1;
+                } else {
+                    /* the copy that gives the smallest table */
+                    int best = 99;
+                    for (int t = 0; t < l->num_slots; t++) {
+                        if (l->slot_in[t] >= 0)
+                            continue;
+                        const int lo = t1 < 0 || t < t0 ? t : t0;
+                        const int hi = t1 < 0 || t > t1 ? t : t1;
+                        if (hi - lo < best) {
+                            best = hi - lo;
+                            c = t;
+                        }
+                    }
+                }
+                if (c < 0)
+                    return -1;
+                if (t1 < 0)
+                    t0 = t1 = c;
+                t0 = c < t0 ? c : t0;
+                t1 = c > t1 ? c : t1;
+            }
+            if (t1 < 0)
+                t0 = t1 = 0; /* the output does not use any input */
+            if (t1 - t0 >= 4)
+                return -1; /* tbl takes at most 4 table registers */
+            l->tlo[k]     = t0;
+            l->tnum[k]    = t1 - t0 + 1;
+            l->clr_pos[k] = c >= 0 ? c - t0 : -1;
+            if (t1 > max_slot)
+                max_slot = t1;
 
-        int i;
-        for (i = 0; i < l->num_idx; i++) {
-            if (idx_key[i][0] == offset && idx_key[i][1] == in_shift &&
-                idx_key[i][2] == len && idx_key[i][3] == parity)
-                break;
+            /**
+             * Outputs share the tbl indices if they belong to the same output
+             * plane, start at the same offset within their group, have the
+             * same length, reference the same input offset relative to their
+             * first input vector register, and have the same table positions
+             * for the inputs and the clear value.
+             */
+            const int out_start = 16 * j;
+            int key[24], nk = 0;
+            for (int i = 0; i < 24; i++)
+                key[i] = -2;
+            key[nk++] = q;
+            key[nk++] = out_start % write_size;
+            key[nk++] = l->out_bytes - out_start < 16 ? l->out_bytes - out_start : 16;
+            key[nk++] = (out_start / write_size) * read_size - 16 * l->lo[j];
+            key[nk++] = l->clr_pos[k];
+            for (int p = 0; p < l->in_planes; p++) {
+                if (!(map >> p & 1))
+                    continue;
+                for (int r = l->lo[j]; r <= l->hi[j] && nk < 24; r++)
+                    key[nk++] = l->in_slot[p * l->num_in + r] - t0;
+            }
+            int i;
+            for (i = 0; i < l->num_idx; i++)
+                if (!memcmp(keys[i], key, sizeof(key)))
+                    break;
+            if (i == l->num_idx) {
+                memcpy(keys[i], key, sizeof(key));
+                l->num_idx++;
+            }
+            l->idx[k] = i;
         }
-        if (i == l->num_idx) {
-            idx_key[i][0] = offset;
-            idx_key[i][1] = in_shift;
-            idx_key[i][2] = len;
-            idx_key[i][3] = parity;
-            l->num_idx++;
-        }
-        l->idx[k] = i;
     }
 
     /**
-     * The table slots are placed in v16-v31, and the tbl index vectors and
-     * output vector registers in the remaining registers of v16-v31 and
-     * v0-v7 (see asmgen_shuffle()).
+     * Without a clear value, the input vector registers are placed in v0-v7,
+     * and with one, the table slots are placed in v16-v31. The tbl index
+     * vectors and the output vector registers (and a temporary register for
+     * partial stores, if needed) go in the remaining registers of v0-v7 and
+     * v16-v31 (see asmgen_shuffle()).
      */
-    if (clr_tbl && (l->num_slots > 16 || l->num_slots + l->num_idx + l->num_out > 24))
+    /* Drop the clear value copies after the last slot that is used. */
+    for (int i = 0; i < l->in_planes * l->num_in; i++)
+        if (l->in_slot[i] > max_slot)
+            max_slot = l->in_slot[i];
+    l->num_slots = max_slot + 1;
+
+    l->need_tmp = l->out_planes > 1 && (l->out_bytes & 15);
+    const int total = l->num_slots + l->num_idx + l->out_planes * l->num_out + l->need_tmp;
+    if (clear ? l->num_slots > 16 : l->num_slots > 8)
+        return -1;
+    if (total > 24)
         return -1;
     return 0;
 }
 
-static inline int shuffle_layout(int read_size, int write_size, int bytes,
+static inline int shuffle_layout(int read_size, int write_size, int in_planes,
+                                 int out_planes, const uint8_t *plane_map, int bytes,
                                  int clear, SwsAArch64ShuffleLayout *l)
 {
-    const int max_size = read_size > write_size ? read_size : write_size;
+    in_planes  = in_planes  ? in_planes  : 1;
+    out_planes = out_planes ? out_planes : 1;
+    const int in_total  = in_planes  * read_size;
+    const int out_total = out_planes * write_size;
+    const int max_size  = in_total > out_total ? in_total : out_total;
     if (!bytes)
         bytes = SHUFFLE_MAX_BYTES;
     if (!read_size || !write_size || max_size > bytes)
@@ -263,13 +377,19 @@ static inline int shuffle_layout(int read_size, int write_size, int bytes,
      * the whole vector registers, so that the last input vector register is
      * loaded exactly with a single scalar load (see shuffle_load()), and
      * nothing is read past the end of the input. 8 groups always satisfy
-     * this, since max_size is at most 16.
+     * this for a single plane, since max_size is at most 16.
+     *
+     * All of this is per plane, with at most 8 input and 8 output vector
+     * registers in total.
      */
     int fallback = 0;
     l->groups = 0;
     for (int g = bytes / max_size; g > 0; g--) {
         const int tail = (g * read_size) & 15;
         if (tail & (tail - 1))
+            continue;
+        if (in_planes  * ((g * read_size  + 15) >> 4) > 8 ||
+            out_planes * ((g * write_size + 15) >> 4) > 8)
             continue;
         if (!fallback)
             fallback = g;
@@ -282,10 +402,12 @@ static inline int shuffle_layout(int read_size, int write_size, int bytes,
         l->groups = fallback;
     if (!l->groups)
         return -1;
-    l->in_bytes  = l->groups * read_size;
-    l->out_bytes = l->groups * write_size;
-    l->num_in    = (l->in_bytes  + 15) >> 4;
-    l->num_out   = (l->out_bytes + 15) >> 4;
+    l->in_planes  = in_planes;
+    l->out_planes = out_planes;
+    l->in_bytes   = l->groups * read_size;
+    l->out_bytes  = l->groups * write_size;
+    l->num_in     = (l->in_bytes  + 15) >> 4;
+    l->num_out    = (l->out_bytes + 15) >> 4;
     for (int k = 0; k < l->num_out; k++) {
         const int out_start = 16 * k;
         const int out_end   = 16 * (k + 1) < l->out_bytes ? 16 * (k + 1) : l->out_bytes;
@@ -297,10 +419,11 @@ static inline int shuffle_layout(int read_size, int write_size, int bytes,
             return -1; /* tbl takes at most 4 table registers */
     }
 
-    if (!clear)
-        return shuffle_tables(read_size, write_size, 0, l);
-    for (int clr_tbl = 1; clr_tbl <= 2; clr_tbl++)
-        if (!shuffle_tables(read_size, write_size, clr_tbl, l))
+    static const int single[2][3] = { { 0, -1, -1 }, { 1, 2, -1 } };
+    static const int multi[2][4]  = { { 3, 4, -1, -1 }, { 5, 6, 7, -1 } };
+    const int *arr = in_planes == 1 ? single[!!clear] : multi[!!clear];
+    for (int i = 0; arr[i] >= 0; i++)
+        if (!shuffle_tables(read_size, write_size, clear, arr[i], plane_map, l))
             return 0;
     return -1;
 }

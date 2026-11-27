@@ -192,6 +192,14 @@ static int aarch64_op_impl_cmp(const void *a, const void *b)
             return (int) para->shuffle.read_size - parb->shuffle.read_size;
         if (para->shuffle.write_size != parb->shuffle.write_size)
             return (int) para->shuffle.write_size - parb->shuffle.write_size;
+        if (para->shuffle.in_planes != parb->shuffle.in_planes)
+            return (int) para->shuffle.in_planes - parb->shuffle.in_planes;
+        if (para->shuffle.out_planes != parb->shuffle.out_planes)
+            return (int) para->shuffle.out_planes - parb->shuffle.out_planes;
+        const int cmp_planes = memcmp(pa->shuffle_planes, pb->shuffle_planes,
+                                      sizeof(pa->shuffle_planes));
+        if (cmp_planes)
+            return cmp_planes;
         break;
     }
     }
@@ -242,7 +250,7 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
                         SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_SHUFFLE_EXT;
     if (!(ctx->flags & SWS_BITEXACT))
         flags |= SWS_UOP_FLAG_FMA;
-    ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    ret = aarch64_translate(ctx, ops, flags, uops);
     if (ret == AVERROR(ENOTSUP)) {
         ret = 0;
         goto end;
@@ -451,6 +459,16 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
         }
         av_strlcatf(func_name, sizeof(func_name), "_%u_%u_%u", par->shuffle.clear_value,
                     par->shuffle.read_size, par->shuffle.write_size);
+        if (par->shuffle.in_planes || par->shuffle.out_planes) {
+            const int out_planes = ff_sws_shuffle_planes(par->shuffle.out_planes);
+            av_strlcatf(func_name, sizeof(func_name), "_p%ux%u",
+                        ff_sws_shuffle_planes(par->shuffle.in_planes), out_planes);
+            if (par->shuffle.in_planes > 1) {
+                av_strlcatf(func_name, sizeof(func_name), "_");
+                for (int q = 0; q < out_planes; q++)
+                    av_strlcatf(func_name, sizeof(func_name), "%x", params->shuffle_planes[q]);
+            }
+        }
         if (params->block_size) /* lane mode */
             av_strlcatf(func_name, sizeof(func_name), "_lane%u", params->block_size);
         break;
@@ -515,8 +533,16 @@ static void serialize_op(AVBPrint *bp, const SwsAArch64OpImplParams *params)
                    par->dither.size_log2);
         break;
     case SWS_UOP_RW_SHUFFLE:
-        av_bprintf(bp, ", .par.shuffle = { .clear_value = %u, .read_size = %u, .write_size = %u }",
+        av_bprintf(bp, ", .par.shuffle = { .clear_value = %u, .read_size = %u, .write_size = %u",
                    par->shuffle.clear_value, par->shuffle.read_size, par->shuffle.write_size);
+        if (par->shuffle.in_planes || par->shuffle.out_planes)
+            av_bprintf(bp, ", .in_planes = %u, .out_planes = %u",
+                       par->shuffle.in_planes, par->shuffle.out_planes);
+        av_bprintf(bp, " }");
+        if (par->shuffle.in_planes > 1)
+            av_bprintf(bp, ", .shuffle_planes = {%u, %u, %u, %u}",
+                       params->shuffle_planes[0], params->shuffle_planes[1],
+                       params->shuffle_planes[2], params->shuffle_planes[3]);
         if (params->ldst.num_in) {
             const SwsAArch64ShuffleLdSt *ldst = &params->ldst;
             av_bprintf(bp, ", .ldst = { .num_in = %u, .num_out = %u, .src = {%d, %d, %d, %d} }",

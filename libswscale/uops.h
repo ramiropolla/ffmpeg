@@ -224,11 +224,25 @@ typedef enum SwsUOpType {
     SWS_UOP_TYPE_NB,
 } SwsUOpType;
 
+/**
+ * With more than one input or output plane (only with SWS_UOP_FLAG_SHUFFLE_EXT),
+ * the sizes are per plane, and the shuffle mask indexes the bytes of all
+ * planes of one iteration in plane order, for both the input (plane p starts
+ * at index p * read_size) and the output (plane q starts at position
+ * q * write_size).
+ */
 typedef struct SwsShuffleUOp {
     uint8_t clear_value; /* value to clear elements with negative indices to */
-    uint8_t read_size;   /* input bytes per iteration */
-    uint8_t write_size;  /* output bytes per iteration */
+    uint8_t read_size;   /* input bytes per iteration (and plane) */
+    uint8_t write_size;  /* output bytes per iteration (and plane) */
+    uint8_t in_planes;   /* number of input planes, or 0 for a single plane */
+    uint8_t out_planes;  /* number of output planes, or 0 for a single plane */
 } SwsShuffleUOp;
+
+static inline int ff_sws_shuffle_planes(int planes)
+{
+    return planes ? planes : 1;
+}
 
 typedef struct SwsShuffleMask {
     int8_t mask[16];    /* shuffle index mask, or -1 to clear bytes (to `clear`) */

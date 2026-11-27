@@ -48,6 +48,8 @@ static int shuffle_lane_bytes(const SwsUOp *uop, int *period)
     const int size = par->read_size;
     if (par->read_size != par->write_size || size >= 16)
         return 0; /* only for R == W, and R == 16 already is a single lane */
+    if (par->in_planes || par->out_planes)
+        return 0;
 
     int p;
     for (p = 1; p < 16; p <<= 1) {
@@ -124,6 +126,8 @@ static SwsPixelType shuffle_ldst(const SwsUOp *uop, SwsAArch64ShuffleLdSt *ldst)
     const SwsShuffleUOp *par = &uop->par.shuffle;
     const SwsShuffleMask *data = &uop->data.shuffle;
     if (!data->pixels || par->read_size % data->pixels || par->write_size % data->pixels)
+        return SWS_PIXEL_NONE;
+    if (par->in_planes || par->out_planes)
         return SWS_PIXEL_NONE;
     const int in_size  = par->read_size  / data->pixels;
     const int out_size = par->write_size / data->pixels;
@@ -247,6 +251,17 @@ static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
          */
         out->par.shuffle.clear_value = !!out->par.shuffle.clear_value;
         out->block_size = shuffle_lane_bytes(uop, NULL);
+        if (uop->par.shuffle.in_planes > 1) {
+            const SwsShuffleUOp *par = &uop->par.shuffle;
+            const int out_planes = ff_sws_shuffle_planes(par->out_planes);
+            for (int q = 0; q < out_planes; q++) {
+                for (int i = 0; i < par->write_size; i++) {
+                    const int m = uop->data.shuffle.mask[q * par->write_size + i];
+                    if (m >= 0)
+                        out->shuffle_planes[q] |= 1 << (m / par->read_size);
+                }
+            }
+        }
         if (out->block_size) {
             out->par.shuffle.read_size  = 16;
             out->par.shuffle.write_size = 16;
@@ -255,4 +270,39 @@ static void convert_to_aarch64_impl(const SwsUOp *uop, int block_size,
     default:
         break;
     }
+}
+
+/**
+ * Whether the tbl variant of the packed shuffle can be generated for an
+ * SWS_UOP_RW_SHUFFLE. Shuffles from the more complete solver
+ * (SWS_UOP_FLAG_SHUFFLE_EXT) may need more table or vector registers than
+ * available, in which case the uop list is translated again without it.
+ */
+static bool aarch64_shuffle_supported(const SwsUOp *uop)
+{
+    SwsAArch64OpImplParams params;
+    convert_to_aarch64_impl(uop, 0, &params);
+    const SwsShuffleUOp *par = &params.par.shuffle;
+    SwsAArch64ShuffleLayout l;
+    return shuffle_layout(par->read_size, par->write_size, par->in_planes,
+                          par->out_planes, params.shuffle_planes, params.block_size,
+                          par->clear_value, &l) == 0;
+}
+
+/**
+ * Translate the op list to uops, using SWS_UOP_FLAG_SHUFFLE_EXT only if
+ * the resulting shuffle is supported (see aarch64_shuffle_supported()).
+ */
+static int aarch64_translate(SwsContext *ctx, const SwsOpList *ops,
+                             SwsUOpFlags flags, SwsUOpList *uops)
+{
+    int ret = ff_sws_ops_translate(ctx, ops, flags, uops);
+    if (ret < 0 || !(flags & SWS_UOP_FLAG_SHUFFLE_EXT))
+        return ret;
+    if (uops->num_ops != 1 || uops->ops[0].uop != SWS_UOP_RW_SHUFFLE ||
+        aarch64_shuffle_supported(&uops->ops[0]))
+        return ret;
+
+    ff_sws_uop_list_remove_at(uops, 0, uops->num_ops);
+    return ff_sws_ops_translate(ctx, ops, flags & ~SWS_UOP_FLAG_SHUFFLE_EXT, uops);
 }

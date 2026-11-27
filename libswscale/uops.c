@@ -73,6 +73,9 @@ void ff_sws_uop_name(const SwsUOp *op, char buf[SWS_UOP_NAME_MAX])
     case SWS_UOP_RW_SHUFFLE:
         av_bprintf(&bp, "_%x_%u_%u", par->shuffle.clear_value,
                    par->shuffle.read_size, par->shuffle.write_size);
+        if (par->shuffle.in_planes || par->shuffle.out_planes)
+            av_bprintf(&bp, "_p%ux%u", ff_sws_shuffle_planes(par->shuffle.in_planes),
+                       ff_sws_shuffle_planes(par->shuffle.out_planes));
         break;
     case SWS_UOP_LSHIFT:
     case SWS_UOP_RSHIFT:
