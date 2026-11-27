@@ -316,13 +316,17 @@ static int compile_shuffle_ldst_aarch64(SwsContext *ctx, const SwsUOp *uop,
     if (!func)
         return AVERROR(ENOTSUP);
 
-    /* The clear value is broadcast to all bytes of two vector registers. */
+    /* The clear value is broadcast to all elements of two vector registers. */
+    const SwsShuffleMask *data = &uop->data.shuffle;
+    const int size = ff_sws_pixel_type_size(params.type);
+    const int64_t clear = shuffle_ldst_clear(data, uop->par.shuffle.write_size / data->pixels, size);
     uint8_t *priv = av_malloc(32);
     if (!priv)
         return AVERROR(ENOMEM);
-    memset(priv, uop->par.shuffle.clear_value, 32);
+    for (int i = 0; i < 32; i++)
+        priv[i] = clear > 0 ? clear >> (8 * (i % size)) : 0;
 
-    const int elems = 16 / ff_sws_pixel_type_size(params.type);
+    const int elems = 16 / size;
     *out = (SwsCompiledOp) {
         .func        = func,
         .priv        = priv,
@@ -359,14 +363,19 @@ static int compile_shuffle_tbl_aarch64(SwsContext *ctx, const SwsUOp *uop,
                        ipar->clear_value, &l) < 0)
         return AVERROR(ENOTSUP);
 
-    /* Input byte index for each output byte (or -1 to clear). */
+    /**
+     * Input byte index for each output byte (or -1 to clear). The pattern,
+     * including the clear values, repeats every `stride` output bytes.
+     */
+    const SwsShuffleMask *data = &uop->data.shuffle;
     int8_t shuffle[SHUFFLE_MAX_BYTES];
     int pixels;
+    int stride;
     if (params.block_size) {
         /* Lane mode: repeat the pattern of a single period in every lane. */
-        const SwsShuffleMask *data = &uop->data.shuffle;
         int period;
         shuffle_lane_bytes(uop, &period);
+        stride = period;
         for (int pos = 0; pos < l.out_bytes; pos++) {
             const int m = data->mask[pos % period];
             shuffle[pos] = m < 0 ? -1 : m + pos - pos % period;
@@ -377,6 +386,7 @@ static int compile_shuffle_tbl_aarch64(SwsContext *ctx, const SwsUOp *uop,
         pixels = l.in_bytes / pixel_size;
     } else {
         const int max_size = FFMAX(par->read_size, par->write_size);
+        stride = par->write_size;
         const int groups = ff_sws_shuffle_mask(uop, shuffle, l.groups * max_size);
         if (groups < 0)
             return groups;
@@ -387,28 +397,36 @@ static int compile_shuffle_tbl_aarch64(SwsContext *ctx, const SwsUOp *uop,
     /**
      * There is one tbl index vector per distinct set of indices (relative
      * to the first table slot they reference), followed by a vector with
-     * the clear value in every byte (if needed). See shuffle_layout() for
-     * which output vector registers share them. Bytes that are to be
-     * cleared get the index of the clear value register in the table, or
-     * an out of range index without a clear value, so that tbl sets them
-     * to zero.
+     * the clear values of one repetition of the pattern (if needed). See
+     * shuffle_layout() for which output vector registers share them. Bytes
+     * that are to be cleared get the index of their clear value in the
+     * clear value register of the table, or an out of range index if their
+     * clear value is 0, so that tbl sets them to zero.
      */
     const bool clear = par->clear_value != 0;
-    uint8_t *priv = av_malloc(16 * (l.num_idx + clear));
+    av_assert0(stride <= 16);
+    uint8_t *priv = av_mallocz(16 * (l.num_idx + clear));
     if (!priv)
         return AVERROR(ENOMEM);
-    if (clear)
-        memset(priv + 16 * l.num_idx, par->clear_value, 16);
+    if (clear) {
+        for (int j = 0; j < stride; j++)
+            priv[16 * l.num_idx + j] = data->mask[j] < 0 ? data->clear[j] : 0;
+    }
     for (int k = 0; k < l.num_out; k++) {
         uint8_t *idx = priv + 16 * l.idx[k];
-        const int clr_idx = clear ? 16 * (shuffle_clr_slot(&l, k) - l.tlo[k]) : 0xff;
+        const int clr_idx = clear ? 16 * (shuffle_clr_slot(&l, k) - l.tlo[k]) : 0;
         for (int j = 0; j < 16; j++) {
             const int pos = 16 * k + j;
             const int val = pos < l.out_bytes ? shuffle[pos] : -1;
             av_assert0(val < 0 || (val >= 16 * l.lo[k] && val < 16 * (l.hi[k] + 1)));
             const int slot = val >= 0 ? shuffle_slot(l.clr_tbl, val >> 4) - l.tlo[k] : 0;
             av_assert0(slot >= 0 && slot < l.tnum[k]);
-            idx[j] = val >= 0 ? 16 * slot + (val & 15) : clr_idx;
+            if (val >= 0)
+                idx[j] = 16 * slot + (val & 15);
+            else if (pos < l.out_bytes && data->clear[pos % stride])
+                idx[j] = clr_idx + pos % stride;
+            else
+                idx[j] = 0xff;
         }
     }
 

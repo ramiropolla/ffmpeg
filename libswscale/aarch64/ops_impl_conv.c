@@ -84,13 +84,36 @@ static int shuffle_lane_bytes(const SwsUOp *uop, int *period)
 }
 
 /**
+ * Clear value of the cleared elements of a structured load/store shuffle
+ * (see shuffle_ldst()), as an element of `size` bytes, or -1 if there are
+ * no cleared elements. Returns -2 if the cleared elements do not all have
+ * the same value.
+ */
+static int64_t shuffle_ldst_clear(const SwsShuffleMask *data, int out_size, int size)
+{
+    int64_t value = -1;
+    for (int pos = 0; pos < data->pixels * out_size; pos += size) {
+        if (data->mask[pos] >= 0)
+            continue;
+        uint32_t v = 0;
+        for (int i = 0; i < size; i++)
+            v |= (uint32_t) data->clear[pos + i] << (8 * i);
+        if (value >= 0 && value != v)
+            return -2;
+        value = v;
+    }
+    return value;
+}
+
+/**
  * Structured load/store variant for SWS_UOP_RW_SHUFFLE: if every output
  * pixel consists of whole elements (of 1, 2, or 4 bytes) of its input pixel
  * or of cleared elements, with at most 4 elements per input and output
  * pixel, then the shuffle can be performed with ldN and stN. This is only
  * accepted if the register lists of ldN and stN can line up without any
- * moves in between (see shuffle_ldst_offset()), so that the cleared
- * elements can be set once outside of the loop.
+ * moves in between (see shuffle_ldst_offset()), and if all cleared
+ * elements have the same value (see shuffle_ldst_clear()), so that the
+ * cleared elements can be set once outside of the loop.
  *
  * Returns the element type, or SWS_PIXEL_NONE if the variant does not
  * apply.
@@ -131,7 +154,7 @@ static SwsPixelType shuffle_ldst(const SwsUOp *uop, SwsAArch64ShuffleLdSt *ldst)
                 }
             }
         }
-        if (!ok)
+        if (!ok || shuffle_ldst_clear(data, out_size, size) == -2)
             continue;
 
         const int offset = shuffle_ldst_offset(ldst);
@@ -153,7 +176,7 @@ static SwsPixelType shuffle_ldst(const SwsUOp *uop, SwsAArch64ShuffleLdSt *ldst)
  * Convert SWS_UOP_RW_SHUFFLE to the SwsAArch64OpImplParams of its structured
  * load/store variant, if possible (see shuffle_ldst()). The clear value is
  * loaded from impl->priv, so the code only depends on whether there are
- * cleared elements, and whether they are cleared to a non-zero value.
+ * cleared elements with a non-zero value.
  */
 static bool convert_to_aarch64_ldst(const SwsUOp *uop, SwsAArch64OpImplParams *out)
 {
@@ -162,17 +185,17 @@ static bool convert_to_aarch64_ldst(const SwsUOp *uop, SwsAArch64OpImplParams *o
     if (type == SWS_PIXEL_NONE)
         return false;
 
-    bool clear = false;
-    for (int k = 0; k < ldst.num_out; k++)
-        if (ldst.src[k] < 0)
-            clear = true;
+    const SwsShuffleMask *data = &uop->data.shuffle;
+    const int size = ff_sws_pixel_type_size(type);
+    const int out_size = uop->par.shuffle.write_size / data->pixels;
+    const bool clear = shuffle_ldst_clear(data, out_size, size) > 0;
 
     /* aarch64_lookup() compares the whole structure, including padding. */
     memset(out, 0, sizeof(*out));
     out->uop  = SWS_UOP_RW_SHUFFLE;
     out->mask = uop->mask;
     out->type = type;
-    out->par.shuffle.clear_value = clear && uop->par.shuffle.clear_value;
+    out->par.shuffle.clear_value = clear;
     out->ldst = ldst;
     return true;
 }

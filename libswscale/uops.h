@@ -229,7 +229,8 @@ typedef struct SwsShuffleUOp {
 } SwsShuffleUOp;
 
 typedef struct SwsShuffleMask {
-    int8_t mask[16];    /* shuffle index mask, or -1 to clear bytes (to `clear_value`) */
+    int8_t mask[16];    /* shuffle index mask, or -1 to clear bytes (to `clear`) */
+    uint8_t clear[16];  /* values of the bytes with a negative index */
     uint8_t pixels;     /* number of pixels per iteration */
 } SwsShuffleMask;
 

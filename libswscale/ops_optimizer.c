@@ -1030,6 +1030,8 @@ static int solve_shuffle(const SwsUOpList *const uops, SwsUOp *out)
             if (num_groups < 0)
                 return num_groups;
             memcpy(data->mask, tmp, sizeof(tmp));
+            for (int i = 0; i < FF_ARRAY_ELEMS(data->clear); i++)
+                data->clear[i] = data->mask[i] < 0 ? par->clear_value : 0;
             par->read_size  *= num_groups;
             par->write_size *= num_groups;
             data->pixels = num_groups;
