@@ -445,13 +445,19 @@ static inline int shuffle_ldst_offset(const SwsAArch64ShuffleLdSt *ldst)
     return 0;
 }
 
-/* Number of ldN/stN pairs per iteration of a structured load/store shuffle. */
+/**
+ * Number of ldN/stN pairs per iteration of a structured load/store shuffle.
+ * With a single input element and a planar output, stores dominate, and
+ * storing 32 bytes to each output plane per iteration drops Cortex-A55 out
+ * of write streaming mode (every output line is read before being written),
+ * so only 64 bytes are processed per iteration.
+ */
 static inline int shuffle_ldst_count(const SwsAArch64ShuffleLdSt *ldst)
 {
     const int n = ldst->num_in > ldst->num_out ? ldst->num_in : ldst->num_out;
-    return SHUFFLE_MAX_BYTES / (16 * n);
+    const int bytes = ldst->num_in == 1 && ldst->out_planar ? 64 : SHUFFLE_MAX_BYTES;
+    return bytes / (16 * n) ? bytes / (16 * n) : 1;
 }
-
 /**
  * Number of bytes of private data consumed by each kernel; must match what
  * aarch64_setup() packs.
