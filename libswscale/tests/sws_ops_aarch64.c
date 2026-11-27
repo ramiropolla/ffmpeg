@@ -247,7 +247,8 @@ static int collect_ops_compile(SwsContext *ctx, const SwsOpList *ops,
         return AVERROR(ENOMEM);
 
     SwsUOpFlags flags = SWS_UOP_FLAG_VEC4 | SWS_UOP_FLAG_PUNNING |
-                        SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_SHUFFLE_EXT;
+                        SWS_UOP_FLAG_PSHUFB | SWS_UOP_FLAG_SHUFFLE_EXT |
+                        SWS_UOP_FLAG_SHUFFLE_PLANES;
     if (!(ctx->flags & SWS_BITEXACT))
         flags |= SWS_UOP_FLAG_FMA;
     ret = aarch64_translate(ctx, ops, flags, uops);

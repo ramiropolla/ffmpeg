@@ -166,6 +166,8 @@ typedef enum SwsUOpFlagBits {
     SWS_UOP_FLAG_PUNNING      = (1 << 5), /* allow type punning float data as int */
     SWS_UOP_FLAG_SHUFFLE_EXT  = (1 << 6), /* SWS_UOP_RW_SHUFFLE supports per-byte clear
                                            * values, casts and byte shifts (with PSHUFB) */
+    SWS_UOP_FLAG_SHUFFLE_PLANES = (1 << 7), /* SWS_UOP_RW_SHUFFLE supports several
+                                             * planes (with SHUFFLE_EXT) */
 } SwsUOpFlagBits;
 
 typedef enum SwsUOpType {
@@ -225,11 +227,11 @@ typedef enum SwsUOpType {
 } SwsUOpType;
 
 /**
- * With more than one input or output plane (only with SWS_UOP_FLAG_SHUFFLE_EXT),
- * the sizes are per plane, and the shuffle mask indexes the bytes of all
- * planes of one iteration in plane order, for both the input (plane p starts
- * at index p * read_size) and the output (plane q starts at position
- * q * write_size).
+ * With more than one input or output plane (only with
+ * SWS_UOP_FLAG_SHUFFLE_PLANES), the sizes are per plane, and the shuffle mask
+ * indexes the bytes of all planes of one iteration in plane order, for both
+ * the input (plane p starts at index p * read_size) and the output (plane q
+ * starts at position q * write_size).
  */
 typedef struct SwsShuffleUOp {
     uint8_t clear_value; /* value to clear elements with negative indices to */

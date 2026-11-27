@@ -1071,9 +1071,10 @@ static bool shuffle_int_type(SwsPixelType type)
  *    values for different components (SwsShuffleMask.clear),
  *  - casts that widen integers (zero-extension),
  *  - shifts by multiples of 8 bits,
- *  - several input and output planes.
+ *  - several input and output planes (with SWS_UOP_FLAG_SHUFFLE_PLANES).
  */
-static int solve_shuffle_ext(const SwsUOpList *const uops, SwsUOp *out)
+static int solve_shuffle_ext(const SwsUOpList *const uops, SwsUOpFlags flags,
+                             SwsUOp *out)
 {
     if (!uops->num_ops)
         return AVERROR(EINVAL);
@@ -1222,6 +1223,8 @@ static int solve_shuffle_ext(const SwsUOpList *const uops, SwsUOp *out)
              * backend can choose any number of pixels per iteration.
              */
             const bool planes = in_planes > 1 || out_planes > 1;
+            if (planes && !(flags & SWS_UOP_FLAG_SHUFFLE_PLANES))
+                return AVERROR(ENOTSUP);
             const int pixels = planes ? 1 : FFMIN(16 / (in_planes * in_pixel),
                                                   16 / (out_planes * out_pixel));
             if (!pixels)
@@ -1348,7 +1351,7 @@ retry:
     /* Try promoting the entire uop list to a packed shuffle operation */
     if (flags & SWS_UOP_FLAG_PSHUFB) {
         SwsUOp shuffle;
-        int ret = (flags & SWS_UOP_FLAG_SHUFFLE_EXT) ? solve_shuffle_ext(uops, &shuffle)
+        int ret = (flags & SWS_UOP_FLAG_SHUFFLE_EXT) ? solve_shuffle_ext(uops, flags, &shuffle)
                                                      : solve_shuffle(uops, &shuffle);
         if (ret >= 0) {
             ff_sws_uop_list_remove_at(uops, 0, uops->num_ops);
