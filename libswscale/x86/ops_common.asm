@@ -130,6 +130,15 @@ process_fn 4
 ; unpacks. Its masks are the 4 pre-shuffle masks, followed by the clear
 ; values of each output plane.
 ;
+; Conversely, shuffles from 2 to 4 input planes to a single packed output
+; plane of 4 or 8 bytes per input byte (with 1, 2 or 4 bytes per input
+; plane) use an interleave: the 4x4 dwords of a lane of 16 bytes of each
+; input plane are transposed with unpacks, so that register j holds dword j
+; of each input plane, which is then shuffled into EXPAND output registers.
+; Its masks are the shuffle masks of the output registers, followed by their
+; clear values. With EXPAND == 1, the stores of the second lane go after the
+; ones of the first lane; otherwise there is a single lane.
+;
 ; Shuffles with too many output registers per lane instead process a single
 ; lane of GROUPS = 16 / max(read size, write size) iterations, with one load
 ; and one store per plane, like the vpermb variant does on a full register.
@@ -270,6 +279,15 @@ process_fn 4
 %assign SINGLE    (VPERMB || OUT_REGS > 8)
 %assign TRANSPOSE (!SINGLE && IN_PLANES == 1 && OUT_PLANES > 1 && \
                    R_SIZE == 4 * W_SIZE && W_SIZE <= 4 && W_SIZE != 3)
+%assign INTERLEAVE (!VPERMB && IN_PLANES > 1 && OUT_PLANES == 1 && \
+                    (W_SIZE == 4 * R_SIZE || W_SIZE == 8 * R_SIZE) && \
+                    R_SIZE <= 4 && R_SIZE != 3)
+%if INTERLEAVE
+    %assign EXPAND   (W_SIZE / (4 * R_SIZE))
+    %assign SINGLE   0
+    %assign GROUPS   (16 / R_SIZE)
+    %assign OUT_REGS (4 * EXPAND)
+%endif
 %if SINGLE
     %assign LANE_SIZE (VPERMB ? mmsize : 16)
     %assign GROUPS    (LANE_SIZE / MAX_SIZE)
@@ -277,6 +295,10 @@ process_fn 4
     %assign LANES     1
     %assign LOAD_SIZE  (GROUPS * R_SIZE)
     %assign STORE_SIZE (GROUPS * W_SIZE)
+%elif INTERLEAVE
+    %assign LANES     (EXPAND == 1 ? mmsize / 16 : 1)
+    %assign LOAD_SIZE  16
+    %assign STORE_SIZE 16
 %else
     %assign LANES     (OUT_REGS == 1 ? mmsize / 16 : 1)
     %assign LOAD_SIZE  16
@@ -312,14 +334,22 @@ process_fn 4
 %assign IN_REG    0
 %assign OUT_REG   NUM_IN
 %assign TMP_REG   (NUM_IN + 1)
-%if TRANSPOSE
-    %assign MASK_REG  (NUM_IN + 4)
+%if INTERLEAVE
+    %assign MASK_REG  6
+    %assign NUM_SHUF  OUT_REGS
+%elif TRANSPOSE
+    %assign MASK_REG  6
     %assign NUM_SHUF  4
 %else
     %assign MASK_REG  (NUM_IN + 2)
     %assign NUM_SHUF  (OUT_PLANES * OUT_REGS * IN_PLANES * MAX_IN_REGS)
 %endif
 %assign NUM_MASKS (NUM_SHUF + (CLEAR_VALUE ? OUT_PLANES * OUT_REGS : 0))
+%if INTERLEAVE
+    %assign MAX_IN_REGS 1
+    %assign NUM_IN      IN_PLANES
+    %assign TMP_REG     5 ; free after the transpose
+%endif
 %assign MASK_REGS (!VPERMB && MASK_REG + NUM_MASKS <= 16)
 %if MASK_REG > 16
     %error too many input registers
@@ -384,7 +414,77 @@ cglobal NAME, 6, 14, 16, exec, shuffle, bx, row, bxend, rowend, src0, src1, src2
     %endrep
 
 .loop:
-    %if TRANSPOSE
+    %if INTERLEAVE
+        %assign SH_I 0
+        %rep IN_PLANES
+            LOAD SH_I, src %+ SH_I %+ q + srcidxq
+            %assign SH_I SH_I + 1
+        %endrep
+        %if IN_PLANES == 2
+            %assign SH_B 1 ; unused rows 2 and 3, any register will do
+            %assign SH_C 1
+        %elif IN_PLANES == 3
+            %assign SH_B 2
+            %assign SH_C 2
+        %else
+            %assign SH_B 2
+            %assign SH_C 3
+        %endif
+            punpckldq  VR %+ 4, VR %+ 0, VR %+ 1 ; dwords 0 and 1 of planes 0, 1
+            punpckhdq  VR %+ 0, VR %+ 0, VR %+ 1 ; dwords 2 and 3 of planes 0, 1
+            punpckldq  VR %+ 5, VR %+ SH_B, VR %+ SH_C ; dwords 0 and 1 of planes 2, 3
+            punpckhdq  VR %+ 2, VR %+ SH_B, VR %+ SH_C ; dwords 2 and 3 of planes 2, 3
+            punpcklqdq VR %+ 1, VR %+ 4, VR %+ 5 ; dword 0 of each plane
+            punpckhqdq VR %+ 4, VR %+ 4, VR %+ 5 ; dword 1
+            punpcklqdq VR %+ 3, VR %+ 0, VR %+ 2 ; dword 2
+            punpckhqdq VR %+ 0, VR %+ 0, VR %+ 2 ; dword 3
+        %assign SH_J 0
+        %rep OUT_REGS
+            %assign SH_U (SH_J / EXPAND) ; transposed register
+            %if SH_U == 0
+                %assign SH_R 1
+            %elif SH_U == 1
+                %assign SH_R 4
+            %elif SH_U == 2
+                %assign SH_R 3
+            %else
+                %assign SH_R 0
+            %endif
+            SHUFFLE_MASK SH_J
+            %if SH_J % EXPAND == EXPAND - 1 ; last use, shuffle in place
+                %assign SH_A SH_R
+            pshufb VR %+ SH_R, SH_M
+            %else
+                %assign SH_A TMP_REG
+            pshufb VR %+ TMP_REG, VR %+ SH_R, SH_M
+            %endif
+            %if CLEAR_VALUE != 0
+                SHUFFLE_MASK (NUM_SHUF + SH_J)
+            por VR %+ SH_A, SH_M
+            %endif
+            %if LANES > 1 && SH_A == TMP_REG
+                %error the second lane of the temporary is not kept
+            %endif
+            movu [dst0q + dstidxq + 16 * SH_J], xm %+ SH_A
+            %assign SH_J SH_J + 1
+        %endrep
+        %if LANES > 1
+            %assign SH_J 0
+            %rep 4
+                %if SH_J == 0
+                    %assign SH_A 1
+                %elif SH_J == 1
+                    %assign SH_A 4
+                %elif SH_J == 2
+                    %assign SH_A 3
+                %else
+                    %assign SH_A 0
+                %endif
+            vextracti128 [dst0q + dstidxq + LANE_OUT + 16 * SH_J], m %+ SH_A, 1
+                %assign SH_J SH_J + 1
+            %endrep
+        %endif
+    %elif TRANSPOSE
         %assign SH_U 0
         %rep 4
             LOAD SH_U, src0q + srcidxq + 16 * SH_U

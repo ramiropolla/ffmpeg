@@ -626,14 +626,21 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
      * unless that takes too many of them. Then a single lane processes as
      * many iterations as fit in one register.
      */
-    int groups = 16 / av_gcd(16, par->write_size);
+    /* Interleave of 2 to 4 input planes into a packed output plane */
+    const int interleave = !vpermb && in_planes > 1 && out_planes == 1 &&
+                           (par->write_size == 4 * par->read_size ||
+                            par->write_size == 8 * par->read_size) &&
+                           par->read_size <= 4 && par->read_size != 3;
+    const int expand = interleave ? par->write_size / (4 * par->read_size) : 1;
+
+    int groups = interleave ? 16 / par->read_size : 16 / av_gcd(16, par->write_size);
     int out_regs = groups * par->write_size / 16;
-    const int single = vpermb || out_regs > 8;
+    const int single = !interleave && (vpermb || out_regs > 8);
     /* Interleaving the stores of several output registers of two lanes
      * stalls on the store buffer of Golden Cove, so only use several lanes
      * with a single output register (which also makes their stores
      * contiguous). */
-    int lanes = out_regs == 1 ? mmsize / 16 : 1;
+    int lanes = out_regs == 1 || (interleave && expand == 1) ? mmsize / 16 : 1;
     if (single) {
         const int lane_size = vpermb ? mmsize : 16;
         groups   = lane_size / FFMAX(par->read_size, par->write_size);
@@ -651,7 +658,7 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
                           par->write_size <= 4 && par->write_size != 3;
 
     int max_in_regs = 1, max_load = 0;
-    for (int j = 0; j < out_regs; j++) {
+    for (int j = 0; !interleave && j < out_regs; j++) {
         int off, num;
         shuffle_in_range(par, groups, single, j, &off, &num);
         max_in_regs = FFMAX(max_in_regs, num);
@@ -664,7 +671,8 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
      * register, all repeated for every lane. Each mask zeroes the bytes that
      * come from other input planes and registers.
      */
-    const int num_shuf  = transpose ? 4 : out_planes * out_regs * in_planes * max_in_regs;
+    const int num_shuf  = transpose ? 4 : interleave ? out_regs :
+                          out_planes * out_regs * in_planes * max_in_regs;
     const int num_masks = num_shuf + out_planes * out_regs;
     uint8_t *priv = av_malloc(num_masks * mmsize);
     if (!priv)
@@ -684,6 +692,19 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
         }
     }
 
+    for (int j = 0; interleave && j < out_regs; j++) {
+        /* output register j is shuffled from dword j / expand of each plane */
+        uint8_t *mask = &priv[j * mmsize];
+        for (int pos = 0; pos < mmsize; pos++) {
+            const int g = 16 * j + pos % 16; /* output byte */
+            const int n = g / par->write_size;
+            const int m = data->mask[g % par->write_size];
+            const int p = m / par->read_size;
+            const int src = n * par->read_size + m % par->read_size - 4 * (j / expand);
+            mask[pos] = m >= 0 ? 4 * p + src : 0x80;
+        }
+    }
+
     for (int q = 0; q < out_planes; q++) {
         for (int j = 0; j < out_regs; j++) {
             int in_off, in_num;
@@ -699,7 +720,7 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
                 /* input byte of this lane, relative to the first register */
                 const int src = n * par->read_size + m % par->read_size - in_off;
                 clear[pos] = used && m < 0 ? data->clear[k] : 0;
-                for (int p = 0; !transpose && p < in_planes; p++) {
+                for (int p = 0; !transpose && !interleave && p < in_planes; p++) {
                     for (int r = 0; r < max_in_regs; r++) {
                         uint8_t *mask = &priv[(((q * out_regs + j) * in_planes + p) *
                                                max_in_regs + r) * mmsize];
