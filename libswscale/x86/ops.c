@@ -645,6 +645,11 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
     const int lane_in  = groups * par->read_size;
     const int lane_out = groups * par->write_size;
 
+    /* Transpose of 4 input registers into 2 to 4 output planes */
+    const int transpose = !single && in_planes == 1 && out_planes > 1 &&
+                          par->read_size == 4 * par->write_size &&
+                          par->write_size <= 4 && par->write_size != 3;
+
     int max_in_regs = 1, max_load = 0;
     for (int j = 0; j < out_regs; j++) {
         int off, num;
@@ -659,13 +664,26 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
      * register, all repeated for every lane. Each mask zeroes the bytes that
      * come from other input planes and registers.
      */
-    const int num_shuf  = out_planes * out_regs * in_planes * max_in_regs;
+    const int num_shuf  = transpose ? 4 : out_planes * out_regs * in_planes * max_in_regs;
     const int num_masks = num_shuf + out_planes * out_regs;
     uint8_t *priv = av_malloc(num_masks * mmsize);
     if (!priv)
         return AVERROR(ENOMEM);
 
     const int lane_size = vpermb ? mmsize : 16;
+    for (int r = 0; transpose && r < 4; r++) {
+        /* dword q of input register r gets its bytes of output plane q */
+        uint8_t *mask = &priv[r * mmsize];
+        for (int pos = 0; pos < mmsize; pos++) {
+            const int q = (pos % 16) / 4;
+            const int g = 4 * r + pos % 4; /* output byte of plane q */
+            const int n = g / par->write_size;
+            const int k = q * par->write_size + g % par->write_size;
+            const int m = q < out_planes ? data->mask[k] : -1;
+            mask[pos] = m >= 0 ? n * par->read_size + m % par->read_size - 16 * r : 0x80;
+        }
+    }
+
     for (int q = 0; q < out_planes; q++) {
         for (int j = 0; j < out_regs; j++) {
             int in_off, in_num;
@@ -681,7 +699,7 @@ static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
                 /* input byte of this lane, relative to the first register */
                 const int src = n * par->read_size + m % par->read_size - in_off;
                 clear[pos] = used && m < 0 ? data->clear[k] : 0;
-                for (int p = 0; p < in_planes; p++) {
+                for (int p = 0; !transpose && p < in_planes; p++) {
                     for (int r = 0; r < max_in_regs; r++) {
                         uint8_t *mask = &priv[(((q * out_regs + j) * in_planes + p) *
                                                max_in_regs + r) * mmsize];

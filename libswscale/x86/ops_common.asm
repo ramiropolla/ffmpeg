@@ -123,6 +123,13 @@ process_fn 4
 ; the stores are contiguous). Interleaving the stores of several output
 ; registers of two lanes stalls on the store buffer of Golden Cove.
 ;
+; Shuffles from a single packed input plane of 4 bytes per output byte (or
+; 2 or 4 bytes) of 2 to 4 planes use a transpose instead: each of the 4
+; input registers of a lane is shuffled once, so that dword q holds the
+; bytes of output plane q, and the 4x4 dwords are then transposed with
+; unpacks. Its masks are the 4 pre-shuffle masks, followed by the clear
+; values of each output plane.
+;
 ; Shuffles with too many output registers per lane instead process a single
 ; lane of GROUPS = 16 / max(read size, write size) iterations, with one load
 ; and one store per plane, like the vpermb variant does on a full register.
@@ -261,6 +268,8 @@ process_fn 4
 %assign GROUPS    (16 / SH_A)
 %assign OUT_REGS  (GROUPS * W_SIZE / 16)
 %assign SINGLE    (VPERMB || OUT_REGS > 8)
+%assign TRANSPOSE (!SINGLE && IN_PLANES == 1 && OUT_PLANES > 1 && \
+                   R_SIZE == 4 * W_SIZE && W_SIZE <= 4 && W_SIZE != 3)
 %if SINGLE
     %assign LANE_SIZE (VPERMB ? mmsize : 16)
     %assign GROUPS    (LANE_SIZE / MAX_SIZE)
@@ -303,8 +312,13 @@ process_fn 4
 %assign IN_REG    0
 %assign OUT_REG   NUM_IN
 %assign TMP_REG   (NUM_IN + 1)
-%assign MASK_REG  (NUM_IN + 2)
-%assign NUM_SHUF  (OUT_PLANES * OUT_REGS * IN_PLANES * MAX_IN_REGS)
+%if TRANSPOSE
+    %assign MASK_REG  (NUM_IN + 4)
+    %assign NUM_SHUF  4
+%else
+    %assign MASK_REG  (NUM_IN + 2)
+    %assign NUM_SHUF  (OUT_PLANES * OUT_REGS * IN_PLANES * MAX_IN_REGS)
+%endif
 %assign NUM_MASKS (NUM_SHUF + (CLEAR_VALUE ? OUT_PLANES * OUT_REGS : 0))
 %assign MASK_REGS (!VPERMB && MASK_REG + NUM_MASKS <= 16)
 %if MASK_REG > 16
@@ -370,6 +384,45 @@ cglobal NAME, 6, 14, 16, exec, shuffle, bx, row, bxend, rowend, src0, src1, src2
     %endrep
 
 .loop:
+    %if TRANSPOSE
+        %assign SH_U 0
+        %rep 4
+            LOAD SH_U, src0q + srcidxq + 16 * SH_U
+            SHUFFLE_MASK SH_U
+            pshufb VR %+ SH_U, SH_M
+            %assign SH_U SH_U + 1
+        %endrep
+            punpckldq  VR %+ 4, VR %+ 0, VR %+ 1 ; dwords 0 and 1 of rows 0, 1
+            punpckhdq  VR %+ 0, VR %+ 0, VR %+ 1 ; dwords 2 and 3 of rows 0, 1
+            punpckldq  VR %+ 5, VR %+ 2, VR %+ 3 ; dwords 0 and 1 of rows 2, 3
+            punpckhdq  VR %+ 2, VR %+ 2, VR %+ 3 ; dwords 2 and 3 of rows 2, 3
+            punpcklqdq VR %+ 1, VR %+ 4, VR %+ 5 ; plane 0
+            punpckhqdq VR %+ 4, VR %+ 4, VR %+ 5 ; plane 1
+        %if OUT_PLANES > 2
+            punpcklqdq VR %+ 3, VR %+ 0, VR %+ 2 ; plane 2
+        %endif
+        %if OUT_PLANES > 3
+            punpckhqdq VR %+ 0, VR %+ 0, VR %+ 2 ; plane 3
+        %endif
+        %assign SH_O 0
+        %rep OUT_PLANES
+            %if SH_O == 0
+                %assign SH_A 1
+            %elif SH_O == 1
+                %assign SH_A 4
+            %elif SH_O == 2
+                %assign SH_A 3
+            %else
+                %assign SH_A 0
+            %endif
+            %if CLEAR_VALUE != 0
+                SHUFFLE_MASK (NUM_SHUF + SH_O)
+            por VR %+ SH_A, SH_M
+            %endif
+            STORE dst %+ SH_O %+ q + dstidxq, SH_A
+            %assign SH_O SH_O + 1
+        %endrep
+    %else
     %assign SH_J 0
     %rep OUT_REGS
         IN_RANGE SH_J
@@ -415,6 +468,7 @@ cglobal NAME, 6, 14, 16, exec, shuffle, bx, row, bxend, rowend, src0, src1, src2
         %endrep
         %assign SH_J SH_J + 1
     %endrep
+    %endif ; TRANSPOSE
 
             add srcidxq, STEP_IN
     %if STEP_IN != STEP_OUT
