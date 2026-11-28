@@ -21,6 +21,7 @@
 #include <float.h>
 
 #include "libavutil/avassert.h"
+#include "libavutil/mathematics.h"
 #include "libavutil/mem.h"
 #include "libavutil/x86/cpu.h"
 
@@ -580,67 +581,134 @@ static int movsize(const int bytes, const int mmsize)
            mmsize;            /* zmm movu */
 }
 
+/**
+ * Input byte offset and number of input registers of output register j of
+ * a shuffle lane of `groups` iterations, see RW_SHUFFLE in ops_common.asm.
+ */
+static void shuffle_in_range(const SwsShuffleUOp *par, int groups, int single,
+                             int j, int *off, int *num)
+{
+    if (single) {
+        *off = 0;
+        *num = 1;
+        return;
+    }
+
+    const int n0 = 16 * j / par->write_size;
+    const int n1 = FFMIN((16 * j + 15) / par->write_size, groups - 1);
+    *off = n0 * par->read_size;
+    *num = ((n1 - n0 + 1) * par->read_size + 15) / 16;
+}
+
 static int translate_shuffle(const SwsUOp *uop, int mmsize, SwsCompiledOp *out)
 {
-    /* We can't shuffle across lanes, so restrict the vector size to XMM
-     * whenever the read/write size would be a subset of the full vector,
-     * unless we have access to AVX-512 ICL vpermb (which only shuffles a
-     * single input plane) */
+    /* We can't shuffle across lanes, so shuffles whose read/write sizes are
+     * not a clean multiple of 128 bits process at most two independent
+     * lanes, unless we have access to AVX-512 ICL vpermb (which only
+     * shuffles a single input plane). The layout matches RW_SHUFFLE in
+     * ops_common.asm. */
     const SwsShuffleUOp *par = &uop->par.shuffle;
     const SwsShuffleMask *data = &uop->data.shuffle;
     const int in_planes  = ff_sws_shuffle_planes(par->in_planes);
     const int out_planes = ff_sws_shuffle_planes(par->out_planes);
     const int lane_aligned = par->read_size == par->write_size &&
                              16 % par->read_size == 0;
-    if (!lane_aligned && (in_planes > 1 || !EXTERNAL_AVX512ICL(av_get_cpu_flags())))
-        mmsize = 16;
+    int vpermb = 0;
+    if (!lane_aligned && mmsize == 64) {
+        if (in_planes == 1 && EXTERNAL_AVX512ICL(av_get_cpu_flags()))
+            vpermb = 1;
+        else
+            mmsize = 32;
+    }
 
     /**
-     * Generate one shuffle mask per pair of output and input plane, followed
-     * by the clear values of each output plane, all repeated for every lane.
-     * Each mask zeroes the bytes that come from other input planes.
+     * Each lane processes enough iterations to fill whole output registers,
+     * unless that takes too many of them. Then a single lane processes as
+     * many iterations as fit in one register.
      */
-    const int lane_size = lane_aligned ? 16 : mmsize;
-    const int groups = lane_size / FFMAX(par->read_size, par->write_size);
-    if (!groups)
-        return AVERROR(EINVAL);
+    int groups = 16 / av_gcd(16, par->write_size);
+    int out_regs = groups * par->write_size / 16;
+    const int single = vpermb || out_regs > 8;
+    /* Interleaving the stores of several output registers of two lanes
+     * stalls on the store buffer of Golden Cove, so only use several lanes
+     * with a single output register (which also makes their stores
+     * contiguous). */
+    int lanes = out_regs == 1 ? mmsize / 16 : 1;
+    if (single) {
+        const int lane_size = vpermb ? mmsize : 16;
+        groups   = lane_size / FFMAX(par->read_size, par->write_size);
+        out_regs = 1;
+        lanes    = 1;
+        if (!groups)
+            return AVERROR(EINVAL);
+    }
+    const int lane_in  = groups * par->read_size;
+    const int lane_out = groups * par->write_size;
 
-    const int num_masks = out_planes * (in_planes + 1);
+    int max_in_regs = 1, max_load = 0;
+    for (int j = 0; j < out_regs; j++) {
+        int off, num;
+        shuffle_in_range(par, groups, single, j, &off, &num);
+        max_in_regs = FFMAX(max_in_regs, num);
+        max_load = FFMAX(max_load, off + 16 * (num - 1));
+    }
+
+    /**
+     * Generate one shuffle mask per output plane, output register, input
+     * plane and input register, followed by the clear values of each output
+     * register, all repeated for every lane. Each mask zeroes the bytes that
+     * come from other input planes and registers.
+     */
+    const int num_shuf  = out_planes * out_regs * in_planes * max_in_regs;
+    const int num_masks = num_shuf + out_planes * out_regs;
     uint8_t *priv = av_malloc(num_masks * mmsize);
     if (!priv)
         return AVERROR(ENOMEM);
 
+    const int lane_size = vpermb ? mmsize : 16;
     for (int q = 0; q < out_planes; q++) {
-        uint8_t *clear = &priv[(out_planes * in_planes + q) * mmsize];
-        for (int pos = 0; pos < mmsize; pos++) {
-            const int n = (pos % lane_size) / par->write_size;
-            const int k = q * par->write_size + (pos % lane_size) % par->write_size;
-            const bool used = n < groups;
-            clear[pos] = used && data->mask[k] < 0 ? data->clear[k] : 0;
-            for (int p = 0; p < in_planes; p++) {
-                uint8_t *mask = &priv[(q * in_planes + p) * mmsize];
+        for (int j = 0; j < out_regs; j++) {
+            int in_off, in_num;
+            shuffle_in_range(par, groups, single, j, &in_off, &in_num);
+            uint8_t *clear = &priv[(num_shuf + q * out_regs + j) * mmsize];
+            for (int pos = 0; pos < mmsize; pos++) {
+                /* output byte of this lane, and its iteration */
+                const int g = 16 * j + pos % lane_size;
+                const int n = g / par->write_size;
+                const int k = q * par->write_size + g % par->write_size;
                 const int m = data->mask[k];
-                if (used && m >= 0 && m / par->read_size == p)
-                    mask[pos] = n * par->read_size + m % par->read_size;
-                else
-                    mask[pos] = 0x80;
+                const bool used = g < lane_out;
+                /* input byte of this lane, relative to the first register */
+                const int src = n * par->read_size + m % par->read_size - in_off;
+                clear[pos] = used && m < 0 ? data->clear[k] : 0;
+                for (int p = 0; p < in_planes; p++) {
+                    for (int r = 0; r < max_in_regs; r++) {
+                        uint8_t *mask = &priv[(((q * out_regs + j) * in_planes + p) *
+                                               max_in_regs + r) * mmsize];
+                        if (used && m >= 0 && m / par->read_size == p &&
+                            src >= 16 * r && src < 16 * r + 16)
+                            mask[pos] = src - 16 * r;
+                        else
+                            mask[pos] = 0x80;
+                    }
+                }
             }
         }
     }
 
-    const int num_lanes = mmsize / lane_size;
-    const int in_total  = num_lanes * groups * par->read_size;
-    const int out_total = num_lanes * groups * par->write_size;
+    /* The loads and stores are 16 bytes wide per lane, except for single */
+    const int load_size  = single ? movsize(lane_in,  mmsize) : 16;
+    const int store_size = single ? movsize(lane_out, mmsize) : 16;
     *out = (SwsCompiledOp) {
         .priv        = priv,
         .free        = av_free,
         .slice_align = 1,
-        .block_size  = groups * data->pixels * num_lanes,
+        .block_size  = lanes * groups * data->pixels,
     };
     for (int p = 0; p < in_planes; p++)
-        out->over_read[p] = movsize(in_total, mmsize) - in_total;
+        out->over_read[p] = FFMAX(max_load + load_size - lane_in, 0);
     for (int q = 0; q < out_planes; q++)
-        out->over_write[q] = movsize(out_total, mmsize) - out_total;
+        out->over_write[q] = store_size - (single ? lane_out : 16);
 
 #define ASSIGN_SHUFFLE_FUNC(CPU, EXT, NAME, ...)                                \
 do {                                                                            \
@@ -655,7 +723,7 @@ do {                                                                            
     case 16: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, SSE4, _sse4); break;
     case 32: SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX2, _avx2); break;
     case 64:
-        if (lane_aligned) {
+        if (!vpermb) {
             SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX512, _avx512);
         } else { /* vpermb variant */
             SWS_FOR(U8, RW_SHUFFLE, ASSIGN_SHUFFLE_FUNC, AVX512ICL, _avx512icl);
