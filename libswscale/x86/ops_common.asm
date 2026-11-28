@@ -151,6 +151,16 @@ process_fn 4
     %endif
 %endmacro
 
+; Defines SH_M as the operand of mask %1: a register or a memory reference
+%macro SHUFFLE_MASK 1
+    %if MASK_REGS
+        %assign SH_MR MASK_REG + %1
+        %xdefine SH_M m %+ SH_MR
+    %else
+        %xdefine SH_M [shuffleq + (%1) * mmsize]
+    %endif
+%endmacro
+
 %macro RW_SHUFFLE 5
 %assign CLEAR_VALUE %1
 %assign READ_SIZE   %2
@@ -169,14 +179,17 @@ process_fn 4
 %assign WRITE_SIZE   (WRITE_SIZE * GROUPS)
 
 ; Vector registers: inputs in m0-m3, the output in m4, a temporary in m5,
-; and the vpermb masks in m6-m9. SH_I and SH_O iterate over the input and
-; output planes, and SH_R and SH_K hold register numbers.
+; and the masks in m6-m15. SH_I and SH_O iterate over the input and output
+; planes, and SH_R and SH_K hold register numbers. The pshufb masks and the
+; clear values are kept in registers if they all fit.
 %assign IN_REG   0
 %assign OUT_REG  4
 %assign TMP_REG  5
 %assign MASK_REG 6
+%assign NUM_MASKS (IN_PLANES * OUT_PLANES + (CLEAR_VALUE ? OUT_PLANES : 0))
+%assign MASK_REGS (!VPERMB && NUM_MASKS <= 10)
 
-cglobal NAME, 6, 14, 10, exec, shuffle, bx, row, bxend, rowend, src0, src1, src2, src3, dst0, dst1, dst2, dst3
+cglobal NAME, 6, 14, 16, exec, shuffle, bx, row, bxend, rowend, src0, src1, src2, src3, dst0, dst1, dst2, dst3
 %if VPERMB && (!cpuflag(avx512icl) || IN_PLANES > 1)
             ud2 ; runtime checks should prevent this variant from being called
 %else
@@ -201,6 +214,13 @@ cglobal NAME, 6, 14, 10, exec, shuffle, bx, row, bxend, rowend, src0, src1, src2
             vpmovb2m k %+ SH_K, m %+ SH_R
             knotq k %+ SH_K, k %+ SH_K
             %assign SH_O SH_O + 1
+        %endrep
+    %elif MASK_REGS
+        %assign SH_K 0
+        %rep NUM_MASKS
+            %assign SH_R MASK_REG + SH_K
+            mova m %+ SH_R, [shuffleq + SH_K * mmsize]
+            %assign SH_K SH_K + 1
         %endrep
     %endif
 
@@ -236,6 +256,7 @@ cglobal NAME, 6, 14, 10, exec, shuffle, bx, row, bxend, rowend, src0, src1, src2
     %endrep
     %assign SH_O 0
     %rep OUT_PLANES
+        %assign SH_A OUT_REG ; accumulator register of this output plane
         %if VPERMB
             %assign SH_R MASK_REG + SH_O
             %assign SH_K SH_O + 1
@@ -244,19 +265,28 @@ cglobal NAME, 6, 14, 10, exec, shuffle, bx, row, bxend, rowend, src0, src1, src2
             %assign SH_I 0
             %rep IN_PLANES
                 %assign SH_R IN_REG + SH_I
-                %if SH_I == 0
-            pshufb m %+ OUT_REG, m %+ SH_R, [shuffleq + (SH_O * IN_PLANES + SH_I) * mmsize]
+                SHUFFLE_MASK (SH_O * IN_PLANES + SH_I)
+                %if SH_O == OUT_PLANES - 1 ; last use of the input, shuffle in place
+            pshufb m %+ SH_R, SH_M
+                    %if SH_I == 0
+                        %assign SH_A SH_R
+                    %else
+            por m %+ SH_A, m %+ SH_R
+                    %endif
+                %elif SH_I == 0
+            pshufb m %+ OUT_REG, m %+ SH_R, SH_M
                 %else
-            pshufb m %+ TMP_REG, m %+ SH_R, [shuffleq + (SH_O * IN_PLANES + SH_I) * mmsize]
+            pshufb m %+ TMP_REG, m %+ SH_R, SH_M
             por m %+ OUT_REG, m %+ TMP_REG
                 %endif
                 %assign SH_I SH_I + 1
             %endrep
         %endif
         %if CLEAR_VALUE != 0 ; the cleared bytes are zero after the shuffle
-            por m %+ OUT_REG, [shuffleq + (OUT_PLANES * IN_PLANES + SH_O) * mmsize]
+            SHUFFLE_MASK (OUT_PLANES * IN_PLANES + SH_O)
+            por m %+ SH_A, SH_M
         %endif
-            WRITE [dst %+ SH_O %+ q + dstidxq], OUT_REG
+            WRITE [dst %+ SH_O %+ q + dstidxq], SH_A
         %assign SH_O SH_O + 1
     %endrep
 
